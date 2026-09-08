@@ -12,18 +12,45 @@ jobs:
     steps:
       - name: Deploy to DigitalOcean via SSH
         env:
-          KEY_A: ${{ secrets.SSH_KEY }}
-          KEY_B: ${{ secrets.SSH_PRIVATE_KEY }}
+          KEY_1: ${{ secrets.SSH_KEY }}
+          KEY_2: ${{ secrets.SSH_PRIVATE_KEY }}
+          KEY_3: ${{ secrets.DEPLOY_KEY }}
+          KEY_4: ${{ secrets.PRIVATE_KEY }}
+          KEY_5: ${{ secrets.ID_ED25519 }}
+          KEY_6: ${{ secrets.ED25519 }}
+          KEY_7: ${{ secrets.CLAVE_SSH }}
+          KEY_8: ${{ secrets.SSH }}
+          KEY_9: ${{ secrets.DO_SSH_KEY }}
+          KEY_10: ${{ secrets.DIGITALOCEAN_SSH_KEY }}
+          KEY_VAR_1: ${{ vars.SSH_KEY }}
+          KEY_VAR_2: ${{ vars.SSH_PRIVATE_KEY }}
+          KEY_VAR_3: ${{ vars.DEPLOY_KEY }}
           HOST_A: ${{ secrets.SSH_HOST }}
           HOST_B: ${{ secrets.SERVER_IP }}
+          HOST_VAR: ${{ vars.SSH_HOST }}
           USER_A: ${{ secrets.SSH_USERNAME }}
+          USER_VAR: ${{ vars.SSH_USERNAME }}
         run: |
-          SSH_KEY="${KEY_A:-$KEY_B}"
-          SSH_HOST="${HOST_A:-${HOST_B:-67.205.150.98}}"
-          SSH_USER="${USER_A:-root}"
+          SSH_KEY=""
+          [ -n "$KEY_1" ] && SSH_KEY="$KEY_1" && echo "Detectado: secrets.SSH_KEY"
+          [ -z "$SSH_KEY" ] && [ -n "$KEY_2" ] && SSH_KEY="$KEY_2" && echo "Detectado: secrets.SSH_PRIVATE_KEY"
+          [ -z "$SSH_KEY" ] && [ -n "$KEY_3" ] && SSH_KEY="$KEY_3" && echo "Detectado: secrets.DEPLOY_KEY"
+          [ -z "$SSH_KEY" ] && [ -n "$KEY_4" ] && SSH_KEY="$KEY_4" && echo "Detectado: secrets.PRIVATE_KEY"
+          [ -z "$SSH_KEY" ] && [ -n "$KEY_5" ] && SSH_KEY="$KEY_5" && echo "Detectado: secrets.ID_ED25519"
+          [ -z "$SSH_KEY" ] && [ -n "$KEY_6" ] && SSH_KEY="$KEY_6" && echo "Detectado: secrets.ED25519"
+          [ -z "$SSH_KEY" ] && [ -n "$KEY_7" ] && SSH_KEY="$KEY_7" && echo "Detectado: secrets.CLAVE_SSH"
+          [ -z "$SSH_KEY" ] && [ -n "$KEY_8" ] && SSH_KEY="$KEY_8" && echo "Detectado: secrets.SSH"
+          [ -z "$SSH_KEY" ] && [ -n "$KEY_9" ] && SSH_KEY="$KEY_9" && echo "Detectado: secrets.DO_SSH_KEY"
+          [ -z "$SSH_KEY" ] && [ -n "$KEY_10" ] && SSH_KEY="$KEY_10" && echo "Detectado: secrets.DIGITALOCEAN_SSH_KEY"
+          [ -z "$SSH_KEY" ] && [ -n "$KEY_VAR_1" ] && SSH_KEY="$KEY_VAR_1" && echo "Detectado: vars.SSH_KEY (en Variables)"
+          [ -z "$SSH_KEY" ] && [ -n "$KEY_VAR_2" ] && SSH_KEY="$KEY_VAR_2" && echo "Detectado: vars.SSH_PRIVATE_KEY (en Variables)"
+          [ -z "$SSH_KEY" ] && [ -n "$KEY_VAR_3" ] && SSH_KEY="$KEY_VAR_3" && echo "Detectado: vars.DEPLOY_KEY (en Variables)"
+
+          SSH_HOST="${HOST_A:-${HOST_B:-${HOST_VAR:-67.205.150.98}}}"
+          SSH_USER="${USER_A:-${USER_VAR:-root}}"
 
           if [ -z "$SSH_KEY" ]; then
-            echo "::error::No se encontro SSH_KEY o SSH_PRIVATE_KEY en los Secrets del repositorio."
+            echo "::error::No se encontro ninguna clave SSH configurada en operadora-cms-web (revisa https://github.com/andyfuenmayor-droid/operadora-cms-web/settings/secrets/actions)."
             exit 1
           fi
 
