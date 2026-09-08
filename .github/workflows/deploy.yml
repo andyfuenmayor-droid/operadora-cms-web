@@ -10,17 +10,34 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      - name: Deploying web application via SSH
-        uses: appleboy/ssh-action@v1.0.3
-        with:
-          host: ${{ secrets.SERVER_IP || secrets.SSH_HOST || '67.205.150.98' }}
-          username: ${{ secrets.SSH_USERNAME || 'root' }}
-          key: ${{ secrets.SSH_KEY || secrets.SSH_PRIVATE_KEY }}
-          port: 22
-          script: |
+      - name: Deploy to DigitalOcean via SSH
+        env:
+          KEY_A: ${{ secrets.SSH_KEY }}
+          KEY_B: ${{ secrets.SSH_PRIVATE_KEY }}
+          HOST_A: ${{ secrets.SSH_HOST }}
+          HOST_B: ${{ secrets.SERVER_IP }}
+          USER_A: ${{ secrets.SSH_USERNAME }}
+        run: |
+          SSH_KEY="${KEY_A:-$KEY_B}"
+          SSH_HOST="${HOST_A:-${HOST_B:-67.205.150.98}}"
+          SSH_USER="${USER_A:-root}"
+
+          if [ -z "$SSH_KEY" ]; then
+            echo "::error::No se encontro SSH_KEY o SSH_PRIVATE_KEY en los Secrets del repositorio."
+            exit 1
+          fi
+
+          mkdir -p ~/.ssh
+          echo "$SSH_KEY" | tr -d '\r' > ~/.ssh/id_deploy
+          chmod 600 ~/.ssh/id_deploy
+
+          echo "🚀 Conectando a $SSH_USER@$SSH_HOST..."
+          ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -i ~/.ssh/id_deploy "$SSH_USER@$SSH_HOST" << 'EOF'
+            set -e
             [ -d /opt/operadora-cms-web/.git ] || git clone https://github.com/andyfuenmayor-droid/operadora-cms-web.git /opt/operadora-cms-web
             cd /opt/operadora-cms-web
             git config --global --add safe.directory "*" || true
             git fetch origin main
             git reset --hard origin/main
             bash deploy.sh
+          EOF
