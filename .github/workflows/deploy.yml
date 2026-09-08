@@ -1,0 +1,26 @@
+name: Deploy Operadora CMS Web to DigitalOcean
+
+on:
+  push:
+    branches:
+      - main
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Deploying web application via SSH
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.SERVER_IP || secrets.SSH_HOST || '67.205.150.98' }}
+          username: root
+          key: ${{ secrets.SSH_PRIVATE_KEY || secrets.SSH_KEY }}
+          port: 22
+          script: |
+            [ -d /opt/operadora-cms-web/.git ] || git clone https://github.com/andyfuenmayor-droid/operadora-cms-web.git /opt/operadora-cms-web
+            cd /opt/operadora-cms-web
+            git config --global --add safe.directory "*" || true
+            git fetch origin main
+            git reset --hard origin/main
+            bash deploy.sh
