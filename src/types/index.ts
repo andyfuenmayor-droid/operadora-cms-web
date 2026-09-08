@@ -3,6 +3,7 @@ export type PlanType = 'basico' | 'profesional' | 'elite';
 export interface UserProfile {
   id: string;
   email: string;
+  nombre?: string;
   nombre_banca?: string;
   banca?: string;
   plan?: string;
@@ -27,6 +28,7 @@ export interface UserSession {
   id: string; // real auth id
   effectiveId: string; // parent_id if sub-user, otherwise real id
   email: string;
+  nombre?: string;
   isSubUser: boolean;
   role: string;
   plan: PlanType;
@@ -45,10 +47,11 @@ export interface Agency {
   id: number;
   nombre_agencia: string;
   comision?: number;
-  comisiones_sistemas?: Record<string, number> | string;
+  participacion_ag?: number;
+  condiciones_sistemas?: Record<string, any> | string;
   monedas?: string;
   sistemas?: string;
-  cuentas_asignadas?: string | string[];
+  cuentas_asignadas?: string;
   usuario_taquilla?: string;
   clave_taquilla?: string;
   auditoria_activa?: boolean;
@@ -69,6 +72,7 @@ export interface BetSystem {
 export interface Currency {
   id: number;
   nombre_moneda: string;
+  simbolo?: string;
   user_id?: string;
   created_at?: string;
 }
@@ -89,9 +93,11 @@ export interface BankAccount {
 
 export interface PaymentDevice {
   id: number;
-  alias_nombre: string;
+  nombre_dispositivo?: string;
+  alias?: string;
+  alias_nombre?: string;
   tipo_dispositivo: string;
-  serial_tid: string;
+  serial_tid?: string;
   cuenta_asociada?: string;
   agencia_asignada?: string;
   moneda: string;
@@ -101,7 +107,7 @@ export interface PaymentDevice {
 }
 
 export interface Collector {
-  id: string | number;
+  id: number;
   nombre: string;
   usuario: string;
   clave?: string;
@@ -114,8 +120,9 @@ export interface Collector {
 
 export interface ConfirmationTransaction {
   id: number;
-  origen_tabla: 'cda_pagos_bancarios' | 'cda_pagos_diarios' | 'cda_gastos_diarios' | 'pagos_semana';
-  categoria: 'Bancos' | 'Efectivo' | 'Gastos';
+  tabla: string;
+  origen_tabla?: string;
+  categoria: string;
   fecha: string;
   agencia: string;
   cajero_id?: string;
@@ -128,11 +135,11 @@ export interface ConfirmationTransaction {
   pagador: string;
   pos_o_cuenta?: string;
   confirmado: boolean;
-  confirmado_por?: string;
+  confirmado_por?: string | null;
   rechazado: boolean;
-  rechazado_por?: string;
-  motivo_rechazo?: string;
-  fecha_rechazo?: string;
+  rechazado_por?: string | null;
+  motivo_rechazo?: string | null;
+  fecha_rechazo?: string | null;
   cobrador_nombre?: string;
   qr_token?: string;
   liquidado_admin?: boolean;
@@ -146,10 +153,14 @@ export interface DailySaleItem {
   agencia: string;
   sistema: string;
   moneda: string;
-  monto_venta: number;
+  venta?: number;
+  monto_venta?: number;
   comision: number;
-  monto_premios: number;
+  premios?: number;
+  monto_premios?: number;
+  neto?: number;
   util_op?: number;
+  util_ag?: number;
   cerrado?: boolean;
   user_id?: string;
 }

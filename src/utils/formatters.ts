@@ -26,6 +26,8 @@ export const TODOS_LOS_MODULOS_CMS: ModuleId[] = [
   'Ajustes',
 ];
 
+export const ALL_MODULES = TODOS_LOS_MODULOS_CMS;
+
 export const PLANES_MODULOS_DEFAULT: Record<PlanType, ModuleId[]> = {
   basico: [
     'Inicio',

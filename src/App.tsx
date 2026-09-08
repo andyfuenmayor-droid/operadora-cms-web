@@ -3,7 +3,23 @@ import { AuthProvider, useAuth } from './context/AuthContext';
 import { Login } from './components/Login';
 import { Shell } from './components/Layout/Shell';
 import type { ModuleId } from './types';
-import { Construction, Sparkles } from 'lucide-react';
+
+// Components
+import { HomeDashboard } from './components/Home/HomeDashboard';
+import { ConfirmationsBoard } from './components/Confirmations/ConfirmationsBoard';
+import { SystemsTab } from './components/Catalogs/SystemsTab';
+import { CurrenciesTab } from './components/Catalogs/CurrenciesTab';
+import { BankAccountsTab } from './components/Catalogs/BankAccountsTab';
+import { AgenciesTab } from './components/Agencies/AgenciesTab';
+import { CollectorsTab } from './components/Collectors/CollectorsTab';
+import { SalesEntryTab } from './components/Finance/SalesEntryTab';
+import { PaymentsTab } from './components/Finance/PaymentsTab';
+import { ExpensesTab } from './components/Finance/ExpensesTab';
+import { AccountBalancesTab } from './components/Finance/AccountBalancesTab';
+import { WeeklyClosureTab } from './components/Finance/WeeklyClosureTab';
+import { OperatorsTab } from './components/Administration/OperatorsTab';
+import { CycleSettingsTab } from './components/Settings/CycleSettingsTab';
+import { UsersTab } from './components/Administration/UsersTab';
 
 const AppContent: React.FC = () => {
   const { isAuthenticated, isLoading, allowedModules } = useAuth();
@@ -32,34 +48,70 @@ const AppContent: React.FC = () => {
   // Adjust active module if user no longer has access to it
   const activeModule = allowedModules.includes(currentModule) ? currentModule : allowedModules[0] || 'Inicio';
 
+  const renderModuleContent = () => {
+    switch (activeModule) {
+      case 'Inicio':
+        return <HomeDashboard onNavigate={setCurrentModule} />;
+
+      case 'Pizarra Confirmaciones':
+      case 'Auditoría':
+      case 'Caja Maestra':
+        return <ConfirmationsBoard />;
+
+      case 'Sistemas':
+      case 'Config. Proveedores':
+        return <SystemsTab />;
+
+      case 'Monedas':
+        return <CurrenciesTab />;
+
+      case 'Cuentas Bancarias':
+        return <BankAccountsTab />;
+
+      case 'Agencias':
+        return <AgenciesTab />;
+
+      case 'Cobradores':
+        return <CollectorsTab />;
+
+      case 'Cargar Ventas':
+      case 'Venta Real':
+        return <SalesEntryTab />;
+
+      case 'Pagos Agencias':
+      case 'Pagos a Operador':
+        return <PaymentsTab />;
+
+      case 'Gastos Agencias':
+      case 'Gastos Administrativos':
+        return <ExpensesTab />;
+
+      case 'Saldo Agencias':
+      case 'Rep. Agencia':
+        return <AccountBalancesTab />;
+
+      case 'Cierre ':
+        return <WeeklyClosureTab />;
+
+      case 'Venta Operadora':
+      case 'Reporte Operadora':
+      case 'Cierre Operadora':
+        return <OperatorsTab />;
+
+      case 'Ajustes':
+        return <CycleSettingsTab />;
+
+      case 'Usuarios':
+        return <UsersTab />;
+
+      default:
+        return <HomeDashboard onNavigate={setCurrentModule} />;
+    }
+  };
+
   return (
     <Shell currentModule={activeModule} onSelectModule={setCurrentModule}>
-      {/* Dynamic Module Router */}
-      <div className="space-y-6">
-        <div className="bg-[#0D1B22] border border-slate-800 rounded-3xl p-6 sm:p-8 shadow-xl">
-          <div className="flex items-center gap-3 mb-3">
-            <div className="p-3 rounded-2xl bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">
-              <Sparkles className="w-6 h-6" />
-            </div>
-            <div>
-              <h2 className="text-xl font-black text-white">{activeModule}</h2>
-              <p className="text-xs text-slate-400">
-                Módulo central de Operadora CMS Web • Multibanca Express
-              </p>
-            </div>
-          </div>
-
-          <div className="mt-6 p-6 rounded-2xl bg-[#071217] border border-slate-800/80 text-center space-y-3">
-            <Construction className="w-10 h-10 text-amber-400 mx-auto animate-bounce" />
-            <div className="text-sm font-bold text-white">
-              Fase 1 completada con éxito: Infraestructura, Auth SaaS y Shell de Navegación
-            </div>
-            <p className="text-xs text-slate-400 max-w-md mx-auto">
-              El entorno de desarrollo, TypeScript, TailwindCSS v4, AuthContext y el sistema de sub-usuarios están listos. A continuación implementaremos la Fase 2 (Dashboard Inicio, Sistemas, Monedas, Cuentas Bancarias y POS).
-            </p>
-          </div>
-        </div>
-      </div>
+      {renderModuleContent()}
     </Shell>
   );
 };

@@ -3,10 +3,26 @@ import { supabase } from '../lib/supabase';
 import type { UserSession, UserProfile, SubUserAccess, SystemCycle, ModuleId, PlanType } from '../types';
 import { normalizarNombrePlan, PLANES_MODULOS_DEFAULT, getTodayDateString } from '../utils/formatters';
 
+const getDefaultCycle = (): SystemCycle => {
+  const today = new Date();
+  const dayOfWeek = today.getDay(); // 0 Sunday, 1 Monday
+  const diffToMonday = (dayOfWeek === 0 ? -6 : 1) - dayOfWeek;
+  const monday = new Date(today);
+  monday.setDate(today.getDate() + diffToMonday);
+  const sunday = new Date(monday);
+  sunday.setDate(monday.getDate() + 6);
+  return {
+    desde: monday.toISOString().slice(0, 10),
+    hasta: sunday.toISOString().slice(0, 10),
+    tipo: 'SEMANAL',
+    semana: '01',
+  };
+};
+
 interface AuthContextType {
   user: UserSession | null;
   profile: UserProfile | null;
-  systemCycle: SystemCycle | null;
+  systemCycle: SystemCycle;
   allowedModules: ModuleId[];
   effectiveUserId: string;
   isAuthenticated: boolean;
@@ -23,7 +39,7 @@ const AuthContext = createContext<AuthContextType | undefined>(undefined);
 export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [user, setUser] = useState<UserSession | null>(null);
   const [profile, setProfile] = useState<UserProfile | null>(null);
-  const [systemCycle, setSystemCycle] = useState<SystemCycle | null>(null);
+  const [systemCycle, setSystemCycle] = useState<SystemCycle>(getDefaultCycle());
   const [isLoading, setIsLoading] = useState<boolean>(true);
   const [subscriptionError, setSubscriptionError] = useState<string | null>(null);
 
@@ -221,7 +237,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
     setUser(null);
     setProfile(null);
-    setSystemCycle(null);
+    setSystemCycle(getDefaultCycle());
     setSubscriptionError(null);
     localStorage.removeItem('me_cms_user');
     localStorage.removeItem('me_cms_profile');
