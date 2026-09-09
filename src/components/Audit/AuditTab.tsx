@@ -9,18 +9,14 @@ import {
   RefreshCw,
   AlertTriangle,
   CheckCircle2,
-  TrendingUp,
   Plus,
   Trash2,
   Edit2,
-  Lock,
   Clock,
-  DollarSign,
   ChevronDown,
   ChevronUp,
   Building2,
-  UserCheck,
-  Sparkles,
+  Info,
 } from 'lucide-react';
 import confetti from 'canvas-confetti';
 
@@ -54,8 +50,11 @@ interface AuditRow {
 export const AuditTab: React.FC = () => {
   const { effectiveUserId, systemCycle } = useAuth();
 
-  // Active currency tab
+  // Active currency tab: BS, USD, COP
   const [activeCurrency, setActiveCurrency] = useState<'BS' | 'USD' | 'COP'>('BS');
+
+  // Subtab for detailed period: Ventas | Gastos | Pagos
+  const [activeSubTab, setActiveSubTab] = useState<'Ventas' | 'Gastos' | 'Pagos'>('Ventas');
 
   // Date filters
   const [fechaDesde, setFechaDesde] = useState(systemCycle.desde);
@@ -73,11 +72,11 @@ export const AuditTab: React.FC = () => {
   const [paymentsOfficial, setPaymentsOfficial] = useState<any[]>([]);
   const [paymentsTaquilla, setPaymentsTaquilla] = useState<any[]>([]);
 
-  // UI accordion state
+  // UI accordion state for credentials
   const [isCredentialsOpen, setIsCredentialsOpen] = useState(false);
   const [message, setMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
 
-  // Modal / Form state for Taquilla User
+  // Modal / Form state for Taquilla User creation
   const [newUserAgencyId, setNewUserAgencyId] = useState<number | null>(null);
   const [newUsuario, setNewUsuario] = useState('');
   const [newClave, setNewClave] = useState('');
@@ -96,7 +95,6 @@ export const AuditTab: React.FC = () => {
     setMessage(null);
 
     try {
-      // Parallel fetch of all audit & comparison tables
       const [
         agRes,
         uRes,
@@ -125,7 +123,8 @@ export const AuditTab: React.FC = () => {
           .select('*')
           .eq('user_id', effectiveUserId)
           .gte('fecha', fechaDesde)
-          .lte('fecha', fechaHasta),
+          .lte('fecha', fechaHasta)
+          .order('fecha', { ascending: false }),
         supabase
           .from('gastos')
           .select('*')
@@ -135,7 +134,8 @@ export const AuditTab: React.FC = () => {
           .select('*')
           .eq('user_id', effectiveUserId)
           .gte('fecha', fechaDesde)
-          .lte('fecha', fechaHasta),
+          .lte('fecha', fechaHasta)
+          .order('fecha', { ascending: false }),
         supabase
           .from('pagos_semana')
           .select('*')
@@ -145,20 +145,58 @@ export const AuditTab: React.FC = () => {
           .select('*')
           .eq('user_id', effectiveUserId)
           .gte('fecha', fechaDesde)
-          .lte('fecha', fechaHasta),
+          .lte('fecha', fechaHasta)
+          .order('fecha', { ascending: false }),
       ]);
 
-      setAgencies(agRes.data || []);
+      const loadedAgencies = agRes.data || [];
+      setAgencies(loadedAgencies);
       setTaquillaUsers((uRes.data || []) as TaquillaUser[]);
-      setSalesOfficial(vOfiRes.data || []);
-      setSalesTaquilla(vTaqRes.data || []);
-      setExpensesOfficial(gOfiRes.data || []);
-      setExpensesTaquilla(gTaqRes.data || []);
-      setPaymentsOfficial(pOfiRes.data || []);
+
+      // Map of single-currency agencies
+      const singleCurrencyMap: Record<string, string> = {};
+      loadedAgencies.forEach((a: any) => {
+        const agName = String(a.nombre_agencia || '').trim().toUpperCase();
+        const mons = String(a.monedas || '')
+          .split(',')
+          .map((m) => m.trim().toUpperCase())
+          .filter(Boolean);
+        if (mons.length === 1) {
+          singleCurrencyMap[agName] = mons[0];
+        }
+      });
+
+      // Filter taquilla daily sales by user's agencies and normalize currency
+      const rawSalesTaq = vTaqRes.data || [];
+      const userAgNames = new Set(loadedAgencies.map((a: any) => String(a.nombre_agencia || '').trim().toUpperCase()));
+
+      const cleanSalesTaq = rawSalesTaq
+        .filter((s: any) => {
+          const ag = String(s.agencia || s.nombre_agency || '').trim().toUpperCase();
+          return userAgNames.size === 0 || userAgNames.has(ag);
+        })
+        .map((s: any) => {
+          const ag = String(s.agencia || s.nombre_agency || '').trim().toUpperCase();
+          let mon = normalizarMoneda(s.moneda);
+          if (singleCurrencyMap[ag] && (!mon || (mon === 'COP' && singleCurrencyMap[ag] !== 'COP'))) {
+            mon = singleCurrencyMap[ag] as any;
+          }
+          return { ...s, moneda: mon || singleCurrencyMap[ag] || 'BS' };
+        });
+
+      // Filter taquilla expenses by user's agencies
+      const rawExpTaq = gTaqRes.data || [];
+      const cleanExpTaq = rawExpTaq.filter((g: any) => {
+        const ag = String(g.agencia || '').trim().toUpperCase();
+        return userAgNames.size === 0 || userAgNames.has(ag);
+      });
 
       // Filter taquilla payments: confirmed, not rejected, not custody movements
       const rawPaymentsTaq = pTaqRes.data || [];
       const cleanPaymentsTaq = rawPaymentsTaq.filter((p: any) => {
+        const ag = String(p.agencia || '').trim().toUpperCase();
+        if (userAgNames.size > 0 && !userAgNames.has(ag)) return false;
+
         const isRech = Boolean(p.rechazado) || String(p.estado || '').toUpperCase() === 'RECHAZADO';
         const isConf = Boolean(p.confirmado) || Boolean(p.confirmado_supervisor);
         if (isRech || !isConf) return false;
@@ -169,6 +207,12 @@ export const AuditTab: React.FC = () => {
         }
         return true;
       });
+
+      setSalesOfficial(vOfiRes.data || []);
+      setSalesTaquilla(cleanSalesTaq);
+      setExpensesOfficial(gOfiRes.data || []);
+      setExpensesTaquilla(cleanExpTaq);
+      setPaymentsOfficial(pOfiRes.data || []);
       setPaymentsTaquilla(cleanPaymentsTaq);
     } catch (err: any) {
       console.error('Error loading audit data:', err);
@@ -182,29 +226,35 @@ export const AuditTab: React.FC = () => {
     loadData();
   }, [loadData]);
 
-  // Auditable agencies list (auditoria_activa = true, or all if none marked)
+  // Auditable agencies list: agencias con auditoria_activa = true
   const auditableAgencies = useMemo(() => {
-    const activeAgs = agencies.filter((a) => a.auditoria_activa);
-    return activeAgs.length > 0 ? activeAgs : agencies;
+    return agencies.filter((a) => a.auditoria_activa === true);
   }, [agencies]);
 
   const auditableAgencyNames = useMemo(() => {
     return new Set(auditableAgencies.map((a) => String(a.nombre_agencia || '').trim().toUpperCase()));
   }, [auditableAgencies]);
 
-  // Agency participation map
+  // Participation % map
   const participationMap = useMemo(() => {
     const map: Record<string, number> = {};
     agencies.forEach((a) => {
-      map[String(a.nombre_agencia || '').trim().toUpperCase()] = Number(a.participacion_ag || 50);
+      map[String(a.nombre_agencia || '').trim().toUpperCase()] = Number(a.participacion_ag || 0);
     });
     return map;
   }, [agencies]);
 
-  // Compute audit comparison rows for active currency
+  // Terminal names label
+  const terminalesLabel = useMemo(() => {
+    if (auditableAgencies.length > 0) {
+      return auditableAgencies.map((a) => String(a.nombre_agencia || '').trim().toUpperCase()).join(', ');
+    }
+    return 'Todas las Agencias';
+  }, [auditableAgencies]);
+
+  // Compute audit comparison rows for the active currency
   const auditRows = useMemo<AuditRow[]>(() => {
     const mapRows: Record<string, AuditRow> = {};
-
     const getKey = (ag: string, sis: string) => `${ag}___${sis}`;
 
     // 1. Process Carga Oficial
@@ -276,12 +326,12 @@ export const AuditTab: React.FC = () => {
       const vTaq = Number(s.monto_venta || 0);
       const cTaq = Number(s.comision || 0);
       const pTaq = Number(s.monto_premios || 0);
-      const pct = participationMap[ag] || 50;
+      const pct = participationMap[ag] || 0;
 
       mapRows[k].venta_taq += vTaq;
       mapRows[k].com_taq += cTaq;
       mapRows[k].prem_taq += pTaq;
-      mapRows[k].part_taq += Math.round((vTaq - cTaq - pTaq) * (pct / 100) * 100) / 100;
+      mapRows[k].part_taq += (vTaq - cTaq - pTaq) * (pct / 100);
     });
 
     // 3. Process Gastos by Agency
@@ -290,6 +340,7 @@ export const AuditTab: React.FC = () => {
       const mon = normalizarMoneda(g.moneda);
       if (mon !== activeCurrency) return;
       const ag = String(g.agencia || '').trim().toUpperCase();
+      if (auditableAgencyNames.size > 0 && !auditableAgencyNames.has(ag)) return;
       gastosOfiByAg[ag] = (gastosOfiByAg[ag] || 0) + Number(g.monto || 0);
     });
 
@@ -298,6 +349,7 @@ export const AuditTab: React.FC = () => {
       const mon = normalizarMoneda(g.moneda);
       if (mon !== activeCurrency) return;
       const ag = String(g.agencia || '').trim().toUpperCase();
+      if (auditableAgencyNames.size > 0 && !auditableAgencyNames.has(ag)) return;
       gastosTaqByAg[ag] = (gastosTaqByAg[ag] || 0) + Number(g.monto || 0);
     });
 
@@ -307,6 +359,7 @@ export const AuditTab: React.FC = () => {
       const mon = normalizarMoneda(p.moneda);
       if (mon !== activeCurrency) return;
       const ag = String(p.agencia || '').trim().toUpperCase();
+      if (auditableAgencyNames.size > 0 && !auditableAgencyNames.has(ag)) return;
       pagosOfiByAg[ag] = (pagosOfiByAg[ag] || 0) + Number(p.monto || 0);
     });
 
@@ -315,10 +368,11 @@ export const AuditTab: React.FC = () => {
       const mon = normalizarMoneda(p.moneda);
       if (mon !== activeCurrency) return;
       const ag = String(p.agencia || '').trim().toUpperCase();
+      if (auditableAgencyNames.size > 0 && !auditableAgencyNames.has(ag)) return;
       pagosTaqByAg[ag] = (pagosTaqByAg[ag] || 0) + Number(p.monto || 0);
     });
 
-    // Assign agency level expenses and payments to the first system of that agency
+    // Assign agency level expenses and payments to the first system row of that agency
     const seenAgForExpenses = new Set<string>();
     const result = Object.values(mapRows);
 
@@ -345,7 +399,7 @@ export const AuditTab: React.FC = () => {
     participationMap,
   ]);
 
-  // System level difference metrics
+  // System level metrics in active currency
   const systemMetrics = useMemo(() => {
     const systems = Array.from(new Set(auditRows.map((r) => r.sistema))).sort();
 
@@ -367,17 +421,80 @@ export const AuditTab: React.FC = () => {
     });
   }, [auditRows]);
 
-  // Period totals
-  const periodTotals = useMemo(() => {
-    const vTot = auditRows.reduce((acc, r) => acc + r.venta_taq, 0);
-    const cTot = auditRows.reduce((acc, r) => acc + r.com_taq, 0);
-    const pTot = auditRows.reduce((acc, r) => acc + r.prem_taq, 0);
-    const gTot = auditRows.reduce((acc, r) => acc + r.gastos_taq, 0);
-    const pagTot = auditRows.reduce((acc, r) => acc + r.pagos_taq, 0);
-    const sFinal = vTot - cTot - pTot - gTot - pagTot;
+  // Accumulated expenses and payments across agencies in active currency
+  const accumulatedExpensesAndPayments = useMemo(() => {
+    const agMap: Record<string, { gOfi: number; gTaq: number; pOfi: number; pTaq: number }> = {};
+    auditRows.forEach((r) => {
+      if (!agMap[r.agencia]) {
+        agMap[r.agencia] = {
+          gOfi: r.gastos_ofi,
+          gTaq: r.gastos_taq,
+          pOfi: r.pagos_ofi,
+          pTaq: r.pagos_taq,
+        };
+      }
+    });
 
-    return { vTot, cTot, pTot, gTot, pagTot, sFinal };
+    const entries = Object.values(agMap);
+    const tGOfi = entries.reduce((acc, e) => acc + e.gOfi, 0);
+    const tGTaq = entries.reduce((acc, e) => acc + e.gTaq, 0);
+    const tPOfi = entries.reduce((acc, e) => acc + e.pOfi, 0);
+    const tPTaq = entries.reduce((acc, e) => acc + e.pTaq, 0);
+
+    return {
+      gastos: { ofi: tGOfi, taq: tGTaq, diff: tGOfi - tGTaq },
+      pagos: { ofi: tPOfi, taq: tPTaq, diff: tPOfi - tPTaq },
+    };
   }, [auditRows]);
+
+  // Filtered lists for the active currency detailed report
+  const filteredSalesTaq = useMemo(() => {
+    return salesTaquilla.filter((s: any) => {
+      const mon = normalizarMoneda(s.moneda);
+      if (mon !== activeCurrency) return false;
+      if (auditableAgencyNames.size > 0) {
+        const ag = String(s.nombre_agency || s.agencia || '').trim().toUpperCase();
+        if (!auditableAgencyNames.has(ag)) return false;
+      }
+      return true;
+    });
+  }, [salesTaquilla, activeCurrency, auditableAgencyNames]);
+
+  const filteredExpensesTaq = useMemo(() => {
+    return expensesTaquilla.filter((g: any) => {
+      const mon = normalizarMoneda(g.moneda);
+      if (mon !== activeCurrency) return false;
+      if (auditableAgencyNames.size > 0) {
+        const ag = String(g.agencia || '').trim().toUpperCase();
+        if (!auditableAgencyNames.has(ag)) return false;
+      }
+      return true;
+    });
+  }, [expensesTaquilla, activeCurrency, auditableAgencyNames]);
+
+  const filteredPaymentsTaq = useMemo(() => {
+    return paymentsTaquilla.filter((p: any) => {
+      const mon = normalizarMoneda(p.moneda);
+      if (mon !== activeCurrency) return false;
+      if (auditableAgencyNames.size > 0) {
+        const ag = String(p.agencia || '').trim().toUpperCase();
+        if (!auditableAgencyNames.has(ag)) return false;
+      }
+      return true;
+    });
+  }, [paymentsTaquilla, activeCurrency, auditableAgencyNames]);
+
+  // Period totals for the 6 metric boxes (exact Python formulas)
+  const detailedPeriodTotals = useMemo(() => {
+    const tVTotal = filteredSalesTaq.reduce((acc, r: any) => acc + Number(r.monto_venta || 0), 0);
+    const tCTotal = filteredSalesTaq.reduce((acc, r: any) => acc + Number(r.comision || 0), 0);
+    const tPTotal = filteredSalesTaq.reduce((acc, r: any) => acc + Number(r.monto_premios || 0), 0);
+    const tGTotal = filteredExpensesTaq.reduce((acc, r: any) => acc + Number(r.monto || 0), 0);
+    const tPgTotal = filteredPaymentsTaq.reduce((acc, r: any) => acc + Number(r.monto || 0), 0);
+    const saldoFinal = tVTotal - tCTotal - tPTotal - tGTotal - tPgTotal;
+
+    return { tVTotal, tCTotal, tPTotal, tGTotal, tPgTotal, saldoFinal };
+  }, [filteredSalesTaq, filteredExpensesTaq, filteredPaymentsTaq]);
 
   // Handlers for Taquilla Credentials
   const handleCreateTaquillaUser = async (e: React.FormEvent) => {
@@ -405,7 +522,7 @@ export const AuditTab: React.FC = () => {
       if (error) throw error;
 
       confetti({ particleCount: 35, spread: 60 });
-      setMessage({ type: 'success', text: `Usuario '${newUsuario}' creado para la terminal.` });
+      setMessage({ type: 'success', text: `Usuario '${newUsuario}' creado.` });
       setNewUserAgencyId(null);
       setNewUsuario('');
       setNewClave('');
@@ -413,7 +530,7 @@ export const AuditTab: React.FC = () => {
       await loadData();
     } catch (err: any) {
       console.error('Error creating taquilla user:', err);
-      setMessage({ type: 'error', text: err?.message || 'Error al crear usuario de taquilla.' });
+      setMessage({ type: 'error', text: err?.message || 'Error al crear usuario.' });
     } finally {
       setIsProcessing(false);
     }
@@ -477,19 +594,16 @@ export const AuditTab: React.FC = () => {
 
   return (
     <div className="space-y-6">
-      {/* Top Header */}
-      <div className="bg-gradient-to-r from-[#0D1B22] via-[#0F242C] to-[#0D1B22] border border-slate-800 rounded-3xl p-6 shadow-xl relative overflow-hidden">
+      {/* 1. Header (Exact Python Title & Caption) */}
+      <div className="bg-[#0D1B22] border border-slate-800 rounded-3xl p-6 shadow-xl relative overflow-hidden">
         <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
-          <div className="space-y-1">
-            <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-emerald-500/10 border border-emerald-500/30 text-emerald-400 text-xs font-bold">
-              <ShieldCheck className="w-3.5 h-3.5" />
-              <span>Auditoría Híbrida 360°</span>
-            </div>
-            <h2 className="text-xl sm:text-2xl font-black text-white tracking-tight">
-              Panel de Auditoría (Taquilla vs Carga Oficial)
+          <div>
+            <h2 className="text-xl sm:text-2xl font-bold text-white flex items-center gap-2">
+              <span>🛡️</span>
+              <span>Panel de Auditoría (Taquilla vs Carga Oficial)</span>
             </h2>
-            <p className="text-xs text-slate-400 max-w-xl">
-              Comparativa por ciclo completo: cruce de ventas, comisiones, premios, gastos y cobros entre lo cargado en el CMS y lo reportado en vivo por las taquillas.
+            <p className="text-xs text-slate-400 mt-1">
+              Comparativa por <strong>ciclo completo</strong>: Oficial vs Taquilla, incluyendo gestión multiusuario integrada.
             </p>
           </div>
 
@@ -497,7 +611,7 @@ export const AuditTab: React.FC = () => {
             <button
               onClick={() => loadData()}
               disabled={isLoading}
-              className="p-3 rounded-2xl bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white transition-colors cursor-pointer"
+              className="p-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white transition-colors cursor-pointer"
               title="Actualizar datos"
             >
               <RefreshCw className={`w-4 h-4 ${isLoading ? 'animate-spin text-emerald-400' : ''}`} />
@@ -505,8 +619,8 @@ export const AuditTab: React.FC = () => {
           </div>
         </div>
 
-        {/* Date Filter Strip */}
-        <div className="mt-5 pt-4 border-t border-slate-800/80 flex flex-wrap items-center justify-between gap-3 text-xs">
+        {/* Date Filter & System Cycle Bar */}
+        <div className="mt-4 pt-4 border-t border-slate-800/80 flex flex-wrap items-center justify-between gap-3 text-xs">
           <div className="flex items-center gap-2">
             <span className="text-slate-400 font-bold uppercase text-[10px]">Período de Auditoría:</span>
             <input
@@ -550,145 +664,179 @@ export const AuditTab: React.FC = () => {
         </div>
       )}
 
-      {/* SECTION 1: CREDENTIALS MANAGER ACCORDION */}
-      <div className="bg-[#0D1B22] border border-slate-800 rounded-3xl overflow-hidden shadow-xl">
+      {/* 2. Expander: Gestion de Credenciales por Terminal */}
+      <div className="bg-[#0D1B22] border border-slate-800 rounded-2xl overflow-hidden shadow-lg">
         <button
           onClick={() => setIsCredentialsOpen(!isCredentialsOpen)}
-          className="w-full p-5 flex items-center justify-between text-left hover:bg-slate-800/40 transition-colors cursor-pointer"
+          className="w-full p-4 flex items-center justify-between text-left hover:bg-slate-800/40 transition-colors cursor-pointer"
         >
-          <div className="flex items-center gap-3">
-            <div className="p-2.5 rounded-xl bg-sky-500/10 text-sky-400 border border-sky-500/20">
-              <Users className="w-4 h-4" />
-            </div>
-            <div>
-              <h3 className="text-sm font-bold text-white flex items-center gap-2">
-                <span>Gestión de Credenciales por Terminal de Taquilla</span>
-                <span className="text-[10px] px-2 py-0.5 rounded-full bg-slate-800 text-slate-400 font-mono">
-                  {taquillaUsers.length} cajeros registrados
-                </span>
-              </h3>
-              <p className="text-xs text-slate-400 mt-0.5">
-                Administra, crea y modifica las credenciales individuales de cajeros o supervisores por agencia.
-              </p>
-            </div>
+          <div className="flex items-center gap-2">
+            <span className="text-slate-400 text-xs">{isCredentialsOpen ? '▼' : '▶'}</span>
+            <span className="text-sm font-semibold text-white">Gestion de Credenciales por Terminal</span>
           </div>
-          <div className="text-slate-400">
-            {isCredentialsOpen ? <ChevronUp className="w-5 h-5" /> : <ChevronDown className="w-5 h-5" />}
+          <div className="text-xs text-slate-500">
+            {isCredentialsOpen ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
           </div>
         </button>
 
         {isCredentialsOpen && (
-          <div className="p-5 pt-0 border-t border-slate-800/80 space-y-4">
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3 pt-3">
+          <div className="p-4 pt-0 border-t border-slate-800/60 space-y-3">
+            <p className="text-xs text-slate-400 pt-3">
+              Administra, crea y modifica las credenciales individuales de cajeros o supervisores por agencia.
+            </p>
+
+            <div className="space-y-3">
               {agencies.map((ag) => {
                 const agUsers = taquillaUsers.filter((u) => u.agencia_id === ag.id);
 
                 return (
-                  <div key={ag.id} className="bg-[#071217] border border-slate-800 rounded-2xl p-4 space-y-3">
-                    <div className="flex items-center justify-between">
+                  <div key={ag.id} className="bg-[#071217] border border-slate-800/90 rounded-xl p-3.5 space-y-3">
+                    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
                       <div className="flex items-center gap-2">
                         <Building2 className="w-4 h-4 text-emerald-400" />
-                        <span className="text-xs font-black text-white">{ag.nombre_agencia}</span>
+                        <span className="text-xs font-bold text-white uppercase">{ag.nombre_agencia}</span>
                       </div>
-                      <button
-                        onClick={() => {
-                          setNewUserAgencyId(ag.id);
-                          setNewUsuario('');
-                          setNewClave('');
-                          setNewNombreCajero('');
-                          setNewRol('cajero');
-                        }}
-                        className="px-2 py-1 rounded-lg bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-400 border border-emerald-500/20 text-[10px] font-bold flex items-center gap-1 cursor-pointer"
-                      >
-                        <Plus className="w-3 h-3" />
-                        Nuevo
-                      </button>
+
+                      <div className="flex items-center gap-2 text-xs">
+                        <div className="text-slate-300 font-mono text-[11px]">
+                          {agUsers.length > 0 ? (
+                            agUsers
+                              .filter((u) => u.activo)
+                              .map((u) => (
+                                <span key={u.id} className="mr-2 inline-block">
+                                  <code className="bg-slate-800 px-1 py-0.5 rounded text-sky-300">{u.usuario}</code> (
+                                  {u.rol === 'supervisor' ? 'S' : u.rol === 'agencia' ? 'A' : 'C'})
+                                </span>
+                              ))
+                          ) : (
+                            <span className="text-slate-500 italic">Sin usuarios</span>
+                          )}
+                        </div>
+
+                        <button
+                          onClick={() => {
+                            setNewUserAgencyId(newUserAgencyId === ag.id ? null : ag.id);
+                            setNewUsuario('');
+                            setNewClave('');
+                            setNewNombreCajero('');
+                            setNewRol('cajero');
+                          }}
+                          className="px-2 py-1 rounded bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-semibold flex items-center gap-1 cursor-pointer"
+                        >
+                          <Plus className="w-3 h-3 text-emerald-400" />
+                          <span>Nuevo</span>
+                        </button>
+                      </div>
                     </div>
 
                     {/* New User Inline Form */}
                     {newUserAgencyId === ag.id && (
-                      <form onSubmit={handleCreateTaquillaUser} className="p-3 rounded-xl bg-[#0D1B22] border border-slate-700 space-y-2.5">
-                        <div className="text-[11px] font-bold text-white flex items-center justify-between">
-                          <span>Crear Usuario en {ag.nombre_agencia}</span>
+                      <form onSubmit={handleCreateTaquillaUser} className="p-3 rounded-lg bg-[#0D1B22] border border-slate-700 space-y-2 text-xs">
+                        <div className="font-bold text-white flex items-center justify-between">
+                          <span>Crear Usuario para {ag.nombre_agencia}</span>
                           <button type="button" onClick={() => setNewUserAgencyId(null)} className="text-slate-400 hover:text-white">✕</button>
                         </div>
-                        <input
-                          type="text"
-                          placeholder="Usuario (ej: cajero01)"
-                          value={newUsuario}
-                          onChange={(e) => setNewUsuario(e.target.value)}
-                          required
-                          className="w-full bg-[#071217] border border-slate-700 rounded-lg px-2.5 py-1 text-xs text-white"
-                        />
-                        <input
-                          type="password"
-                          placeholder="Contraseña"
-                          value={newClave}
-                          onChange={(e) => setNewClave(e.target.value)}
-                          required
-                          className="w-full bg-[#071217] border border-slate-700 rounded-lg px-2.5 py-1 text-xs text-white font-mono"
-                        />
-                        <input
-                          type="text"
-                          placeholder="Nombre del cajero (opcional)"
-                          value={newNombreCajero}
-                          onChange={(e) => setNewNombreCajero(e.target.value)}
-                          className="w-full bg-[#071217] border border-slate-700 rounded-lg px-2.5 py-1 text-xs text-white"
-                        />
-                        <select
-                          value={newRol}
-                          onChange={(e) => setNewRol(e.target.value as any)}
-                          className="w-full bg-[#071217] border border-slate-700 rounded-lg px-2.5 py-1 text-xs text-white"
-                        >
-                          <option value="cajero">Rol: Cajero</option>
-                          <option value="supervisor">Rol: Supervisor</option>
-                          <option value="agencia">Rol: Agencia</option>
-                        </select>
-                        <button
-                          type="submit"
-                          disabled={isProcessing}
-                          className="w-full py-1.5 rounded-lg bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-bold text-xs"
-                        >
-                          Guardar Usuario
-                        </button>
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                          <div>
+                            <label className="block text-[10px] text-slate-400 mb-0.5">Usuario</label>
+                            <input
+                              type="text"
+                              placeholder="ej: cajero01"
+                              value={newUsuario}
+                              onChange={(e) => setNewUsuario(e.target.value)}
+                              required
+                              className="w-full bg-[#071217] border border-slate-700 rounded px-2 py-1 text-white"
+                            />
+                          </div>
+                          <div>
+                            <label className="block text-[10px] text-slate-400 mb-0.5">Clave</label>
+                            <input
+                              type="password"
+                              placeholder="••••••••"
+                              value={newClave}
+                              onChange={(e) => setNewClave(e.target.value)}
+                              required
+                              className="w-full bg-[#071217] border border-slate-700 rounded px-2 py-1 text-white font-mono"
+                            />
+                          </div>
+                          <div>
+                            <label className="block text-[10px] text-slate-400 mb-0.5">Nombre (opcional)</label>
+                            <input
+                              type="text"
+                              placeholder="Nombre del cajero"
+                              value={newNombreCajero}
+                              onChange={(e) => setNewNombreCajero(e.target.value)}
+                              className="w-full bg-[#071217] border border-slate-700 rounded px-2 py-1 text-white"
+                            />
+                          </div>
+                          <div>
+                            <label className="block text-[10px] text-slate-400 mb-0.5">Rol</label>
+                            <select
+                              value={newRol}
+                              onChange={(e) => setNewRol(e.target.value as any)}
+                              className="w-full bg-[#071217] border border-slate-700 rounded px-2 py-1 text-white"
+                            >
+                              <option value="cajero">cajero</option>
+                              <option value="supervisor">supervisor</option>
+                              <option value="agencia">agencia</option>
+                            </select>
+                          </div>
+                        </div>
+                        <div className="flex gap-2 pt-1">
+                          <button
+                            type="submit"
+                            disabled={isProcessing}
+                            className="px-3 py-1 bg-emerald-600 hover:bg-emerald-500 text-white font-bold rounded text-xs"
+                          >
+                            💾 Guardar
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => setNewUserAgencyId(null)}
+                            className="px-3 py-1 bg-slate-700 hover:bg-slate-600 text-slate-300 font-bold rounded text-xs"
+                          >
+                            ❌ Cancelar
+                          </button>
+                        </div>
                       </form>
                     )}
 
-                    {/* Users List for this Agency */}
-                    <div className="space-y-1.5 max-h-48 overflow-y-auto">
-                      {agUsers.length === 0 ? (
-                        <p className="text-[11px] text-slate-500 italic py-2 text-center">Sin usuarios activos</p>
-                      ) : (
-                        agUsers.map((u) => {
+                    {/* Users Cards List */}
+                    {agUsers.length > 0 && (
+                      <div className="space-y-1.5 pt-1">
+                        {agUsers.map((u) => {
                           const isSupervisor = u.rol === 'supervisor';
                           const isAgencia = u.rol === 'agencia';
 
                           return (
                             <div
                               key={u.id}
-                              className="flex items-center justify-between p-2 rounded-xl bg-[#0D1B22]/80 border border-slate-800/80 text-xs"
+                              className="flex items-center justify-between p-2.5 rounded-lg bg-[#0D1B22]/90 border border-slate-800 text-xs"
                             >
-                              <div>
-                                <div className="font-mono font-bold text-slate-200 flex items-center gap-1.5">
-                                  <span>{u.usuario}</span>
-                                  <span
-                                    className={`text-[9px] px-1.5 py-0.2 rounded font-sans font-black uppercase ${
-                                      isAgencia
-                                        ? 'bg-emerald-500/20 text-emerald-400'
-                                        : isSupervisor
-                                        ? 'bg-blue-500/20 text-blue-400'
-                                        : 'bg-amber-500/20 text-amber-400'
-                                    }`}
-                                  >
-                                    {u.rol}
-                                  </span>
+                              <div className="flex items-center gap-3">
+                                <div>
+                                  <div className="font-mono font-bold text-white flex items-center gap-1.5">
+                                    <span>👤 <code>{u.usuario}</code></span>
+                                  </div>
+                                  {u.nombre_cajero && (
+                                    <div className="text-[10px] text-slate-400">Nombre: {u.nombre_cajero}</div>
+                                  )}
                                 </div>
-                                {u.nombre_cajero && (
-                                  <span className="text-[10px] text-slate-400">{u.nombre_cajero}</span>
-                                )}
                               </div>
 
-                              <div className="flex items-center gap-1">
+                              <div className="flex items-center gap-2">
+                                <span
+                                  className={`text-[10px] px-2.5 py-0.5 rounded font-extrabold uppercase ${
+                                    isAgencia
+                                      ? 'bg-emerald-950 text-emerald-400 border border-emerald-800'
+                                      : isSupervisor
+                                      ? 'bg-blue-950 text-blue-400 border border-blue-800'
+                                      : 'bg-amber-950 text-amber-400 border border-amber-800'
+                                  }`}
+                                >
+                                  ROL: {u.rol.toUpperCase()}
+                                </span>
+
                                 <button
                                   onClick={() => {
                                     setEditingUser(u);
@@ -697,7 +845,7 @@ export const AuditTab: React.FC = () => {
                                     setEditClave('');
                                   }}
                                   className="p-1 rounded text-slate-400 hover:text-white"
-                                  title="Modificar"
+                                  title="Modificar Rol / Clave"
                                 >
                                   <Edit2 className="w-3.5 h-3.5" />
                                 </button>
@@ -711,9 +859,9 @@ export const AuditTab: React.FC = () => {
                               </div>
                             </div>
                           );
-                        })
-                      )}
-                    </div>
+                        })}
+                      </div>
+                    )}
                   </div>
                 );
               })}
@@ -725,33 +873,33 @@ export const AuditTab: React.FC = () => {
       {/* Edit User Modal */}
       {editingUser && (
         <div className="fixed inset-0 z-50 bg-black/70 backdrop-blur-sm flex items-center justify-center p-4">
-          <div className="bg-[#0D1B22] border border-slate-800 rounded-3xl p-6 max-w-sm w-full space-y-4 shadow-2xl">
+          <div className="bg-[#0D1B22] border border-slate-800 rounded-2xl p-5 max-w-sm w-full space-y-4 shadow-2xl">
             <h4 className="text-sm font-bold text-white flex items-center gap-2">
               <Key className="w-4 h-4 text-emerald-400" />
-              <span>Modificar Usuario: {editingUser.usuario}</span>
+              <span>Editar Usuario: <code>{editingUser.usuario}</code></span>
             </h4>
 
             <div>
-              <label className="block text-[10px] font-bold text-slate-400 uppercase mb-1">Rol</label>
+              <label className="block text-[10px] font-bold text-slate-400 uppercase mb-1">Modificar Rol</label>
               <select
                 value={editRol}
                 onChange={(e) => setEditRol(e.target.value as any)}
-                className="w-full bg-[#071217] border border-slate-700 rounded-xl px-3 py-2 text-xs text-white"
+                className="w-full bg-[#071217] border border-slate-700 rounded-lg px-3 py-1.5 text-xs text-white"
               >
-                <option value="cajero">Cajero</option>
-                <option value="supervisor">Supervisor</option>
-                <option value="agencia">Agencia</option>
+                <option value="cajero">cajero</option>
+                <option value="supervisor">supervisor</option>
+                <option value="agencia">agencia</option>
               </select>
             </div>
 
             <div>
-              <label className="block text-[10px] font-bold text-slate-400 uppercase mb-1">Nueva Contraseña</label>
+              <label className="block text-[10px] font-bold text-slate-400 uppercase mb-1">Cambiar Clave</label>
               <input
                 type="password"
-                placeholder="Dejar vacío = sin cambios"
+                placeholder="dejar vacío = sin cambio"
                 value={editClave}
                 onChange={(e) => setEditClave(e.target.value)}
-                className="w-full bg-[#071217] border border-slate-700 rounded-xl px-3 py-2 text-xs text-white font-mono"
+                className="w-full bg-[#071217] border border-slate-700 rounded-lg px-3 py-1.5 text-xs text-white font-mono"
               />
             </div>
 
@@ -769,7 +917,7 @@ export const AuditTab: React.FC = () => {
               <button
                 type="button"
                 onClick={() => setEditingUser(null)}
-                className="flex-1 py-2 rounded-xl bg-slate-800 text-slate-300 font-bold text-xs"
+                className="flex-1 py-1.5 rounded-lg bg-slate-800 text-slate-300 font-bold text-xs"
               >
                 Cancelar
               </button>
@@ -777,7 +925,7 @@ export const AuditTab: React.FC = () => {
                 type="button"
                 onClick={handleUpdateTaquillaUser}
                 disabled={isProcessing}
-                className="flex-1 py-2 rounded-xl bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-bold text-xs"
+                className="flex-1 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs"
               >
                 Guardar
               </button>
@@ -786,191 +934,395 @@ export const AuditTab: React.FC = () => {
         </div>
       )}
 
-      {/* SECTION 2: COMPARATIVE AUDIT TABLE */}
-      <div className="bg-[#0D1B22] border border-slate-800 rounded-3xl p-6 shadow-xl space-y-6">
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-          <div>
-            <h3 className="text-base font-extrabold text-white flex items-center gap-2">
-              <span>⚖️</span>
-              <span>Comparativa por Ciclo Completo</span>
-            </h3>
-            <p className="text-xs text-slate-400 mt-0.5">
-              Filtro por moneda activa • Diferencias calculadas: Oficial - Taquilla
-            </p>
-          </div>
+      {/* 3. Subheading: Comparativa por Ciclo Completo */}
+      <div className="pt-2">
+        <h4 className="text-base font-bold text-white tracking-tight">
+          Comparativa por Ciclo Completo: {fechaDesde} al {fechaHasta}
+        </h4>
 
-          {/* Currency Switcher */}
-          <div className="flex items-center gap-2 bg-[#071217] p-1.5 rounded-2xl border border-slate-800">
-            {(['BS', 'USD', 'COP'] as const).map((mon) => (
-              <button
-                key={mon}
-                onClick={() => setActiveCurrency(mon)}
-                className={`px-4 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer ${
-                  activeCurrency === mon
-                    ? 'bg-emerald-500 text-slate-950 shadow-md font-extrabold'
-                    : 'text-slate-400 hover:text-white'
-                }`}
-              >
-                {mon === 'BS' ? '🇻🇪 Bolívares (BS)' : mon === 'USD' ? '💵 Dólares (USD)' : '🇨🇴 Pesos (COP)'}
-              </button>
-            ))}
-          </div>
+        {/* Currency Tabs: BS | USD | COP (Exact Streamlit st.tabs) */}
+        <div className="flex items-center gap-1 border-b border-slate-800 mt-3 mb-5">
+          {(['BS', 'USD', 'COP'] as const).map((mon) => (
+            <button
+              key={mon}
+              onClick={() => setActiveCurrency(mon)}
+              className={`px-5 py-2 text-xs font-bold transition-all relative cursor-pointer ${
+                activeCurrency === mon
+                  ? 'text-emerald-400 border-b-2 border-emerald-400'
+                  : 'text-slate-400 hover:text-slate-200'
+              }`}
+            >
+              {mon}
+            </button>
+          ))}
         </div>
 
-        {/* Audit Table */}
-        {auditRows.length === 0 ? (
-          <div className="text-center py-16 bg-[#071217] border border-slate-800/80 rounded-2xl">
-            <CheckCircle2 className="w-10 h-10 text-emerald-400/60 mx-auto mb-2" />
-            <h4 className="text-sm font-bold text-white">Sin movimientos auditables en {activeCurrency}</h4>
-            <p className="text-xs text-slate-400 mt-1 max-w-sm mx-auto">
-              No se encontraron registros de ventas oficiales ni reportes de taquilla para este período en {activeCurrency}.
-            </p>
-          </div>
-        ) : (
-          <div className="overflow-x-auto">
-            <table className="w-full text-left text-xs">
-              <thead>
-                <tr className="border-b border-slate-800 text-[10px] font-bold text-slate-400 uppercase tracking-wider">
-                  <th className="py-3 px-3">Agencia</th>
-                  <th className="py-3 px-3">Sistema</th>
-                  <th className="py-3 px-3 text-right">Venta Ofi</th>
-                  <th className="py-3 px-3 text-right">Venta Taq</th>
-                  <th className="py-3 px-3 text-right">Com Ofi</th>
-                  <th className="py-3 px-3 text-right">Com Taq</th>
-                  <th className="py-3 px-3 text-right">Prem Ofi</th>
-                  <th className="py-3 px-3 text-right">Prem Taq</th>
-                  <th className="py-3 px-3 text-right">Part Ofi</th>
-                  <th className="py-3 px-3 text-right">Part Taq</th>
-                  <th className="py-3 px-3 text-right">Gto Ofi</th>
-                  <th className="py-3 px-3 text-right">Gto Taq</th>
-                  <th className="py-3 px-3 text-right">Pag Ofi</th>
-                  <th className="py-3 px-3 text-right">Pag Taq</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-slate-800/60 font-mono">
-                {auditRows.map((r, idx) => (
-                  <tr key={`${r.agencia}_${r.sistema}_${idx}`} className="hover:bg-slate-800/30 transition-colors">
-                    <td className="py-2.5 px-3 font-bold font-sans text-white">{r.agencia}</td>
-                    <td className="py-2.5 px-3 font-sans text-slate-300">
-                      <span className="px-2 py-0.5 rounded bg-slate-800 text-[10px] font-bold">
-                        {r.sistema}
-                      </span>
-                    </td>
-                    <td className="py-2.5 px-3 text-right text-slate-300">{r.venta_ofi ? formatCurrency(r.venta_ofi, activeCurrency) : '-'}</td>
-                    <td className="py-2.5 px-3 text-right text-sky-400 font-semibold">{r.venta_taq ? formatCurrency(r.venta_taq, activeCurrency) : '-'}</td>
-                    <td className="py-2.5 px-3 text-right text-slate-400">{r.com_ofi ? formatCurrency(r.com_ofi, activeCurrency) : '-'}</td>
-                    <td className="py-2.5 px-3 text-right text-slate-300">{r.com_taq ? formatCurrency(r.com_taq, activeCurrency) : '-'}</td>
-                    <td className="py-2.5 px-3 text-right text-rose-400">{r.prem_ofi ? formatCurrency(r.prem_ofi, activeCurrency) : '-'}</td>
-                    <td className="py-2.5 px-3 text-right text-rose-300 font-semibold">{r.prem_taq ? formatCurrency(r.prem_taq, activeCurrency) : '-'}</td>
-                    <td className="py-2.5 px-3 text-right text-emerald-400">{r.part_ofi ? formatCurrency(r.part_ofi, activeCurrency) : '-'}</td>
-                    <td className="py-2.5 px-3 text-right text-emerald-300 font-semibold">{r.part_taq ? formatCurrency(r.part_taq, activeCurrency) : '-'}</td>
-                    <td className="py-2.5 px-3 text-right text-slate-400">{r.gastos_ofi ? formatCurrency(r.gastos_ofi, activeCurrency) : '-'}</td>
-                    <td className="py-2.5 px-3 text-right text-slate-300">{r.gastos_taq ? formatCurrency(r.gastos_taq, activeCurrency) : '-'}</td>
-                    <td className="py-2.5 px-3 text-right text-slate-400">{r.pagos_ofi ? formatCurrency(r.pagos_ofi, activeCurrency) : '-'}</td>
-                    <td className="py-2.5 px-3 text-right text-slate-300">{r.pagos_taq ? formatCurrency(r.pagos_taq, activeCurrency) : '-'}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        )}
+        {/* --- DENTRO DE LA PESTAÑA DE MONEDA ACTIVA --- */}
+        <div className="space-y-6">
+          {/* Comparative Section: Empty or Data Table */}
+          {auditRows.length === 0 ? (
+            /* Streamlit st.info style blue alert */
+            <div className="p-3.5 rounded-lg bg-[#0e2a47] border border-[#1e4976] text-[#70b5f9] text-xs flex items-center gap-2">
+              <Info className="w-4 h-4 shrink-0 text-[#38bdf8]" />
+              <span>No hay movimientos registrados en {activeCurrency} para este ciclo.</span>
+            </div>
+          ) : (
+            <div className="bg-[#0D1B22] border border-slate-800 rounded-2xl p-4 shadow-xl space-y-5">
+              {/* Table of 14 columns */}
+              <div className="overflow-x-auto">
+                <table className="w-full text-left text-xs">
+                  <thead>
+                    <tr className="border-b border-slate-800 text-[10px] font-bold text-slate-400 uppercase tracking-wider">
+                      <th className="py-2.5 px-3">Agencia</th>
+                      <th className="py-2.5 px-3">Sistema</th>
+                      <th className="py-2.5 px-3 text-right">Venta Ofi</th>
+                      <th className="py-2.5 px-3 text-right">Venta Taq</th>
+                      <th className="py-2.5 px-3 text-right">Com Ofi</th>
+                      <th className="py-2.5 px-3 text-right">Com Taq</th>
+                      <th className="py-2.5 px-3 text-right">Prem Ofi</th>
+                      <th className="py-2.5 px-3 text-right">Prem Taq</th>
+                      <th className="py-2.5 px-3 text-right">Part Ofi</th>
+                      <th className="py-2.5 px-3 text-right">Part Taq</th>
+                      <th className="py-2.5 px-3 text-right">Gto Ofi</th>
+                      <th className="py-2.5 px-3 text-right">Gto Taq</th>
+                      <th className="py-2.5 px-3 text-right">Pag Ofi</th>
+                      <th className="py-2.5 px-3 text-right">Pag Taq</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-800/60 font-mono">
+                    {auditRows.map((r, idx) => (
+                      <tr key={`${r.agencia}_${r.sistema}_${idx}`} className="hover:bg-slate-800/30 transition-colors">
+                        <td className="py-2 px-3 font-bold font-sans text-white">{r.agencia}</td>
+                        <td className="py-2 px-3 font-sans text-slate-300">{r.sistema}</td>
+                        <td className="py-2 px-3 text-right text-slate-300">{r.venta_ofi ? formatCurrency(r.venta_ofi, activeCurrency) : '-'}</td>
+                        <td className="py-2 px-3 text-right text-sky-400 font-semibold">{r.venta_taq ? formatCurrency(r.venta_taq, activeCurrency) : '-'}</td>
+                        <td className="py-2 px-3 text-right text-slate-400">{r.com_ofi ? formatCurrency(r.com_ofi, activeCurrency) : '-'}</td>
+                        <td className="py-2 px-3 text-right text-slate-300">{r.com_taq ? formatCurrency(r.com_taq, activeCurrency) : '-'}</td>
+                        <td className="py-2 px-3 text-right text-rose-400">{r.prem_ofi ? formatCurrency(r.prem_ofi, activeCurrency) : '-'}</td>
+                        <td className="py-2 px-3 text-right text-rose-300 font-semibold">{r.prem_taq ? formatCurrency(r.prem_taq, activeCurrency) : '-'}</td>
+                        <td className="py-2 px-3 text-right text-emerald-400">{r.part_ofi ? formatCurrency(r.part_ofi, activeCurrency) : '-'}</td>
+                        <td className="py-2 px-3 text-right text-emerald-300 font-semibold">{r.part_taq ? formatCurrency(r.part_taq, activeCurrency) : '-'}</td>
+                        <td className="py-2 px-3 text-right text-slate-400">{r.gastos_ofi ? formatCurrency(r.gastos_ofi, activeCurrency) : '-'}</td>
+                        <td className="py-2 px-3 text-right text-slate-300">{r.gastos_taq ? formatCurrency(r.gastos_taq, activeCurrency) : '-'}</td>
+                        <td className="py-2 px-3 text-right text-slate-400">{r.pagos_ofi ? formatCurrency(r.pagos_ofi, activeCurrency) : '-'}</td>
+                        <td className="py-2 px-3 text-right text-slate-300">{r.pagos_taq ? formatCurrency(r.pagos_taq, activeCurrency) : '-'}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
 
-        {/* Totales y Diferencias por Sistema */}
-        {systemMetrics.length > 0 && (
-          <div className="space-y-3 pt-4 border-t border-slate-800">
-            <h4 className="text-xs font-bold text-sky-400 uppercase tracking-wider">
-              Totales por Sistema en {activeCurrency} (Diferencias Oficial vs Taquilla)
-            </h4>
+              {/* Totales por Sistema */}
+              {systemMetrics.length > 0 && (
+                <div className="space-y-3 pt-3 border-t border-slate-800">
+                  <p className="text-xs font-bold text-sky-400">
+                    Totales por Sistema en {activeCurrency} (Ciclo Completo)
+                  </p>
 
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-              {systemMetrics.map((sm) => (
-                <div key={sm.sistema} className="bg-[#071217] border border-slate-800 rounded-2xl p-4 space-y-3">
-                  <div className="flex items-center justify-between pb-2 border-b border-slate-800">
-                    <span className="text-xs font-black text-white">{sm.sistema}</span>
-                    <span className="text-[10px] px-2 py-0.5 rounded bg-sky-500/10 text-sky-400 font-bold">
-                      {activeCurrency}
-                    </span>
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    {systemMetrics.map((sm) => (
+                      <div key={sm.sistema} className="bg-[#071217] border border-slate-800 rounded-xl p-3 space-y-2 text-xs">
+                        <p className="font-bold text-white">Sistema: {sm.sistema}</p>
+                        <div className="grid grid-cols-4 font-semibold text-slate-400 pb-1 border-b border-slate-800 text-[11px]">
+                          <div>Metrica</div>
+                          <div>Oficial</div>
+                          <div>Taquilla</div>
+                          <div>Diferencia</div>
+                        </div>
+
+                        {/* Ventas */}
+                        <div className="grid grid-cols-4 font-mono text-[11px] py-0.5">
+                          <div className="font-sans text-slate-300">Ventas</div>
+                          <div>{formatCurrency(sm.ventas.ofi, activeCurrency)}</div>
+                          <div>{formatCurrency(sm.ventas.taq, activeCurrency)}</div>
+                          <div>
+                            {Math.abs(sm.ventas.diff) < 0.5 ? (
+                              '---'
+                            ) : (
+                              <span className={sm.ventas.diff > 0 ? 'text-rose-500 font-bold' : 'text-emerald-500 font-bold'}>
+                                {sm.ventas.diff > 0 ? '▲' : '▼'} {formatCurrency(Math.abs(sm.ventas.diff), activeCurrency)}
+                              </span>
+                            )}
+                          </div>
+                        </div>
+
+                        {/* Comis. */}
+                        <div className="grid grid-cols-4 font-mono text-[11px] py-0.5">
+                          <div className="font-sans text-slate-300">Comis.</div>
+                          <div>{formatCurrency(sm.comisiones.ofi, activeCurrency)}</div>
+                          <div>{formatCurrency(sm.comisiones.taq, activeCurrency)}</div>
+                          <div>
+                            {Math.abs(sm.comisiones.diff) < 0.5 ? (
+                              '---'
+                            ) : (
+                              <span className={sm.comisiones.diff > 0 ? 'text-rose-500 font-bold' : 'text-emerald-500 font-bold'}>
+                                {sm.comisiones.diff > 0 ? '▲' : '▼'} {formatCurrency(Math.abs(sm.comisiones.diff), activeCurrency)}
+                              </span>
+                            )}
+                          </div>
+                        </div>
+
+                        {/* Premios */}
+                        <div className="grid grid-cols-4 font-mono text-[11px] py-0.5">
+                          <div className="font-sans text-slate-300">Premios</div>
+                          <div>{formatCurrency(sm.premios.ofi, activeCurrency)}</div>
+                          <div>{formatCurrency(sm.premios.taq, activeCurrency)}</div>
+                          <div>
+                            {Math.abs(sm.premios.diff) < 0.5 ? (
+                              '---'
+                            ) : (
+                              <span className={sm.premios.diff > 0 ? 'text-rose-500 font-bold' : 'text-emerald-500 font-bold'}>
+                                {sm.premios.diff > 0 ? '▲' : '▼'} {formatCurrency(Math.abs(sm.premios.diff), activeCurrency)}
+                              </span>
+                            )}
+                          </div>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* Gastos y Pagos Acumulados */}
+              <div className="space-y-2 pt-2 border-t border-slate-800">
+                <p className="text-xs font-bold text-sky-400">
+                  Gastos y Pagos Acumulados en {activeCurrency} (Ciclo)
+                </p>
+
+                <div className="bg-[#071217] border border-slate-800 rounded-xl p-3 space-y-2 text-xs max-w-xl">
+                  <div className="grid grid-cols-4 font-semibold text-slate-400 pb-1 border-b border-slate-800 text-[11px]">
+                    <div>Concepto</div>
+                    <div>Oficial</div>
+                    <div>Taquilla</div>
+                    <div>Diferencia</div>
                   </div>
 
-                  <div className="space-y-2 text-xs">
-                    {/* Ventas */}
-                    <div className="flex items-center justify-between font-mono">
-                      <span className="text-slate-400 font-sans">Ventas:</span>
-                      <div className="text-right">
-                        <div className="text-white text-[11px]">Ofi: {formatCurrency(sm.ventas.ofi, activeCurrency)}</div>
-                        <div className="text-sky-400 text-[11px]">Taq: {formatCurrency(sm.ventas.taq, activeCurrency)}</div>
-                        <div className={`text-[10px] font-bold ${Math.abs(sm.ventas.diff) < 0.5 ? 'text-emerald-400' : 'text-rose-400'}`}>
-                          {Math.abs(sm.ventas.diff) < 0.5 ? '✓ Cuadra' : `▲ Diff: ${formatCurrency(sm.ventas.diff, activeCurrency)}`}
-                        </div>
-                      </div>
+                  {/* Gastos */}
+                  <div className="grid grid-cols-4 font-mono text-[11px] py-0.5">
+                    <div className="font-sans text-slate-300">Gastos</div>
+                    <div>{formatCurrency(accumulatedExpensesAndPayments.gastos.ofi, activeCurrency)}</div>
+                    <div>{formatCurrency(accumulatedExpensesAndPayments.gastos.taq, activeCurrency)}</div>
+                    <div>
+                      {Math.abs(accumulatedExpensesAndPayments.gastos.diff) < 0.5 ? (
+                        '---'
+                      ) : (
+                        <span className={accumulatedExpensesAndPayments.gastos.diff > 0 ? 'text-rose-500 font-bold' : 'text-emerald-500 font-bold'}>
+                          {accumulatedExpensesAndPayments.gastos.diff > 0 ? '▲' : '▼'} {formatCurrency(Math.abs(accumulatedExpensesAndPayments.gastos.diff), activeCurrency)}
+                        </span>
+                      )}
                     </div>
+                  </div>
 
-                    {/* Premios */}
-                    <div className="flex items-center justify-between font-mono pt-1 border-t border-slate-800/60">
-                      <span className="text-slate-400 font-sans">Premios:</span>
-                      <div className="text-right">
-                        <div className="text-white text-[11px]">Ofi: {formatCurrency(sm.premios.ofi, activeCurrency)}</div>
-                        <div className="text-rose-400 text-[11px]">Taq: {formatCurrency(sm.premios.taq, activeCurrency)}</div>
-                        <div className={`text-[10px] font-bold ${Math.abs(sm.premios.diff) < 0.5 ? 'text-emerald-400' : 'text-rose-400'}`}>
-                          {Math.abs(sm.premios.diff) < 0.5 ? '✓ Cuadra' : `▲ Diff: ${formatCurrency(sm.premios.diff, activeCurrency)}`}
-                        </div>
-                      </div>
+                  {/* Pagos */}
+                  <div className="grid grid-cols-4 font-mono text-[11px] py-0.5">
+                    <div className="font-sans text-slate-300">Pagos</div>
+                    <div>{formatCurrency(accumulatedExpensesAndPayments.pagos.ofi, activeCurrency)}</div>
+                    <div>{formatCurrency(accumulatedExpensesAndPayments.pagos.taq, activeCurrency)}</div>
+                    <div>
+                      {Math.abs(accumulatedExpensesAndPayments.pagos.diff) < 0.5 ? (
+                        '---'
+                      ) : (
+                        <span className={accumulatedExpensesAndPayments.pagos.diff > 0 ? 'text-rose-500 font-bold' : 'text-emerald-500 font-bold'}>
+                          {accumulatedExpensesAndPayments.pagos.diff > 0 ? '▲' : '▼'} {formatCurrency(Math.abs(accumulatedExpensesAndPayments.pagos.diff), activeCurrency)}
+                        </span>
+                      )}
                     </div>
                   </div>
                 </div>
+              </div>
+            </div>
+          )}
+
+          {/* 4. Reporte Detallado del Periodo */}
+          <div className="pt-2 space-y-3">
+            <h4 className="text-base font-bold text-white tracking-tight">
+              Reporte Detallado del Periodo
+            </h4>
+            <p className="text-xs text-slate-300">
+              <strong>Terminal(es):</strong> {terminalesLabel} | <strong>Ciclo:</strong> {fechaDesde} al {fechaHasta} | <strong>Moneda:</strong> {activeCurrency}
+            </p>
+
+            {/* 6 Metric Boxes: Total Ventas, Total Comision, Total Premios, Total Gastos, Total Pagos, Saldo Final */}
+            <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-2 pt-1">
+              {[
+                { label: 'Total Ventas', val: detailedPeriodTotals.tVTotal },
+                { label: 'Total Comision', val: detailedPeriodTotals.tCTotal },
+                { label: 'Total Premios', val: detailedPeriodTotals.tPTotal },
+                { label: 'Total Gastos', val: detailedPeriodTotals.tGTotal },
+                { label: 'Total Pagos', val: detailedPeriodTotals.tPgTotal },
+                { label: 'Saldo Final', val: detailedPeriodTotals.saldoFinal },
+              ].map((m, idx) => (
+                <div
+                  key={idx}
+                  className="bg-[#1e293b]/85 border border-white/15 rounded-md p-2 text-center shadow-sm"
+                  style={{ borderLeft: '3px solid #ff4b4b' }}
+                >
+                  <p className="m-0 text-[9px] text-slate-400 font-bold uppercase tracking-wider">
+                    {m.label}
+                  </p>
+                  <p className="m-0 mt-1 text-xs font-black text-white font-mono">
+                    ${m.val.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                  </p>
+                </div>
               ))}
             </div>
-          </div>
-        )}
-      </div>
 
-      {/* SECTION 3: DETAILED PERIOD SUMMARY (TAQUILLA TOTALS) */}
-      <div className="bg-[#0D1B22] border border-slate-800 rounded-3xl p-6 shadow-xl space-y-4">
-        <h3 className="text-base font-extrabold text-white flex items-center gap-2">
-          <span>📊</span>
-          <span>Reporte Detallado del Período de Taquilla</span>
-        </h3>
+            {/* 3 Subtabs: Ventas | Gastos | Pagos */}
+            <div className="pt-3">
+              <div className="flex items-center gap-1 border-b border-slate-800 mb-3">
+                {(['Ventas', 'Gastos', 'Pagos'] as const).map((tab) => (
+                  <button
+                    key={tab}
+                    onClick={() => setActiveSubTab(tab)}
+                    className={`px-4 py-1.5 text-xs font-bold transition-colors cursor-pointer ${
+                      activeSubTab === tab
+                        ? 'text-emerald-400 border-b-2 border-emerald-400'
+                        : 'text-slate-400 hover:text-slate-200'
+                    }`}
+                  >
+                    {tab}
+                  </button>
+                ))}
+              </div>
 
-        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3 pt-2">
-          <div className="bg-[#071217] border border-slate-800 rounded-2xl p-3.5 text-center">
-            <span className="text-[10px] font-bold text-slate-400 uppercase">Total Ventas</span>
-            <div className="text-base font-black text-sky-400 font-mono mt-1">
-              {formatCurrency(periodTotals.vTot, activeCurrency)}
-            </div>
-          </div>
+              {/* Subtab Ventas */}
+              {activeSubTab === 'Ventas' && (
+                <div>
+                  {filteredSalesTaq.length === 0 ? (
+                    <div className="p-3.5 rounded-lg bg-[#0e2a47] border border-[#1e4976] text-[#70b5f9] text-xs flex items-center gap-2">
+                      <Info className="w-4 h-4 shrink-0 text-[#38bdf8]" />
+                      <span>No hay ventas registradas en el periodo.</span>
+                    </div>
+                  ) : (
+                    <div className="overflow-x-auto bg-[#0D1B22] border border-slate-800 rounded-xl p-3">
+                      <table className="w-full text-left text-xs">
+                        <thead>
+                          <tr className="border-b border-slate-800 text-[10px] font-bold text-slate-400 uppercase">
+                            <th className="py-2 px-2.5">ID</th>
+                            <th className="py-2 px-2.5">Agencia</th>
+                            <th className="py-2 px-2.5">Sistema</th>
+                            <th className="py-2 px-2.5">Moneda</th>
+                            <th className="py-2 px-2.5 text-right">Venta</th>
+                            <th className="py-2 px-2.5 text-right">Comisión</th>
+                            <th className="py-2 px-2.5 text-right">Premios</th>
+                            <th className="py-2 px-2.5 text-right">Neto</th>
+                            <th className="py-2 px-2.5 text-right">Fecha</th>
+                          </tr>
+                        </thead>
+                        <tbody className="divide-y divide-slate-800/60 font-mono">
+                          {filteredSalesTaq.map((s: any) => (
+                            <tr key={s.id} className="hover:bg-slate-800/30">
+                              <td className="py-2 px-2.5 text-slate-400 font-sans">{s.id}</td>
+                              <td className="py-2 px-2.5 text-white font-sans font-bold">{s.nombre_agency || s.agencia}</td>
+                              <td className="py-2 px-2.5 text-slate-300 font-sans">{s.sistema}</td>
+                              <td className="py-2 px-2.5 text-slate-400 font-sans">{s.moneda}</td>
+                              <td className="py-2 px-2.5 text-right text-sky-400 font-bold">{formatCurrency(s.monto_venta, activeCurrency)}</td>
+                              <td className="py-2 px-2.5 text-right text-slate-300">{formatCurrency(s.comision, activeCurrency)}</td>
+                              <td className="py-2 px-2.5 text-right text-rose-400">{formatCurrency(s.monto_premios, activeCurrency)}</td>
+                              <td className="py-2 px-2.5 text-right text-emerald-400 font-semibold">{formatCurrency(s.neto, activeCurrency)}</td>
+                              <td className="py-2 px-2.5 text-right text-slate-400 font-sans">{s.fecha}</td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  )}
+                </div>
+              )}
 
-          <div className="bg-[#071217] border border-slate-800 rounded-2xl p-3.5 text-center">
-            <span className="text-[10px] font-bold text-slate-400 uppercase">Total Comisión</span>
-            <div className="text-base font-black text-slate-300 font-mono mt-1">
-              {formatCurrency(periodTotals.cTot, activeCurrency)}
-            </div>
-          </div>
+              {/* Subtab Gastos */}
+              {activeSubTab === 'Gastos' && (
+                <div>
+                  {filteredExpensesTaq.length === 0 ? (
+                    <div className="p-3.5 rounded-lg bg-[#0e2a47] border border-[#1e4976] text-[#70b5f9] text-xs flex items-center gap-2">
+                      <Info className="w-4 h-4 shrink-0 text-[#38bdf8]" />
+                      <span>No hay gastos registrados en el periodo.</span>
+                    </div>
+                  ) : (
+                    <div className="overflow-x-auto bg-[#0D1B22] border border-slate-800 rounded-xl p-3">
+                      <table className="w-full text-left text-xs">
+                        <thead>
+                          <tr className="border-b border-slate-800 text-[10px] font-bold text-slate-400 uppercase">
+                            <th className="py-2 px-2.5">ID</th>
+                            <th className="py-2 px-2.5">Agencia</th>
+                            <th className="py-2 px-2.5">Concepto</th>
+                            <th className="py-2 px-2.5">Moneda</th>
+                            <th className="py-2 px-2.5 text-right">Monto</th>
+                            <th className="py-2 px-2.5 text-center">Conf.</th>
+                            <th className="py-2 px-2.5 text-right">Fecha</th>
+                          </tr>
+                        </thead>
+                        <tbody className="divide-y divide-slate-800/60 font-mono">
+                          {filteredExpensesTaq.map((g: any) => (
+                            <tr key={g.id} className="hover:bg-slate-800/30">
+                              <td className="py-2 px-2.5 text-slate-400 font-sans">{g.id}</td>
+                              <td className="py-2 px-2.5 text-white font-sans font-bold">{g.agencia}</td>
+                              <td className="py-2 px-2.5 text-slate-300 font-sans">{g.concepto}</td>
+                              <td className="py-2 px-2.5 text-slate-400 font-sans">{g.moneda}</td>
+                              <td className="py-2 px-2.5 text-right text-amber-400 font-bold">{formatCurrency(g.monto, activeCurrency)}</td>
+                              <td className="py-2 px-2.5 text-center font-sans">
+                                {g.confirmado ? (
+                                  <span className="px-1.5 py-0.5 rounded bg-emerald-500/10 text-emerald-400 text-[10px] font-bold">✅ C</span>
+                                ) : (
+                                  <span className="px-1.5 py-0.5 rounded bg-amber-500/10 text-amber-400 text-[10px] font-bold">⏳ Pendiente</span>
+                                )}
+                              </td>
+                              <td className="py-2 px-2.5 text-right text-slate-400 font-sans">{g.fecha}</td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  )}
+                </div>
+              )}
 
-          <div className="bg-[#071217] border border-slate-800 rounded-2xl p-3.5 text-center">
-            <span className="text-[10px] font-bold text-slate-400 uppercase">Total Premios</span>
-            <div className="text-base font-black text-rose-400 font-mono mt-1">
-              {formatCurrency(periodTotals.pTot, activeCurrency)}
-            </div>
-          </div>
-
-          <div className="bg-[#071217] border border-slate-800 rounded-2xl p-3.5 text-center">
-            <span className="text-[10px] font-bold text-slate-400 uppercase">Total Gastos</span>
-            <div className="text-base font-black text-amber-400 font-mono mt-1">
-              {formatCurrency(periodTotals.gTot, activeCurrency)}
-            </div>
-          </div>
-
-          <div className="bg-[#071217] border border-slate-800 rounded-2xl p-3.5 text-center">
-            <span className="text-[10px] font-bold text-slate-400 uppercase">Total Pagos</span>
-            <div className="text-base font-black text-teal-400 font-mono mt-1">
-              {formatCurrency(periodTotals.pagTot, activeCurrency)}
-            </div>
-          </div>
-
-          <div className="bg-[#071217] border border-slate-800 rounded-2xl p-3.5 text-center">
-            <span className="text-[10px] font-bold text-slate-400 uppercase">Saldo Final</span>
-            <div className={`text-base font-black font-mono mt-1 ${periodTotals.sFinal >= 0 ? 'text-emerald-400' : 'text-rose-400'}`}>
-              {formatCurrency(periodTotals.sFinal, activeCurrency)}
+              {/* Subtab Pagos */}
+              {activeSubTab === 'Pagos' && (
+                <div>
+                  {filteredPaymentsTaq.length === 0 ? (
+                    <div className="p-3.5 rounded-lg bg-[#0e2a47] border border-[#1e4976] text-[#70b5f9] text-xs flex items-center gap-2">
+                      <Info className="w-4 h-4 shrink-0 text-[#38bdf8]" />
+                      <span>No hay pagos registrados en el periodo.</span>
+                    </div>
+                  ) : (
+                    <div className="overflow-x-auto bg-[#0D1B22] border border-slate-800 rounded-xl p-3">
+                      <table className="w-full text-left text-xs">
+                        <thead>
+                          <tr className="border-b border-slate-800 text-[10px] font-bold text-slate-400 uppercase">
+                            <th className="py-2 px-2.5">ID</th>
+                            <th className="py-2 px-2.5">Agencia</th>
+                            <th className="py-2 px-2.5">Tipo Pago</th>
+                            <th className="py-2 px-2.5">Moneda</th>
+                            <th className="py-2 px-2.5 text-right">Monto</th>
+                            <th className="py-2 px-2.5 text-center">Conf.</th>
+                            <th className="py-2 px-2.5 text-right">Fecha</th>
+                          </tr>
+                        </thead>
+                        <tbody className="divide-y divide-slate-800/60 font-mono">
+                          {filteredPaymentsTaq.map((p: any) => (
+                            <tr key={p.id} className="hover:bg-slate-800/30">
+                              <td className="py-2 px-2.5 text-slate-400 font-sans">{p.id}</td>
+                              <td className="py-2 px-2.5 text-white font-sans font-bold">{p.agencia}</td>
+                              <td className="py-2 px-2.5 text-slate-300 font-sans">{p.tipo_pago}</td>
+                              <td className="py-2 px-2.5 text-slate-400 font-sans">{p.moneda}</td>
+                              <td className="py-2 px-2.5 text-right text-teal-400 font-bold">{formatCurrency(p.monto, activeCurrency)}</td>
+                              <td className="py-2 px-2.5 text-center font-sans">
+                                {p.confirmado || p.confirmado_supervisor ? (
+                                  <span className="px-1.5 py-0.5 rounded bg-emerald-500/10 text-emerald-400 text-[10px] font-bold">✅ C</span>
+                                ) : (
+                                  <span className="px-1.5 py-0.5 rounded bg-amber-500/10 text-amber-400 text-[10px] font-bold">⏳ Pendiente</span>
+                                )}
+                              </td>
+                              <td className="py-2 px-2.5 text-right text-slate-400 font-sans">{p.fecha}</td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  )}
+                </div>
+              )}
             </div>
           </div>
         </div>
@@ -978,4 +1330,5 @@ export const AuditTab: React.FC = () => {
     </div>
   );
 };
+
 export default AuditTab;
