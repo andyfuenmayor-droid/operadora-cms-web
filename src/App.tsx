@@ -7,6 +7,7 @@ import type { ModuleId } from './types';
 // Components
 import { HomeDashboard } from './components/Home/HomeDashboard';
 import { ConfirmationsBoard } from './components/Confirmations/ConfirmationsBoard';
+import { AuditTab } from './components/Audit/AuditTab';
 import { SystemsTab } from './components/Catalogs/SystemsTab';
 import { CurrenciesTab } from './components/Catalogs/CurrenciesTab';
 import { BankAccountsTab } from './components/Catalogs/BankAccountsTab';
@@ -54,9 +55,11 @@ const AppContent: React.FC = () => {
         return <HomeDashboard onNavigate={setCurrentModule} />;
 
       case 'Pizarra Confirmaciones':
-      case 'Auditoría':
       case 'Caja Maestra':
         return <ConfirmationsBoard />;
+
+      case 'Auditoría':
+        return <AuditTab />;
 
       case 'Sistemas':
       case 'Config. Proveedores':
