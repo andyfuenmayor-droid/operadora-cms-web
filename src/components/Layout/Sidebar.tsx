@@ -28,6 +28,9 @@ import {
   Users,
   LogOut,
   X,
+  Building2,
+  Crown,
+  Mail,
 } from 'lucide-react';
 
 interface SidebarProps {
@@ -124,16 +127,32 @@ export const Sidebar: React.FC<SidebarProps> = ({
             </button>
           </div>
 
-          {/* Subscriber & Plan Card */}
-          <div className="mt-3 p-2.5 rounded-xl bg-slate-900/60 border border-slate-800/80">
-            <div className="text-[11px] font-black text-emerald-400 truncate tracking-wide">
-              🏢 {bancaNombre}
+          {/* Subscriber & Plan Card (Modern SaaS Aesthetics, Full Readability) */}
+          <div className="mt-3.5 p-3 rounded-2xl bg-gradient-to-b from-[#0F242C]/90 to-[#071217]/95 border border-slate-700/60 shadow-lg shadow-black/20 space-y-2">
+            {/* Organization / Company Name */}
+            <div className="flex items-start gap-2">
+              <div className="p-1 rounded-lg bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 shrink-0 mt-0.5">
+                <Building2 className="w-3.5 h-3.5" />
+              </div>
+              <div className="min-w-0 flex-1">
+                <div className="text-xs font-black text-slate-100 leading-snug tracking-tight break-words">
+                  {bancaNombre}
+                </div>
+              </div>
             </div>
-            <div className="text-[9.5px] font-bold text-sky-400 tracking-wider mt-0.5">
-              🥇 {planDisplay}
+
+            {/* Plan Badge */}
+            <div className="flex items-center gap-1.5 pt-1 border-t border-slate-800/80">
+              <div className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full bg-gradient-to-r from-amber-500/15 via-yellow-500/10 to-amber-500/5 text-amber-300 border border-amber-500/30 text-[10px] font-black uppercase tracking-wider shadow-xs">
+                <Crown className="w-3 h-3 text-amber-400 shrink-0" />
+                <span>{planDisplay}</span>
+              </div>
             </div>
-            <div className="text-[10px] text-slate-400 truncate font-mono mt-0.5">
-              {user?.email}
+
+            {/* User Email */}
+            <div className="flex items-center gap-1.5 text-[10px] text-slate-400 font-mono break-all pt-0.5">
+              <Mail className="w-3 h-3 text-slate-500 shrink-0" />
+              <span>{user?.email}</span>
             </div>
           </div>
         </div>
