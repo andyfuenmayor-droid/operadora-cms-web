@@ -187,7 +187,7 @@ export const PaymentsTab: React.FC = () => {
         user_id: effectiveUserId,
         agencia: formAgencia,
         moneda: formMoneda,
-        tipo_pago: formTipoPago,
+        tipo_pago: formTipoPago === 'PAGO DE PREMIOS' ? 'Pago de Premios' : 'Pago',
         metodo: formMetodo,
         monto: montoNum,
         referencia: formReferencia.trim().toUpperCase() || 'PAGO DIRECTO',

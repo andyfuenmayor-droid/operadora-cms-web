@@ -2,6 +2,12 @@ import React, { useState, useEffect, useMemo } from 'react';
 import { supabase } from '../../lib/supabase';
 import { useAuth } from '../../context/AuthContext';
 import { formatCurrency, formatDate, normalizarMoneda } from '../../utils/formatters';
+import {
+  getConsolidatedPayments,
+  getConsolidatedExpenses,
+  type ConsolidatedPaymentItem,
+  type ConsolidatedExpenseItem,
+} from '../../utils/consolidations';
 import type { Agency } from '../../types';
 import {
   Lock,
@@ -36,8 +42,8 @@ export const WeeklyClosureTab: React.FC = () => {
   const [isProcessing, setIsProcessing] = useState(false);
   const [agencies, setAgencies] = useState<Agency[]>([]);
   const [sales, setSales] = useState<any[]>([]);
-  const [payments, setPayments] = useState<any[]>([]);
-  const [expenses, setExpenses] = useState<any[]>([]);
+  const [payments, setPayments] = useState<ConsolidatedPaymentItem[]>([]);
+  const [expenses, setExpenses] = useState<ConsolidatedExpenseItem[]>([]);
 
   const [verifiedCheck, setVerifiedCheck] = useState(false);
   const [message, setMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
@@ -48,17 +54,17 @@ export const WeeklyClosureTab: React.FC = () => {
     setMessage(null);
 
     try {
-      const [agRes, sRes, pRes, gRes] = await Promise.all([
+      const [agRes, sRes, pConsolidated, gConsolidated] = await Promise.all([
         supabase.from('agencias').select('*').eq('user_id', effectiveUserId).order('id', { ascending: true }),
         supabase.from('carga_actual').select('*').eq('user_id', effectiveUserId),
-        supabase.from('pagos_semana').select('*').eq('user_id', effectiveUserId),
-        supabase.from('gastos').select('*').eq('user_id', effectiveUserId),
+        getConsolidatedPayments(effectiveUserId, { fechaDesde: systemCycle.desde, fechaHasta: systemCycle.hasta }),
+        getConsolidatedExpenses(effectiveUserId, { fechaDesde: systemCycle.desde, fechaHasta: systemCycle.hasta }),
       ]);
 
       setAgencies(agRes.data || []);
       setSales(sRes.data || []);
-      setPayments(pRes.data || []);
-      setExpenses(gRes.data || []);
+      setPayments(pConsolidated);
+      setExpenses(gConsolidated);
     } catch (err: any) {
       console.error('Error loading closure data:', err);
       setMessage({ type: 'error', text: err?.message || 'Error al cargar datos de cierre.' });

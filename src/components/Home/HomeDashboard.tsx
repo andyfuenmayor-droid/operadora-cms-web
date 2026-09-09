@@ -15,6 +15,7 @@ import {
   AlertCircle,
 } from 'lucide-react';
 import { formatCurrency, formatDate } from '../../utils/formatters';
+import { getConsolidatedPayments, getConsolidatedExpenses } from '../../utils/consolidations';
 
 interface HomeDashboardProps {
   onNavigate: (module: ModuleId) => void;
@@ -102,15 +103,13 @@ export const HomeDashboard: React.FC<HomeDashboardProps> = ({ onNavigate }) => {
       const currencies = ['BS', 'USD', 'COP'];
       const balancesMap: Record<string, CurrencyBalance> = {};
 
-      const [resVentas, resGastos, resPagos] = await Promise.all([
+      const [resVentas, gastosList, pagosList] = await Promise.all([
         supabase.from('carga_actual').select('*').eq('user_id', effectiveUserId),
-        supabase.from('cda_gastos_diarios').select('*').eq('user_id', effectiveUserId),
-        supabase.from('cda_pagos_diarios').select('*').eq('user_id', effectiveUserId),
+        getConsolidatedExpenses(effectiveUserId, { fechaDesde: systemCycle.desde, fechaHasta: systemCycle.hasta }),
+        getConsolidatedPayments(effectiveUserId, { fechaDesde: systemCycle.desde, fechaHasta: systemCycle.hasta }),
       ]);
 
       const ventasList = resVentas.data || [];
-      const gastosList = resGastos.data || [];
-      const pagosList = resPagos.data || [];
 
       currencies.forEach((mon) => {
         const colInicial = `saldo_inicial_${mon.toLowerCase()}`;
@@ -121,12 +120,15 @@ export const HomeDashboard: React.FC<HomeDashboardProps> = ({ onNavigate }) => {
           .reduce((acc: number, v: any) => acc + (Number(v.util_op) || (Number(v.monto_venta || 0) - Number(v.comision || 0) - Number(v.monto_premios || 0))), 0);
 
         const gTot = gastosList
-          .filter((g: any) => String(g.moneda || '').toUpperCase() === mon)
-          .reduce((acc: number, g: any) => acc + (Number(g.monto) || 0), 0);
+          .filter((g) => g.moneda === mon)
+          .reduce((acc: number, g) => acc + (Number(g.monto) || 0), 0);
 
         const pTot = pagosList
-          .filter((p: any) => String(p.moneda || '').toUpperCase() === mon)
-          .reduce((acc: number, p: any) => acc + (Number(p.monto) || 0), 0);
+          .filter((p) => p.moneda === mon)
+          .reduce((acc: number, p) => {
+            const m = Number(p.monto || 0);
+            return p.tipo_pago.includes('Premio') ? acc - m : acc + m;
+          }, 0);
 
         const bFinal = (saldoAnt + vTot) - gTot - pTot;
 

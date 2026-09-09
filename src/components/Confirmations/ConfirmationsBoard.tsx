@@ -401,7 +401,7 @@ export const ConfirmationsBoard: React.FC = () => {
             user_id: effectiveUserId,
             agencia: item.agencia,
             moneda: item.moneda,
-            tipo_pago: isPremio ? 'PAGO DE PREMIOS' : 'PAGO',
+            tipo_pago: isPremio ? 'Pago de Premios' : 'Pago',
             metodo: item.metodo || 'BANCO',
             monto: Math.round(item.monto * 100) / 100,
             referencia: refLabel.toUpperCase(),
