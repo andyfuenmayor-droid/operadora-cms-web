@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import { supabase } from '../../lib/supabase';
 import { useAuth } from '../../context/AuthContext';
 import { normalizarMoneda, formatCurrency, formatDate } from '../../utils/formatters';
@@ -85,11 +85,21 @@ export const ConfirmationsBoard: React.FC = () => {
   // Feedback message
   const [message, setMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
 
-  // Load all data
-  const loadData = async () => {
+  // Auto-sync & Realtime state
+  const [autoSyncEnabled, setAutoSyncEnabled] = useState(true);
+  const [isSilentUpdating, setIsSilentUpdating] = useState(false);
+  const [lastSyncTime, setLastSyncTime] = useState<Date>(new Date());
+  const [secondsAgo, setSecondsAgo] = useState(0);
+
+  // Load all data (isSilent avoids blocking full UI on background updates)
+  const loadData = useCallback(async (isSilent = false) => {
     if (!effectiveUserId) return;
-    setIsLoading(true);
-    setMessage(null);
+    if (isSilent) {
+      setIsSilentUpdating(true);
+    } else {
+      setIsLoading(true);
+      setMessage(null);
+    }
 
     try {
       // 1. Fetch agencies
@@ -246,17 +256,71 @@ export const ConfirmationsBoard: React.FC = () => {
       });
 
       setTransactions(list);
+      setLastSyncTime(new Date());
+      setSecondsAgo(0);
     } catch (err: any) {
       console.error('Error loading confirmation board data:', err);
-      setMessage({ type: 'error', text: err?.message || 'Error al cargar transacciones.' });
+      if (!isSilent) {
+        setMessage({ type: 'error', text: err?.message || 'Error al cargar transacciones.' });
+      }
     } finally {
       setIsLoading(false);
+      setIsSilentUpdating(false);
     }
-  };
-
-  useEffect(() => {
-    loadData();
   }, [effectiveUserId]);
+
+  // 1. Initial load & Supabase Realtime Channels + Fallback Heartbeat Interval
+  useEffect(() => {
+    if (!effectiveUserId) return;
+
+    loadData(false);
+
+    if (!autoSyncEnabled) return;
+
+    // Realtime subscriptions on all transaction tables
+    const channel = supabase
+      .channel(`pizarra_sync_${effectiveUserId}`)
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'cda_pagos_bancarios', filter: `user_id=eq.${effectiveUserId}` },
+        () => loadData(true)
+      )
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'cda_pagos_diarios', filter: `user_id=eq.${effectiveUserId}` },
+        () => loadData(true)
+      )
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'cda_gastos_diarios', filter: `user_id=eq.${effectiveUserId}` },
+        () => loadData(true)
+      )
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'cda_caja_efectivo_supervisor', filter: `user_id=eq.${effectiveUserId}` },
+        () => loadData(true)
+      )
+      .subscribe();
+
+    // Fallback heartbeat polling every 12 seconds as a resilient backup
+    const intervalId = setInterval(() => {
+      loadData(true);
+    }, 12000);
+
+    return () => {
+      supabase.removeChannel(channel);
+      clearInterval(intervalId);
+    };
+  }, [effectiveUserId, autoSyncEnabled, loadData]);
+
+  // 2. Relative time counter ("Actualizado hace X seg")
+  useEffect(() => {
+    const timer = setInterval(() => {
+      const diff = Math.floor((Date.now() - lastSyncTime.getTime()) / 1000);
+      setSecondsAgo(diff);
+    }, 1000);
+    return () => clearInterval(timer);
+  }, [lastSyncTime]);
 
   // Current operator user display name
   const currentOperatorName = user?.nombre || user?.email?.split('@')[0] || 'Administrador';
@@ -766,14 +830,52 @@ export const ConfirmationsBoard: React.FC = () => {
           </p>
         </div>
 
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2.5">
+          {/* Live Auto-sync Toggle Pill */}
           <button
-            onClick={() => loadData()}
-            disabled={isLoading}
-            className="px-4 py-2.5 rounded-xl bg-slate-800/80 hover:bg-slate-700 text-slate-300 text-xs font-semibold flex items-center gap-2 transition-all border border-slate-700 cursor-pointer disabled:opacity-50"
+            onClick={() => setAutoSyncEnabled(!autoSyncEnabled)}
+            className={`px-3 py-2 rounded-xl border text-xs font-bold flex items-center gap-2 transition-all cursor-pointer shadow-sm ${
+              autoSyncEnabled
+                ? 'bg-emerald-500/10 border-emerald-500/30 text-emerald-400 hover:bg-emerald-500/20'
+                : 'bg-slate-800/80 border-slate-700 text-slate-400 hover:text-slate-200'
+            }`}
+            title={
+              autoSyncEnabled
+                ? 'Sincronización automática en tiempo real activa (clic para pausar)'
+                : 'Sincronización automática en pausa (clic para activar)'
+            }
           >
-            <RefreshCw className={`w-3.5 h-3.5 ${isLoading ? 'animate-spin' : ''}`} />
-            Sincronizar
+            <span className="relative flex h-2 w-2">
+              {autoSyncEnabled && (
+                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
+              )}
+              <span
+                className={`relative inline-flex rounded-full h-2 w-2 ${
+                  autoSyncEnabled ? 'bg-emerald-500' : 'bg-slate-500'
+                }`}
+              ></span>
+            </span>
+            <span>{autoSyncEnabled ? 'En vivo' : 'En pausa'}</span>
+          </button>
+
+          {/* Relative last updated time */}
+          <span className="text-[11px] text-slate-400 font-mono hidden sm:inline px-1">
+            {secondsAgo < 5 ? 'Actualizado ahora' : `Hace ${secondsAgo}s`}
+          </span>
+
+          {/* Manual Sync Button */}
+          <button
+            onClick={() => loadData(false)}
+            disabled={isLoading || isSilentUpdating}
+            className="px-3.5 py-2 rounded-xl bg-slate-800/80 hover:bg-slate-700 text-slate-300 text-xs font-semibold flex items-center gap-2 transition-all border border-slate-700 cursor-pointer disabled:opacity-50 shadow-sm"
+            title="Sincronizar manualmente"
+          >
+            <RefreshCw
+              className={`w-3.5 h-3.5 ${
+                isLoading || isSilentUpdating ? 'animate-spin text-emerald-400' : ''
+              }`}
+            />
+            <span className="hidden sm:inline">Sincronizar</span>
           </button>
         </div>
       </div>
