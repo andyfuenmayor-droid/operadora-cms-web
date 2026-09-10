@@ -103,20 +103,12 @@ export const Sidebar: React.FC<SidebarProps> = ({
         {/* Top: Branding & Company details */}
         <div className="p-4 border-b border-slate-800/80">
           <div className="flex items-center justify-between">
-            <div className="flex items-center gap-2.5">
-              <div className="w-9 h-9 rounded-xl bg-gradient-to-tr from-emerald-500 to-teal-400 p-0.5 shadow-sm">
-                <div className="w-full h-full bg-[#071217] rounded-[10px] flex items-center justify-center">
-                  <span className="text-emerald-400 font-black text-sm">ME</span>
-                </div>
-              </div>
-              <div>
-                <div className="text-sm font-black text-white tracking-tight leading-tight">
-                  Multibanca <span className="text-emerald-400">Express</span>
-                </div>
-                <div className="text-[10px] font-bold text-slate-400 tracking-wider">
-                  CONTROL MAESTRO
-                </div>
-              </div>
+            <div className="flex items-center gap-2">
+              <img 
+                src="/logo.svg" 
+                alt="Multibanca Express" 
+                className="h-9 w-auto filter drop-shadow-[0_0_8px_rgba(0,229,255,0.35)]" 
+              />
             </div>
 
             <button

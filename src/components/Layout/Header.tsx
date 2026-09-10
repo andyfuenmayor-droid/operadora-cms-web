@@ -31,6 +31,7 @@ export const Header: React.FC<HeaderProps> = ({ currentModule, onOpenMobile }) =
         </button>
 
         <div>
+          <img src="/logo.svg" alt="Multibanca Express" className="h-6 w-auto lg:hidden mr-1 filter drop-shadow-[0_0_6px_rgba(0,229,255,0.3)]" />
           <h1 className="text-base sm:text-lg font-black text-white tracking-tight flex items-center gap-2">
             <span>{currentModule}</span>
           </h1>

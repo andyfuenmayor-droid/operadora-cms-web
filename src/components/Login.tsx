@@ -87,114 +87,16 @@ export const Login: React.FC = () => {
         <div className="lg:col-span-7 space-y-6">
           {/* Brand Logo & Name */}
           <div className="flex items-center gap-3">
-            <div className="w-14 h-14 rounded-2xl bg-gradient-to-tr from-emerald-600 via-teal-500 to-sky-400 p-0.5 shadow-lg shadow-emerald-500/20">
-              <div className="w-full h-full bg-[#0D1B22] rounded-[14px] flex items-center justify-center">
-                <svg viewBox="10 8 75 64" fill="none" xmlns="http://www.w3.org/2000/svg" className="w-9 h-9">
-                  <defs>
-                    <linearGradient id="meMGrad" x1="0%" y1="15%" x2="100%" y2="85%">
-                      <stop offset="0%" stopColor="#00C8FF" />
-                      <stop offset="35%" stopColor="#00E5D4" />
-                      <stop offset="70%" stopColor="#00F59B" />
-                      <stop offset="100%" stopColor="#00E676" />
-                    </linearGradient>
-                  </defs>
-                  <path
-                    d="M 18 64 L 18 26 C 18 16 28 10 37 18 L 47.5 30 L 58 18 C 67 10 77 16 77 26 L 77 64"
-                    stroke="url(#meMGrad)"
-                    strokeWidth="12"
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                    fill="none"
-                  />
-                </svg>
-              </div>
-            </div>
-            <div>
-              <div className="text-2xl font-black tracking-tight text-white flex items-center gap-1.5">
-                <span>Multibanca</span>
-                <span className="text-emerald-400">Express</span>
-              </div>
-              <span className="text-[10px] tracking-widest font-black uppercase text-slate-400">
-                Control Maestro • SaaS Operadoras v3.0
+            <img 
+              src="/logo.svg" 
+              alt="Multibanca Express" 
+              className="h-12 w-auto filter drop-shadow-[0_0_15px_rgba(0,229,255,0.4)]" 
+            />
+            <div className="pl-3 border-l border-slate-700/80">
+              <span className="text-[10px] tracking-widest font-black uppercase text-emerald-400 bg-emerald-500/10 px-2 py-0.5 rounded border border-emerald-500/20">
+                CONTROL MAESTRO
               </span>
-            </div>
-          </div>
-
-          <div>
-            <h1 className="text-2xl sm:text-4xl font-extrabold text-white tracking-tight leading-tight">
-              La Plataforma SaaS <span className="bg-gradient-to-r from-emerald-400 via-teal-300 to-sky-400 bg-clip-text text-transparent">#1 para Operadoras</span> y Bancas de Apuestas
-            </h1>
-            <p className="text-sm text-slate-400 mt-2 max-w-xl">
-              Gestión centralizada de agencias, liquidación multimoneda en tiempo real, auditoría de cobradores y arqueos bancarios automatizados.
-            </p>
-          </div>
-
-          {/* Feature Cards Grid */}
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5 pt-2">
-            <div className="bg-[#0D1B22]/80 border border-slate-800/80 rounded-2xl p-3.5 hover:border-emerald-500/40 transition-colors shadow-sm">
-              <div className="flex items-center justify-between text-xs font-bold text-white mb-1">
-                <span className="flex items-center gap-1.5">
-                  <span>🎯</span> Mercado Total 360°
-                </span>
-                <span className="text-[10px] px-1.5 py-0.5 rounded bg-emerald-500/20 text-emerald-400 font-extrabold">LIVE</span>
-              </div>
-              <p className="text-xs text-slate-400">
-                Parley, loterías, hipismo y animalitos consolidados por sistema.
-              </p>
-            </div>
-
-            <div className="bg-[#0D1B22]/80 border border-slate-800/80 rounded-2xl p-3.5 hover:border-emerald-500/40 transition-colors shadow-sm">
-              <div className="flex items-center justify-between text-xs font-bold text-white mb-1">
-                <span className="flex items-center gap-1.5">
-                  <span>💰</span> Multimoneda Auto
-                </span>
-                <span className="text-[10px] px-1.5 py-0.5 rounded bg-sky-500/20 text-sky-400 font-extrabold">BS / USD / COP</span>
-              </div>
-              <p className="text-xs text-slate-400">
-                Manejo simultáneo de divisas con balances y arqueos independientes.
-              </p>
-            </div>
-
-            <div className="bg-[#0D1B22]/80 border border-slate-800/80 rounded-2xl p-3.5 hover:border-emerald-500/40 transition-colors shadow-sm">
-              <div className="flex items-center justify-between text-xs font-bold text-white mb-1">
-                <span className="flex items-center gap-1.5">
-                  <span>🛡️</span> Seguridad Blindada
-                </span>
-                <span className="text-[10px] px-1.5 py-0.5 rounded bg-indigo-500/20 text-indigo-400 font-extrabold">AES-256</span>
-              </div>
-              <p className="text-xs text-slate-400">
-                Cierres de caja encriptados, auditoría de cobros y trazabilidad total.
-              </p>
-            </div>
-
-            <div className="bg-[#0D1B22]/80 border border-slate-800/80 rounded-2xl p-3.5 hover:border-emerald-500/40 transition-colors shadow-sm">
-              <div className="flex items-center justify-between text-xs font-bold text-white mb-1">
-                <span className="flex items-center gap-1.5">
-                  <span>⚡</span> Pizarra de Pagos
-                </span>
-                <span className="text-[10px] px-1.5 py-0.5 rounded bg-amber-500/20 text-amber-400 font-extrabold">1-CLICK</span>
-              </div>
-              <p className="text-xs text-slate-400">
-                Aprobación instantánea de transferencias bancarias y punto de venta.
-              </p>
-            </div>
-          </div>
-
-          {/* Metrics bar */}
-          <div className="bg-[#0D1B22]/40 border border-slate-800 rounded-2xl p-3 flex flex-wrap items-center justify-around gap-4 text-center">
-            <div>
-              <div className="text-sm font-extrabold text-emerald-400">BS • USD • COP</div>
-              <div className="text-[10px] text-slate-400 font-medium">Multidivisa Nativa</div>
-            </div>
-            <div className="w-px h-6 bg-slate-800 hidden sm:block" />
-            <div>
-              <div className="text-sm font-extrabold text-white">99.9%</div>
-              <div className="text-[10px] text-slate-400 font-medium">Disponibilidad Cloud</div>
-            </div>
-            <div className="w-px h-6 bg-slate-800 hidden sm:block" />
-            <div>
-              <div className="text-sm font-extrabold text-sky-400">24/7</div>
-              <div className="text-[10px] text-slate-400 font-medium">Soporte Dedicado</div>
+              <div className="text-xs text-slate-400 mt-0.5">SaaS Operadoras v3.0</div>
             </div>
           </div>
 
