@@ -1083,12 +1083,14 @@ export const ConfirmationsBoard: React.FC = () => {
       {activeTab !== 'arqueo' && (
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3">
           {/* General Counts */}
-          <div className="bg-[#0D1B22] border border-slate-800 rounded-2xl p-4 text-center">
-            <div className="text-[11px] font-bold uppercase text-slate-400">Estado de Registros</div>
-            <div className="mt-2 flex items-center justify-center gap-3">
-              <span className="text-amber-400 font-bold text-xs">⏳ {pendingTransactions.length} pend.</span>
-              <span className="text-emerald-400 font-bold text-xs">✅ {confirmedTransactions.length} conf.</span>
-              <span className="text-rose-400 font-bold text-xs">❌ {rejectedTransactions.length} rech.</span>
+          <div className="bg-[#0D1B22] border border-slate-800 rounded-2xl p-4">
+            <div className="text-[11px] font-bold uppercase text-slate-400 flex items-center justify-between">
+              <span>Estado de Registros</span>
+            </div>
+            <div className="mt-2 space-y-0.5 text-xs font-mono">
+              <div className="text-amber-400 font-semibold">⏳ Pend: {pendingTransactions.length}</div>
+              <div className="text-emerald-400 font-semibold">✅ Conf: {confirmedTransactions.length}</div>
+              <div className="text-rose-400 text-[10px]">❌ Rech: {rejectedTransactions.length}</div>
             </div>
           </div>
 
