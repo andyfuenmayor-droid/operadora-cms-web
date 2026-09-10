@@ -1088,9 +1088,9 @@ export const ConfirmationsBoard: React.FC = () => {
               <span>Estado de Registros</span>
             </div>
             <div className="mt-2 space-y-0.5 text-xs font-mono">
-              <div className="text-amber-400 font-semibold">⏳ Pend: {pendingTransactions.length}</div>
-              <div className="text-emerald-400 font-semibold">✅ Conf: {confirmedTransactions.length}</div>
-              <div className="text-rose-400 text-[10px]">❌ Rech: {rejectedTransactions.length}</div>
+              <div className="text-amber-400 font-semibold">⏳ {pendingTransactions.length} pend.</div>
+              <div className="text-emerald-400 font-semibold">✅ {confirmedTransactions.length} conf.</div>
+              <div className="text-rose-400 text-[10px]">❌ {rejectedTransactions.length} rech.</div>
             </div>
           </div>
 
