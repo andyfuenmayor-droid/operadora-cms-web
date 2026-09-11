@@ -31,6 +31,7 @@ interface BalanceRow {
   utilidad_semana: number;
   gastos: number;
   pagos: number;
+  reposicion_premios?: number;
   balance_final: number;
   status: 'pagado' | 'pendiente' | 'favor';
 }
@@ -96,14 +97,18 @@ export const AccountBalancesTab: React.FC = () => {
         .filter((g) => g.agencia === nom && normalizarMoneda(g.moneda) === mon)
         .reduce((sum, curr) => sum + Number(curr.monto || 0), 0);
 
+      // Pagos ordinarios recibidos de la agencia (reducen la deuda)
+      const pCobros = payments
+        .filter((p) => p.agencia === nom && normalizarMoneda(p.moneda) === mon && !String(p.tipo_pago || '').toUpperCase().includes('PREMIO'))
+        .reduce((sum, curr) => sum + Number(curr.monto || 0), 0);
+
+      // Reposición de premios pagados por la operadora a la agencia
+      const pPremios = payments
+        .filter((p) => p.agencia === nom && normalizarMoneda(p.moneda) === mon && String(p.tipo_pago || '').toUpperCase().includes('PREMIO'))
+        .reduce((sum, curr) => sum + Number(curr.monto || 0), 0);
+
       // Pagos netos (PAGOS - PREMIOS)
-      const pTot = payments
-        .filter((p) => p.agencia === nom && normalizarMoneda(p.moneda) === mon)
-        .reduce((sum, curr) => {
-          const m = Number(curr.monto || 0);
-          const t = String(curr.tipo_pago || '').toUpperCase();
-          return t.includes('PREMIO') ? sum - m : sum + m;
-        }, 0);
+      const pTot = pCobros - pPremios;
 
       // Formula: (sAnt + uOp) - gTot - pTot
       const balanceFinal = Math.round(((sAnt + uOp) - gTot - pTot) * 100) / 100;
@@ -121,6 +126,7 @@ export const AccountBalancesTab: React.FC = () => {
         utilidad_semana: Math.round(uOp * 100) / 100,
         gastos: Math.round(gTot * 100) / 100,
         pagos: Math.round(pTot * 100) / 100,
+        reposicion_premios: Math.round(pPremios * 100) / 100,
         balance_final: balanceFinal,
         status,
       });
@@ -315,7 +321,14 @@ export const AccountBalancesTab: React.FC = () => {
                   <td className="py-3.5 px-4 text-right text-slate-400">{formatCurrency(r.saldo_arrastre, activeCurrency)}</td>
                   <td className="py-3.5 px-4 text-right text-emerald-400 font-semibold">{formatCurrency(r.utilidad_semana, activeCurrency)}</td>
                   <td className="py-3.5 px-4 text-right text-rose-400">{formatCurrency(r.gastos, activeCurrency)}</td>
-                  <td className="py-3.5 px-4 text-right text-cyan-400">{formatCurrency(r.pagos, activeCurrency)}</td>
+                  <td className="py-3.5 px-4 text-right text-cyan-400">
+                    <div>{formatCurrency(r.pagos, activeCurrency)}</div>
+                    {Boolean(r.reposicion_premios && r.reposicion_premios > 0) && (
+                      <span className="text-[10px] text-amber-400/90 font-sans block">
+                        (incl. {formatCurrency(r.reposicion_premios || 0, activeCurrency)} premios)
+                      </span>
+                    )}
+                  </td>
                   <td
                     className={`py-3.5 px-4 text-right font-black text-sm ${
                       r.status === 'pendiente'
@@ -344,13 +357,13 @@ export const AccountBalancesTab: React.FC = () => {
                       </span>
                     )}
                   </td>
-                  <td className="py-3.5 px-4 text-center font-sans">
+                  <td className="py-3.5 px-4 text-center">
                     <button
                       onClick={() => setDetailModalAgency(r.agencia)}
-                      className="p-1.5 rounded-lg text-slate-400 hover:text-white hover:bg-slate-800 transition-colors cursor-pointer"
-                      title="Ver Movimientos Detallados"
+                      className="p-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white transition-colors cursor-pointer"
+                      title="Ver Detalle de la Agencia"
                     >
-                      <ExternalLink className="w-3.5 h-3.5 text-cyan-400" />
+                      <ExternalLink className="w-3.5 h-3.5" />
                     </button>
                   </td>
                 </tr>
@@ -413,12 +426,24 @@ export const AccountBalancesTab: React.FC = () => {
                 <p className="text-xs text-slate-500 italic">No hay pagos registrados.</p>
               ) : (
                 <div className="max-h-36 overflow-y-auto border border-slate-800 rounded-xl bg-[#071217] p-2 space-y-1 text-xs font-mono">
-                  {detailMovements.payments.map((p) => (
-                    <div key={p.id} className="flex justify-between py-1 border-b border-slate-800/60 last:border-0">
-                      <span>{formatDate(p.fecha)} • {p.metodo} ({p.referencia})</span>
-                      <strong className="text-cyan-400">{formatCurrency(p.monto, p.moneda)}</strong>
-                    </div>
-                  ))}
+                  {detailMovements.payments.map((p) => {
+                    const isPremio = String(p.tipo_pago || '').toUpperCase().includes('PREMIO');
+                    return (
+                      <div key={p.id} className="flex justify-between items-center py-1 border-b border-slate-800/60 last:border-0">
+                        <span>
+                          {formatDate(p.fecha)} • {p.metodo} ({p.referencia})
+                          {isPremio && (
+                            <span className="ml-1.5 px-1.5 py-0.5 rounded bg-amber-500/20 text-amber-300 text-[10px] font-sans font-semibold">
+                              Reposición Premios
+                            </span>
+                          )}
+                        </span>
+                        <strong className={isPremio ? 'text-amber-400' : 'text-cyan-400'}>
+                          {isPremio ? '-' : ''}{formatCurrency(p.monto, p.moneda)}
+                        </strong>
+                      </div>
+                    );
+                  })}
                 </div>
               )}
             </div>

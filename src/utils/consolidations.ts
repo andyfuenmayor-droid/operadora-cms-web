@@ -13,6 +13,7 @@ export interface ConsolidatedPaymentItem {
   confirmado_por?: string | null;
   rechazado: boolean;
   fecha: string;
+  created_at?: string;
   user_id?: string;
 }
 
@@ -25,6 +26,7 @@ export interface ConsolidatedExpenseItem {
   concepto: string;
   user_id?: string;
   fecha: string;
+  created_at?: string;
   confirmado: boolean;
   rechazado: boolean;
 }
@@ -40,7 +42,7 @@ export interface ConsolidationOptions {
  * 1. pagos_semana (manuales en CMS)
  * 2. cda_pagos_bancarios (confirmados de taquilla)
  * 3. cda_pagos_diarios (efectivo y cobros diarios de taquilla)
- * Con deduplicación exacta por ID único, referencia bancaria y clave compuesta.
+ * Con deduplicación aislada estrictamente por AGENCIA para evitar colisiones entre agencias distintas.
  */
 export async function getConsolidatedPayments(
   effectiveUserId: string,
@@ -70,7 +72,8 @@ export async function getConsolidatedPayments(
     const dfPd = resPd.data || [];
 
     const listaItems: ConsolidatedPaymentItem[] = [];
-    const psRefs = new Set<string>();
+    // Mapeo de referencias segmentado estrictamente por AGENCIA
+    const psRefsByAgency = new Map<string, Set<string>>();
     const psUnrefKeys = new Set<string>();
 
     // 1. Procesar pagos_semana (Manuales de CMS)
@@ -86,7 +89,10 @@ export async function getConsolidatedPayments(
       const refVal = String(r.referencia || '').trim().toUpperCase();
 
       if (refVal && refVal !== 'N/A') {
-        psRefs.add(refVal);
+        if (!psRefsByAgency.has(ag)) {
+          psRefsByAgency.set(ag, new Set());
+        }
+        psRefsByAgency.get(ag)!.add(refVal);
       } else if (ag && mto > 0) {
         psUnrefKeys.add(`${ag}_${mto}_${mo}_${fCorta}`);
       }
@@ -109,6 +115,7 @@ export async function getConsolidatedPayments(
         confirmado_por: r.confirmado_por || 'ADMIN',
         rechazado: false,
         fecha: fechaRaw,
+        created_at: r.created_at,
         user_id: r.user_id,
       });
     });
@@ -130,11 +137,16 @@ export async function getConsolidatedPayments(
       if (pbId && pbSeenTx.has(`pb_${pbId}`)) return;
       if (pbId) pbSeenTx.add(`pb_${pbId}`);
 
-      // Deduplicar si ya existe en pagos_semana
+      // Deduplicar si ya existe en pagos_semana para ESTA MISMA AGENCIA
       let yaEnPs = false;
-      if (refRaw && refRaw !== 'N/A') {
-        for (const psRef of psRefs) {
-          if (psRef.includes(refRaw)) {
+      const agencyRefs = psRefsByAgency.get(agNom);
+      if (agencyRefs && refRaw && refRaw !== 'N/A') {
+        for (const psRef of agencyRefs) {
+          if (
+            psRef === refRaw ||
+            psRef.includes(`REF: ${refRaw}`) ||
+            (refRaw.length >= 4 && psRef.includes(refRaw))
+          ) {
             yaEnPs = true;
             break;
           }
@@ -166,6 +178,7 @@ export async function getConsolidatedPayments(
           confirmado_por: String(r.confirmado_por || 'ADMIN').trim(),
           rechazado: false,
           fecha: fechaRaw,
+          created_at: r.created_at,
           user_id: String(r.cajero_id || r.user_id || effectiveUserId),
         });
       }
@@ -205,9 +218,14 @@ export async function getConsolidatedPayments(
       const refD = String(r.referencia || '').trim().toUpperCase();
 
       let yaEnPs = false;
-      if (refD && refD !== 'N/A') {
-        for (const psRef of psRefs) {
-          if (psRef.includes(refD)) {
+      const agencyRefs = psRefsByAgency.get(agNom);
+      if (agencyRefs && refD && refD !== 'N/A') {
+        for (const psRef of agencyRefs) {
+          if (
+            psRef === refD ||
+            psRef.includes(`REF: ${refD}`) ||
+            (refD.length >= 4 && psRef.includes(refD))
+          ) {
             yaEnPs = true;
             break;
           }
@@ -241,15 +259,24 @@ export async function getConsolidatedPayments(
           confirmado_por: String(r.supervisor_nombre || r.confirmado_por || 'ADMIN').trim(),
           rechazado: false,
           fecha: fechaRaw,
+          created_at: r.created_at,
           user_id: String(r.cajero_id || r.user_id || effectiveUserId),
         });
       }
     });
 
-    // 4. Filtrar fechas según ciclo operativo (preservando pagos manuales del CMS del ciclo abierto)
+    // 4. Filtrar fechas según ciclo operativo (preservando pagos manuales del CMS del ciclo abierto y domingo de liquidación)
     if (filtrarPeriodo && (fechaDesde || fechaHasta)) {
       const hoyStr = getTodayDateString();
       const limiteHasta = fechaHasta ? (fechaHasta > hoyStr ? fechaHasta : hoyStr) : hoyStr;
+
+      // Calcular domingo previo al inicio de semana (corte dominical de liquidación)
+      let domingoPrevio = '';
+      if (fechaDesde && fechaDesde.length === 10) {
+        const d = new Date(`${fechaDesde}T00:00:00`);
+        d.setDate(d.getDate() - 1);
+        domingoPrevio = d.toISOString().slice(0, 10);
+      }
 
       return listaItems.filter((item) => {
         // Los pagos ingresados directamente en pagos_semana pertenecen al ciclo abierto actual
@@ -258,11 +285,22 @@ export async function getConsolidatedPayments(
         }
 
         const fStr = item.fecha.slice(0, 10);
-        if (fStr.length === 10 && fStr.includes('-')) {
-          if (fechaDesde && fStr < fechaDesde) return false;
-          if (limiteHasta && fStr > limiteHasta) return false;
+        const cStr = item.created_at ? item.created_at.slice(0, 10) : '';
+
+        // 1. Rango estándar por fecha operativa
+        const enRangoFecha = (!fechaDesde || fStr >= fechaDesde) && (!limiteHasta || fStr <= limiteHasta);
+        if (enRangoFecha) return true;
+
+        // 2. Pago del domingo de corte previo liquidado para esta semana
+        if (domingoPrevio && fStr === domingoPrevio) return true;
+
+        // 3. Si no tiene fecha válida, recurrir a fecha de creación
+        if (!fStr || fStr === 'N/A' || fStr.length < 10) {
+          const enRangoCreacion = cStr && (!fechaDesde || cStr >= fechaDesde) && (!limiteHasta || cStr <= limiteHasta);
+          if (enRangoCreacion) return true;
         }
-        return true;
+
+        return false;
       });
     }
 
@@ -357,6 +395,7 @@ export async function getConsolidatedExpenses(
         concepto: conceptoRaw,
         user_id: String(r.cajero_id || r.user_id || effectiveUserId),
         fecha: fechaRaw,
+        created_at: r.created_at,
         confirmado: true,
         rechazado: false,
       });
@@ -367,15 +406,30 @@ export async function getConsolidatedExpenses(
       const hoyStr = getTodayDateString();
       const limiteHasta = fechaHasta ? (fechaHasta > hoyStr ? fechaHasta : hoyStr) : hoyStr;
 
+      let domingoPrevio = '';
+      if (fechaDesde && fechaDesde.length === 10) {
+        const d = new Date(`${fechaDesde}T00:00:00`);
+        d.setDate(d.getDate() - 1);
+        domingoPrevio = d.toISOString().slice(0, 10);
+      }
+
       return listaGastos.filter((item) => {
         if (!item.id.startsWith('gd_')) return true;
 
         const fStr = item.fecha.slice(0, 10);
-        if (fStr.length === 10 && fStr.includes('-')) {
-          if (fechaDesde && fStr < fechaDesde) return false;
-          if (limiteHasta && fStr > limiteHasta) return false;
+        const cStr = item.created_at ? item.created_at.slice(0, 10) : '';
+
+        const enRangoFecha = (!fechaDesde || fStr >= fechaDesde) && (!limiteHasta || fStr <= limiteHasta);
+        if (enRangoFecha) return true;
+
+        if (domingoPrevio && fStr === domingoPrevio) return true;
+
+        if (!fStr || fStr === 'N/A' || fStr.length < 10) {
+          const enRangoCreacion = cStr && (!fechaDesde || cStr >= fechaDesde) && (!limiteHasta || cStr <= limiteHasta);
+          if (enRangoCreacion) return true;
         }
-        return true;
+
+        return false;
       });
     }
 

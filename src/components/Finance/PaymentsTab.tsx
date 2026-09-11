@@ -100,16 +100,18 @@ export const PaymentsTab: React.FC = () => {
         });
       });
 
-      // Also include cda_pagos_bancarios if not already in pagos_semana
-      const existingRefs = new Set(list.map((p) => p.referencia.toUpperCase()));
+      // Also include cda_pagos_bancarios if not already in pagos_semana (scoped by agency)
+      const existingKeys = new Set(list.map((p) => `${p.agencia}_${p.referencia.toUpperCase()}`));
 
       (pbRes.data || []).forEach((r: any) => {
+        const agUpper = String(r.agencia || '').trim().toUpperCase();
         const refUpper = String(r.referencia || '').toUpperCase();
-        if (!existingRefs.has(refUpper) && refUpper !== 'N/A') {
+        const k = `${agUpper}_${refUpper}`;
+        if (!existingKeys.has(k) && refUpper !== 'N/A') {
           list.push({
             id: r.id,
             tabla: 'cda_pagos_bancarios',
-            agencia: String(r.agencia || '').trim().toUpperCase(),
+            agencia: agUpper,
             moneda: normalizarMoneda(r.moneda),
             tipo_pago: 'PAGO',
             metodo: String(r.metodo_pago || 'TRANSFERENCIA').toUpperCase(),

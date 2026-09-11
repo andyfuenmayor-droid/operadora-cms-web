@@ -407,85 +407,99 @@ export const ConfirmationsBoard: React.FC = () => {
     return [...list].sort((a, b) => b.fecha.localeCompare(a.fecha));
   }, [selEstado, pendingTransactions, confirmedTransactions, rejectedTransactions, filteredTransactions]);
 
+  // Core confirm execution with cross-table sync
+  const executeConfirmTransaction = async (item: ConfirmationTransaction) => {
+    if (!effectiveUserId) return false;
+
+    const dataPayload = {
+      confirmado: true,
+      confirmado_por: currentOperatorName,
+      rechazado: false,
+      rechazado_por: null,
+      motivo_rechazo: null,
+      fecha_rechazo: null,
+    };
+
+    // 1. Update main table
+    await supabase.from(item.tabla).update(dataPayload).eq('id', item.id);
+
+    // 2. Cross table syncs
+    if (item.tabla === 'cda_pagos_bancarios') {
+      // Sync cda_pagos_diarios
+      await supabase
+        .from('cda_pagos_diarios')
+        .update({
+          ...dataPayload,
+          confirmado_supervisor: true,
+          supervisor_nombre: currentOperatorName,
+        })
+        .eq('agencia', item.agencia)
+        .eq('fecha', item.fecha)
+        .eq('monto', item.monto);
+
+      // Sync pagos_semana
+      const { data: psData } = await supabase
+        .from('pagos_semana')
+        .select('id, referencia')
+        .eq('user_id', effectiveUserId)
+        .eq('agencia', item.agencia)
+        .eq('monto', item.monto);
+
+      let matched = false;
+      if (psData && psData.length > 0) {
+        for (const ps of psData) {
+          if (
+            (item.referencia !== 'N/A' && String(ps.referencia || '').includes(item.referencia)) ||
+            String(ps.referencia || '').includes('CONFIRMADO BANCO')
+          ) {
+            matched = true;
+            await supabase.from('pagos_semana').update(dataPayload).eq('id', ps.id);
+            break;
+          }
+        }
+      }
+
+      if (!matched && item.monto > 0) {
+        const refLabel = `REF: ${item.referencia} ${item.pagador !== 'N/A' ? `- ${item.pagador}` : ''} [✅ CONFIRMADO BANCO]`.trim();
+        const isPremio = item.categoria === 'Pago de Premios';
+
+        await supabase.from('pagos_semana').insert({
+          user_id: effectiveUserId,
+          agencia: item.agencia,
+          moneda: item.moneda,
+          tipo_pago: isPremio ? 'Pago de Premios' : 'Pago',
+          metodo: item.metodo || 'BANCO',
+          monto: Math.round(item.monto * 100) / 100,
+          referencia: refLabel.toUpperCase(),
+          confirmado: true,
+          confirmado_por: currentOperatorName,
+          rechazado: false,
+          fecha: item.fecha || new Date().toISOString(),
+        });
+      }
+    } else if (item.tabla === 'cda_pagos_diarios') {
+      await supabase
+        .from('cda_pagos_diarios')
+        .update({
+          confirmado_supervisor: true,
+          supervisor_nombre: currentOperatorName,
+          confirmado: true,
+          confirmado_por: currentOperatorName,
+          rechazado: false,
+        })
+        .eq('id', item.id);
+    }
+
+    return true;
+  };
+
   // Single Transaction Confirm
   const handleConfirm = async (item: ConfirmationTransaction) => {
     if (!effectiveUserId) return;
     setIsProcessing(true);
 
     try {
-      const dataPayload = {
-        confirmado: true,
-        confirmado_por: currentOperatorName,
-        rechazado: false,
-        rechazado_por: null,
-        motivo_rechazo: null,
-        fecha_rechazo: null,
-      };
-
-      // 1. Update main table
-      await supabase.from(item.tabla).update(dataPayload).eq('id', item.id);
-
-      // 2. Cross table syncs
-      if (item.tabla === 'cda_pagos_bancarios') {
-        // Sync cda_pagos_diarios
-        await supabase
-          .from('cda_pagos_diarios')
-          .update(dataPayload)
-          .eq('agencia', item.agencia)
-          .eq('fecha', item.fecha)
-          .eq('monto', item.monto);
-
-        // Sync pagos_semana
-        const { data: psData } = await supabase
-          .from('pagos_semana')
-          .select('id, referencia')
-          .eq('user_id', effectiveUserId)
-          .eq('agencia', item.agencia)
-          .eq('monto', item.monto);
-
-        let matched = false;
-        if (psData && psData.length > 0) {
-          for (const ps of psData) {
-            if (
-              (item.referencia !== 'N/A' && String(ps.referencia || '').includes(item.referencia)) ||
-              String(ps.referencia || '').includes('CONFIRMADO BANCO')
-            ) {
-              matched = true;
-              await supabase.from('pagos_semana').update(dataPayload).eq('id', ps.id);
-              break;
-            }
-          }
-        }
-
-        if (!matched && item.monto > 0) {
-          const refLabel = `REF: ${item.referencia} ${item.pagador !== 'N/A' ? `- ${item.pagador}` : ''} [✅ CONFIRMADO BANCO]`.trim();
-          const isPremio = item.categoria === 'Pago de Premios';
-
-          await supabase.from('pagos_semana').insert({
-            user_id: effectiveUserId,
-            agencia: item.agencia,
-            moneda: item.moneda,
-            tipo_pago: isPremio ? 'Pago de Premios' : 'Pago',
-            metodo: item.metodo || 'BANCO',
-            monto: Math.round(item.monto * 100) / 100,
-            referencia: refLabel.toUpperCase(),
-            confirmado: true,
-            confirmado_por: currentOperatorName,
-            rechazado: false,
-            fecha: item.fecha || new Date().toISOString(),
-          });
-        }
-      } else if (item.tabla === 'cda_pagos_diarios') {
-        await supabase
-          .from('cda_pagos_diarios')
-          .update({
-            confirmado_supervisor: true,
-            supervisor_nombre: currentOperatorName,
-            confirmado: true,
-            rechazado: false,
-          })
-          .eq('id', item.id);
-      }
+      await executeConfirmTransaction(item);
 
       // Local optimistic update
       setTransactions((prev) =>
@@ -496,9 +510,15 @@ export const ConfirmationsBoard: React.FC = () => {
         )
       );
 
+      confetti({
+        particleCount: 50,
+        spread: 60,
+        origin: { y: 0.7 },
+      });
+
       setMessage({ type: 'success', text: `¡Transacción #${item.id} confirmada exitosamente!` });
     } catch (err: any) {
-      console.error('Error confirming item:', err);
+      console.error('Error confirming transaction:', err);
       setMessage({ type: 'error', text: err?.message || 'Error al confirmar la transacción.' });
     } finally {
       setIsProcessing(false);
@@ -625,11 +645,7 @@ export const ConfirmationsBoard: React.FC = () => {
       }
 
       try {
-        await supabase.from(item.tabla).update({
-          confirmado: true,
-          confirmado_por: currentOperatorName,
-          rechazado: false,
-        }).eq('id', item.id);
+        await executeConfirmTransaction(item);
         count++;
       } catch (e) {
         console.warn('Error in batch item:', e);
