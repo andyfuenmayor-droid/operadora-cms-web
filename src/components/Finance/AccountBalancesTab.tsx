@@ -49,7 +49,7 @@ export const AccountBalancesTab: React.FC = () => {
   const { effectiveUserId, systemCycle } = useAuth();
 
   const [isLoading, setIsLoading] = useState(true);
-  const [activeCurrency, setActiveCurrency] = useState<'BS' | 'USD' | 'COP'>('USD');
+  const [activeCurrency, setActiveCurrency] = useState<'BS' | 'USD' | 'COP'>('BS');
   const [agencies, setAgencies] = useState<Agency[]>([]);
   const [sales, setSales] = useState<any[]>([]);
   const [payments, setPayments] = useState<ConsolidatedPaymentItem[]>([]);
