@@ -202,40 +202,104 @@ export const AccountBalancesTab: React.FC = () => {
     return `https://wa.me/?text=${encodeURIComponent(reportTxt)}`;
   };
 
-  // Generate individual agency WhatsApp account balance message
+  // Helper for WhatsApp report numbers (e.g. 46,300.00)
+  const fmtNumber = (n: number) => {
+    return Number(n || 0).toLocaleString('en-US', {
+      minimumFractionDigits: 2,
+      maximumFractionDigits: 2,
+    });
+  };
+
+  // Generate individual agency WhatsApp account balance message with systems breakdown
   const generateAgencyWhatsAppUrl = (r: BalanceRow) => {
-    const cycleRange = (systemCycle?.desde && systemCycle?.hasta)
-      ? `📅 *Período:* ${systemCycle.desde} al ${systemCycle.hasta}\n`
-      : '';
-    const semana = systemCycle?.semana ? `🗓️ *Semana:* #${systemCycle.semana}\n` : '';
+    const nom = r.agencia.trim().toUpperCase();
+    const ag = agencies.find((a) => a.nombre_agencia.trim().toUpperCase() === nom);
+    const pctPartAg = Number(ag?.participacion_ag || 0) / 100;
+    const pctPartAgInt = Math.round(Number(ag?.participacion_ag || 0));
+
+    // Sales of this agency in activeCurrency
+    const agSales = sales.filter((s) => s.agencia === nom && normalizarMoneda(s.moneda) === activeCurrency);
+
+    // Group sales by system
+    const sistemasMap: Record<string, { venta: number; comision: number; premios: number; neto: number }> = {};
+    let totalNetoSistemas = 0;
+
+    agSales.forEach((s) => {
+      const sis = (s.sistema || 'GENERAL').trim().toUpperCase();
+      if (!sistemasMap[sis]) {
+        sistemasMap[sis] = { venta: 0, comision: 0, premios: 0, neto: 0 };
+      }
+      const v = Number(s.venta || 0);
+      const c = Number(s.comision || 0);
+      const p = Number(s.premios || 0);
+      const n = Number(s.neto !== undefined && s.neto !== null ? s.neto : s.util_op !== undefined ? s.util_op : (v - c - p));
+      sistemasMap[sis].venta += v;
+      sistemasMap[sis].comision += c;
+      sistemasMap[sis].premios += p;
+      sistemasMap[sis].neto += n;
+      totalNetoSistemas += n;
+    });
+
+    let textoSistemas = '';
+    const sisKeys = Object.keys(sistemasMap);
+    if (sisKeys.length === 0) {
+      textoSistemas = '   _Sin movimientos_\n';
+    } else {
+      sisKeys.forEach((sis) => {
+        const item = sistemasMap[sis];
+        textoSistemas += `🔹 *${sis}*\n`;
+        textoSistemas += `   Venta: ${fmtNumber(item.venta)} | Com: -${fmtNumber(Math.abs(item.comision))}\n`;
+        textoSistemas += `   Prem: -${fmtNumber(Math.abs(item.premios))} | *Neto: ${fmtNumber(item.neto)}*\n`;
+        textoSistemas += `   ----------\n`;
+      });
+    }
+
+    const totalPartAg = Math.round(totalNetoSistemas * pctPartAg * 100) / 100;
+
+    // Gastos
+    const totalGastos = expenses
+      .filter((g) => g.agencia === nom && normalizarMoneda(g.moneda) === activeCurrency)
+      .reduce((sum, curr) => sum + Number(curr.monto || 0), 0);
+
+    // Pagos ordinarios recibidos
+    const pRecibidos = payments
+      .filter((p) => p.agencia === nom && normalizarMoneda(p.moneda) === activeCurrency && !String(p.tipo_pago || '').toUpperCase().includes('PREMIO'))
+      .reduce((sum, curr) => sum + Number(curr.monto || 0), 0);
+
+    // Premios pagados (reposición)
+    const pPremios = payments
+      .filter((p) => p.agencia === nom && normalizarMoneda(p.moneda) === activeCurrency && String(p.tipo_pago || '').toUpperCase().includes('PREMIO'))
+      .reduce((sum, curr) => sum + Number(curr.monto || 0), 0);
+
+    const fDesde = systemCycle?.desde || '';
+    const fHasta = systemCycle?.hasta || '';
 
     let statusMsg = '';
     if (r.status === 'pendiente') {
-      statusMsg = `⚠️ *ESTADO: PENDIENTE POR COBRAR*\nFavor gestionar la cancelación de este saldo a la brevedad.`;
+      statusMsg = `\n------------------------------------------\n🔴 *ESTADO: PENDIENTE POR COBRAR*\nFavor gestionar la cancelación de este saldo a la brevedad.`;
     } else if (r.status === 'favor') {
-      statusMsg = `🔵 *ESTADO: SALDO A FAVOR DE LA AGENCIA*\nEste monto queda a su favor acumulado para el próximo ciclo.`;
+      statusMsg = `\n------------------------------------------\n🔵 *ESTADO: SALDO A FAVOR DE LA AGENCIA*\nEste monto queda a su favor acumulado para el próximo ciclo.`;
     } else {
-      statusMsg = `✅ *ESTADO: SOLVENTE / PAGADO*\n¡Muchas gracias por su puntualidad!`;
+      statusMsg = `\n------------------------------------------\n🟢 *ESTADO: SOLVENTE / PAGADO*\n¡Muchas gracias por su puntualidad!`;
     }
 
-    const reposicionTxt = (r.reposicion_premios && r.reposicion_premios > 0)
-      ? `   ↳ _(incluye reposición premios: ${formatCurrency(r.reposicion_premios, activeCurrency)})_\n`
-      : '';
-
     const text =
-`🏢 *ESTADO DE CUENTA - ${r.agencia}*
-${semana}${cycleRange}💰 *Moneda:* ${activeCurrency}
-━━━━━━━━━━━━━━━━━━━━
-▫️ *Saldo Arrastre:* ${formatCurrency(r.saldo_arrastre, activeCurrency)}
-▫️ *Semana (Utilidad):* ${formatCurrency(r.utilidad_semana, activeCurrency)}
-▫️ *Gastos Ag.:* ${formatCurrency(r.gastos, activeCurrency)}
-▫️ *Pagos Realizados:* ${formatCurrency(r.pagos, activeCurrency)}
-${reposicionTxt}━━━━━━━━━━━━━━━━━━━━
-💵 *BALANCE FINAL:* *${formatCurrency(r.balance_final, activeCurrency)}*
-━━━━━━━━━━━━━━━━━━━━
-${statusMsg}
+`🏢 *ESTADO DE CUENTA - ${nom}*
+📅 *Periodo:* ${fDesde} al ${fHasta}
+💰 *Moneda:* ${activeCurrency}
+------------------------------------------
+🔹 *Saldo Anterior:* ${fmtNumber(r.saldo_arrastre)}
 
-_Generado automáticamente por Sistema Operadora Taquilla_`;
+📦 *DESGLOSE POR SISTEMAS:*
+${textoSistemas}
+*RESUMEN SEMANA:*
+    (+) Neto Sistemas: ${fmtNumber(totalNetoSistemas)}
+    (-) Part. Agencia (${pctPartAgInt}%): ${fmtNumber(totalPartAg)}
+    (-) Gastos: ${fmtNumber(totalGastos)}
+    (+/-) Pagos Recibidos: ${fmtNumber(pRecibidos)}
+    (+/-) Premios Pagados: ${fmtNumber(pPremios)}
+------------------------------------------
+💵 *SALDO ACTUAL: ${activeCurrency} ${fmtNumber(r.balance_final)}*${statusMsg}`;
 
     return `https://wa.me/?text=${encodeURIComponent(text)}`;
   };
@@ -255,11 +319,29 @@ _Generado automáticamente por Sistema Operadora Taquilla_`;
     const agPayments = payments.filter((p) => p.agencia === agName && normalizarMoneda(p.moneda) === activeCurrency);
     const agExpenses = expenses.filter((e) => e.agencia === agName && normalizarMoneda(e.moneda) === activeCurrency);
 
+    // Group sales by system
+    const sistemasMap: Record<string, { venta: number; comision: number; premios: number; neto: number }> = {};
+    agSales.forEach((s) => {
+      const sis = (s.sistema || 'GENERAL').trim().toUpperCase();
+      if (!sistemasMap[sis]) {
+        sistemasMap[sis] = { venta: 0, comision: 0, premios: 0, neto: 0 };
+      }
+      const v = Number(s.venta || 0);
+      const c = Number(s.comision || 0);
+      const p = Number(s.premios || 0);
+      const n = Number(s.neto !== undefined && s.neto !== null ? s.neto : s.util_op !== undefined ? s.util_op : (v - c - p));
+      sistemasMap[sis].venta += v;
+      sistemasMap[sis].comision += c;
+      sistemasMap[sis].premios += p;
+      sistemasMap[sis].neto += n;
+    });
+
     return {
       agencia: agName,
       sales: agSales,
       payments: agPayments,
       expenses: agExpenses,
+      sistemas: Object.entries(sistemasMap).map(([sistema, vals]) => ({ sistema, ...vals })),
     };
   }, [detailModalAgency, sales, payments, expenses, activeCurrency]);
 
@@ -809,6 +891,46 @@ _Generado automáticamente por Sistema Operadora Taquilla_`;
                   </a>
                 </div>
               )}
+
+              {/* Desglose por Sistemas */}
+              <div className="space-y-1.5">
+                <span className="text-[11px] font-bold uppercase text-slate-400 tracking-wider">
+                  Desglose por Sistemas ({detailMovements.sistemas.length})
+                </span>
+                {detailMovements.sistemas.length === 0 ? (
+                  <p className="text-xs text-slate-500 italic">No hay movimientos por sistema en {activeCurrency}.</p>
+                ) : (
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                    {detailMovements.sistemas.map((sis) => (
+                      <div key={sis.sistema} className="bg-[#071217] border border-slate-800 rounded-xl p-3 space-y-1.5 font-mono text-xs">
+                        <div className="flex items-center justify-between border-b border-slate-800/80 pb-1">
+                          <span className="font-sans font-bold text-white text-xs flex items-center gap-1.5">
+                            <span className="w-2 h-2 rounded-full bg-purple-400"></span>
+                            {sis.sistema}
+                          </span>
+                          <span className="font-bold text-emerald-400">
+                            Neto: {formatCurrency(sis.neto, activeCurrency)}
+                          </span>
+                        </div>
+                        <div className="grid grid-cols-3 gap-1 text-[11px] text-slate-300">
+                          <div>
+                            <span className="text-[9px] text-slate-400 font-sans block">Venta</span>
+                            <span>{formatCurrency(sis.venta, activeCurrency)}</span>
+                          </div>
+                          <div>
+                            <span className="text-[9px] text-slate-400 font-sans block">Comisión</span>
+                            <span className="text-rose-300">-{formatCurrency(sis.comision, activeCurrency)}</span>
+                          </div>
+                          <div>
+                            <span className="text-[9px] text-slate-400 font-sans block">Premios</span>
+                            <span className="text-amber-300">-{formatCurrency(sis.premios, activeCurrency)}</span>
+                          </div>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
 
               {/* Sales List */}
               <div className="space-y-1.5">
