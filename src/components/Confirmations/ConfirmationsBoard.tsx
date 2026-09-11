@@ -463,19 +463,24 @@ export const ConfirmationsBoard: React.FC = () => {
         const refLabel = `REF: ${item.referencia} ${item.pagador !== 'N/A' ? `- ${item.pagador}` : ''} [✅ CONFIRMADO BANCO]`.trim();
         const isPremio = item.categoria === 'Pago de Premios';
 
-        await supabase.from('pagos_semana').insert({
-          user_id: effectiveUserId,
-          agencia: item.agencia,
-          moneda: item.moneda,
-          tipo_pago: isPremio ? 'Pago de Premios' : 'Pago',
-          metodo: item.metodo || 'BANCO',
-          monto: Math.round(item.monto * 100) / 100,
-          referencia: refLabel.toUpperCase(),
-          confirmado: true,
-          confirmado_por: currentOperatorName,
-          rechazado: false,
-          fecha: item.fecha || new Date().toISOString(),
-        });
+        try {
+          const allowedMetodo = String(item.metodo || '').toUpperCase().includes('EFECTIVO') ? 'EFECTIVO' : 'BANCO';
+          await supabase.from('pagos_semana').insert({
+            user_id: effectiveUserId,
+            agencia: item.agencia,
+            moneda: item.moneda,
+            tipo_pago: isPremio ? 'Pago de Premios' : 'Pago',
+            metodo: allowedMetodo,
+            monto: Math.round(item.monto * 100) / 100,
+            referencia: refLabel.toUpperCase(),
+            confirmado: true,
+            confirmado_por: currentOperatorName,
+            rechazado: false,
+            fecha: item.fecha || new Date().toISOString(),
+          });
+        } catch (insertErr) {
+          console.warn('Error sincronizando con pagos_semana:', insertErr);
+        }
       }
     } else if (item.tabla === 'cda_pagos_diarios') {
       await supabase

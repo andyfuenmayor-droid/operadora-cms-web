@@ -265,18 +265,10 @@ export async function getConsolidatedPayments(
       }
     });
 
-    // 4. Filtrar fechas según ciclo operativo (preservando pagos manuales del CMS del ciclo abierto y domingo de liquidación)
+    // 4. Filtrar fechas según ciclo operativo (preservando pagos manuales del CMS del ciclo abierto)
     if (filtrarPeriodo && (fechaDesde || fechaHasta)) {
       const hoyStr = getTodayDateString();
       const limiteHasta = fechaHasta ? (fechaHasta > hoyStr ? fechaHasta : hoyStr) : hoyStr;
-
-      // Calcular domingo previo al inicio de semana (corte dominical de liquidación)
-      let domingoPrevio = '';
-      if (fechaDesde && fechaDesde.length === 10) {
-        const d = new Date(`${fechaDesde}T00:00:00`);
-        d.setDate(d.getDate() - 1);
-        domingoPrevio = d.toISOString().slice(0, 10);
-      }
 
       return listaItems.filter((item) => {
         // Los pagos ingresados directamente en pagos_semana pertenecen al ciclo abierto actual
@@ -291,10 +283,7 @@ export async function getConsolidatedPayments(
         const enRangoFecha = (!fechaDesde || fStr >= fechaDesde) && (!limiteHasta || fStr <= limiteHasta);
         if (enRangoFecha) return true;
 
-        // 2. Pago del domingo de corte previo liquidado para esta semana
-        if (domingoPrevio && fStr === domingoPrevio) return true;
-
-        // 3. Si no tiene fecha válida, recurrir a fecha de creación
+        // 2. Si no tiene fecha válida, recurrir a fecha de creación
         if (!fStr || fStr === 'N/A' || fStr.length < 10) {
           const enRangoCreacion = cStr && (!fechaDesde || cStr >= fechaDesde) && (!limiteHasta || cStr <= limiteHasta);
           if (enRangoCreacion) return true;
@@ -406,13 +395,6 @@ export async function getConsolidatedExpenses(
       const hoyStr = getTodayDateString();
       const limiteHasta = fechaHasta ? (fechaHasta > hoyStr ? fechaHasta : hoyStr) : hoyStr;
 
-      let domingoPrevio = '';
-      if (fechaDesde && fechaDesde.length === 10) {
-        const d = new Date(`${fechaDesde}T00:00:00`);
-        d.setDate(d.getDate() - 1);
-        domingoPrevio = d.toISOString().slice(0, 10);
-      }
-
       return listaGastos.filter((item) => {
         if (!item.id.startsWith('gd_')) return true;
 
@@ -421,8 +403,6 @@ export async function getConsolidatedExpenses(
 
         const enRangoFecha = (!fechaDesde || fStr >= fechaDesde) && (!limiteHasta || fStr <= limiteHasta);
         if (enRangoFecha) return true;
-
-        if (domingoPrevio && fStr === domingoPrevio) return true;
 
         if (!fStr || fStr === 'N/A' || fStr.length < 10) {
           const enRangoCreacion = cStr && (!fechaDesde || cStr >= fechaDesde) && (!limiteHasta || cStr <= limiteHasta);
