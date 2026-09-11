@@ -53,7 +53,6 @@ const moduleIconMap: Record<ModuleId, React.ComponentType<{ className?: string }
   'Gastos Agencias': Receipt,
   'Saldo Agencias': Wallet,
   'Venta Real': TrendingUp,
-  'Rep. Agencia': FileText,
   Auditoría: ShieldCheck,
   'Caja Maestra': Vault,
   'Pagos a Operador': Handshake,

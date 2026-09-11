@@ -194,7 +194,6 @@ export type ModuleId =
   | 'Gastos Agencias'
   | 'Saldo Agencias'
   | 'Venta Real'
-  | 'Rep. Agencia'
   | 'Auditoría'
   | 'Caja Maestra'
   | 'Pagos a Operador'

@@ -27,6 +27,12 @@ import {
   ChevronRight
 } from 'lucide-react';
 
+const WhatsAppIcon: React.FC<{ className?: string }> = ({ className = 'w-4 h-4' }) => (
+  <svg className={className} viewBox="0 0 24 24" fill="currentColor">
+    <path d="M.057 24l1.687-6.163c-1.041-1.804-1.588-3.849-1.587-5.946.003-6.556 5.338-11.891 11.893-11.891 3.181.001 6.167 1.24 8.413 3.488 2.245 2.248 3.481 5.236 3.48 8.414-.003 6.557-5.338 11.892-11.893 11.892-1.99-.001-3.951-.5-5.688-1.448l-6.305 1.654zm6.597-3.807c1.676.995 3.276 1.591 5.392 1.592 5.448 0 9.886-4.434 9.889-9.885.002-5.462-4.415-9.89-9.881-9.892-5.452 0-9.887 4.434-9.889 9.884-.001 2.225.651 3.891 1.746 5.634l-.999 3.648 3.742-.981zm11.387-5.464c-.074-.124-.272-.198-.57-.347-.297-.149-1.758-.868-2.031-.967-.272-.099-.47-.149-.669.149-.198.297-.768.967-.941 1.165-.173.198-.347.223-.644.074-.297-.149-1.255-.462-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.297-.347.446-.521.151-.172.2-.296.3-.495.099-.198.05-.372-.025-.521-.075-.148-.669-1.611-.916-2.206-.242-.579-.487-.501-.669-.51l-.57-.01c-.198 0-.52.074-.792.372s-1.04 1.016-1.04 2.479 1.065 2.876 1.213 3.074c.149.198 2.095 3.2 5.076 4.487.709.306 1.263.489 1.694.626.712.226 1.36.194 1.872.118.571-.085 1.758-.719 2.006-1.413.248-.695.248-1.29.173-1.414z" />
+  </svg>
+);
+
 interface BalanceRow {
   id: number;
   agencia: string;
@@ -196,14 +202,58 @@ export const AccountBalancesTab: React.FC = () => {
     return `https://wa.me/?text=${encodeURIComponent(reportTxt)}`;
   };
 
+  // Generate individual agency WhatsApp account balance message
+  const generateAgencyWhatsAppUrl = (r: BalanceRow) => {
+    const cycleRange = (systemCycle?.desde && systemCycle?.hasta)
+      ? `📅 *Período:* ${systemCycle.desde} al ${systemCycle.hasta}\n`
+      : '';
+    const semana = systemCycle?.semana ? `🗓️ *Semana:* #${systemCycle.semana}\n` : '';
+
+    let statusMsg = '';
+    if (r.status === 'pendiente') {
+      statusMsg = `⚠️ *ESTADO: PENDIENTE POR COBRAR*\nFavor gestionar la cancelación de este saldo a la brevedad.`;
+    } else if (r.status === 'favor') {
+      statusMsg = `🔵 *ESTADO: SALDO A FAVOR DE LA AGENCIA*\nEste monto queda a su favor acumulado para el próximo ciclo.`;
+    } else {
+      statusMsg = `✅ *ESTADO: SOLVENTE / PAGADO*\n¡Muchas gracias por su puntualidad!`;
+    }
+
+    const reposicionTxt = (r.reposicion_premios && r.reposicion_premios > 0)
+      ? `   ↳ _(incluye reposición premios: ${formatCurrency(r.reposicion_premios, activeCurrency)})_\n`
+      : '';
+
+    const text =
+`🏢 *ESTADO DE CUENTA - ${r.agencia}*
+${semana}${cycleRange}💰 *Moneda:* ${activeCurrency}
+━━━━━━━━━━━━━━━━━━━━
+▫️ *Saldo Arrastre:* ${formatCurrency(r.saldo_arrastre, activeCurrency)}
+▫️ *Semana (Utilidad):* ${formatCurrency(r.utilidad_semana, activeCurrency)}
+▫️ *Gastos Ag.:* ${formatCurrency(r.gastos, activeCurrency)}
+▫️ *Pagos Realizados:* ${formatCurrency(r.pagos, activeCurrency)}
+${reposicionTxt}━━━━━━━━━━━━━━━━━━━━
+💵 *BALANCE FINAL:* *${formatCurrency(r.balance_final, activeCurrency)}*
+━━━━━━━━━━━━━━━━━━━━
+${statusMsg}
+
+_Generado automáticamente por Sistema Operadora Taquilla_`;
+
+    return `https://wa.me/?text=${encodeURIComponent(text)}`;
+  };
+
+  // Selected agency row for detail modal
+  const selectedAgencyRow = useMemo(() => {
+    if (!detailModalAgency) return null;
+    return activeBalances.rows.find((r) => r.agencia === detailModalAgency) || null;
+  }, [detailModalAgency, activeBalances.rows]);
+
   // Detailed movements for an individual agency (Modal)
   const detailMovements = useMemo(() => {
     if (!detailModalAgency) return null;
     const agName = detailModalAgency;
 
-    const agSales = sales.filter((s) => s.agencia === agName);
-    const agPayments = payments.filter((p) => p.agencia === agName);
-    const agExpenses = expenses.filter((e) => e.agencia === agName);
+    const agSales = sales.filter((s) => s.agencia === agName && normalizarMoneda(s.moneda) === activeCurrency);
+    const agPayments = payments.filter((p) => p.agencia === agName && normalizarMoneda(p.moneda) === activeCurrency);
+    const agExpenses = expenses.filter((e) => e.agencia === agName && normalizarMoneda(e.moneda) === activeCurrency);
 
     return {
       agencia: agName,
@@ -211,7 +261,7 @@ export const AccountBalancesTab: React.FC = () => {
       payments: agPayments,
       expenses: agExpenses,
     };
-  }, [detailModalAgency, sales, payments, expenses]);
+  }, [detailModalAgency, sales, payments, expenses, activeCurrency]);
 
   return (
     <div className="space-y-6">
@@ -441,6 +491,16 @@ export const AccountBalancesTab: React.FC = () => {
                         A FAVOR
                       </span>
                     )}
+                    <a
+                      href={generateAgencyWhatsAppUrl(r)}
+                      target="_blank"
+                      rel="noreferrer"
+                      onClick={(e) => e.stopPropagation()}
+                      className="p-1 rounded-lg bg-emerald-600/20 hover:bg-emerald-600 text-emerald-400 hover:text-white border border-emerald-500/30 transition-colors cursor-pointer"
+                      title="Enviar Estado de Cuenta por WhatsApp"
+                    >
+                      <WhatsAppIcon className="w-4 h-4" />
+                    </a>
                     <button
                       onClick={(e) => {
                         e.stopPropagation();
@@ -544,7 +604,7 @@ export const AccountBalancesTab: React.FC = () => {
                   <th className="py-3.5 px-4 text-right">Pagos (-)</th>
                   <th className="py-3.5 px-4 text-right">Balance Final</th>
                   <th className="py-3.5 px-4 text-center">Estatus</th>
-                  <th className="py-3.5 px-4 text-center">Detalle</th>
+                  <th className="py-3.5 px-4 text-center">Acciones</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-800/80 font-mono">
@@ -597,13 +657,24 @@ export const AccountBalancesTab: React.FC = () => {
                       )}
                     </td>
                     <td className="py-3.5 px-4 text-center">
-                      <button
-                        onClick={() => setDetailModalAgency(r.agencia)}
-                        className="p-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white transition-colors cursor-pointer"
-                        title="Ver Detalle de la Agencia"
-                      >
-                        <ExternalLink className="w-3.5 h-3.5" />
-                      </button>
+                      <div className="flex items-center justify-center gap-1.5">
+                        <button
+                          onClick={() => setDetailModalAgency(r.agencia)}
+                          className="p-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white transition-colors cursor-pointer"
+                          title="Ver Detalle de la Agencia"
+                        >
+                          <ExternalLink className="w-3.5 h-3.5" />
+                        </button>
+                        <a
+                          href={generateAgencyWhatsAppUrl(r)}
+                          target="_blank"
+                          rel="noreferrer"
+                          className="p-1.5 rounded-lg bg-emerald-600/20 hover:bg-emerald-600 text-emerald-400 hover:text-white border border-emerald-500/30 transition-all cursor-pointer"
+                          title={`Enviar Estado de Cuenta de ${r.agencia} por WhatsApp`}
+                        >
+                          <WhatsAppIcon className="w-3.5 h-3.5 fill-current" />
+                        </a>
+                      </div>
                     </td>
                   </tr>
                 ))}
@@ -626,27 +697,126 @@ export const AccountBalancesTab: React.FC = () => {
                   <span>Estado de Cuenta: {detailMovements.agencia}</span>
                 </h3>
                 <p className="text-[11px] sm:text-xs text-slate-400 mt-0.5">
-                  Desglose de ventas, pagos y gastos registrados para esta agencia.
+                  Desglose financiero consolidado, ventas, pagos y gastos en {activeCurrency}.
                 </p>
               </div>
 
-              <button
-                onClick={() => setDetailModalAgency(null)}
-                className="w-8 h-8 rounded-full bg-slate-800 hover:bg-slate-700 text-slate-400 hover:text-white flex items-center justify-center text-xs font-bold transition-colors shrink-0"
-              >
-                ✕
-              </button>
+              <div className="flex items-center gap-2 shrink-0">
+                {selectedAgencyRow && (
+                  <a
+                    href={generateAgencyWhatsAppUrl(selectedAgencyRow)}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="p-2 rounded-xl bg-emerald-600/20 hover:bg-emerald-600 text-emerald-400 hover:text-white border border-emerald-500/30 transition-all cursor-pointer hidden sm:flex items-center gap-1.5 text-xs font-bold"
+                    title="Enviar Estado de Cuenta por WhatsApp"
+                  >
+                    <WhatsAppIcon className="w-4 h-4 fill-current" />
+                    <span>WhatsApp</span>
+                  </a>
+                )}
+                <button
+                  onClick={() => setDetailModalAgency(null)}
+                  className="w-8 h-8 rounded-full bg-slate-800 hover:bg-slate-700 text-slate-400 hover:text-white flex items-center justify-center text-xs font-bold transition-colors shrink-0"
+                >
+                  ✕
+                </button>
+              </div>
             </div>
 
-            {/* Scrollable lists */}
-            <div className="overflow-y-auto space-y-4 py-2 pr-1 flex-1">
+            {/* Scrollable contents */}
+            <div className="overflow-y-auto space-y-4 py-3 pr-1 flex-1">
+              {/* Financial Balance Summary Card */}
+              {selectedAgencyRow && (
+                <div className="bg-[#071217] border border-slate-800 rounded-2xl p-4 space-y-3 shrink-0">
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <span className="text-[10px] uppercase font-bold text-slate-400 tracking-wider">
+                        Balance Final ({activeCurrency})
+                      </span>
+                      <div
+                        className="text-xl sm:text-2xl font-black font-mono mt-0.5"
+                        style={{
+                          color:
+                            selectedAgencyRow.status === 'pendiente'
+                              ? '#f43f5e'
+                              : selectedAgencyRow.status === 'favor'
+                              ? '#22d3ee'
+                              : '#10b981',
+                        }}
+                      >
+                        {formatCurrency(selectedAgencyRow.balance_final, activeCurrency)}
+                      </div>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      {selectedAgencyRow.status === 'pagado' && (
+                        <span className="px-2.5 py-1 rounded-full bg-emerald-500/15 text-emerald-400 text-xs font-bold border border-emerald-500/30">
+                          🟢 PAGADO
+                        </span>
+                      )}
+                      {selectedAgencyRow.status === 'pendiente' && (
+                        <span className="px-2.5 py-1 rounded-full bg-rose-500/15 text-rose-400 text-xs font-bold border border-rose-500/30 animate-pulse">
+                          🔴 PENDIENTE
+                        </span>
+                      )}
+                      {selectedAgencyRow.status === 'favor' && (
+                        <span className="px-2.5 py-1 rounded-full bg-cyan-500/15 text-cyan-400 text-xs font-bold border border-cyan-500/30">
+                          🔵 A FAVOR
+                        </span>
+                      )}
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 font-mono text-xs">
+                    <div className="bg-[#0D1B22] p-2.5 rounded-xl border border-slate-800/80">
+                      <span className="text-[10px] font-sans text-slate-400 block">Saldo Arrastre</span>
+                      <span className="text-slate-200 font-semibold truncate block">
+                        {formatCurrency(selectedAgencyRow.saldo_arrastre, activeCurrency)}
+                      </span>
+                    </div>
+                    <div className="bg-[#0D1B22] p-2.5 rounded-xl border border-slate-800/80">
+                      <span className="text-[10px] font-sans text-slate-400 block">Semana (Utilidad)</span>
+                      <span className="text-emerald-400 font-semibold truncate block">
+                        {formatCurrency(selectedAgencyRow.utilidad_semana, activeCurrency)}
+                      </span>
+                    </div>
+                    <div className="bg-[#0D1B22] p-2.5 rounded-xl border border-slate-800/80">
+                      <span className="text-[10px] font-sans text-slate-400 block">Gastos (-)</span>
+                      <span className="text-rose-400 font-semibold truncate block">
+                        {formatCurrency(selectedAgencyRow.gastos, activeCurrency)}
+                      </span>
+                    </div>
+                    <div className="bg-[#0D1B22] p-2.5 rounded-xl border border-slate-800/80">
+                      <span className="text-[10px] font-sans text-slate-400 block">Pagos (-)</span>
+                      <span className="text-cyan-400 font-semibold truncate block">
+                        {formatCurrency(selectedAgencyRow.pagos, activeCurrency)}
+                      </span>
+                      {Boolean(selectedAgencyRow.reposicion_premios && selectedAgencyRow.reposicion_premios > 0) && (
+                        <span className="text-[9px] text-amber-400/90 font-sans block truncate mt-0.5">
+                          (incl. {formatCurrency(selectedAgencyRow.reposicion_premios || 0, activeCurrency)} prem.)
+                        </span>
+                      )}
+                    </div>
+                  </div>
+
+                  <a
+                    href={generateAgencyWhatsAppUrl(selectedAgencyRow)}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="w-full py-2.5 px-4 rounded-xl bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white font-bold text-xs shadow-lg shadow-emerald-600/20 flex items-center justify-center gap-2 transition-all cursor-pointer"
+                  >
+                    <WhatsAppIcon className="w-4 h-4 fill-white" />
+                    <span>Enviar Estado de Cuenta por WhatsApp</span>
+                  </a>
+                </div>
+              )}
+
               {/* Sales List */}
               <div className="space-y-1.5">
                 <span className="text-[11px] font-bold uppercase text-slate-400 tracking-wider">
                   Ventas ({detailMovements.sales.length})
                 </span>
                 {detailMovements.sales.length === 0 ? (
-                  <p className="text-xs text-slate-500 italic">No hay ventas registradas.</p>
+                  <p className="text-xs text-slate-500 italic">No hay ventas registradas en {activeCurrency}.</p>
                 ) : (
                   <div className="max-h-40 overflow-y-auto border border-slate-800 rounded-xl bg-[#071217] p-2 space-y-1 text-xs font-mono">
                     {detailMovements.sales.map((s) => (
@@ -665,7 +835,7 @@ export const AccountBalancesTab: React.FC = () => {
                   Pagos y Cobranzas ({detailMovements.payments.length})
                 </span>
                 {detailMovements.payments.length === 0 ? (
-                  <p className="text-xs text-slate-500 italic">No hay pagos registrados.</p>
+                  <p className="text-xs text-slate-500 italic">No hay pagos registrados en {activeCurrency}.</p>
                 ) : (
                   <div className="max-h-40 overflow-y-auto border border-slate-800 rounded-xl bg-[#071217] p-2 space-y-1 text-xs font-mono">
                     {detailMovements.payments.map((p) => {
@@ -696,7 +866,7 @@ export const AccountBalancesTab: React.FC = () => {
                   Gastos ({detailMovements.expenses.length})
                 </span>
                 {detailMovements.expenses.length === 0 ? (
-                  <p className="text-xs text-slate-500 italic">No hay gastos registrados.</p>
+                  <p className="text-xs text-slate-500 italic">No hay gastos registrados en {activeCurrency}.</p>
                 ) : (
                   <div className="max-h-40 overflow-y-auto border border-slate-800 rounded-xl bg-[#071217] p-2 space-y-1 text-xs font-mono">
                     {detailMovements.expenses.map((e) => (
@@ -710,10 +880,21 @@ export const AccountBalancesTab: React.FC = () => {
               </div>
             </div>
 
-            <div className="flex justify-end pt-3 border-t border-slate-800 shrink-0">
+            <div className="flex items-center justify-between pt-3 border-t border-slate-800 shrink-0 gap-2">
+              {selectedAgencyRow && (
+                <a
+                  href={generateAgencyWhatsAppUrl(selectedAgencyRow)}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="px-4 py-2.5 rounded-xl bg-emerald-600/20 hover:bg-emerald-600 text-emerald-300 hover:text-white font-bold text-xs border border-emerald-500/30 flex items-center gap-2 transition-all cursor-pointer"
+                >
+                  <WhatsAppIcon className="w-4 h-4 fill-current" />
+                  <span>Enviar por WhatsApp</span>
+                </a>
+              )}
               <button
                 onClick={() => setDetailModalAgency(null)}
-                className="px-5 py-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 font-semibold text-xs transition-colors w-full sm:w-auto text-center"
+                className="px-5 py-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 font-semibold text-xs transition-colors text-center ml-auto cursor-pointer"
               >
                 Cerrar Detalle
               </button>

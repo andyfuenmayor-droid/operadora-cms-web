@@ -90,7 +90,6 @@ const AppContent: React.FC = () => {
         return <ExpensesTab />;
 
       case 'Saldo Agencias':
-      case 'Rep. Agencia':
         return <AccountBalancesTab />;
 
       case 'Cierre ':
