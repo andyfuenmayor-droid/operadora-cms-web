@@ -21,7 +21,10 @@ import {
   Search,
   ExternalLink,
   CheckCircle2,
-  AlertCircle
+  AlertCircle,
+  LayoutGrid,
+  List,
+  ChevronRight
 } from 'lucide-react';
 
 interface BalanceRow {
@@ -48,6 +51,12 @@ export const AccountBalancesTab: React.FC = () => {
 
   const [searchQuery, setSearchQuery] = useState('');
   const [detailModalAgency, setDetailModalAgency] = useState<string | null>(null);
+
+  // Mobile / Desktop View Mode (cards or table)
+  const [viewMode, setViewMode] = useState<'cards' | 'table'>(() =>
+    typeof window !== 'undefined' && window.innerWidth >= 768 ? 'table' : 'cards'
+  );
+  const [statusFilter, setStatusFilter] = useState<'all' | 'pendiente' | 'favor' | 'pagado'>('all');
 
   const loadData = async () => {
     if (!effectiveUserId) return;
@@ -139,12 +148,31 @@ export const AccountBalancesTab: React.FC = () => {
     return computeBalances(activeCurrency);
   }, [agencies, sales, payments, expenses, activeCurrency]);
 
+  // Status metrics counts
+  const statusCounts = useMemo(() => {
+    let pendientes = 0;
+    let pagados = 0;
+    let favor = 0;
+    activeBalances.rows.forEach((r) => {
+      if (r.status === 'pendiente') pendientes++;
+      else if (r.status === 'pagado') pagados++;
+      else if (r.status === 'favor') favor++;
+    });
+    return { all: activeBalances.rows.length, pendiente: pendientes, pagado: pagados, favor };
+  }, [activeBalances.rows]);
+
   // Filtered rows for active currency
   const filteredRows = useMemo(() => {
-    if (!searchQuery.trim()) return activeBalances.rows;
-    const q = searchQuery.toLowerCase();
-    return activeBalances.rows.filter((r) => r.agencia.toLowerCase().includes(q));
-  }, [activeBalances.rows, searchQuery]);
+    let list = activeBalances.rows;
+    if (statusFilter !== 'all') {
+      list = list.filter((r) => r.status === statusFilter);
+    }
+    if (searchQuery.trim()) {
+      const q = searchQuery.toLowerCase();
+      list = list.filter((r) => r.agencia.toLowerCase().includes(q));
+    }
+    return list;
+  }, [activeBalances.rows, statusFilter, searchQuery]);
 
   // Generate Master WhatsApp Report URL
   const generateWhatsAppUrl = () => {
@@ -224,50 +252,50 @@ export const AccountBalancesTab: React.FC = () => {
       </div>
 
       {/* Currency Switcher & Total Cartera Metric */}
-      <div className="bg-[#0D1B22] border border-slate-800 rounded-3xl p-6 shadow-xl flex flex-col md:flex-row items-center justify-between gap-6">
-        {/* Currency Tabs */}
-        <div className="flex items-center gap-2 bg-[#071217] p-1.5 rounded-2xl border border-slate-800">
+      <div className="bg-[#0D1B22] border border-slate-800 rounded-3xl p-4 sm:p-6 shadow-xl flex flex-col md:flex-row items-stretch md:items-center justify-between gap-4 sm:gap-6">
+        {/* Currency Tabs (3 columns on mobile, flex on desktop) */}
+        <div className="grid grid-cols-3 sm:flex items-center gap-1.5 sm:gap-2 bg-[#071217] p-1.5 rounded-2xl border border-slate-800 w-full sm:w-auto">
           <button
             onClick={() => setActiveCurrency('BS')}
-            className={`px-4 py-2 rounded-xl text-xs font-bold transition-all cursor-pointer ${
+            className={`px-3 sm:px-4 py-2 rounded-xl text-xs font-bold transition-all cursor-pointer text-center ${
               activeCurrency === 'BS'
-                ? 'bg-amber-500/20 text-amber-400 border border-amber-500/30'
+                ? 'bg-amber-500/20 text-amber-400 border border-amber-500/30 shadow-sm'
                 : 'text-slate-400 hover:text-white'
             }`}
           >
-            🇻🇪 Bolívares (BS)
+            🇻🇪 BS
           </button>
 
           <button
             onClick={() => setActiveCurrency('USD')}
-            className={`px-4 py-2 rounded-xl text-xs font-bold transition-all cursor-pointer ${
+            className={`px-3 sm:px-4 py-2 rounded-xl text-xs font-bold transition-all cursor-pointer text-center ${
               activeCurrency === 'USD'
-                ? 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/30'
+                ? 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 shadow-sm'
                 : 'text-slate-400 hover:text-white'
             }`}
           >
-            💵 Dólares (USD)
+            💵 USD
           </button>
 
           <button
             onClick={() => setActiveCurrency('COP')}
-            className={`px-4 py-2 rounded-xl text-xs font-bold transition-all cursor-pointer ${
+            className={`px-3 sm:px-4 py-2 rounded-xl text-xs font-bold transition-all cursor-pointer text-center ${
               activeCurrency === 'COP'
-                ? 'bg-cyan-500/20 text-cyan-400 border border-cyan-500/30'
+                ? 'bg-cyan-500/20 text-cyan-400 border border-cyan-500/30 shadow-sm'
                 : 'text-slate-400 hover:text-white'
             }`}
           >
-            🇨🇴 Pesos (COP)
+            🇨🇴 COP
           </button>
         </div>
 
         {/* Cartera Total Metric */}
-        <div className="text-center md:text-right">
-          <span className="text-[11px] font-bold uppercase tracking-wider text-slate-400 block">
+        <div className="text-center md:text-right bg-[#071217]/60 md:bg-transparent p-3 md:p-0 rounded-2xl border border-slate-800/60 md:border-0">
+          <span className="text-[10px] sm:text-[11px] font-bold uppercase tracking-wider text-slate-400 block">
             Cartera Total Pendiente ({activeCurrency})
           </span>
           <span
-            className={`text-2xl sm:text-3xl font-black font-mono mt-1 block ${
+            className={`text-xl sm:text-2xl md:text-3xl font-black font-mono mt-0.5 block ${
               activeBalances.totalDebt > 0
                 ? 'text-rose-400'
                 : activeBalances.totalDebt < 0
@@ -280,197 +308,412 @@ export const AccountBalancesTab: React.FC = () => {
         </div>
       </div>
 
-      {/* Search Input */}
-      <div className="relative">
-        <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
-        <input
-          type="text"
-          placeholder="Buscar agencia..."
-          value={searchQuery}
-          onChange={(e) => setSearchQuery(e.target.value)}
-          className="w-full bg-[#0D1B22] border border-slate-800 rounded-2xl pl-9 pr-4 py-3 text-xs text-white focus:outline-none focus:border-purple-500"
-        />
-      </div>
+      {/* Controls Bar: Search + Status Chips + View Toggle */}
+      <div className="space-y-3">
+        <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3">
+          {/* Search Input */}
+          <div className="relative flex-1">
+            <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+            <input
+              type="text"
+              placeholder="Buscar agencia por nombre..."
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              className="w-full bg-[#0D1B22] border border-slate-800 rounded-2xl pl-9 pr-4 py-2.5 text-xs text-white placeholder:text-slate-500 focus:outline-none focus:border-purple-500 transition-colors"
+            />
+          </div>
 
-      {/* Account Balances Table */}
-      <div className="bg-[#0D1B22] border border-slate-800 rounded-3xl overflow-hidden shadow-xl">
-        <div className="p-4 sm:p-6 border-b border-slate-800 flex items-center justify-between">
-          <h4 className="text-sm font-bold text-white uppercase tracking-wider">
-            Saldos y Balances en {activeCurrency} ({filteredRows.length})
-          </h4>
+          {/* View Toggle (Cards vs Table) */}
+          <div className="flex items-center gap-1 bg-[#071217] p-1 rounded-2xl border border-slate-800 self-end sm:self-auto shrink-0">
+            <button
+              onClick={() => setViewMode('cards')}
+              className={`px-3 py-1.5 rounded-xl text-xs font-semibold flex items-center gap-1.5 transition-all cursor-pointer ${
+                viewMode === 'cards'
+                  ? 'bg-purple-600/30 text-purple-300 border border-purple-500/40 shadow-sm'
+                  : 'text-slate-400 hover:text-white'
+              }`}
+            >
+              <LayoutGrid className="w-3.5 h-3.5" />
+              <span>Tarjetas</span>
+            </button>
+            <button
+              onClick={() => setViewMode('table')}
+              className={`px-3 py-1.5 rounded-xl text-xs font-semibold flex items-center gap-1.5 transition-all cursor-pointer ${
+                viewMode === 'table'
+                  ? 'bg-purple-600/30 text-purple-300 border border-purple-500/40 shadow-sm'
+                  : 'text-slate-400 hover:text-white'
+              }`}
+            >
+              <List className="w-3.5 h-3.5" />
+              <span>Tabla</span>
+            </button>
+          </div>
         </div>
 
-        <div className="overflow-x-auto">
-          <table className="w-full text-left text-xs">
-            <thead className="bg-[#071217] text-slate-400 border-b border-slate-800 font-bold uppercase tracking-wider">
-              <tr>
-                <th className="py-3.5 px-4">Agencia</th>
-                <th className="py-3.5 px-4 text-right">Saldo Arrastre</th>
-                <th className="py-3.5 px-4 text-right">Semana (Utilidad)</th>
-                <th className="py-3.5 px-4 text-right">Gastos (-)</th>
-                <th className="py-3.5 px-4 text-right">Pagos (-)</th>
-                <th className="py-3.5 px-4 text-right">Balance Final</th>
-                <th className="py-3.5 px-4 text-center">Estatus</th>
-                <th className="py-3.5 px-4 text-center">Detalle</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-slate-800/80 font-mono">
-              {filteredRows.map((r) => (
-                <tr key={r.id} className="hover:bg-slate-800/30 transition-colors">
-                  <td className="py-3.5 px-4 font-sans font-bold text-white">{r.agencia}</td>
-                  <td className="py-3.5 px-4 text-right text-slate-400">{formatCurrency(r.saldo_arrastre, activeCurrency)}</td>
-                  <td className="py-3.5 px-4 text-right text-emerald-400 font-semibold">{formatCurrency(r.utilidad_semana, activeCurrency)}</td>
-                  <td className="py-3.5 px-4 text-right text-rose-400">{formatCurrency(r.gastos, activeCurrency)}</td>
-                  <td className="py-3.5 px-4 text-right text-cyan-400">
-                    <div>{formatCurrency(r.pagos, activeCurrency)}</div>
-                    {Boolean(r.reposicion_premios && r.reposicion_premios > 0) && (
-                      <span className="text-[10px] text-amber-400/90 font-sans block">
-                        (incl. {formatCurrency(r.reposicion_premios || 0, activeCurrency)} premios)
-                      </span>
-                    )}
-                  </td>
-                  <td
-                    className={`py-3.5 px-4 text-right font-black text-sm ${
-                      r.status === 'pendiente'
-                        ? 'text-rose-400'
-                        : r.status === 'favor'
-                        ? 'text-cyan-400'
-                        : 'text-emerald-400'
-                    }`}
-                  >
-                    {formatCurrency(r.balance_final, activeCurrency)}
-                  </td>
-                  <td className="py-3.5 px-4 text-center font-sans">
+        {/* Status Filter Chips */}
+        <div className="flex items-center gap-1.5 overflow-x-auto pb-1 no-scrollbar">
+          <button
+            onClick={() => setStatusFilter('all')}
+            className={`px-3 py-1.5 rounded-xl text-xs font-semibold whitespace-nowrap transition-all cursor-pointer ${
+              statusFilter === 'all'
+                ? 'bg-slate-700 text-white shadow'
+                : 'bg-[#0D1B22] text-slate-400 hover:text-slate-200 border border-slate-800'
+            }`}
+          >
+            Todas ({statusCounts.all})
+          </button>
+          <button
+            onClick={() => setStatusFilter('pendiente')}
+            className={`px-3 py-1.5 rounded-xl text-xs font-semibold whitespace-nowrap transition-all cursor-pointer ${
+              statusFilter === 'pendiente'
+                ? 'bg-rose-500/20 text-rose-300 border border-rose-500/40 shadow'
+                : 'bg-[#0D1B22] text-rose-400/90 hover:text-rose-300 border border-slate-800'
+            }`}
+          >
+            🔴 Pendientes ({statusCounts.pendiente})
+          </button>
+          <button
+            onClick={() => setStatusFilter('favor')}
+            className={`px-3 py-1.5 rounded-xl text-xs font-semibold whitespace-nowrap transition-all cursor-pointer ${
+              statusFilter === 'favor'
+                ? 'bg-cyan-500/20 text-cyan-300 border border-cyan-500/40 shadow'
+                : 'bg-[#0D1B22] text-cyan-400/90 hover:text-cyan-300 border border-slate-800'
+            }`}
+          >
+            🔵 A Favor ({statusCounts.favor})
+          </button>
+          <button
+            onClick={() => setStatusFilter('pagado')}
+            className={`px-3 py-1.5 rounded-xl text-xs font-semibold whitespace-nowrap transition-all cursor-pointer ${
+              statusFilter === 'pagado'
+                ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/40 shadow'
+                : 'bg-[#0D1B22] text-emerald-400/90 hover:text-emerald-300 border border-slate-800'
+            }`}
+          >
+            🟢 Pagadas ({statusCounts.pagado})
+          </button>
+        </div>
+      </div>
+
+      {/* =========================================================================
+          VIEW MODE 1: MODERN MOBILE / RESPONSIVE CARDS
+      ========================================================================= */}
+      {viewMode === 'cards' && (
+        <div className="space-y-3">
+          <div className="flex items-center justify-between text-xs text-slate-400 px-1">
+            <span>Mostrando <strong>{filteredRows.length}</strong> agencias en <strong>{activeCurrency}</strong></span>
+          </div>
+
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 sm:gap-4">
+            {filteredRows.map((r) => (
+              <div
+                key={r.id}
+                onClick={() => setDetailModalAgency(r.agencia)}
+                className="bg-[#0D1B22] hover:bg-[#10222b] border border-slate-800 hover:border-slate-700/80 rounded-2xl p-4 shadow-xl active:scale-[0.99] transition-all cursor-pointer space-y-3 relative overflow-hidden group"
+              >
+                {/* Agency Name & Status Badge */}
+                <div className="flex items-center justify-between gap-2">
+                  <div className="flex items-center gap-2 min-w-0">
+                    <span className="w-6 h-6 rounded-lg bg-slate-800/90 border border-slate-700/70 flex items-center justify-center text-slate-300 font-mono text-[11px] font-bold shrink-0">
+                      {r.id}
+                    </span>
+                    <h3 className="font-bold text-white text-sm truncate group-hover:text-purple-300 transition-colors">
+                      {r.agencia}
+                    </h3>
+                  </div>
+
+                  <div className="flex items-center gap-1.5 shrink-0">
                     {r.status === 'pagado' && (
-                      <span className="px-2 py-0.5 rounded-full bg-emerald-500/15 text-emerald-400 text-[10px] font-bold border border-emerald-500/30">
-                        🟢 PAGADO
+                      <span className="px-2 py-0.5 rounded-full bg-emerald-500/15 text-emerald-400 text-[10px] font-bold border border-emerald-500/30 flex items-center gap-1">
+                        <span className="w-1.5 h-1.5 rounded-full bg-emerald-400"></span>
+                        PAGADO
                       </span>
                     )}
                     {r.status === 'pendiente' && (
-                      <span className="px-2 py-0.5 rounded-full bg-rose-500/15 text-rose-400 text-[10px] font-bold border border-rose-500/30">
-                        🔴 PENDIENTE
+                      <span className="px-2 py-0.5 rounded-full bg-rose-500/15 text-rose-400 text-[10px] font-bold border border-rose-500/30 flex items-center gap-1">
+                        <span className="w-1.5 h-1.5 rounded-full bg-rose-400 animate-pulse"></span>
+                        PENDIENTE
                       </span>
                     )}
                     {r.status === 'favor' && (
-                      <span className="px-2 py-0.5 rounded-full bg-cyan-500/15 text-cyan-400 text-[10px] font-bold border border-cyan-500/30">
-                        🔵 A FAVOR
+                      <span className="px-2 py-0.5 rounded-full bg-cyan-500/15 text-cyan-400 text-[10px] font-bold border border-cyan-500/30 flex items-center gap-1">
+                        <span className="w-1.5 h-1.5 rounded-full bg-cyan-400"></span>
+                        A FAVOR
                       </span>
                     )}
-                  </td>
-                  <td className="py-3.5 px-4 text-center">
                     <button
-                      onClick={() => setDetailModalAgency(r.agencia)}
-                      className="p-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white transition-colors cursor-pointer"
-                      title="Ver Detalle de la Agencia"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setDetailModalAgency(r.agencia);
+                      }}
+                      className="p-1 rounded-lg bg-slate-800/80 hover:bg-slate-700 text-slate-400 hover:text-white transition-colors"
+                      title="Ver detalle"
                     >
-                      <ExternalLink className="w-3.5 h-3.5" />
+                      <ChevronRight className="w-4 h-4" />
                     </button>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
+                  </div>
+                </div>
+
+                {/* Hero Balance Box */}
+                <div
+                  className={`p-3 rounded-xl border flex items-center justify-between ${
+                    r.status === 'pendiente'
+                      ? 'bg-rose-500/10 border-rose-500/25 text-rose-400'
+                      : r.status === 'favor'
+                      ? 'bg-cyan-500/10 border-cyan-500/25 text-cyan-400'
+                      : 'bg-emerald-500/10 border-emerald-500/25 text-emerald-400'
+                  }`}
+                >
+                  <div className="text-[10px] font-bold uppercase tracking-wider text-slate-400">
+                    Balance Final
+                  </div>
+                  <div className="text-lg sm:text-xl font-black font-mono tracking-tight">
+                    {formatCurrency(r.balance_final, activeCurrency)}
+                  </div>
+                </div>
+
+                {/* 4 Financial Items Grid */}
+                <div className="grid grid-cols-2 gap-2 text-xs font-mono">
+                  <div className="bg-[#071217] p-2 rounded-xl border border-slate-800/80">
+                    <span className="text-[10px] font-sans text-slate-400 block">Saldo Arrastre</span>
+                    <span className="text-slate-200 font-semibold text-xs truncate block">
+                      {formatCurrency(r.saldo_arrastre, activeCurrency)}
+                    </span>
+                  </div>
+
+                  <div className="bg-[#071217] p-2 rounded-xl border border-slate-800/80">
+                    <span className="text-[10px] font-sans text-slate-400 block">Semana (Utilidad)</span>
+                    <span className="text-emerald-400 font-semibold text-xs truncate block">
+                      {formatCurrency(r.utilidad_semana, activeCurrency)}
+                    </span>
+                  </div>
+
+                  <div className="bg-[#071217] p-2 rounded-xl border border-slate-800/80">
+                    <span className="text-[10px] font-sans text-slate-400 block">Gastos (-)</span>
+                    <span className="text-rose-400 font-semibold text-xs truncate block">
+                      {formatCurrency(r.gastos, activeCurrency)}
+                    </span>
+                  </div>
+
+                  <div className="bg-[#071217] p-2 rounded-xl border border-slate-800/80">
+                    <span className="text-[10px] font-sans text-slate-400 block">Pagos (-)</span>
+                    <span className="text-cyan-400 font-semibold text-xs truncate block">
+                      {formatCurrency(r.pagos, activeCurrency)}
+                    </span>
+                    {Boolean(r.reposicion_premios && r.reposicion_premios > 0) && (
+                      <span className="text-[9px] text-amber-400/90 font-sans block truncate mt-0.5">
+                        (incl. {formatCurrency(r.reposicion_premios || 0, activeCurrency)} prem.)
+                      </span>
+                    )}
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
+
+          {filteredRows.length === 0 && (
+            <div className="bg-[#0D1B22] border border-slate-800 rounded-3xl p-8 text-center text-slate-400 text-xs">
+              No se encontraron agencias con los filtros aplicados.
+            </div>
+          )}
         </div>
-      </div>
+      )}
+
+      {/* =========================================================================
+          VIEW MODE 2: DESKTOP / PINNED STICKY TABLE
+      ========================================================================= */}
+      {viewMode === 'table' && (
+        <div className="bg-[#0D1B22] border border-slate-800 rounded-3xl overflow-hidden shadow-xl">
+          <div className="p-4 sm:p-6 border-b border-slate-800 flex items-center justify-between">
+            <h4 className="text-sm font-bold text-white uppercase tracking-wider">
+              Saldos y Balances en {activeCurrency} ({filteredRows.length})
+            </h4>
+          </div>
+
+          <div className="overflow-x-auto">
+            <table className="w-full text-left text-xs">
+              <thead className="bg-[#071217] text-slate-400 border-b border-slate-800 font-bold uppercase tracking-wider">
+                <tr>
+                  {/* Pinned Agency Column with shadow */}
+                  <th className="py-3.5 px-4 sticky left-0 bg-[#071217] z-20 border-r border-slate-800 shadow-[2px_0_8px_-2px_rgba(0,0,0,0.6)]">
+                    Agencia
+                  </th>
+                  <th className="py-3.5 px-4 text-right">Saldo Arrastre</th>
+                  <th className="py-3.5 px-4 text-right">Semana (Utilidad)</th>
+                  <th className="py-3.5 px-4 text-right">Gastos (-)</th>
+                  <th className="py-3.5 px-4 text-right">Pagos (-)</th>
+                  <th className="py-3.5 px-4 text-right">Balance Final</th>
+                  <th className="py-3.5 px-4 text-center">Estatus</th>
+                  <th className="py-3.5 px-4 text-center">Detalle</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-800/80 font-mono">
+                {filteredRows.map((r) => (
+                  <tr key={r.id} className="hover:bg-slate-800/30 transition-colors group">
+                    {/* Pinned Agency Column with shadow */}
+                    <td className="py-3.5 px-4 font-sans font-bold text-white sticky left-0 bg-[#0D1B22] group-hover:bg-[#12232c] z-10 border-r border-slate-800/80 shadow-[2px_0_8px_-2px_rgba(0,0,0,0.6)] whitespace-nowrap">
+                      <div className="flex items-center gap-2">
+                        <span className="text-[11px] text-slate-500 font-mono">#{r.id}</span>
+                        <span>{r.agencia}</span>
+                      </div>
+                    </td>
+                    <td className="py-3.5 px-4 text-right text-slate-400">{formatCurrency(r.saldo_arrastre, activeCurrency)}</td>
+                    <td className="py-3.5 px-4 text-right text-emerald-400 font-semibold">{formatCurrency(r.utilidad_semana, activeCurrency)}</td>
+                    <td className="py-3.5 px-4 text-right text-rose-400">{formatCurrency(r.gastos, activeCurrency)}</td>
+                    <td className="py-3.5 px-4 text-right text-cyan-400">
+                      <div>{formatCurrency(r.pagos, activeCurrency)}</div>
+                      {Boolean(r.reposicion_premios && r.reposicion_premios > 0) && (
+                        <span className="text-[10px] text-amber-400/90 font-sans block">
+                          (incl. {formatCurrency(r.reposicion_premios || 0, activeCurrency)} premios)
+                        </span>
+                      )}
+                    </td>
+                    <td
+                      className={`py-3.5 px-4 text-right font-black text-sm ${
+                        r.status === 'pendiente'
+                          ? 'text-rose-400'
+                          : r.status === 'favor'
+                          ? 'text-cyan-400'
+                          : 'text-emerald-400'
+                      }`}
+                    >
+                      {formatCurrency(r.balance_final, activeCurrency)}
+                    </td>
+                    <td className="py-3.5 px-4 text-center font-sans whitespace-nowrap">
+                      {r.status === 'pagado' && (
+                        <span className="px-2 py-0.5 rounded-full bg-emerald-500/15 text-emerald-400 text-[10px] font-bold border border-emerald-500/30">
+                          🟢 PAGADO
+                        </span>
+                      )}
+                      {r.status === 'pendiente' && (
+                        <span className="px-2 py-0.5 rounded-full bg-rose-500/15 text-rose-400 text-[10px] font-bold border border-rose-500/30">
+                          🔴 PENDIENTE
+                        </span>
+                      )}
+                      {r.status === 'favor' && (
+                        <span className="px-2 py-0.5 rounded-full bg-cyan-500/15 text-cyan-400 text-[10px] font-bold border border-cyan-500/30">
+                          🔵 A FAVOR
+                        </span>
+                      )}
+                    </td>
+                    <td className="py-3.5 px-4 text-center">
+                      <button
+                        onClick={() => setDetailModalAgency(r.agencia)}
+                        className="p-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white transition-colors cursor-pointer"
+                        title="Ver Detalle de la Agencia"
+                      >
+                        <ExternalLink className="w-3.5 h-3.5" />
+                      </button>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
 
       {/* =========================================================================
           INDIVIDUAL AGENCY DETAIL MODAL
       ========================================================================= */}
       {detailMovements && (
-        <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4 overflow-y-auto">
-          <div className="bg-[#0D1B22] border border-slate-800 rounded-3xl p-6 sm:p-8 max-w-2xl w-full space-y-5 shadow-2xl animate-fade-in my-8">
-            <div className="flex items-center justify-between pb-3 border-b border-slate-800">
-              <div>
-                <h3 className="text-base font-bold text-white flex items-center gap-2">
-                  <Building2 className="w-5 h-5 text-purple-400" />
-                  Estado de Cuenta Detallado: {detailMovements.agencia}
+        <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-3 sm:p-4 overflow-y-auto">
+          <div className="bg-[#0D1B22] border border-slate-800 rounded-3xl p-5 sm:p-7 max-w-2xl w-full max-h-[90vh] flex flex-col shadow-2xl animate-fade-in my-auto">
+            <div className="flex items-center justify-between pb-3 border-b border-slate-800 shrink-0">
+              <div className="pr-2">
+                <h3 className="text-sm sm:text-base font-bold text-white flex items-center gap-2">
+                  <Building2 className="w-5 h-5 text-purple-400 shrink-0" />
+                  <span>Estado de Cuenta: {detailMovements.agencia}</span>
                 </h3>
-                <p className="text-xs text-slate-400">
+                <p className="text-[11px] sm:text-xs text-slate-400 mt-0.5">
                   Desglose de ventas, pagos y gastos registrados para esta agencia.
                 </p>
               </div>
 
               <button
                 onClick={() => setDetailModalAgency(null)}
-                className="text-slate-400 hover:text-white text-xs font-bold"
+                className="w-8 h-8 rounded-full bg-slate-800 hover:bg-slate-700 text-slate-400 hover:text-white flex items-center justify-center text-xs font-bold transition-colors shrink-0"
               >
                 ✕
               </button>
             </div>
 
-            {/* Sales List */}
-            <div className="space-y-2">
-              <span className="text-xs font-bold uppercase text-slate-400 tracking-wider">
-                Ventas ({detailMovements.sales.length})
-              </span>
-              {detailMovements.sales.length === 0 ? (
-                <p className="text-xs text-slate-500 italic">No hay ventas registradas.</p>
-              ) : (
-                <div className="max-h-36 overflow-y-auto border border-slate-800 rounded-xl bg-[#071217] p-2 space-y-1 text-xs font-mono">
-                  {detailMovements.sales.map((s) => (
-                    <div key={s.id} className="flex justify-between py-1 border-b border-slate-800/60 last:border-0">
-                      <span>{formatDate(s.fecha)} • {s.sistema}</span>
-                      <span>Venta: {formatCurrency(s.venta, s.moneda)} | Neto: <strong className="text-emerald-400">{formatCurrency(s.neto, s.moneda)}</strong></span>
-                    </div>
-                  ))}
-                </div>
-              )}
-            </div>
-
-            {/* Payments List */}
-            <div className="space-y-2">
-              <span className="text-xs font-bold uppercase text-slate-400 tracking-wider">
-                Pagos y Cobranzas ({detailMovements.payments.length})
-              </span>
-              {detailMovements.payments.length === 0 ? (
-                <p className="text-xs text-slate-500 italic">No hay pagos registrados.</p>
-              ) : (
-                <div className="max-h-36 overflow-y-auto border border-slate-800 rounded-xl bg-[#071217] p-2 space-y-1 text-xs font-mono">
-                  {detailMovements.payments.map((p) => {
-                    const isPremio = String(p.tipo_pago || '').toUpperCase().includes('PREMIO');
-                    return (
-                      <div key={p.id} className="flex justify-between items-center py-1 border-b border-slate-800/60 last:border-0">
-                        <span>
-                          {formatDate(p.fecha)} • {p.metodo} ({p.referencia})
-                          {isPremio && (
-                            <span className="ml-1.5 px-1.5 py-0.5 rounded bg-amber-500/20 text-amber-300 text-[10px] font-sans font-semibold">
-                              Reposición Premios
-                            </span>
-                          )}
-                        </span>
-                        <strong className={isPremio ? 'text-amber-400' : 'text-cyan-400'}>
-                          {isPremio ? '-' : ''}{formatCurrency(p.monto, p.moneda)}
-                        </strong>
+            {/* Scrollable lists */}
+            <div className="overflow-y-auto space-y-4 py-2 pr-1 flex-1">
+              {/* Sales List */}
+              <div className="space-y-1.5">
+                <span className="text-[11px] font-bold uppercase text-slate-400 tracking-wider">
+                  Ventas ({detailMovements.sales.length})
+                </span>
+                {detailMovements.sales.length === 0 ? (
+                  <p className="text-xs text-slate-500 italic">No hay ventas registradas.</p>
+                ) : (
+                  <div className="max-h-40 overflow-y-auto border border-slate-800 rounded-xl bg-[#071217] p-2 space-y-1 text-xs font-mono">
+                    {detailMovements.sales.map((s) => (
+                      <div key={s.id} className="flex justify-between items-center py-1 border-b border-slate-800/60 last:border-0 text-[11px] sm:text-xs">
+                        <span className="truncate pr-2">{formatDate(s.fecha)} • {s.sistema}</span>
+                        <span className="shrink-0 text-right">Venta: {formatCurrency(s.venta, s.moneda)} | <strong className="text-emerald-400">{formatCurrency(s.neto, s.moneda)}</strong></span>
                       </div>
-                    );
-                  })}
-                </div>
-              )}
+                    ))}
+                  </div>
+                )}
+              </div>
+
+              {/* Payments List */}
+              <div className="space-y-1.5">
+                <span className="text-[11px] font-bold uppercase text-slate-400 tracking-wider">
+                  Pagos y Cobranzas ({detailMovements.payments.length})
+                </span>
+                {detailMovements.payments.length === 0 ? (
+                  <p className="text-xs text-slate-500 italic">No hay pagos registrados.</p>
+                ) : (
+                  <div className="max-h-40 overflow-y-auto border border-slate-800 rounded-xl bg-[#071217] p-2 space-y-1 text-xs font-mono">
+                    {detailMovements.payments.map((p) => {
+                      const isPremio = String(p.tipo_pago || '').toUpperCase().includes('PREMIO');
+                      return (
+                        <div key={p.id} className="flex justify-between items-center py-1.5 border-b border-slate-800/60 last:border-0 text-[11px] sm:text-xs">
+                          <span className="truncate pr-2">
+                            {formatDate(p.fecha)} • {p.metodo} ({p.referencia})
+                            {isPremio && (
+                              <span className="ml-1.5 px-1.5 py-0.5 rounded bg-amber-500/20 text-amber-300 text-[9px] font-sans font-semibold">
+                                Reposición Premios
+                              </span>
+                            )}
+                          </span>
+                          <strong className={`shrink-0 ${isPremio ? 'text-amber-400' : 'text-cyan-400'}`}>
+                            {isPremio ? '-' : ''}{formatCurrency(p.monto, p.moneda)}
+                          </strong>
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
+
+              {/* Expenses List */}
+              <div className="space-y-1.5">
+                <span className="text-[11px] font-bold uppercase text-slate-400 tracking-wider">
+                  Gastos ({detailMovements.expenses.length})
+                </span>
+                {detailMovements.expenses.length === 0 ? (
+                  <p className="text-xs text-slate-500 italic">No hay gastos registrados.</p>
+                ) : (
+                  <div className="max-h-40 overflow-y-auto border border-slate-800 rounded-xl bg-[#071217] p-2 space-y-1 text-xs font-mono">
+                    {detailMovements.expenses.map((e) => (
+                      <div key={e.id} className="flex justify-between items-center py-1 border-b border-slate-800/60 last:border-0 text-[11px] sm:text-xs">
+                        <span className="truncate pr-2">{formatDate(e.fecha)} • {e.concepto}</span>
+                        <strong className="text-rose-400 shrink-0">{formatCurrency(e.monto, e.moneda)}</strong>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
             </div>
 
-            {/* Expenses List */}
-            <div className="space-y-2">
-              <span className="text-xs font-bold uppercase text-slate-400 tracking-wider">
-                Gastos ({detailMovements.expenses.length})
-              </span>
-              {detailMovements.expenses.length === 0 ? (
-                <p className="text-xs text-slate-500 italic">No hay gastos registrados.</p>
-              ) : (
-                <div className="max-h-36 overflow-y-auto border border-slate-800 rounded-xl bg-[#071217] p-2 space-y-1 text-xs font-mono">
-                  {detailMovements.expenses.map((e) => (
-                    <div key={e.id} className="flex justify-between py-1 border-b border-slate-800/60 last:border-0">
-                      <span>{formatDate(e.fecha)} • {e.concepto}</span>
-                      <strong className="text-rose-400">{formatCurrency(e.monto, e.moneda)}</strong>
-                    </div>
-                  ))}
-                </div>
-              )}
-            </div>
-
-            <div className="flex justify-end pt-3 border-t border-slate-800">
+            <div className="flex justify-end pt-3 border-t border-slate-800 shrink-0">
               <button
                 onClick={() => setDetailModalAgency(null)}
-                className="px-5 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 font-semibold text-xs transition-colors"
+                className="px-5 py-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 font-semibold text-xs transition-colors w-full sm:w-auto text-center"
               >
                 Cerrar Detalle
               </button>
