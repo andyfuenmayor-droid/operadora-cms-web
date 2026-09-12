@@ -724,7 +724,7 @@ export const ConfirmationsQuick: React.FC = () => {
 
                       <span className="px-2 py-0.5 rounded-md bg-amber-500/10 text-amber-400 border border-amber-500/20 text-[10px] font-bold flex items-center gap-1">
                         <Clock className="w-2.5 h-2.5" />
-                        <span>Pendiente</span>
+                        <span>{tx.metodo.includes('COBRADOR') ? '🛵 Por Recoger (Cobrador)' : 'Pendiente'}</span>
                       </span>
 
                       <span className="text-[11px] text-slate-400 font-mono">{formatDate(tx.fecha)}</span>

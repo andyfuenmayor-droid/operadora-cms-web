@@ -288,11 +288,14 @@ export const ConfirmationsReport: React.FC = () => {
           concepto: conceptoFinal,
           pagador: pagadorFinal,
           confirmado: isConf,
-          confirmado_por: r.confirmado_por || r.supervisor_nombre || null,
+          confirmado_por: r.confirmado_por || r.cobrado_por || r.supervisor_nombre || null,
           rechazado: isRech,
           rechazado_por: r.rechazado_por || null,
           motivo_rechazo: r.motivo_rechazo || null,
           fecha_rechazo: r.fecha_rechazo || null,
+          is_cobrador: isCobrador,
+          estado_raw: String(r.estado || '').toLowerCase(),
+          liquidado_admin: !!r.liquidado_admin,
           created_at: String(r.created_at || ''),
         });
       });
@@ -796,16 +799,30 @@ export const ConfirmationsReport: React.FC = () => {
                           {formatCurrency(tx.monto, tx.moneda)}
                         </td>
                         <td className="p-3.5 text-center whitespace-nowrap">
-                          {tx.confirmado ? (
-                            <span className="px-2 py-0.5 rounded-md bg-emerald-500/15 text-emerald-400 border border-emerald-500/30 text-[10px] font-bold">
-                              ✅ Confirmado {tx.confirmado_por ? `(${tx.confirmado_por})` : ''}
-                            </span>
-                          ) : tx.rechazado ? (
-                            <span className="px-2 py-0.5 rounded-md bg-rose-500/15 text-rose-400 border border-rose-500/30 text-[10px] font-bold">
+                          {tx.rechazado ? (
+                            <span className="px-2.5 py-1 rounded-md bg-rose-500/15 text-rose-400 border border-rose-500/30 text-[10px] font-bold">
                               ❌ Rechazado
                             </span>
+                          ) : tx.is_cobrador ? (
+                            tx.liquidado_admin || tx.estado_raw === 'liquidado' ? (
+                              <span className="px-2.5 py-1 rounded-md bg-teal-500/15 text-teal-300 border border-teal-500/30 text-[10px] font-bold">
+                                💼 Liquidado en Caja
+                              </span>
+                            ) : tx.confirmado || tx.estado_raw === 'cobrado' ? (
+                              <span className="px-2.5 py-1 rounded-md bg-sky-500/15 text-sky-300 border border-sky-500/30 text-[10px] font-bold">
+                                🛵 Cobrado / En Ruta {tx.confirmado_por ? `(${tx.confirmado_por})` : ''}
+                              </span>
+                            ) : (
+                              <span className="px-2.5 py-1 rounded-md bg-amber-500/15 text-amber-400 border border-amber-500/30 text-[10px] font-bold">
+                                ⏳ Por Recoger (Taquilla)
+                              </span>
+                            )
+                          ) : tx.confirmado ? (
+                            <span className="px-2.5 py-1 rounded-md bg-emerald-500/15 text-emerald-400 border border-emerald-500/30 text-[10px] font-bold">
+                              ✅ Confirmado {tx.confirmado_por ? `(${tx.confirmado_por})` : ''}
+                            </span>
                           ) : (
-                            <span className="px-2 py-0.5 rounded-md bg-amber-500/15 text-amber-400 border border-amber-500/30 text-[10px] font-bold">
+                            <span className="px-2.5 py-1 rounded-md bg-amber-500/15 text-amber-400 border border-amber-500/30 text-[10px] font-bold">
                               ⏳ Pendiente
                             </span>
                           )}

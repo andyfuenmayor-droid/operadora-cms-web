@@ -142,6 +142,8 @@ export interface ConfirmationTransaction {
   fecha_rechazo?: string | null;
   cobrador_nombre?: string;
   qr_token?: string;
+  is_cobrador?: boolean;
+  estado_raw?: string;
   liquidado_admin?: boolean;
   fecha_escaneo_cobrador?: string;
   created_at?: string;
