@@ -99,7 +99,7 @@ export const AccountBalancesTab: React.FC = () => {
     const rows: BalanceRow[] = [];
 
     agencies.forEach((ag) => {
-      const nom = ag.nombre_agencia.trim().toUpperCase();
+      const nom = String(ag.nombre_agencia || '').trim().toUpperCase();
       const sAnt = Number(ag[colInicial] || 0);
 
       // Utilidad operativa de la semana
@@ -212,8 +212,8 @@ export const AccountBalancesTab: React.FC = () => {
 
   // Generate individual agency WhatsApp account balance message with systems breakdown
   const generateAgencyWhatsAppUrl = (r: BalanceRow) => {
-    const nom = r.agencia.trim().toUpperCase();
-    const ag = agencies.find((a) => a.nombre_agencia.trim().toUpperCase() === nom);
+    const nom = String(r.agencia || '').trim().toUpperCase();
+    const ag = agencies.find((a) => String(a.nombre_agencia || '').trim().toUpperCase() === nom);
     const pctPartAg = Number(ag?.participacion_ag || 0) / 100;
     const pctPartAgInt = Math.round(Number(ag?.participacion_ag || 0));
 

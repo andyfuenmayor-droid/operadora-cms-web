@@ -86,7 +86,7 @@ export const WeeklyClosureTab: React.FC = () => {
       const colIni = m === 'BS' ? 'saldo_inicial_bs' : m === 'USD' ? 'saldo_inicial_usd' : 'saldo_inicial_cop';
 
       agencies.forEach((ag) => {
-        const nom = ag.nombre_agencia.trim().toUpperCase();
+        const nom = String(ag.nombre_agencia || '').trim().toUpperCase();
         const confMon = String(ag.monedas || '').toUpperCase();
         const sAnt = Number(ag[colIni] || 0);
 

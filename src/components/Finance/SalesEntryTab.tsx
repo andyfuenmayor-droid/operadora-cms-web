@@ -41,9 +41,9 @@ function parseNum(val: any): number {
 // Safe helper to parse lists of strings from arrays or comma strings
 function parseList(val: any): string[] {
   if (!val) return [];
-  if (Array.isArray(val)) return val.map((v) => String(v).trim().toUpperCase()).filter(Boolean);
-  if (typeof val === 'string') return val.split(',').map((v) => v.trim().toUpperCase()).filter(Boolean);
-  return [String(val).trim().toUpperCase()].filter(Boolean);
+  if (Array.isArray(val)) return val.map((v) => String(v ?? '').trim().toUpperCase()).filter(Boolean);
+  if (typeof val === 'string') return val.split(',').map((v) => String(v ?? '').trim().toUpperCase()).filter(Boolean);
+  return [String(val ?? '').trim().toUpperCase()].filter(Boolean);
 }
 
 export const SalesEntryTab: React.FC = () => {
@@ -86,16 +86,16 @@ export const SalesEntryTab: React.FC = () => {
     allCurrencies: Currency[],
     targetSys?: string
   ) => {
-    const ag = allAgencies.find((a) => a.nombre_agencia === agName);
+    const ag = allAgencies.find((a) => String(a?.nombre_agencia || '').trim() === String(agName || '').trim());
     if (!ag) return;
 
     // Determine available systems
     const assignedSysList = parseList(ag.sistemas);
     const availableSys = assignedSysList.length > 0 && !assignedSysList.includes('TODOS')
-      ? allSystems.filter((s) => assignedSysList.includes(s.nombre_sistema.toUpperCase()))
+      ? allSystems.filter((s) => s && s.nombre_sistema && assignedSysList.includes(String(s.nombre_sistema).trim().toUpperCase()))
       : allSystems;
 
-    const chosenSys = targetSys && availableSys.some((s) => s.nombre_sistema === targetSys)
+    const chosenSys = targetSys && availableSys.some((s) => s && s.nombre_sistema === targetSys)
       ? targetSys
       : (availableSys[0]?.nombre_sistema || (allSystems[0]?.nombre_sistema || ''));
 
@@ -116,7 +116,7 @@ export const SalesEntryTab: React.FC = () => {
         const cond = typeof ag.condiciones_sistemas === 'string'
           ? JSON.parse(ag.condiciones_sistemas)
           : ag.condiciones_sistemas;
-        if (cond && cond[chosenSys]) {
+        if (cond && chosenSys && cond[chosenSys]) {
           if (cond[chosenSys].comision !== undefined) {
             setFormComisionPct(String(cond[chosenSys].comision));
             customFound = true;
@@ -164,7 +164,7 @@ export const SalesEntryTab: React.FC = () => {
       setCurrencies(loadedCurrencies);
 
       if (loadedAgencies.length > 0) {
-        const currentAg = formAgencia && loadedAgencies.some((a) => a.nombre_agencia === formAgencia)
+        const currentAg = formAgencia && loadedAgencies.some((a) => String(a?.nombre_agencia || '').trim() === String(formAgencia || '').trim())
           ? formAgencia
           : loadedAgencies[0].nombre_agencia;
 
@@ -186,13 +186,13 @@ export const SalesEntryTab: React.FC = () => {
   // Derived systems assigned to currently selected agency
   const currentAgencySystems = useMemo(() => {
     if (!formAgencia) return systems;
-    const ag = agencies.find((a) => a.nombre_agencia === formAgencia);
+    const ag = agencies.find((a) => String(a?.nombre_agencia || '').trim() === String(formAgencia || '').trim());
     if (!ag) return systems;
     const assigned = parseList(ag.sistemas);
     if (assigned.length === 0 || assigned.includes('TODOS')) {
       return systems;
     }
-    const filtered = systems.filter((s) => assigned.includes(s.nombre_sistema.toUpperCase()));
+    const filtered = systems.filter((s) => s && s.nombre_sistema && assigned.includes(String(s.nombre_sistema).trim().toUpperCase()));
     return filtered.length > 0 ? filtered : systems;
   }, [formAgencia, agencies, systems]);
 
@@ -204,13 +204,13 @@ export const SalesEntryTab: React.FC = () => {
       { id: 3, nombre_moneda: 'COP', simbolo: 'COP' },
     ];
     if (!formAgencia) return defaultCurrs;
-    const ag = agencies.find((a) => a.nombre_agencia === formAgencia);
+    const ag = agencies.find((a) => String(a?.nombre_agencia || '').trim() === String(formAgencia || '').trim());
     if (!ag) return defaultCurrs;
     const assigned = parseList(ag.monedas);
     if (assigned.length === 0 || assigned.includes('TODAS')) {
       return defaultCurrs;
     }
-    const filtered = defaultCurrs.filter((c) => assigned.includes(c.nombre_moneda.toUpperCase()));
+    const filtered = defaultCurrs.filter((c) => c && c.nombre_moneda && assigned.includes(String(c.nombre_moneda).trim().toUpperCase()));
     if (filtered.length > 0) return filtered;
     return assigned.map((m, i) => ({
       id: i + 1,
@@ -228,7 +228,7 @@ export const SalesEntryTab: React.FC = () => {
   // Handle change in System dropdown
   const handleSystemChange = (newSystem: string) => {
     setFormSistema(newSystem);
-    const ag = agencies.find((a) => a.nombre_agencia === formAgencia);
+    const ag = agencies.find((a) => String(a?.nombre_agencia || '').trim() === String(formAgencia || '').trim());
     if (!ag) return;
 
     let customFound = false;
@@ -237,7 +237,7 @@ export const SalesEntryTab: React.FC = () => {
         const cond = typeof ag.condiciones_sistemas === 'string'
           ? JSON.parse(ag.condiciones_sistemas)
           : ag.condiciones_sistemas;
-        if (cond && cond[newSystem]) {
+        if (cond && newSystem && cond[newSystem]) {
           if (cond[newSystem].comision !== undefined) {
             setFormComisionPct(String(cond[newSystem].comision));
             customFound = true;
@@ -327,8 +327,8 @@ export const SalesEntryTab: React.FC = () => {
     return Object.keys(salesByCurrency);
   }, [salesByCurrency]);
 
-  const getCurrencyFlag = (curr: string) => {
-    const c = curr.toUpperCase();
+  const getCurrencyFlag = (curr: any) => {
+    const c = String(curr || 'USD').trim().toUpperCase();
     if (c.includes('BS') || c.includes('VES')) return '🇻🇪';
     if (c.includes('COP')) return '🇨🇴';
     if (c.includes('USD')) return '🇺🇸';
