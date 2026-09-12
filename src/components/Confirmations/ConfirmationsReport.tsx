@@ -98,11 +98,21 @@ export const ConfirmationsReport: React.FC = () => {
       const uniqueAgs = Array.from(new Set(ags)).sort();
       setAgenciesList(uniqueAgs);
 
-      // 2. Fetch cashiers
-      const { data: userData } = await supabase
-        .from('taquilla_usuarios')
-        .select('id, usuario, nombre_cajero, rol')
-        .eq('user_id', effectiveUserId);
+      const agencyNameMap: Record<string, string> = {};
+      const cashierMap: Record<string, string> = {};
+
+      (agData || []).forEach((a: any) => {
+        const aNom = String(a.nombre_agencia || '').trim().toUpperCase();
+        agencyNameMap[String(a.id)] = aNom;
+        cashierMap[`ag_${a.id}`] = `${aNom} (Taquilla)`;
+        cashierMap[`AG_${a.id}`] = `${aNom} (Taquilla)`;
+      });
+
+      // 2. Fetch cashiers and collectors
+      const [{ data: userData }, { data: cobData }] = await Promise.all([
+        supabase.from('taquilla_usuarios').select('id, usuario, nombre_cajero, rol'),
+        supabase.from('cda_cobradores').select('id, usuario, nombre'),
+      ]);
 
       const cajs = (userData || [])
         .map((u: any) => String(u.nombre_cajero || u.usuario || '').trim())
@@ -110,10 +120,30 @@ export const ConfirmationsReport: React.FC = () => {
       const uniqueCajs = Array.from(new Set(cajs)).sort();
       setCashiersList(uniqueCajs);
 
-      const cashierMap: Record<string, string> = {};
       (userData || []).forEach((u: any) => {
-        cashierMap[String(u.id)] = String(u.nombre_cajero || u.usuario || `ID ${u.id}`);
+        cashierMap[String(u.id)] = String(u.nombre_cajero || u.usuario || `Cajero ${u.id}`);
       });
+
+      (cobData || []).forEach((c: any) => {
+        cashierMap[String(c.id)] = `Cobrador: ${c.nombre || c.usuario || c.id}`;
+      });
+
+      const resolveCashierName = (cid: string, agNom: string): string => {
+        if (!cid || cid === 'N/A' || cid === 'null' || cid === 'undefined') {
+          return agNom ? `${agNom} (Taquilla)` : 'Taquilla';
+        }
+        const cidClean = String(cid).trim();
+        if (cashierMap[cidClean]) return cashierMap[cidClean];
+        if (cidClean.toLowerCase().startsWith('ag_')) {
+          const rawAid = cidClean.slice(3);
+          const nom = agencyNameMap[rawAid] || agNom;
+          return nom ? `${nom} (Taquilla)` : `Agencia #${rawAid}`;
+        }
+        if (cidClean.length >= 20 && cidClean.includes('-')) {
+          return agNom ? `${agNom} (Cajero)` : 'Cajero Taquilla';
+        }
+        return `Cajero ${cidClean}`;
+      };
 
       // 3. Parallel fetch transaction tables
       const [pbRes, gdRes, gcRes, cgRes, pdRes, csRes] = await Promise.all([
@@ -134,6 +164,7 @@ export const ConfirmationsReport: React.FC = () => {
         const isRech = !!r.rechazado || String(r.estado || '').toUpperCase() === 'RECHAZADO';
         const isConf = (!!r.confirmado || !!r.confirmado_supervisor) && !isRech;
         const cid = String(r.cajero_id || r.user_id || '');
+        const agStr = String(r.agencia || '').trim().toUpperCase();
         const met = String(r.metodo_pago || 'BANCO').trim().toUpperCase();
         const conc = String(r.concepto || 'Pago Bancario');
         const isPremio = ['PREMIO', 'PÉRDIDA', 'PERDIDA', 'ABONO', 'REPOSICION'].some((k) =>
@@ -148,9 +179,9 @@ export const ConfirmationsReport: React.FC = () => {
           tabla: 'cda_pagos_bancarios',
           categoria: cat,
           fecha: String(r.fecha || r.created_at || ''),
-          agencia: String(r.agencia || '').trim().toUpperCase(),
+          agencia: agStr,
           cajero_id: cid,
-          cajero_nombre: cashierMap[cid] || `ID ${cid}`,
+          cajero_nombre: resolveCashierName(cid, agStr),
           metodo: met,
           monto: parseFloat(r.monto) || 0,
           moneda: normalizarMoneda(r.moneda),
@@ -178,15 +209,16 @@ export const ConfirmationsReport: React.FC = () => {
         const isRech = !!r.rechazado || String(r.estado || '').toUpperCase() === 'RECHAZADO';
         const isConf = (!!r.confirmado || !!r.confirmado_supervisor) && !isRech;
         const cid = String(r.cajero_id || r.user_id || '');
+        const agStr = String(r.agencia || r.nombre_agency || '').trim().toUpperCase();
 
         list.push({
           id: r.id,
           tabla: r._table,
           categoria: 'Gastos',
           fecha: String(r.fecha || r.created_at || ''),
-          agencia: String(r.agencia || r.nombre_agency || '').trim().toUpperCase(),
+          agencia: agStr,
           cajero_id: cid,
-          cajero_nombre: cashierMap[cid] || `ID ${cid}`,
+          cajero_nombre: resolveCashierName(cid, agStr),
           metodo: 'GASTO',
           monto: parseFloat(r.monto) || 0,
           moneda: normalizarMoneda(r.moneda),
@@ -209,6 +241,7 @@ export const ConfirmationsReport: React.FC = () => {
         const isConf = (!!r.confirmado || !!r.confirmado_supervisor) && !isRech;
         const tipo = String(r.tipo_pago || r.metodo || 'EFECTIVO').trim().toUpperCase();
         const cid = String(r.cajero_id || r.user_id || '');
+        const agStr = String(r.agencia || r.nombre_agency || '').trim().toUpperCase();
         const isBanco = ['PUNTO', 'POS', 'TRANSFERENCIA', 'ZELLE', 'PAGO MOVIL', 'PAGO MÓVIL'].some((k) =>
           tipo.includes(k)
         );
@@ -218,9 +251,9 @@ export const ConfirmationsReport: React.FC = () => {
           tabla: 'cda_pagos_diarios',
           categoria: isBanco ? 'Bancos' : 'Efectivo',
           fecha: String(r.fecha || r.created_at || ''),
-          agencia: String(r.agencia || r.nombre_agency || '').trim().toUpperCase(),
+          agencia: agStr,
           cajero_id: cid,
-          cajero_nombre: cashierMap[cid] || `ID ${cid}`,
+          cajero_nombre: resolveCashierName(cid, agStr),
           metodo: tipo || 'EFECTIVO',
           monto: parseFloat(r.monto) || 0,
           moneda: normalizarMoneda(r.moneda),
