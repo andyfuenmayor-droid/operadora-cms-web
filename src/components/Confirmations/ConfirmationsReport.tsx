@@ -398,31 +398,6 @@ export const ConfirmationsReport: React.FC = () => {
     loadData();
   }, [loadData]);
 
-  // Realtime subscription & Heartbeat
-  useEffect(() => {
-    if (!effectiveUserId) return;
-    const channel = supabase
-      .channel(`report_conf_live_${effectiveUserId}`)
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'cda_pagos_bancarios' }, () => loadData())
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'cda_gastos_diarios' }, () => loadData())
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'gastos' }, () => loadData())
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'cda_gastos' }, () => loadData())
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'cda_pagos_diarios' }, () => loadData())
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'pagos_semana' }, () => loadData())
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'gastos_semana' }, () => loadData())
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'cda_caja_efectivo_supervisor' }, () => loadData())
-      .subscribe();
-
-    const intervalId = setInterval(() => {
-      loadData();
-    }, 15000);
-
-    return () => {
-      supabase.removeChannel(channel);
-      clearInterval(intervalId);
-    };
-  }, [effectiveUserId, loadData]);
-
   // Filter transactions
   const filteredTransactions = useMemo(() => {
     return transactions.filter((tx) => {
@@ -647,31 +622,42 @@ export const ConfirmationsReport: React.FC = () => {
           </div>
         </div>
 
-        {/* Sub Tabs */}
-        <div className="flex items-center gap-1.5 p-1 bg-slate-900/90 border border-slate-800 rounded-xl">
+        {/* Sub Tabs & Manual Refresh */}
+        <div className="flex items-center gap-2">
+          <div className="flex items-center gap-1.5 p-1 bg-slate-900/90 border border-slate-800 rounded-xl">
+            <button
+              onClick={() => setActiveTab('reporte')}
+              className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer ${
+                activeTab === 'reporte' ? 'bg-emerald-500 text-black shadow-xs font-extrabold' : 'text-slate-400 hover:text-white'
+              }`}
+            >
+              📋 Reporte General ({filteredTransactions.length})
+            </button>
+            <button
+              onClick={() => setActiveTab('rechazados')}
+              className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer ${
+                activeTab === 'rechazados' ? 'bg-rose-500 text-white shadow-xs font-extrabold' : 'text-slate-400 hover:text-white'
+              }`}
+            >
+              ❌ Auditoría Rechazados ({rejectedTransactions.length})
+            </button>
+            <button
+              onClick={() => setActiveTab('arqueo')}
+              className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer ${
+                activeTab === 'arqueo' ? 'bg-sky-500 text-black shadow-xs font-extrabold' : 'text-slate-400 hover:text-white'
+              }`}
+            >
+              📦 Arqueo y Efectivo
+            </button>
+          </div>
+
           <button
-            onClick={() => setActiveTab('reporte')}
-            className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer ${
-              activeTab === 'reporte' ? 'bg-emerald-500 text-black shadow-xs font-extrabold' : 'text-slate-400 hover:text-white'
-            }`}
+            onClick={() => loadData()}
+            disabled={isLoading}
+            className="p-2.5 rounded-xl bg-slate-900/90 hover:bg-slate-800 text-slate-400 hover:text-white border border-slate-800 text-xs font-bold transition-all cursor-pointer disabled:opacity-50 shadow-xs"
+            title="Actualizar reporte manualmente"
           >
-            📋 Reporte General ({filteredTransactions.length})
-          </button>
-          <button
-            onClick={() => setActiveTab('rechazados')}
-            className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer ${
-              activeTab === 'rechazados' ? 'bg-rose-500 text-white shadow-xs font-extrabold' : 'text-slate-400 hover:text-white'
-            }`}
-          >
-            ❌ Auditoría Rechazados ({rejectedTransactions.length})
-          </button>
-          <button
-            onClick={() => setActiveTab('arqueo')}
-            className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer ${
-              activeTab === 'arqueo' ? 'bg-sky-500 text-black shadow-xs font-extrabold' : 'text-slate-400 hover:text-white'
-            }`}
-          >
-            📦 Arqueo y Efectivo
+            <RefreshCw className={`w-4 h-4 ${isLoading ? 'animate-spin text-emerald-400' : ''}`} />
           </button>
         </div>
       </div>
