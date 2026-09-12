@@ -52,7 +52,6 @@ export const ConfirmationsReport: React.FC = () => {
   const [fechaDesde, setFechaDesde] = useState(systemCycle.desde);
   const [fechaHasta, setFechaHasta] = useState(systemCycle.hasta);
   const [selAgencia, setSelAgencia] = useState('Todas');
-  const [selCajero, setSelCajero] = useState('Todos');
   const [selCategoria, setSelCategoria] = useState('Todas');
   const [selEstado, setSelEstado] = useState<'Todos' | 'Confirmados' | 'Rechazados' | 'Pendientes'>('Todos');
   const [searchQuery, setSearchQuery] = useState('');
@@ -62,7 +61,6 @@ export const ConfirmationsReport: React.FC = () => {
   const [isProcessing, setIsProcessing] = useState(false);
   const [transactions, setTransactions] = useState<ConfirmationTransaction[]>([]);
   const [agenciesList, setAgenciesList] = useState<string[]>([]);
-  const [cashiersList, setCashiersList] = useState<string[]>([]);
   const [cajaSupervisorRows, setCajaSupervisorRows] = useState<any[]>([]);
 
   // Receipt modal state
@@ -100,6 +98,7 @@ export const ConfirmationsReport: React.FC = () => {
 
       const agencyNameMap: Record<string, string> = {};
       const cashierMap: Record<string, string> = {};
+      const cobradorMap: Record<string, string> = {};
 
       (agData || []).forEach((a: any) => {
         const aNom = String(a.nombre_agencia || '').trim().toUpperCase();
@@ -114,19 +113,35 @@ export const ConfirmationsReport: React.FC = () => {
         supabase.from('cda_cobradores').select('id, usuario, nombre'),
       ]);
 
-      const cajs = (userData || [])
-        .map((u: any) => String(u.nombre_cajero || u.usuario || '').trim())
-        .filter(Boolean);
-      const uniqueCajs = Array.from(new Set(cajs)).sort();
-      setCashiersList(uniqueCajs);
-
       (userData || []).forEach((u: any) => {
         cashierMap[String(u.id)] = String(u.nombre_cajero || u.usuario || `Cajero ${u.id}`);
       });
 
       (cobData || []).forEach((c: any) => {
-        cashierMap[String(c.id)] = `Cobrador: ${c.nombre || c.usuario || c.id}`;
+        const cNom = String(c.nombre || c.usuario || '').trim();
+        if (cNom) {
+          cobradorMap[String(c.id)] = cNom;
+          if (c.usuario) cobradorMap[String(c.usuario).trim().toLowerCase()] = cNom;
+        }
+        cashierMap[String(c.id)] = `Cobrador: ${cNom || c.id}`;
       });
+
+      const resolveCobrador = (r: any): string => {
+        const cNomRaw = r.cobrador_nombre || r.cobrado_por || r.cobrador;
+        if (cNomRaw && String(cNomRaw).trim().toUpperCase() !== 'ENTREGADO A COBRADOR' && String(cNomRaw).trim().toUpperCase() !== 'N/A') {
+          return String(cNomRaw).trim();
+        }
+        if (r.cobrador_id && cobradorMap[String(r.cobrador_id)]) {
+          return cobradorMap[String(r.cobrador_id)];
+        }
+        if (r.confirmado_por && String(r.confirmado_por).trim().toUpperCase() !== 'ENTREGADO A COBRADOR') {
+          return String(r.confirmado_por).trim();
+        }
+        if (r.pagador && String(r.pagador).trim().toUpperCase() !== 'ENTREGADO A COBRADOR' && String(r.pagador).trim().toUpperCase() !== 'N/A') {
+          return String(r.pagador).trim();
+        }
+        return '';
+      };
 
       const resolveCashierName = (cid: string, agNom: string): string => {
         if (!cid || cid === 'N/A' || cid === 'null' || cid === 'undefined') {
@@ -245,21 +260,33 @@ export const ConfirmationsReport: React.FC = () => {
         const isBanco = ['PUNTO', 'POS', 'TRANSFERENCIA', 'ZELLE', 'PAGO MOVIL', 'PAGO MÓVIL'].some((k) =>
           tipo.includes(k)
         );
+        const isCobrador = tipo.includes('COBRADOR') || String(r.concepto || '').toUpperCase().includes('COBRADOR') || !!r.cobrador_id || !!r.cobrado_por || !!r.cobrador_nombre;
+
+        let metodoFinal = tipo || 'EFECTIVO';
+        let conceptoFinal = String(r.concepto || tipo || 'Pago Taquilla');
+        let pagadorFinal = String(r.pagador || 'N/A');
+
+        if (isCobrador) {
+          const cobNombre = resolveCobrador(r);
+          metodoFinal = cobNombre ? `COBRADOR (${cobNombre})` : 'COBRADOR';
+          conceptoFinal = cobNombre ? `Cobrador: ${cobNombre}` : 'Entrega a Cobrador';
+          pagadorFinal = cobNombre ? `Cobrador: ${cobNombre}` : 'Cobrador';
+        }
 
         list.push({
           id: r.id,
           tabla: 'cda_pagos_diarios',
-          categoria: isBanco ? 'Bancos' : 'Efectivo',
+          categoria: isCobrador ? 'Efectivo' : isBanco ? 'Bancos' : 'Efectivo',
           fecha: String(r.fecha || r.created_at || ''),
           agencia: agStr,
           cajero_id: cid,
           cajero_nombre: resolveCashierName(cid, agStr),
-          metodo: tipo || 'EFECTIVO',
+          metodo: metodoFinal,
           monto: parseFloat(r.monto) || 0,
           moneda: normalizarMoneda(r.moneda),
           referencia: String(r.referencia || 'N/A'),
-          concepto: String(r.concepto || tipo || 'Pago Taquilla'),
-          pagador: String(r.pagador || 'N/A'),
+          concepto: conceptoFinal,
+          pagador: pagadorFinal,
           confirmado: isConf,
           confirmado_por: r.confirmado_por || r.supervisor_nombre || null,
           rechazado: isRech,
@@ -301,9 +328,6 @@ export const ConfirmationsReport: React.FC = () => {
       // Agency filter
       if (selAgencia !== 'Todas' && tx.agencia !== selAgencia) return false;
 
-      // Cashier filter
-      if (selCajero !== 'Todos' && tx.cajero_nombre !== selCajero) return false;
-
       // Category filter
       if (selCategoria !== 'Todas') {
         if (selCategoria === 'Bancos y POS' && tx.categoria !== 'Bancos' && tx.categoria !== 'Punto de Venta')
@@ -331,7 +355,7 @@ export const ConfirmationsReport: React.FC = () => {
 
       return true;
     });
-  }, [transactions, fechaDesde, fechaHasta, selAgencia, selCajero, selCategoria, selEstado, searchQuery]);
+  }, [transactions, fechaDesde, fechaHasta, selAgencia, selCategoria, selEstado, searchQuery]);
 
   // Rejected list
   const rejectedTransactions = useMemo(() => {
@@ -451,7 +475,7 @@ export const ConfirmationsReport: React.FC = () => {
   // CSV Export
   const handleExportCSV = () => {
     if (filteredTransactions.length === 0) return;
-    const headers = ['Fecha', 'Agencia', 'Categoría', 'Método', 'Monto', 'Moneda', 'Referencia', 'Pagador', 'Concepto', 'Cajero', 'Estado', 'Confirmado Por', 'Motivo Rechazo'];
+    const headers = ['Fecha', 'Agencia', 'Categoría', 'Método', 'Monto', 'Moneda', 'Referencia', 'Pagador', 'Concepto', 'Estado', 'Confirmado Por', 'Motivo Rechazo'];
     const rows = filteredTransactions.map((tx) => [
       `"${tx.fecha}"`,
       `"${tx.agencia}"`,
@@ -462,7 +486,6 @@ export const ConfirmationsReport: React.FC = () => {
       `"${tx.referencia}"`,
       `"${tx.pagador}"`,
       `"${tx.concepto}"`,
-      `"${tx.cajero_nombre}"`,
       `"${tx.confirmado ? 'CONFIRMADO' : tx.rechazado ? 'RECHAZADO' : 'PENDIENTE'}"`,
       `"${tx.confirmado_por || ''}"`,
       `"${tx.motivo_rechazo || ''}"`,
@@ -544,7 +567,7 @@ export const ConfirmationsReport: React.FC = () => {
       {/* Filters Bar (Common for Tab 1 & Tab 2) */}
       {activeTab !== 'arqueo' && (
         <div className="p-4 rounded-2xl bg-[#0D1B22] border border-slate-800/80 space-y-3">
-          <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3">
+          <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-3">
             <div>
               <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1">Desde</label>
               <input
@@ -576,22 +599,6 @@ export const ConfirmationsReport: React.FC = () => {
                 {agenciesList.map((ag) => (
                   <option key={ag} value={ag}>
                     {ag}
-                  </option>
-                ))}
-              </select>
-            </div>
-
-            <div>
-              <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1">Cajero</label>
-              <select
-                value={selCajero}
-                onChange={(e) => setSelCajero(e.target.value)}
-                className="w-full px-2.5 py-1.5 bg-slate-900 border border-slate-700/80 rounded-xl text-xs font-bold text-white focus:outline-hidden focus:border-emerald-500 cursor-pointer"
-              >
-                <option value="Todos">Todos los Cajeros</option>
-                {cashiersList.map((caj) => (
-                  <option key={caj} value={caj}>
-                    {caj}
                   </option>
                 ))}
               </select>
@@ -755,7 +762,6 @@ export const ConfirmationsReport: React.FC = () => {
                     <th className="p-3.5">Categoría / Método</th>
                     <th className="p-3.5">Referencia</th>
                     <th className="p-3.5">Pagador / Concepto</th>
-                    <th className="p-3.5">Cajero</th>
                     <th className="p-3.5 text-right">Monto</th>
                     <th className="p-3.5 text-center">Estado</th>
                   </tr>
@@ -786,7 +792,6 @@ export const ConfirmationsReport: React.FC = () => {
                         <td className="p-3.5 text-slate-300 max-w-xs truncate">
                           {tx.pagador !== 'N/A' ? tx.pagador : tx.concepto}
                         </td>
-                        <td className="p-3.5 text-slate-400 whitespace-nowrap">{tx.cajero_nombre}</td>
                         <td className="p-3.5 font-mono font-black text-right text-emerald-400 whitespace-nowrap">
                           {formatCurrency(tx.monto, tx.moneda)}
                         </td>
@@ -855,7 +860,7 @@ export const ConfirmationsReport: React.FC = () => {
                       <span className="text-[11px] text-slate-400 font-mono">{formatDate(tx.fecha)}</span>
                     </div>
 
-                    <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 text-xs text-slate-300 pt-1">
+                    <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 text-xs text-slate-300 pt-1">
                       <div>
                         <span className="text-[10px] text-slate-500 uppercase block font-bold">Método</span>
                         <span className="font-semibold text-slate-200">{tx.metodo}</span>
@@ -864,11 +869,6 @@ export const ConfirmationsReport: React.FC = () => {
                       <div>
                         <span className="text-[10px] text-slate-500 uppercase block font-bold">Referencia</span>
                         <span className="font-mono font-bold text-amber-300 break-all">{tx.referencia}</span>
-                      </div>
-
-                      <div>
-                        <span className="text-[10px] text-slate-500 uppercase block font-bold">Cajero</span>
-                        <span className="text-slate-300">{tx.cajero_nombre}</span>
                       </div>
 
                       <div>

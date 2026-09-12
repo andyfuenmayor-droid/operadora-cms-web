@@ -76,6 +76,7 @@ export const ConfirmationsQuick: React.FC = () => {
 
       const agencyNameMap: Record<string, string> = {};
       const cashierMap: Record<string, string> = {};
+      const cobradorMap: Record<string, string> = {};
 
       (agData || []).forEach((a: any) => {
         const aNom = String(a.nombre_agencia || '').trim().toUpperCase();
@@ -95,10 +96,32 @@ export const ConfirmationsQuick: React.FC = () => {
       });
 
       (cobData || []).forEach((c: any) => {
-        cashierMap[String(c.id)] = `Cobrador: ${c.nombre || c.usuario || c.id}`;
+        const cNom = String(c.nombre || c.usuario || '').trim();
+        if (cNom) {
+          cobradorMap[String(c.id)] = cNom;
+          if (c.usuario) cobradorMap[String(c.usuario).trim().toLowerCase()] = cNom;
+        }
+        cashierMap[String(c.id)] = `Cobrador: ${cNom || c.id}`;
       });
 
       setCashierMap(cashierMap);
+
+      const resolveCobrador = (r: any): string => {
+        const cNomRaw = r.cobrador_nombre || r.cobrado_por || r.cobrador;
+        if (cNomRaw && String(cNomRaw).trim().toUpperCase() !== 'ENTREGADO A COBRADOR' && String(cNomRaw).trim().toUpperCase() !== 'N/A') {
+          return String(cNomRaw).trim();
+        }
+        if (r.cobrador_id && cobradorMap[String(r.cobrador_id)]) {
+          return cobradorMap[String(r.cobrador_id)];
+        }
+        if (r.confirmado_por && String(r.confirmado_por).trim().toUpperCase() !== 'ENTREGADO A COBRADOR') {
+          return String(r.confirmado_por).trim();
+        }
+        if (r.pagador && String(r.pagador).trim().toUpperCase() !== 'ENTREGADO A COBRADOR' && String(r.pagador).trim().toUpperCase() !== 'N/A') {
+          return String(r.pagador).trim();
+        }
+        return '';
+      };
 
       const resolveCashierName = (cid: string, agNom: string): string => {
         if (!cid || cid === 'N/A' || cid === 'null' || cid === 'undefined') {
@@ -210,21 +233,33 @@ export const ConfirmationsQuick: React.FC = () => {
           const isBanco = ['PUNTO', 'POS', 'TRANSFERENCIA', 'ZELLE', 'PAGO MOVIL', 'PAGO MÓVIL'].some((k) =>
             tipo.includes(k)
           );
+          const isCobrador = tipo.includes('COBRADOR') || String(r.concepto || '').toUpperCase().includes('COBRADOR') || !!r.cobrador_id || !!r.cobrado_por || !!r.cobrador_nombre;
+
+          let metodoFinal = tipo || 'EFECTIVO';
+          let conceptoFinal = String(r.concepto || tipo || 'Pago Taquilla');
+          let pagadorFinal = String(r.pagador || 'N/A');
+
+          if (isCobrador) {
+            const cobNombre = resolveCobrador(r);
+            metodoFinal = cobNombre ? `COBRADOR (${cobNombre})` : 'COBRADOR';
+            conceptoFinal = cobNombre ? `Cobrador: ${cobNombre}` : 'Entrega a Cobrador';
+            pagadorFinal = cobNombre ? `Cobrador: ${cobNombre}` : 'Cobrador';
+          }
 
           list.push({
             id: r.id,
             tabla: 'cda_pagos_diarios',
-            categoria: isBanco ? 'Bancos' : 'Efectivo',
+            categoria: isCobrador ? 'Efectivo' : isBanco ? 'Bancos' : 'Efectivo',
             fecha: String(r.fecha || r.created_at || ''),
             agencia: agStr,
             cajero_id: cid,
             cajero_nombre: resolveCashierName(cid, agStr),
-            metodo: tipo || 'EFECTIVO',
+            metodo: metodoFinal,
             monto: parseFloat(r.monto) || 0,
             moneda: normalizarMoneda(r.moneda),
             referencia: String(r.referencia || 'N/A'),
-            concepto: String(r.concepto || tipo || 'Pago Taquilla'),
-            pagador: String(r.pagador || 'N/A'),
+            concepto: conceptoFinal,
+            pagador: pagadorFinal,
             confirmado: false,
             rechazado: false,
             created_at: String(r.created_at || ''),
@@ -696,7 +731,7 @@ export const ConfirmationsQuick: React.FC = () => {
                     </div>
 
                     {/* Metadata Grid */}
-                    <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 text-xs text-slate-300 pt-1">
+                    <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 text-xs text-slate-300 pt-1">
                       <div>
                         <span className="text-[10px] text-slate-500 uppercase block font-bold">Método</span>
                         <span className="font-semibold text-slate-200">{tx.metodo}</span>
@@ -705,11 +740,6 @@ export const ConfirmationsQuick: React.FC = () => {
                       <div>
                         <span className="text-[10px] text-slate-500 uppercase block font-bold">Referencia</span>
                         <span className="font-mono font-bold text-amber-300 break-all">{tx.referencia}</span>
-                      </div>
-
-                      <div>
-                        <span className="text-[10px] text-slate-500 uppercase block font-bold">Cajero</span>
-                        <span className="text-slate-300">{tx.cajero_nombre}</span>
                       </div>
 
                       <div>
