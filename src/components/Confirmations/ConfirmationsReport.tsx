@@ -161,12 +161,14 @@ export const ConfirmationsReport: React.FC = () => {
       };
 
       // 3. Parallel fetch transaction tables
-      const [pbRes, gdRes, gcRes, cgRes, pdRes, csRes] = await Promise.all([
+      const [pbRes, gdRes, gcRes, cgRes, pdRes, psRes, gsRes, csRes] = await Promise.all([
         supabase.from('cda_pagos_bancarios').select('*').eq('user_id', effectiveUserId),
         supabase.from('cda_gastos_diarios').select('*').eq('user_id', effectiveUserId),
         supabase.from('gastos').select('*').eq('user_id', effectiveUserId),
         supabase.from('cda_gastos').select('*').eq('user_id', effectiveUserId),
         supabase.from('cda_pagos_diarios').select('*').eq('user_id', effectiveUserId),
+        supabase.from('pagos_semana').select('*').eq('user_id', effectiveUserId),
+        supabase.from('gastos_semana').select('*').eq('user_id', effectiveUserId),
         supabase.from('cda_caja_efectivo_supervisor').select('*').eq('user_id', effectiveUserId),
       ]);
 
@@ -213,11 +215,61 @@ export const ConfirmationsReport: React.FC = () => {
         });
       });
 
+      // Process pagos_semana (CMS Manual Payments)
+      (psRes.data || []).forEach((r: any) => {
+        const isRech = !!r.rechazado || String(r.estado || '').toUpperCase() === 'RECHAZADO';
+        const isConf = !!r.confirmado && !isRech;
+        const refStr = String(r.referencia || 'N/A');
+        const agStr = String(r.agencia || '').trim().toUpperCase();
+        const tipoPagoStr = String(r.tipo_pago || 'PAGO').toUpperCase();
+        const metRaw = String(r.metodo || 'BANCO').trim().toUpperCase();
+
+        const isSyncedFromTaquilla = (pbRes.data || []).some(
+          (pb: any) =>
+            String(pb.agencia || '').trim().toUpperCase() === agStr &&
+            Math.abs(Number(pb.monto || 0) - Number(r.monto || 0)) < 0.01 &&
+            (refStr.includes(String(pb.referencia || '')) || refStr.includes('CONFIRMADO BANCO'))
+        );
+
+        if (!isSyncedFromTaquilla) {
+          let cat = 'Bancos';
+          if (tipoPagoStr.includes('PREMIO') || refStr.includes('PREMIO')) {
+            cat = 'Pago de Premios';
+          } else if (metRaw.includes('EFECTIVO')) {
+            cat = 'Efectivo';
+          }
+
+          list.push({
+            id: r.id,
+            tabla: 'pagos_semana',
+            categoria: cat,
+            fecha: String(r.fecha || r.created_at || ''),
+            agencia: agStr,
+            cajero_id: 'CMS',
+            cajero_nombre: 'Administración (CMS)',
+            metodo: metRaw,
+            monto: parseFloat(r.monto) || 0,
+            moneda: normalizarMoneda(r.moneda),
+            referencia: refStr,
+            concepto: tipoPagoStr === 'PAGO DE PREMIOS' ? 'Pago de Premios (CMS)' : 'Pago / Cobro Directo (CMS)',
+            pagador: 'Operadora / CMS',
+            confirmado: isConf,
+            confirmado_por: r.confirmado_por || null,
+            rechazado: isRech,
+            rechazado_por: r.rechazado_por || null,
+            motivo_rechazo: r.motivo_rechazo || null,
+            fecha_rechazo: r.fecha_rechazo || null,
+            created_at: String(r.created_at || ''),
+          });
+        }
+      });
+
       // Process Gastos
       const allGastos = [
         ...(gdRes.data || []).map((r: any) => ({ ...r, _table: 'cda_gastos_diarios' })),
         ...(gcRes.data || []).map((r: any) => ({ ...r, _table: 'gastos' })),
         ...(cgRes.data || []).map((r: any) => ({ ...r, _table: 'cda_gastos' })),
+        ...(gsRes.data || []).map((r: any) => ({ ...r, _table: 'gastos_semana' })),
       ];
 
       allGastos.forEach((r: any) => {
@@ -225,6 +277,7 @@ export const ConfirmationsReport: React.FC = () => {
         const isConf = (!!r.confirmado || !!r.confirmado_supervisor) && !isRech;
         const cid = String(r.cajero_id || r.user_id || '');
         const agStr = String(r.agencia || r.nombre_agency || '').trim().toUpperCase();
+        const cNom = r._table === 'gastos_semana' ? 'Administración (CMS)' : resolveCashierName(cid, agStr);
 
         list.push({
           id: r.id,
@@ -232,8 +285,8 @@ export const ConfirmationsReport: React.FC = () => {
           categoria: 'Gastos',
           fecha: String(r.fecha || r.created_at || ''),
           agencia: agStr,
-          cajero_id: cid,
-          cajero_nombre: resolveCashierName(cid, agStr),
+          cajero_id: cid || 'CMS',
+          cajero_nombre: cNom,
           metodo: 'GASTO',
           monto: parseFloat(r.monto) || 0,
           moneda: normalizarMoneda(r.moneda),

@@ -141,12 +141,14 @@ export const ConfirmationsQuick: React.FC = () => {
       };
 
       // 3. Fetch transaction tables (only pending: confirmado === false && rechazado === false)
-      const [pbRes, gdRes, gcRes, cgRes, pdRes] = await Promise.all([
+      const [pbRes, gdRes, gcRes, cgRes, pdRes, psRes, gsRes] = await Promise.all([
         supabase.from('cda_pagos_bancarios').select('*').eq('user_id', effectiveUserId),
         supabase.from('cda_gastos_diarios').select('*').eq('user_id', effectiveUserId),
         supabase.from('gastos').select('*').eq('user_id', effectiveUserId),
         supabase.from('cda_gastos').select('*').eq('user_id', effectiveUserId),
         supabase.from('cda_pagos_diarios').select('*').eq('user_id', effectiveUserId),
+        supabase.from('pagos_semana').select('*').eq('user_id', effectiveUserId),
+        supabase.from('gastos_semana').select('*').eq('user_id', effectiveUserId),
       ]);
 
       const list: ConfirmationTransaction[] = [];
@@ -188,11 +190,59 @@ export const ConfirmationsQuick: React.FC = () => {
         }
       });
 
+      // Process pagos_semana (CMS Manual Payments pending)
+      (psRes.data || []).forEach((r: any) => {
+        const isRech = !!r.rechazado || String(r.estado || '').toUpperCase() === 'RECHAZADO';
+        const isConf = !!r.confirmado && !isRech;
+        if (!isConf && !isRech) {
+          const refStr = String(r.referencia || 'N/A');
+          const agStr = String(r.agencia || '').trim().toUpperCase();
+          const tipoPagoStr = String(r.tipo_pago || 'PAGO').toUpperCase();
+          const metRaw = String(r.metodo || 'BANCO').trim().toUpperCase();
+
+          const isSyncedFromTaquilla = (pbRes.data || []).some(
+            (pb: any) =>
+              String(pb.agencia || '').trim().toUpperCase() === agStr &&
+              Math.abs(Number(pb.monto || 0) - Number(r.monto || 0)) < 0.01 &&
+              (refStr.includes(String(pb.referencia || '')) || refStr.includes('CONFIRMADO BANCO'))
+          );
+
+          if (!isSyncedFromTaquilla) {
+            let cat = 'Bancos';
+            if (tipoPagoStr.includes('PREMIO') || refStr.includes('PREMIO')) {
+              cat = 'Pago de Premios';
+            } else if (metRaw.includes('EFECTIVO')) {
+              cat = 'Efectivo';
+            }
+
+            list.push({
+              id: r.id,
+              tabla: 'pagos_semana',
+              categoria: cat,
+              fecha: String(r.fecha || r.created_at || ''),
+              agencia: agStr,
+              cajero_id: 'CMS',
+              cajero_nombre: 'Administración (CMS)',
+              metodo: metRaw,
+              monto: parseFloat(r.monto) || 0,
+              moneda: normalizarMoneda(r.moneda),
+              referencia: refStr,
+              concepto: tipoPagoStr === 'PAGO DE PREMIOS' ? 'Pago de Premios (CMS)' : 'Pago / Cobro Directo (CMS)',
+              pagador: 'Operadora / CMS',
+              confirmado: false,
+              rechazado: false,
+              created_at: String(r.created_at || ''),
+            });
+          }
+        }
+      });
+
       // Gastos
       const allGastos = [
         ...(gdRes.data || []).map((r: any) => ({ ...r, _table: 'cda_gastos_diarios' })),
         ...(gcRes.data || []).map((r: any) => ({ ...r, _table: 'gastos' })),
         ...(cgRes.data || []).map((r: any) => ({ ...r, _table: 'cda_gastos' })),
+        ...(gsRes.data || []).map((r: any) => ({ ...r, _table: 'gastos_semana' })),
       ];
 
       allGastos.forEach((r: any) => {
@@ -201,14 +251,15 @@ export const ConfirmationsQuick: React.FC = () => {
         if (!isConf && !isRech) {
           const cid = String(r.cajero_id || r.user_id || '');
           const agStr = String(r.agencia || r.nombre_agency || '').trim().toUpperCase();
+          const cNom = r._table === 'gastos_semana' ? 'Administración (CMS)' : resolveCashierName(cid, agStr);
           list.push({
             id: r.id,
             tabla: r._table,
             categoria: 'Gastos',
             fecha: String(r.fecha || r.created_at || ''),
             agencia: agStr,
-            cajero_id: cid,
-            cajero_nombre: resolveCashierName(cid, agStr),
+            cajero_id: cid || 'CMS',
+            cajero_nombre: cNom,
             metodo: 'GASTO',
             monto: parseFloat(r.monto) || 0,
             moneda: normalizarMoneda(r.moneda),

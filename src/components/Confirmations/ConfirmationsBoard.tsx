@@ -132,13 +132,14 @@ export const ConfirmationsBoard: React.FC = () => {
       });
 
       // 3. Parallel fetch transaction tables
-      const [pbRes, gdRes, gcRes, cgRes, pdRes, psRes, csRes] = await Promise.all([
+      const [pbRes, gdRes, gcRes, cgRes, pdRes, psRes, gsRes, csRes] = await Promise.all([
         supabase.from('cda_pagos_bancarios').select('*').eq('user_id', effectiveUserId),
         supabase.from('cda_gastos_diarios').select('*').eq('user_id', effectiveUserId),
         supabase.from('gastos').select('*').eq('user_id', effectiveUserId),
         supabase.from('cda_gastos').select('*').eq('user_id', effectiveUserId),
         supabase.from('cda_pagos_diarios').select('*').eq('user_id', effectiveUserId),
         supabase.from('pagos_semana').select('*').eq('user_id', effectiveUserId),
+        supabase.from('gastos_semana').select('*').eq('user_id', effectiveUserId),
         supabase.from('cda_caja_efectivo_supervisor').select('*').eq('user_id', effectiveUserId),
       ]);
 
@@ -185,16 +186,66 @@ export const ConfirmationsBoard: React.FC = () => {
         });
       });
 
+      // Process pagos_semana (CMS Manual Payments)
+      (psRes.data || []).forEach((r: any) => {
+        const isRech = Boolean(r.rechazado) || String(r.estado || '').toUpperCase() === 'RECHAZADO';
+        const isConf = Boolean(r.confirmado) && !isRech;
+        const refStr = String(r.referencia || 'N/A');
+        const agStr = String(r.agencia || '').trim().toUpperCase();
+        const tipoPagoStr = String(r.tipo_pago || 'PAGO').toUpperCase();
+        const metRaw = String(r.metodo || 'BANCO').trim().toUpperCase();
+
+        // Check if this payment was an automated sync from cda_pagos_bancarios to avoid duplicate display
+        const isSyncedFromTaquilla = (pbRes.data || []).some(
+          (pb: any) =>
+            String(pb.agencia || '').trim().toUpperCase() === agStr &&
+            Math.abs(Number(pb.monto || 0) - Number(r.monto || 0)) < 0.01 &&
+            (refStr.includes(String(pb.referencia || '')) || refStr.includes('CONFIRMADO BANCO'))
+        );
+
+        if (!isSyncedFromTaquilla) {
+          let cat = 'Bancos';
+          if (tipoPagoStr.includes('PREMIO') || refStr.includes('PREMIO')) {
+            cat = 'Pago de Premios';
+          } else if (metRaw.includes('EFECTIVO')) {
+            cat = 'Efectivo';
+          }
+
+          list.push({
+            id: r.id,
+            tabla: 'pagos_semana',
+            fecha: String(r.fecha || r.created_at || ''),
+            agencia: agStr,
+            cajero_id: 'CMS',
+            cajero_nombre: 'Administración (CMS)',
+            categoria: cat,
+            metodo: metRaw,
+            concepto: tipoPagoStr === 'PAGO DE PREMIOS' ? 'Pago de Premios (CMS)' : 'Pago / Cobro Directo (CMS)',
+            referencia: refStr,
+            pagador: 'Operadora / CMS',
+            monto: Number(r.monto || 0),
+            moneda: normalizarMoneda(r.moneda),
+            confirmado: isConf,
+            confirmado_por: r.confirmado_por || null,
+            rechazado: isRech,
+            rechazado_por: r.rechazado_por || null,
+            motivo_rechazo: r.motivo_rechazo || null,
+            fecha_rechazo: r.fecha_rechazo || null,
+          });
+        }
+      });
+
       // Process Gastos
       const allGastos = [
         ...(gdRes.data || []).map((r: any) => ({ ...r, __t: 'cda_gastos_diarios' })),
         ...(gcRes.data || []).map((r: any) => ({ ...r, __t: 'gastos' })),
         ...(cgRes.data || []).map((r: any) => ({ ...r, __t: 'cda_gastos' })),
+        ...(gsRes.data || []).map((r: any) => ({ ...r, __t: 'gastos_semana' })),
       ];
 
       allGastos.forEach((r: any) => {
         const cid = String(r.cajero_id || r.user_id || '');
-        const c_nom = cashierMap[cid] || (cid ? `ID ${cid}` : 'Desconocido');
+        const c_nom = r.__t === 'gastos_semana' ? 'Administración (CMS)' : (cashierMap[cid] || (cid ? `ID ${cid}` : 'Desconocido'));
         const isRech = Boolean(r.rechazado) || String(r.estado || '').toUpperCase() === 'RECHAZADO';
         const isConf = (Boolean(r.confirmado) || Boolean(r.confirmado_supervisor)) && !isRech;
 
@@ -203,7 +254,7 @@ export const ConfirmationsBoard: React.FC = () => {
           tabla: r.__t,
           fecha: String(r.fecha || r.created_at || ''),
           agencia: String(r.agencia || r.nombre_agencia || '').trim().toUpperCase(),
-          cajero_id: cid,
+          cajero_id: cid || 'CMS',
           cajero_nombre: c_nom,
           categoria: 'Gastos',
           metodo: 'GASTO',
