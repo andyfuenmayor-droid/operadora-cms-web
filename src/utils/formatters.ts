@@ -2,7 +2,8 @@ import type { PlanType, ModuleId } from '../types';
 
 export const TODOS_LOS_MODULOS_CMS: ModuleId[] = [
   'Inicio',
-  'Pizarra Confirmaciones',
+  'Confirmaciones',
+  'Rep. Confirmaciones',
   'Sistemas',
   'Monedas',
   'Cuentas Bancarias',
@@ -30,7 +31,8 @@ export const ALL_MODULES = TODOS_LOS_MODULOS_CMS;
 export const PLANES_MODULOS_DEFAULT: Record<PlanType, ModuleId[]> = {
   basico: [
     'Inicio',
-    'Pizarra Confirmaciones',
+    'Confirmaciones',
+    'Rep. Confirmaciones',
     'Sistemas',
     'Monedas',
     'Cuentas Bancarias',
@@ -47,7 +49,8 @@ export const PLANES_MODULOS_DEFAULT: Record<PlanType, ModuleId[]> = {
   ],
   profesional: [
     'Inicio',
-    'Pizarra Confirmaciones',
+    'Confirmaciones',
+    'Rep. Confirmaciones',
     'Sistemas',
     'Monedas',
     'Cuentas Bancarias',

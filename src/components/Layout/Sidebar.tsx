@@ -42,6 +42,8 @@ interface SidebarProps {
 
 const moduleIconMap: Record<ModuleId, React.ComponentType<{ className?: string }>> = {
   Inicio: Home,
+  Confirmaciones: CheckSquare,
+  'Rep. Confirmaciones': ClipboardList,
   'Pizarra Confirmaciones': CheckSquare,
   Sistemas: Layers,
   Monedas: Coins,
@@ -57,7 +59,7 @@ const moduleIconMap: Record<ModuleId, React.ComponentType<{ className?: string }
   'Caja Maestra': Vault,
   'Pagos a Operador': Handshake,
   'Venta Operadora': BarChart3,
-  'Reporte Operadora': ClipboardList,
+  'Reporte Operadora': FileText,
   'Cierre Operadora': Archive,
   'Config. Proveedores': SlidersHorizontal,
   'Gastos Administrativos': Calculator,

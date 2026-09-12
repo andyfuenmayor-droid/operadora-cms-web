@@ -13,6 +13,7 @@ import {
   Sparkles,
   Calendar,
   AlertCircle,
+  FileText,
 } from 'lucide-react';
 import { formatCurrency, formatDate } from '../../utils/formatters';
 import { getConsolidatedPayments, getConsolidatedExpenses } from '../../utils/consolidations';
@@ -226,13 +227,13 @@ export const HomeDashboard: React.FC<HomeDashboardProps> = ({ onNavigate }) => {
           </div>
         </div>
 
-        {/* Card 2: Pizarra Pendientes */}
+        {/* Card 2: Confirmaciones Pendientes */}
         <div
-          onClick={() => onNavigate('Pizarra Confirmaciones')}
+          onClick={() => onNavigate('Confirmaciones')}
           className="bg-[#0D1B22] border border-slate-800/80 rounded-2xl p-4 shadow-sm hover:border-amber-500/40 transition-all cursor-pointer group"
         >
           <div className="flex items-center justify-between mb-3">
-            <span className="text-xs font-bold text-slate-400 uppercase tracking-wider">Por Confirmar (Pizarra)</span>
+            <span className="text-xs font-bold text-slate-400 uppercase tracking-wider">Por Confirmar</span>
             <div className="p-2 rounded-xl bg-amber-500/10 text-amber-400 border border-amber-500/20 group-hover:scale-110 transition-transform">
               <CheckSquare className="w-4 h-4" />
             </div>
@@ -386,12 +387,12 @@ export const HomeDashboard: React.FC<HomeDashboardProps> = ({ onNavigate }) => {
 
         <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
           {[
-            { id: 'Pizarra Confirmaciones' as ModuleId, label: 'Pizarra', icon: CheckSquare, color: 'text-amber-400 bg-amber-500/10' },
+            { id: 'Confirmaciones' as ModuleId, label: 'Confirmaciones', icon: CheckSquare, color: 'text-amber-400 bg-amber-500/10' },
+            { id: 'Rep. Confirmaciones' as ModuleId, label: 'Rep. Confirm.', icon: FileText, color: 'text-sky-400 bg-sky-500/10' },
             { id: 'Agencias' as ModuleId, label: 'Agencias', icon: Store, color: 'text-emerald-400 bg-emerald-500/10' },
-            { id: 'Cargar Ventas' as ModuleId, label: 'Cargar Ventas', icon: TrendingUp, color: 'text-sky-400 bg-sky-500/10' },
-            { id: 'Saldo Agencias' as ModuleId, label: 'Estados de Cuenta', icon: Coins, color: 'text-teal-400 bg-teal-500/10' },
-            { id: 'Cobradores' as ModuleId, label: 'Cobradores QR', icon: Bike, color: 'text-indigo-400 bg-indigo-500/10' },
-            { id: 'Ajustes' as ModuleId, label: 'Ajustes Ciclo', icon: Calendar, color: 'text-purple-400 bg-purple-500/10' },
+            { id: 'Cargar Ventas' as ModuleId, label: 'Cargar Ventas', icon: TrendingUp, color: 'text-teal-400 bg-teal-500/10' },
+            { id: 'Saldo Agencias' as ModuleId, label: 'Estados Cuenta', icon: Coins, color: 'text-indigo-400 bg-indigo-500/10' },
+            { id: 'Cobradores' as ModuleId, label: 'Cobradores QR', icon: Bike, color: 'text-purple-400 bg-purple-500/10' },
           ].map((item) => {
             const IconC = item.icon;
             return (

@@ -183,6 +183,8 @@ export interface DailyExpenseItem {
 
 export type ModuleId =
   | 'Inicio'
+  | 'Confirmaciones'
+  | 'Rep. Confirmaciones'
   | 'Pizarra Confirmaciones'
   | 'Agencias'
   | 'Cobradores'

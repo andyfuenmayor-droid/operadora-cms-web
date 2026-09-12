@@ -6,7 +6,8 @@ import type { ModuleId } from './types';
 
 // Components
 import { HomeDashboard } from './components/Home/HomeDashboard';
-import { ConfirmationsBoard } from './components/Confirmations/ConfirmationsBoard';
+import { ConfirmationsQuick } from './components/Confirmations/ConfirmationsQuick';
+import { ConfirmationsReport } from './components/Confirmations/ConfirmationsReport';
 import { AuditTab } from './components/Audit/AuditTab';
 import { SystemsTab } from './components/Catalogs/SystemsTab';
 import { CurrenciesTab } from './components/Catalogs/CurrenciesTab';
@@ -54,9 +55,13 @@ const AppContent: React.FC = () => {
       case 'Inicio':
         return <HomeDashboard onNavigate={setCurrentModule} />;
 
+      case 'Confirmaciones':
       case 'Pizarra Confirmaciones':
+        return <ConfirmationsQuick />;
+
+      case 'Rep. Confirmaciones':
       case 'Caja Maestra':
-        return <ConfirmationsBoard />;
+        return <ConfirmationsReport />;
 
       case 'Auditoría':
         return <AuditTab />;
