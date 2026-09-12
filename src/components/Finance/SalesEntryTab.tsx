@@ -60,85 +60,18 @@ export const SalesEntryTab: React.FC = () => {
   const [filterAgency, setFilterAgency] = useState('Todas');
   const [activeCurrencyTab, setActiveCurrencyTab] = useState('TODAS');
 
-  // Manual Form
+  // Manual Form State
   const [formAgencia, setFormAgencia] = useState('');
-  const [formSistema, setFormSistema] = useState('');
-  const [formMoneda, setFormMoneda] = useState('BS');
-  const [formFecha, setFormFecha] = useState(systemCycle?.hasta || '');
-  const [formVenta, setFormVenta] = useState('');
-  const [formPremios, setFormPremios] = useState('');
-  const [formComisionPct, setFormComisionPct] = useState('10');
-  const [formPartPct, setFormPartPct] = useState('50');
+  const [formFecha, setFormFecha] = useState(systemCycle?.hasta || new Date().toISOString().split('T')[0]);
+  const [entries, setEntries] = useState<Record<string, { venta: string; comision: string; premios: string; comisionTouched: boolean; id?: number }>>({});
 
   // Bulk Import
   const [isBulkOpen, setIsBulkOpen] = useState(false);
-  const [bulkFileDate, setBulkFileDate] = useState(systemCycle?.hasta || '');
+  const [bulkFileDate, setBulkFileDate] = useState(systemCycle?.hasta || new Date().toISOString().split('T')[0]);
   const [bulkRows, setBulkRows] = useState<any[]>([]);
   const [bulkError, setBulkError] = useState<string | null>(null);
 
   const [message, setMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
-
-  // Helper to initialize or re-apply agency conditions
-  const applyAgencySettings = (
-    agName: string,
-    allAgencies: Agency[],
-    allSystems: BetSystem[],
-    allCurrencies: Currency[],
-    targetSys?: string
-  ) => {
-    const ag = allAgencies.find((a) => String(a?.nombre_agencia || '').trim() === String(agName || '').trim());
-    if (!ag) return;
-
-    // Determine available systems
-    const assignedSysList = parseList(ag.sistemas);
-    const availableSys = assignedSysList.length > 0 && !assignedSysList.includes('TODOS')
-      ? allSystems.filter((s) => s && s.nombre_sistema && assignedSysList.includes(String(s.nombre_sistema).trim().toUpperCase()))
-      : allSystems;
-
-    const chosenSys = targetSys && availableSys.some((s) => s && s.nombre_sistema === targetSys)
-      ? targetSys
-      : (availableSys[0]?.nombre_sistema || (allSystems[0]?.nombre_sistema || ''));
-
-    setFormSistema(chosenSys);
-
-    // Determine available currencies
-    const assignedCurrs = parseList(ag.monedas);
-    const chosenCurr = assignedCurrs.length > 0 && !assignedCurrs.includes('TODAS')
-      ? assignedCurrs[0]
-      : (allCurrencies[0]?.nombre_moneda || 'BS');
-
-    setFormMoneda(chosenCurr);
-
-    // Check custom condiciones_sistemas
-    let customFound = false;
-    if (ag.condiciones_sistemas) {
-      try {
-        const cond = typeof ag.condiciones_sistemas === 'string'
-          ? JSON.parse(ag.condiciones_sistemas)
-          : ag.condiciones_sistemas;
-        if (cond && chosenSys && cond[chosenSys]) {
-          if (cond[chosenSys].comision !== undefined) {
-            setFormComisionPct(String(cond[chosenSys].comision));
-            customFound = true;
-          }
-          if (cond[chosenSys].participacion !== undefined) {
-            setFormPartPct(String(cond[chosenSys].participacion));
-            customFound = true;
-          }
-          if (cond[chosenSys].moneda) {
-            setFormMoneda(String(cond[chosenSys].moneda).toUpperCase());
-          }
-        }
-      } catch (e) {
-        console.error('Error parsing condiciones_sistemas', e);
-      }
-    }
-
-    if (!customFound) {
-      setFormComisionPct(String(ag.comision ?? 10));
-      setFormPartPct(String(ag.participacion_ag ?? 50));
-    }
-  };
 
   const loadData = useCallback(async () => {
     if (!effectiveUserId) return;
@@ -164,12 +97,12 @@ export const SalesEntryTab: React.FC = () => {
       setCurrencies(loadedCurrencies);
 
       if (loadedAgencies.length > 0) {
-        const currentAg = formAgencia && loadedAgencies.some((a) => String(a?.nombre_agencia || '').trim() === String(formAgencia || '').trim())
-          ? formAgencia
-          : loadedAgencies[0].nombre_agencia;
-
-        setFormAgencia(currentAg);
-        applyAgencySettings(currentAg, loadedAgencies, loadedSystems, loadedCurrencies);
+        setFormAgencia((prev) => {
+          if (prev && loadedAgencies.some((a) => String(a?.nombre_agencia || '').trim() === String(prev || '').trim())) {
+            return prev;
+          }
+          return loadedAgencies[0].nombre_agencia;
+        });
       }
     } catch (err: any) {
       console.error('Error loading sales data:', err);
@@ -183,98 +116,288 @@ export const SalesEntryTab: React.FC = () => {
     loadData();
   }, [loadData]);
 
-  // Derived systems assigned to currently selected agency
-  const currentAgencySystems = useMemo(() => {
-    if (!formAgencia) return systems;
-    const ag = agencies.find((a) => String(a?.nombre_agencia || '').trim() === String(formAgencia || '').trim());
-    if (!ag) return systems;
-    const assigned = parseList(ag.sistemas);
+  // Selected agency object
+  const currentAgency = useMemo(() => {
+    return agencies.find((a) => String(a?.nombre_agencia || '').trim() === String(formAgencia || '').trim());
+  }, [agencies, formAgencia]);
+
+  // Assigned systems for current agency
+  const agencySystemsList = useMemo(() => {
+    if (!currentAgency) {
+      return systems.map((s) => s.nombre_sistema).filter(Boolean);
+    }
+    const assigned = parseList(currentAgency.sistemas);
     if (assigned.length === 0 || assigned.includes('TODOS')) {
-      return systems;
+      const list = systems.map((s) => s.nombre_sistema).filter(Boolean);
+      return list.length > 0 ? list : ['BETM3', 'GATOWEB'];
     }
-    const filtered = systems.filter((s) => s && s.nombre_sistema && assigned.includes(String(s.nombre_sistema).trim().toUpperCase()));
-    return filtered.length > 0 ? filtered : systems;
-  }, [formAgencia, agencies, systems]);
+    return assigned;
+  }, [currentAgency, systems]);
 
-  // Derived currencies assigned to currently selected agency
-  const currentAgencyCurrencies = useMemo(() => {
-    const defaultCurrs: Currency[] = currencies.length > 0 ? currencies : [
-      { id: 1, nombre_moneda: 'BS', simbolo: 'Bs.' },
-      { id: 2, nombre_moneda: 'USD', simbolo: '$' },
-      { id: 3, nombre_moneda: 'COP', simbolo: 'COP' },
-    ];
-    if (!formAgencia) return defaultCurrs;
-    const ag = agencies.find((a) => String(a?.nombre_agencia || '').trim() === String(formAgencia || '').trim());
-    if (!ag) return defaultCurrs;
-    const assigned = parseList(ag.monedas);
+  // Assigned currencies for current agency
+  const agencyCurrenciesList = useMemo(() => {
+    if (!currentAgency) return ['BS'];
+    const assigned = parseList(currentAgency.monedas);
     if (assigned.length === 0 || assigned.includes('TODAS')) {
-      return defaultCurrs;
+      const list = currencies.map((c) => c.nombre_moneda).filter(Boolean);
+      return list.length > 0 ? list : ['BS'];
     }
-    const filtered = defaultCurrs.filter((c) => c && c.nombre_moneda && assigned.includes(String(c.nombre_moneda).trim().toUpperCase()));
-    if (filtered.length > 0) return filtered;
-    return assigned.map((m, i) => ({
-      id: i + 1,
-      nombre_moneda: m,
-      simbolo: m === 'USD' ? '$' : m === 'COP' ? 'COP' : 'Bs.',
-    }));
-  }, [formAgencia, agencies, currencies]);
+    return assigned;
+  }, [currentAgency, currencies]);
 
-  // Handle change in Agency dropdown
-  const handleAgencyChange = (newAgency: string) => {
-    setFormAgencia(newAgency);
-    applyAgencySettings(newAgency, agencies, systems, currencies);
-  };
+  // Helper to extract system commission & participation config for current agency
+  const getSystemConfig = useCallback((sysName: string) => {
+    let comPct = Number(currentAgency?.comision ?? 10);
+    let partPct = Number(currentAgency?.participacion_ag ?? 50);
+    let targetMoneda = '';
 
-  // Handle change in System dropdown
-  const handleSystemChange = (newSystem: string) => {
-    setFormSistema(newSystem);
-    const ag = agencies.find((a) => String(a?.nombre_agencia || '').trim() === String(formAgencia || '').trim());
-    if (!ag) return;
-
-    let customFound = false;
-    if (ag.condiciones_sistemas) {
+    if (currentAgency?.condiciones_sistemas) {
       try {
-        const cond = typeof ag.condiciones_sistemas === 'string'
-          ? JSON.parse(ag.condiciones_sistemas)
-          : ag.condiciones_sistemas;
-        if (cond && newSystem && cond[newSystem]) {
-          if (cond[newSystem].comision !== undefined) {
-            setFormComisionPct(String(cond[newSystem].comision));
-            customFound = true;
-          }
-          if (cond[newSystem].participacion !== undefined) {
-            setFormPartPct(String(cond[newSystem].participacion));
-            customFound = true;
-          }
-          if (cond[newSystem].moneda) {
-            setFormMoneda(String(cond[newSystem].moneda).toUpperCase());
-          }
+        const cond = typeof currentAgency.condiciones_sistemas === 'string'
+          ? JSON.parse(currentAgency.condiciones_sistemas)
+          : currentAgency.condiciones_sistemas;
+        if (cond && sysName && cond[sysName]) {
+          if (cond[sysName].comision !== undefined) comPct = Number(cond[sysName].comision);
+          if (cond[sysName].participacion !== undefined) partPct = Number(cond[sysName].participacion);
+          if (cond[sysName].moneda) targetMoneda = String(cond[sysName].moneda).toUpperCase();
         }
       } catch (e) {
         console.error('Error parsing condiciones_sistemas', e);
       }
     }
+    return { comPct, partPct, targetMoneda };
+  }, [currentAgency]);
 
-    if (!customFound) {
-      setFormComisionPct(String(ag.comision ?? 10));
-      setFormPartPct(String(ag.participacion_ag ?? 50));
-    }
+  // Synchronize entries state with existing records whenever agency, date or sales change
+  useEffect(() => {
+    if (!formAgencia || !formFecha) return;
+    const agNorm = String(formAgencia).trim().toUpperCase();
+    const dateNorm = String(formFecha).split('T')[0];
+
+    const newEntries: Record<string, { venta: string; comision: string; premios: string; comisionTouched: boolean; id?: number }> = {};
+
+    agencySystemsList.forEach((sist) => {
+      agencyCurrenciesList.forEach((mon) => {
+        const key = `${sist}_${mon}`;
+        const match = sales.find((s) => {
+          const sAg = String(s.agencia || '').trim().toUpperCase();
+          const sSis = String(s.sistema || '').trim().toUpperCase();
+          const sMon = String(s.moneda || '').trim().toUpperCase();
+          const sDate = String(s.fecha || '').split('T')[0];
+          return sAg === agNorm && sSis === String(sist).trim().toUpperCase() && sMon === String(mon).trim().toUpperCase() && sDate === dateNorm;
+        });
+
+        if (match) {
+          newEntries[key] = {
+            venta: match.venta !== undefined && match.venta !== null ? String(match.venta) : '',
+            comision: match.comision !== undefined && match.comision !== null ? String(match.comision) : '',
+            premios: match.premios !== undefined && match.premios !== null ? String(match.premios) : '',
+            comisionTouched: true,
+            id: match.id,
+          };
+        } else {
+          newEntries[key] = {
+            venta: '',
+            comision: '',
+            premios: '',
+            comisionTouched: false,
+          };
+        }
+      });
+    });
+
+    setEntries(newEntries);
+  }, [formAgencia, formFecha, sales, agencySystemsList, agencyCurrenciesList]);
+
+  // Handlers for manual entry inputs
+  const handleVentaChange = (sist: string, mon: string, val: string) => {
+    const key = `${sist}_${mon}`;
+    const vNum = parseNum(val);
+    const { comPct } = getSystemConfig(sist);
+    const current = entries[key] || { venta: '', comision: '', premios: '', comisionTouched: false };
+
+    const newCom = current.comisionTouched
+      ? current.comision
+      : (val ? String(Math.round((vNum * (comPct / 100)) * 100) / 100) : '');
+
+    setEntries((prev) => ({
+      ...prev,
+      [key]: {
+        ...current,
+        venta: val,
+        comision: newCom,
+      },
+    }));
   };
 
-  // Calculations for manual entry
-  const calculatedManual = useMemo(() => {
-    const v = parseNum(formVenta);
-    const p = parseNum(formPremios);
-    const cPct = parseNum(formComisionPct);
-    const partPct = parseNum(formPartPct);
+  const handleComisionChange = (sist: string, mon: string, val: string) => {
+    const key = `${sist}_${mon}`;
+    const current = entries[key] || { venta: '', comision: '', premios: '', comisionTouched: false };
+    setEntries((prev) => ({
+      ...prev,
+      [key]: {
+        ...current,
+        comision: val,
+        comisionTouched: true,
+      },
+    }));
+  };
 
-    const comision = Math.round((v * (cPct / 100)) * 100) / 100;
-    const neto = Math.round((v - comision - p) * 100) / 100;
+  const handlePremiosChange = (sist: string, mon: string, val: string) => {
+    const key = `${sist}_${mon}`;
+    const current = entries[key] || { venta: '', comision: '', premios: '', comisionTouched: false };
+    setEntries((prev) => ({
+      ...prev,
+      [key]: {
+        ...current,
+        premios: val,
+      },
+    }));
+  };
+
+  // Submit single system movement
+  const handleSaveSystemRow = async (sist: string, mon: string) => {
+    if (!effectiveUserId || !formAgencia) return;
+    const key = `${sist}_${mon}`;
+    const row = entries[key] || { venta: '', comision: '', premios: '', comisionTouched: false };
+
+    const v = parseNum(row.venta);
+    const c = parseNum(row.comision);
+    const p = parseNum(row.premios);
+
+    if (v === 0 && p === 0 && c === 0) {
+      setMessage({ type: 'error', text: `Ingrese valores para el sistema ${sist} (${mon}).` });
+      return;
+    }
+
+    const neto = Math.round((v - c - p) * 100) / 100;
+    const { partPct } = getSystemConfig(sist);
     const utilAg = Math.round((neto * (partPct / 100)) * 100) / 100;
     const utilOp = Math.round((neto - utilAg) * 100) / 100;
 
-    return { comision, neto, utilAg, utilOp };
-  }, [formVenta, formPremios, formComisionPct, formPartPct]);
+    const payload = {
+      user_id: effectiveUserId,
+      agencia: formAgencia,
+      sistema: sist,
+      moneda: mon,
+      venta: v,
+      comision: c,
+      premios: p,
+      neto: neto,
+      util_op: utilOp,
+      util_ag: utilAg,
+      fecha: formFecha || systemCycle?.hasta || new Date().toISOString().split('T')[0],
+    };
+
+    setIsProcessing(true);
+    try {
+      if (row.id) {
+        const { error } = await supabase.from('carga_actual').update(payload).eq('id', row.id).eq('user_id', effectiveUserId);
+        if (error) throw error;
+      } else {
+        const { error } = await supabase.from('carga_actual').insert(payload);
+        if (error) throw error;
+      }
+
+      confetti({ particleCount: 35, spread: 55 });
+      setMessage({ type: 'success', text: `¡Movimiento de ${sist} (${mon}) para ${formAgencia} guardado exitosamente!` });
+      await loadData();
+    } catch (err: any) {
+      console.error('Error saving system row:', err);
+      setMessage({ type: 'error', text: err?.message || 'Error al guardar movimiento.' });
+    } finally {
+      setIsProcessing(false);
+    }
+  };
+
+  // Save all entered systems at once
+  const handleSaveAllSystems = async () => {
+    if (!effectiveUserId || !formAgencia) return;
+    const payloads: any[] = [];
+    const updatePayloads: { id: number; data: any }[] = [];
+
+    agencySystemsList.forEach((sist) => {
+      agencyCurrenciesList.forEach((mon) => {
+        const key = `${sist}_${mon}`;
+        const row = entries[key];
+        if (!row) return;
+
+        const v = parseNum(row.venta);
+        const c = parseNum(row.comision);
+        const p = parseNum(row.premios);
+
+        if (v > 0 || p > 0 || c > 0 || row.venta !== '' || row.premios !== '') {
+          const neto = Math.round((v - c - p) * 100) / 100;
+          const { partPct } = getSystemConfig(sist);
+          const utilAg = Math.round((neto * (partPct / 100)) * 100) / 100;
+          const utilOp = Math.round((neto - utilAg) * 100) / 100;
+
+          const data = {
+            user_id: effectiveUserId,
+            agencia: formAgencia,
+            sistema: sist,
+            moneda: mon,
+            venta: v,
+            comision: c,
+            premios: p,
+            neto: neto,
+            util_op: utilOp,
+            util_ag: utilAg,
+            fecha: formFecha || systemCycle?.hasta || new Date().toISOString().split('T')[0],
+          };
+
+          if (row.id) {
+            updatePayloads.push({ id: row.id, data });
+          } else {
+            payloads.push(data);
+          }
+        }
+      });
+    });
+
+    if (payloads.length === 0 && updatePayloads.length === 0) {
+      setMessage({ type: 'error', text: 'No hay datos de sistemas para guardar.' });
+      return;
+    }
+
+    setIsProcessing(true);
+    try {
+      if (payloads.length > 0) {
+        const { error } = await supabase.from('carga_actual').insert(payloads);
+        if (error) throw error;
+      }
+      for (const item of updatePayloads) {
+        const { error } = await supabase.from('carga_actual').update(item.data).eq('id', item.id).eq('user_id', effectiveUserId);
+        if (error) throw error;
+      }
+
+      confetti({ particleCount: 60, spread: 70 });
+      setMessage({ type: 'success', text: `¡Se guardaron los movimientos de ${formAgencia} correctamente!` });
+      await loadData();
+    } catch (err: any) {
+      console.error('Error saving all systems:', err);
+      setMessage({ type: 'error', text: err?.message || 'Error al guardar sistemas.' });
+    } finally {
+      setIsProcessing(false);
+    }
+  };
+
+  // Clear Screen Handler
+  const handleClearScreen = () => {
+    const cleared: Record<string, { venta: string; comision: string; premios: string; comisionTouched: boolean; id?: number }> = {};
+    agencySystemsList.forEach((sist) => {
+      agencyCurrenciesList.forEach((mon) => {
+        cleared[`${sist}_${mon}`] = {
+          venta: '',
+          comision: '',
+          premios: '',
+          comisionTouched: false,
+        };
+      });
+    });
+    setEntries(cleared);
+    setMessage({ type: 'success', text: 'Pantalla de registro limpiada.' });
+  };
 
   // Filtered sales list
   const filteredSales = useMemo(() => {
@@ -337,49 +460,7 @@ export const SalesEntryTab: React.FC = () => {
     return '💵';
   };
 
-  // Submit Single Manual Sale
-  const handleSaveManualSale = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!effectiveUserId) return;
 
-    if (!formAgencia || !formSistema || !formMoneda) {
-      setMessage({ type: 'error', text: 'Seleccione agencia, sistema y moneda.' });
-      return;
-    }
-
-    setIsProcessing(true);
-
-    try {
-      const payload = {
-        user_id: effectiveUserId,
-        agencia: formAgencia,
-        sistema: formSistema,
-        moneda: formMoneda,
-        venta: parseNum(formVenta),
-        premios: parseNum(formPremios),
-        comision: calculatedManual.comision,
-        neto: calculatedManual.neto,
-        util_op: calculatedManual.utilOp,
-        util_ag: calculatedManual.utilAg,
-        fecha: formFecha || systemCycle?.hasta || new Date().toISOString().split('T')[0],
-      };
-
-      const { error } = await supabase.from('carga_actual').insert(payload);
-      if (error) throw error;
-
-      confetti({ particleCount: 40, spread: 60 });
-      setMessage({ type: 'success', text: `¡Movimiento de venta de ${formAgencia} guardado exitosamente!` });
-
-      setFormVenta('');
-      setFormPremios('');
-      await loadData();
-    } catch (err: any) {
-      console.error('Error inserting sale:', err);
-      setMessage({ type: 'error', text: err?.message || 'Error al guardar la venta.' });
-    } finally {
-      setIsProcessing(false);
-    }
-  };
 
   // Delete single sale record
   const handleDeleteSale = async (id: number) => {
@@ -711,165 +792,187 @@ export const SalesEntryTab: React.FC = () => {
         )}
       </div>
 
-      {/* Manual Sale Entry Form */}
-      <div className="bg-[#0D1B22] border border-slate-800 rounded-3xl p-6 shadow-xl space-y-4">
-        <h3 className="text-sm font-bold text-white flex items-center gap-2">
-          <Plus className="w-4 h-4 text-emerald-400" />
-          Registro Manual Individual de Movimiento
-        </h3>
-
-        <form onSubmit={handleSaveManualSale} className="space-y-4">
-          <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-4">
-            <div className="space-y-1">
-              <label className="text-xs font-semibold text-slate-300">Agencia *</label>
-              <select
-                value={formAgencia}
-                onChange={(e) => handleAgencyChange(e.target.value)}
-                required
-                className="w-full bg-[#071217] border border-slate-700 rounded-xl px-3 py-2.5 text-xs text-white focus:outline-none focus:border-emerald-500 cursor-pointer"
-              >
-                {agencies.map((a) => (
-                  <option key={a.id} value={a.nombre_agencia}>
-                    {a.nombre_agencia}
-                  </option>
-                ))}
-              </select>
-            </div>
-
-            <div className="space-y-1">
-              <label className="text-xs font-semibold text-slate-300">Sistema Asignado *</label>
-              <select
-                value={formSistema}
-                onChange={(e) => handleSystemChange(e.target.value)}
-                required
-                className="w-full bg-[#071217] border border-slate-700 rounded-xl px-3 py-2.5 text-xs text-white focus:outline-none focus:border-emerald-500 cursor-pointer"
-              >
-                {currentAgencySystems.length === 0 ? (
-                  <option value="">Sin sistemas disponibles</option>
-                ) : (
-                  currentAgencySystems.map((s) => (
-                    <option key={s.id} value={s.nombre_sistema}>
-                      {s.nombre_sistema}
-                    </option>
-                  ))
-                )}
-              </select>
-            </div>
-
-            <div className="space-y-1">
-              <label className="text-xs font-semibold text-slate-300">Moneda *</label>
-              <select
-                value={formMoneda}
-                onChange={(e) => setFormMoneda(e.target.value)}
-                required
-                className="w-full bg-[#071217] border border-slate-700 rounded-xl px-3 py-2.5 text-xs text-white focus:outline-none focus:border-emerald-500 cursor-pointer"
-              >
-                {currentAgencyCurrencies.map((m) => (
-                  <option key={m.id} value={m.nombre_moneda}>
-                    {m.nombre_moneda} {m.simbolo ? `(${m.simbolo})` : ''}
-                  </option>
-                ))}
-              </select>
-            </div>
-
-            <div className="space-y-1">
-              <label className="text-xs font-semibold text-slate-300">Fecha del Movimiento *</label>
-              <input
-                type="date"
-                required
-                value={formFecha}
-                onChange={(e) => setFormFecha(e.target.value)}
-                className="w-full bg-[#071217] border border-slate-700 rounded-xl px-3 py-2.5 text-xs text-white focus:outline-none focus:border-emerald-500"
-              />
-            </div>
+      {/* Manual Multi-System Agency Sales Entry Section */}
+      <div className="bg-[#0D1B22] border border-purple-500/30 rounded-3xl p-5 sm:p-6 shadow-2xl space-y-5">
+        {/* Header & Agency Picker */}
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-2 border-b border-slate-800/80">
+          <div>
+            <h3 className="text-base sm:text-xl font-black text-white flex items-center gap-2">
+              <span className="text-purple-400 text-lg">➕</span>
+              Registro Manual: <span className="text-purple-300 font-extrabold">{formAgencia || 'Seleccione Agencia'}</span>
+            </h3>
+            <p className="text-xs text-slate-400 mt-0.5">
+              Carga directa por sistema y moneda para la agencia seleccionada.
+            </p>
           </div>
 
-          <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-4">
-            <div className="space-y-1">
-              <label className="text-xs font-semibold text-slate-300">Venta Bruta *</label>
-              <input
-                type="number"
-                step="0.01"
-                min="0"
-                required
-                placeholder="0.00"
-                value={formVenta}
-                onChange={(e) => setFormVenta(e.target.value)}
-                className="w-full bg-[#071217] border border-slate-700 rounded-xl px-3 py-2.5 text-xs text-white font-mono focus:outline-none focus:border-emerald-500"
-              />
-            </div>
-
-            <div className="space-y-1">
-              <label className="text-xs font-semibold text-slate-300">Premios Pagados</label>
-              <input
-                type="number"
-                step="0.01"
-                min="0"
-                placeholder="0.00"
-                value={formPremios}
-                onChange={(e) => setFormPremios(e.target.value)}
-                className="w-full bg-[#071217] border border-slate-700 rounded-xl px-3 py-2.5 text-xs text-white font-mono focus:outline-none focus:border-emerald-500"
-              />
-            </div>
-
-            <div className="space-y-1">
-              <label className="text-xs font-semibold text-slate-300">Comisión Agencia %</label>
-              <input
-                type="number"
-                step="0.1"
-                min="0"
-                max="100"
-                value={formComisionPct}
-                onChange={(e) => setFormComisionPct(e.target.value)}
-                className="w-full bg-[#071217] border border-slate-700 rounded-xl px-3 py-2.5 text-xs text-white font-mono focus:outline-none focus:border-emerald-500"
-              />
-            </div>
-
-            <div className="space-y-1">
-              <label className="text-xs font-semibold text-slate-300">Participación Agencia %</label>
-              <input
-                type="number"
-                step="0.1"
-                min="0"
-                max="100"
-                value={formPartPct}
-                onChange={(e) => setFormPartPct(e.target.value)}
-                className="w-full bg-[#071217] border border-slate-700 rounded-xl px-3 py-2.5 text-xs text-white font-mono focus:outline-none focus:border-emerald-500"
-              />
-            </div>
-          </div>
-
-          {/* Auto-calculated preview banner */}
-          <div className="grid grid-cols-4 gap-2 bg-[#071217] p-3 rounded-2xl border border-slate-800 text-center text-xs font-mono">
-            <div>
-              <span className="text-[10px] text-slate-500 uppercase block font-sans">Comisión</span>
-              <strong className="text-emerald-400">{formatCurrency(calculatedManual.comision, formMoneda)}</strong>
-            </div>
-            <div>
-              <span className="text-[10px] text-slate-500 uppercase block font-sans">Neto</span>
-              <strong className="text-white">{formatCurrency(calculatedManual.neto, formMoneda)}</strong>
-            </div>
-            <div>
-              <span className="text-[10px] text-slate-500 uppercase block font-sans">Utilidad Op</span>
-              <strong className="text-cyan-400">{formatCurrency(calculatedManual.utilOp, formMoneda)}</strong>
-            </div>
-            <div>
-              <span className="text-[10px] text-slate-500 uppercase block font-sans">Utilidad Ag</span>
-              <strong className="text-amber-400">{formatCurrency(calculatedManual.utilAg, formMoneda)}</strong>
-            </div>
-          </div>
-
-          <div className="flex justify-end">
-            <button
-              type="submit"
-              disabled={isProcessing}
-              className="px-6 py-2.5 rounded-xl bg-gradient-to-r from-emerald-500 to-teal-600 hover:from-emerald-400 hover:to-teal-500 text-slate-950 font-bold text-xs shadow-lg shadow-emerald-500/20 flex items-center gap-2 transition-all cursor-pointer disabled:opacity-50"
+          <div className="flex items-center gap-2">
+            <span className="text-xs font-bold text-slate-300 shrink-0">🎯 Agencia:</span>
+            <select
+              value={formAgencia}
+              onChange={(e) => setFormAgencia(e.target.value)}
+              className="bg-[#071217] border border-purple-500/40 focus:border-purple-400 rounded-xl px-3.5 py-2 text-xs font-bold text-white focus:outline-none cursor-pointer min-w-[200px]"
             >
-              <Plus className="w-4 h-4" />
-              {isProcessing ? 'Guardando...' : 'Registrar Venta'}
-            </button>
+              {agencies.map((a) => (
+                <option key={a.id} value={a.nombre_agencia}>
+                  {a.id} - {a.nombre_agencia}
+                </option>
+              ))}
+            </select>
           </div>
-        </form>
+        </div>
+
+        {/* Date Selector Row */}
+        <div className="bg-[#071217] border border-slate-800 rounded-2xl p-3 sm:p-3.5 flex flex-col sm:flex-row sm:items-center gap-3">
+          <label className="text-xs font-bold text-slate-300 flex items-center gap-2 shrink-0">
+            <span>📅</span> Asignar carga al día:
+          </label>
+          <input
+            type="date"
+            value={formFecha}
+            onChange={(e) => setFormFecha(e.target.value)}
+            className="bg-[#0D1B22] border border-slate-700 rounded-xl px-3.5 py-2 text-xs font-mono text-white focus:outline-none focus:border-purple-500 w-full sm:w-64"
+          />
+        </div>
+
+        {/* Systems Cards List */}
+        <div className="space-y-4">
+          {agencySystemsList.length === 0 ? (
+            <div className="bg-[#071217] border border-slate-800 rounded-2xl p-6 text-center text-xs text-slate-400">
+              No hay sistemas configurados para esta agencia.
+            </div>
+          ) : (
+            agencySystemsList.map((sist) => {
+              const { comPct } = getSystemConfig(sist);
+
+              return (
+                <div
+                  key={sist}
+                  className="bg-[#071217]/90 border border-slate-800 hover:border-purple-500/30 rounded-2xl p-4 sm:p-5 shadow-lg space-y-4 transition-all"
+                >
+                  <div className="flex items-center justify-between border-b border-slate-800/80 pb-2.5">
+                    <h4 className="text-sm sm:text-base font-black text-white flex items-center gap-2">
+                      <span className="text-rose-500 text-base">📍</span>
+                      Sistema: <span className="text-white font-extrabold tracking-wide">{sist}</span>
+                    </h4>
+                    <span className="text-[11px] font-mono text-slate-400 bg-slate-800/80 px-2 py-0.5 rounded-lg border border-slate-700/60">
+                      Comisión base: <strong className="text-emerald-400">{comPct}%</strong>
+                    </span>
+                  </div>
+
+                  <div className="space-y-4">
+                    {agencyCurrenciesList.map((mon) => {
+                      const key = `${sist}_${mon}`;
+                      const row = entries[key] || { venta: '', comision: '', premios: '', comisionTouched: false };
+                      const v = parseNum(row.venta);
+                      const c = parseNum(row.comision);
+                      const p = parseNum(row.premios);
+                      const neto = Math.round((v - c - p) * 100) / 100;
+                      const isSaved = !!row.id;
+
+                      return (
+                        <div
+                          key={mon}
+                          className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 lg:grid-cols-5 gap-3.5 items-center"
+                        >
+                          {/* Venta */}
+                          <div className="space-y-1">
+                            <label className="text-xs font-bold text-slate-300">Venta {mon}</label>
+                            <input
+                              type="number"
+                              step="0.01"
+                              min="0"
+                              placeholder="0,00"
+                              value={row.venta}
+                              onChange={(e) => handleVentaChange(sist, mon, e.target.value)}
+                              className="w-full bg-[#0D1B22] border border-slate-700 rounded-xl px-3 py-2.5 text-xs text-white font-mono focus:outline-none focus:border-purple-500"
+                            />
+                          </div>
+
+                          {/* Comisión */}
+                          <div className="space-y-1">
+                            <label className="text-xs font-bold text-slate-300">Comisión {mon}</label>
+                            <input
+                              type="number"
+                              step="0.01"
+                              min="0"
+                              placeholder="0,00"
+                              value={row.comision}
+                              onChange={(e) => handleComisionChange(sist, mon, e.target.value)}
+                              className="w-full bg-[#0D1B22] border border-slate-700 rounded-xl px-3 py-2.5 text-xs text-emerald-400 font-mono focus:outline-none focus:border-purple-500"
+                            />
+                          </div>
+
+                          {/* Premios */}
+                          <div className="space-y-1">
+                            <label className="text-xs font-bold text-slate-300">Premios {mon}</label>
+                            <input
+                              type="number"
+                              step="0.01"
+                              min="0"
+                              placeholder="0,00"
+                              value={row.premios}
+                              onChange={(e) => handlePremiosChange(sist, mon, e.target.value)}
+                              className="w-full bg-[#0D1B22] border border-slate-700 rounded-xl px-3 py-2.5 text-xs text-rose-400 font-mono focus:outline-none focus:border-purple-500"
+                            />
+                          </div>
+
+                          {/* Neto Calculado */}
+                          <div className="space-y-1">
+                            <label className="text-[11px] font-bold text-slate-400 uppercase tracking-wide">
+                              Neto Calculado
+                            </label>
+                            <div className={`text-lg sm:text-xl font-black font-mono tracking-tight ${neto >= 0 ? 'text-white' : 'text-rose-400'}`}>
+                              {neto.toLocaleString('es-VE', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                            </div>
+                          </div>
+
+                          {/* Individual Save Button */}
+                          <div className="flex items-center justify-end sm:justify-start pt-1 sm:pt-4">
+                            <button
+                              type="button"
+                              disabled={isProcessing || (v === 0 && p === 0 && c === 0 && !row.venta && !row.premios)}
+                              onClick={() => handleSaveSystemRow(sist, mon)}
+                              className={`w-full sm:w-auto px-4 py-2.5 rounded-xl font-bold text-xs flex items-center justify-center gap-1.5 transition-all cursor-pointer disabled:opacity-40 ${
+                                isSaved
+                                  ? 'bg-emerald-500/20 hover:bg-emerald-500/30 text-emerald-400 border border-emerald-500/40'
+                                  : 'bg-purple-600 hover:bg-purple-500 text-white shadow-lg shadow-purple-600/20'
+                              }`}
+                            >
+                              <Upload className="w-3.5 h-3.5" />
+                              {isSaved ? `Actualizar ${mon}` : `Guardar ${mon}`}
+                            </button>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              );
+            })
+          )}
+        </div>
+
+        {/* Action Buttons: Clean Screen and Bulk Save */}
+        <div className="flex flex-wrap items-center justify-between gap-3 pt-3 border-t border-slate-800">
+          <button
+            type="button"
+            onClick={handleClearScreen}
+            className="px-4 py-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 font-bold text-xs flex items-center gap-1.5 transition-all border border-slate-700 cursor-pointer"
+          >
+            🧹 LIMPIAR PANTALLA
+          </button>
+
+          <button
+            type="button"
+            disabled={isProcessing}
+            onClick={handleSaveAllSystems}
+            className="px-6 py-2.5 rounded-xl bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-500 hover:to-indigo-500 text-white font-bold text-xs shadow-lg shadow-purple-600/20 flex items-center gap-2 transition-all cursor-pointer disabled:opacity-50"
+          >
+            <Upload className="w-4 h-4" />
+            {isProcessing ? 'Guardando...' : '💾 GUARDAR TODOS LOS SISTEMAS'}
+          </button>
+        </div>
       </div>
 
       {/* Detailed Sales Records Separated by Currency */}
