@@ -31,14 +31,36 @@ export const Login: React.FC = () => {
     }
   };
 
+  const renderWhatsAppBanner = () => (
+    <a
+      href="https://wa.me/19542259188?text=Hola%2C%20necesito%20atenci%C3%B3n%20y%20soporte%20en%20Multibanca%20Express"
+      target="_blank"
+      rel="noopener noreferrer"
+      className="flex items-center justify-between p-3.5 rounded-2xl bg-gradient-to-r from-emerald-950/40 to-teal-950/40 border border-emerald-500/30 hover:border-emerald-500/60 transition-all cursor-pointer group shadow-lg shadow-black/20"
+    >
+      <div className="flex items-center gap-3">
+        <div className="w-9 h-9 rounded-xl bg-emerald-500/20 text-emerald-400 flex items-center justify-center text-lg shrink-0">
+          <MessageSquare className="w-5 h-5 text-emerald-400" />
+        </div>
+        <div className="min-w-0">
+          <div className="text-xs font-bold text-white truncate">¿Necesitas atención o soporte?</div>
+          <div className="text-[11px] text-emerald-400 font-medium truncate">WhatsApp: +1 (954) 225-9188</div>
+        </div>
+      </div>
+      <span className="text-[10px] font-black uppercase px-2.5 py-1 rounded-lg bg-emerald-500 text-black group-hover:bg-emerald-400 transition-colors shrink-0 whitespace-nowrap ml-2">
+        Chatear Ahora 📲
+      </span>
+    </a>
+  );
+
   return (
     <div className="min-h-screen bg-[#071217] flex flex-col justify-between p-4 sm:p-6 lg:p-10 text-slate-100">
-      <div className="max-w-7xl mx-auto w-full grid grid-cols-1 lg:grid-cols-12 gap-8 lg:gap-12 items-center my-auto">
+      <div className="max-w-7xl mx-auto w-full my-auto flex flex-col lg:grid lg:grid-cols-12 gap-6 lg:gap-12 items-center">
         
-        {/* LEFT COLUMN: BRANDING & CONTACT */}
-        <div className="lg:col-span-7 space-y-6">
+        {/* BRANDING (Mobile: Top / Desktop: Left Top) */}
+        <div className="w-full lg:col-span-7 flex flex-col justify-between space-y-6">
           {/* Brand Logo & Name */}
-          <div className="flex items-center gap-3">
+          <div className="flex items-center gap-3 justify-center sm:justify-start">
             <img 
               src="/logo.svg" 
               alt="Multibanca Express" 
@@ -52,30 +74,14 @@ export const Login: React.FC = () => {
             </div>
           </div>
 
-          {/* WhatsApp Attention Banner */}
-          <a
-            href="https://wa.me/19542259188?text=Hola%2C%20necesito%20atenci%C3%B3n%20y%20soporte%20en%20Multibanca%20Express"
-            target="_blank"
-            rel="noopener noreferrer"
-            className="flex items-center justify-between p-3.5 rounded-2xl bg-gradient-to-r from-emerald-950/40 to-teal-950/40 border border-emerald-500/30 hover:border-emerald-500/60 transition-all cursor-pointer group"
-          >
-            <div className="flex items-center gap-3">
-              <div className="w-9 h-9 rounded-xl bg-emerald-500/20 text-emerald-400 flex items-center justify-center text-lg">
-                <MessageSquare className="w-5 h-5 text-emerald-400" />
-              </div>
-              <div>
-                <div className="text-xs font-bold text-white">¿Necesitas atención o soporte?</div>
-                <div className="text-[11px] text-emerald-400 font-medium">WhatsApp de Atención: +1 (954) 225-9188</div>
-              </div>
-            </div>
-            <span className="text-[10px] font-black uppercase px-2.5 py-1 rounded-lg bg-emerald-500 text-black group-hover:bg-emerald-400 transition-colors">
-              Chatear Ahora 📲
-            </span>
-          </a>
+          {/* Desktop WhatsApp Banner */}
+          <div className="hidden lg:block">
+            {renderWhatsAppBanner()}
+          </div>
         </div>
 
-        {/* RIGHT COLUMN: AUTHENTICATION FORM */}
-        <div className="lg:col-span-5">
+        {/* AUTHENTICATION FORM CARD (Mobile: Middle / Desktop: Right Column) */}
+        <div className="w-full lg:col-span-5">
           <div className="bg-[#0D1B22] border border-slate-800 rounded-3xl p-6 sm:p-8 shadow-2xl shadow-black/50 relative overflow-hidden">
             {/* Top Glowing Glow */}
             <div className="absolute top-0 left-1/2 -translate-x-1/2 w-48 h-1 bg-gradient-to-r from-transparent via-emerald-500 to-transparent" />
@@ -145,6 +151,12 @@ export const Login: React.FC = () => {
             </form>
           </div>
         </div>
+
+        {/* Mobile WhatsApp Banner (Mobile: Bottom below form) */}
+        <div className="w-full lg:hidden">
+          {renderWhatsAppBanner()}
+        </div>
+
       </div>
 
       {/* FOOTER */}
@@ -154,3 +166,5 @@ export const Login: React.FC = () => {
     </div>
   );
 };
+
+export default Login;
