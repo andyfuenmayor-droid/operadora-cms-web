@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import { supabase } from '../../lib/supabase';
 import { useAuth } from '../../context/AuthContext';
 import { formatCurrency, formatDate, cleanAgencyName } from '../../utils/formatters';
@@ -15,11 +15,36 @@ import {
   CheckCircle2,
   AlertTriangle,
   Upload,
-  Layers,
-  ChevronDown,
   Coins
 } from 'lucide-react';
 import confetti from 'canvas-confetti';
+
+// Safe helper to parse numbers from numeric or formatted strings
+function parseNum(val: any): number {
+  if (typeof val === 'number') return isNaN(val) ? 0 : val;
+  if (!val) return 0;
+  const str = String(val).trim().replace(/\s/g, '');
+  if (str.includes(',') && str.includes('.')) {
+    if (str.indexOf('.') < str.indexOf(',')) {
+      return parseFloat(str.replace(/\./g, '').replace(',', '.')) || 0;
+    } else {
+      return parseFloat(str.replace(/,/g, '')) || 0;
+    }
+  }
+  if (str.includes(',')) {
+    return parseFloat(str.replace(',', '.')) || 0;
+  }
+  const n = parseFloat(str);
+  return isNaN(n) ? 0 : n;
+}
+
+// Safe helper to parse lists of strings from arrays or comma strings
+function parseList(val: any): string[] {
+  if (!val) return [];
+  if (Array.isArray(val)) return val.map((v) => String(v).trim().toUpperCase()).filter(Boolean);
+  if (typeof val === 'string') return val.split(',').map((v) => v.trim().toUpperCase()).filter(Boolean);
+  return [String(val).trim().toUpperCase()].filter(Boolean);
+}
 
 export const SalesEntryTab: React.FC = () => {
   const { effectiveUserId, systemCycle } = useAuth();
@@ -39,7 +64,7 @@ export const SalesEntryTab: React.FC = () => {
   const [formAgencia, setFormAgencia] = useState('');
   const [formSistema, setFormSistema] = useState('');
   const [formMoneda, setFormMoneda] = useState('BS');
-  const [formFecha, setFormFecha] = useState(systemCycle.hasta);
+  const [formFecha, setFormFecha] = useState(systemCycle?.hasta || '');
   const [formVenta, setFormVenta] = useState('');
   const [formPremios, setFormPremios] = useState('');
   const [formComisionPct, setFormComisionPct] = useState('10');
@@ -47,13 +72,75 @@ export const SalesEntryTab: React.FC = () => {
 
   // Bulk Import
   const [isBulkOpen, setIsBulkOpen] = useState(false);
-  const [bulkFileDate, setBulkFileDate] = useState(systemCycle.hasta);
+  const [bulkFileDate, setBulkFileDate] = useState(systemCycle?.hasta || '');
   const [bulkRows, setBulkRows] = useState<any[]>([]);
   const [bulkError, setBulkError] = useState<string | null>(null);
 
   const [message, setMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
 
-  const loadData = async () => {
+  // Helper to initialize or re-apply agency conditions
+  const applyAgencySettings = (
+    agName: string,
+    allAgencies: Agency[],
+    allSystems: BetSystem[],
+    allCurrencies: Currency[],
+    targetSys?: string
+  ) => {
+    const ag = allAgencies.find((a) => a.nombre_agencia === agName);
+    if (!ag) return;
+
+    // Determine available systems
+    const assignedSysList = parseList(ag.sistemas);
+    const availableSys = assignedSysList.length > 0 && !assignedSysList.includes('TODOS')
+      ? allSystems.filter((s) => assignedSysList.includes(s.nombre_sistema.toUpperCase()))
+      : allSystems;
+
+    const chosenSys = targetSys && availableSys.some((s) => s.nombre_sistema === targetSys)
+      ? targetSys
+      : (availableSys[0]?.nombre_sistema || (allSystems[0]?.nombre_sistema || ''));
+
+    setFormSistema(chosenSys);
+
+    // Determine available currencies
+    const assignedCurrs = parseList(ag.monedas);
+    const chosenCurr = assignedCurrs.length > 0 && !assignedCurrs.includes('TODAS')
+      ? assignedCurrs[0]
+      : (allCurrencies[0]?.nombre_moneda || 'BS');
+
+    setFormMoneda(chosenCurr);
+
+    // Check custom condiciones_sistemas
+    let customFound = false;
+    if (ag.condiciones_sistemas) {
+      try {
+        const cond = typeof ag.condiciones_sistemas === 'string'
+          ? JSON.parse(ag.condiciones_sistemas)
+          : ag.condiciones_sistemas;
+        if (cond && cond[chosenSys]) {
+          if (cond[chosenSys].comision !== undefined) {
+            setFormComisionPct(String(cond[chosenSys].comision));
+            customFound = true;
+          }
+          if (cond[chosenSys].participacion !== undefined) {
+            setFormPartPct(String(cond[chosenSys].participacion));
+            customFound = true;
+          }
+          if (cond[chosenSys].moneda) {
+            setFormMoneda(String(cond[chosenSys].moneda).toUpperCase());
+          }
+        }
+      } catch (e) {
+        console.error('Error parsing condiciones_sistemas', e);
+      }
+    }
+
+    if (!customFound) {
+      setFormComisionPct(String(ag.comision ?? 10));
+      setFormPartPct(String(ag.participacion_ag ?? 50));
+    }
+  };
+
+  const loadData = useCallback(async () => {
     if (!effectiveUserId) return;
     setIsLoading(true);
     setMessage(null);
@@ -76,8 +163,13 @@ export const SalesEntryTab: React.FC = () => {
       setSystems(loadedSystems);
       setCurrencies(loadedCurrencies);
 
-      if (loadedAgencies.length > 0 && !formAgencia) {
-        setFormAgencia(loadedAgencies[0].nombre_agencia);
+      if (loadedAgencies.length > 0) {
+        const currentAg = formAgencia && loadedAgencies.some((a) => a.nombre_agencia === formAgencia)
+          ? formAgencia
+          : loadedAgencies[0].nombre_agencia;
+
+        setFormAgencia(currentAg);
+        applyAgencySettings(currentAg, loadedAgencies, loadedSystems, loadedCurrencies);
       }
     } catch (err: any) {
       console.error('Error loading sales data:', err);
@@ -85,26 +177,27 @@ export const SalesEntryTab: React.FC = () => {
     } finally {
       setIsLoading(false);
     }
-  };
+  }, [effectiveUserId]);
 
   useEffect(() => {
     loadData();
-  }, [effectiveUserId]);
+  }, [loadData]);
 
-  // Derived systems assigned to selected agency
-  const agencySystems = useMemo(() => {
+  // Derived systems assigned to currently selected agency
+  const currentAgencySystems = useMemo(() => {
     if (!formAgencia) return systems;
     const ag = agencies.find((a) => a.nombre_agencia === formAgencia);
-    if (!ag || !ag.sistemas || ag.sistemas.trim() === '' || ag.sistemas.trim() === 'TODOS') {
+    if (!ag) return systems;
+    const assigned = parseList(ag.sistemas);
+    if (assigned.length === 0 || assigned.includes('TODOS')) {
       return systems;
     }
-    const assigned = ag.sistemas.split(',').map((s) => s.trim().toUpperCase());
     const filtered = systems.filter((s) => assigned.includes(s.nombre_sistema.toUpperCase()));
     return filtered.length > 0 ? filtered : systems;
   }, [formAgencia, agencies, systems]);
 
-  // Derived currencies assigned to selected agency
-  const agencyCurrencies = useMemo(() => {
+  // Derived currencies assigned to currently selected agency
+  const currentAgencyCurrencies = useMemo(() => {
     const defaultCurrs: Currency[] = currencies.length > 0 ? currencies : [
       { id: 1, nombre_moneda: 'BS', simbolo: 'Bs.' },
       { id: 2, nombre_moneda: 'USD', simbolo: '$' },
@@ -112,10 +205,11 @@ export const SalesEntryTab: React.FC = () => {
     ];
     if (!formAgencia) return defaultCurrs;
     const ag = agencies.find((a) => a.nombre_agencia === formAgencia);
-    if (!ag || !ag.monedas || ag.monedas.trim() === '' || ag.monedas.trim() === 'TODAS') {
+    if (!ag) return defaultCurrs;
+    const assigned = parseList(ag.monedas);
+    if (assigned.length === 0 || assigned.includes('TODAS')) {
       return defaultCurrs;
     }
-    const assigned = ag.monedas.split(',').map((m) => m.trim().toUpperCase());
     const filtered = defaultCurrs.filter((c) => assigned.includes(c.nombre_moneda.toUpperCase()));
     if (filtered.length > 0) return filtered;
     return assigned.map((m, i) => ({
@@ -125,36 +219,35 @@ export const SalesEntryTab: React.FC = () => {
     }));
   }, [formAgencia, agencies, currencies]);
 
-  // When selected agency or system changes, update conditions and valid selections
-  useEffect(() => {
+  // Handle change in Agency dropdown
+  const handleAgencyChange = (newAgency: string) => {
+    setFormAgencia(newAgency);
+    applyAgencySettings(newAgency, agencies, systems, currencies);
+  };
+
+  // Handle change in System dropdown
+  const handleSystemChange = (newSystem: string) => {
+    setFormSistema(newSystem);
     const ag = agencies.find((a) => a.nombre_agencia === formAgencia);
     if (!ag) return;
 
-    // Check if current formSistema is in agencySystems
-    const isValidSystem = agencySystems.some((s) => s.nombre_sistema === formSistema);
-    const targetSystem = isValidSystem ? formSistema : (agencySystems[0]?.nombre_sistema || '');
-    if (targetSystem !== formSistema) {
-      setFormSistema(targetSystem);
-    }
-
-    // Check condiciones_sistemas for custom commission / participation / currency
     let customFound = false;
     if (ag.condiciones_sistemas) {
       try {
         const cond = typeof ag.condiciones_sistemas === 'string'
           ? JSON.parse(ag.condiciones_sistemas)
           : ag.condiciones_sistemas;
-        if (cond && cond[targetSystem]) {
-          if (cond[targetSystem].comision !== undefined) {
-            setFormComisionPct(String(cond[targetSystem].comision));
+        if (cond && cond[newSystem]) {
+          if (cond[newSystem].comision !== undefined) {
+            setFormComisionPct(String(cond[newSystem].comision));
             customFound = true;
           }
-          if (cond[targetSystem].participacion !== undefined) {
-            setFormPartPct(String(cond[targetSystem].participacion));
+          if (cond[newSystem].participacion !== undefined) {
+            setFormPartPct(String(cond[newSystem].participacion));
             customFound = true;
           }
-          if (cond[targetSystem].moneda) {
-            setFormMoneda(cond[targetSystem].moneda);
+          if (cond[newSystem].moneda) {
+            setFormMoneda(String(cond[newSystem].moneda).toUpperCase());
           }
         }
       } catch (e) {
@@ -166,20 +259,14 @@ export const SalesEntryTab: React.FC = () => {
       setFormComisionPct(String(ag.comision ?? 10));
       setFormPartPct(String(ag.participacion_ag ?? 50));
     }
-
-    // Validate currency
-    const isValidCurr = agencyCurrencies.some((c) => c.nombre_moneda === formMoneda);
-    if (!isValidCurr && agencyCurrencies.length > 0) {
-      setFormMoneda(agencyCurrencies[0].nombre_moneda);
-    }
-  }, [formAgencia, formSistema, agencySystems, agencyCurrencies, agencies]);
+  };
 
   // Calculations for manual entry
   const calculatedManual = useMemo(() => {
-    const v = Number(formVenta) || 0;
-    const p = Number(formPremios) || 0;
-    const cPct = Number(formComisionPct) || 0;
-    const partPct = Number(formPartPct) || 0;
+    const v = parseNum(formVenta);
+    const p = parseNum(formPremios);
+    const cPct = parseNum(formComisionPct);
+    const partPct = parseNum(formPartPct);
 
     const comision = Math.round((v * (cPct / 100)) * 100) / 100;
     const neto = Math.round((v - comision - p) * 100) / 100;
@@ -189,7 +276,7 @@ export const SalesEntryTab: React.FC = () => {
     return { comision, neto, utilAg, utilOp };
   }, [formVenta, formPremios, formComisionPct, formPartPct]);
 
-  // Filtered sales
+  // Filtered sales list
   const filteredSales = useMemo(() => {
     return sales.filter((s) => {
       if (filterAgency !== 'Todas' && s.agencia !== filterAgency) return false;
@@ -202,16 +289,19 @@ export const SalesEntryTab: React.FC = () => {
     const map: Record<string, { venta: number; comision: number; premios: number; neto: number; util_op: number; util_ag: number }> = {};
 
     filteredSales.forEach((s) => {
-      const key = `${s.sistema || 'Global'} - ${s.moneda || 'USD'}`;
+      const sys = s.sistema || 'Global';
+      const mon = String(s.moneda || 'USD').toUpperCase();
+      const key = `${sys} - ${mon}`;
+
       if (!map[key]) {
         map[key] = { venta: 0, comision: 0, premios: 0, neto: 0, util_op: 0, util_ag: 0 };
       }
-      map[key].venta += Number(s.venta || 0);
-      map[key].comision += Number(s.comision || 0);
-      map[key].premios += Number(s.premios || 0);
-      map[key].neto += Number(s.neto || 0);
-      map[key].util_op += Number(s.util_op || 0);
-      map[key].util_ag += Number(s.util_ag || 0);
+      map[key].venta += parseNum(s.venta);
+      map[key].comision += parseNum(s.comision);
+      map[key].premios += parseNum(s.premios);
+      map[key].neto += parseNum(s.neto);
+      map[key].util_op += parseNum(s.util_op);
+      map[key].util_ag += parseNum(s.util_ag);
     });
 
     return Object.entries(map).map(([key, vals]) => ({
@@ -224,7 +314,7 @@ export const SalesEntryTab: React.FC = () => {
   const salesByCurrency = useMemo(() => {
     const groups: Record<string, DailySaleItem[]> = {};
     filteredSales.forEach((s) => {
-      const curr = (s.moneda || 'USD').toUpperCase();
+      const curr = String(s.moneda || 'USD').trim().toUpperCase();
       if (!groups[curr]) {
         groups[curr] = [];
       }
@@ -265,13 +355,13 @@ export const SalesEntryTab: React.FC = () => {
         agencia: formAgencia,
         sistema: formSistema,
         moneda: formMoneda,
-        venta: Number(formVenta) || 0,
-        premios: Number(formPremios) || 0,
+        venta: parseNum(formVenta),
+        premios: parseNum(formPremios),
         comision: calculatedManual.comision,
         neto: calculatedManual.neto,
         util_op: calculatedManual.utilOp,
         util_ag: calculatedManual.utilAg,
-        fecha: formFecha,
+        fecha: formFecha || systemCycle?.hasta || new Date().toISOString().split('T')[0],
       };
 
       const { error } = await supabase.from('carga_actual').insert(payload);
@@ -310,7 +400,7 @@ export const SalesEntryTab: React.FC = () => {
     }
   };
 
-  // Handle CSV/Text bulk paste or file parsing
+  // Handle CSV bulk file parsing
   const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
@@ -337,12 +427,11 @@ export const SalesEntryTab: React.FC = () => {
           const agRaw = cleanAgencyName(cols[0]);
           if (!agRaw || agRaw === 'TOTAL') continue;
 
-          // Match agency in system
           const matchedAg = agencies.find((a) => cleanAgencyName(a.nombre_agencia) === agRaw);
           if (!matchedAg) continue;
 
-          const venta = parseFloat(cols[1]?.replace(',', '.') || '0') || 0;
-          const premios = parseFloat(cols[2]?.replace(',', '.') || '0') || 0;
+          const venta = parseNum(cols[1]);
+          const premios = parseNum(cols[2]);
           const comPct = matchedAg.comision || 10;
           const partPct = matchedAg.participacion_ag || 50;
 
@@ -635,9 +724,9 @@ export const SalesEntryTab: React.FC = () => {
               <label className="text-xs font-semibold text-slate-300">Agencia *</label>
               <select
                 value={formAgencia}
-                onChange={(e) => setFormAgencia(e.target.value)}
+                onChange={(e) => handleAgencyChange(e.target.value)}
                 required
-                className="w-full bg-[#071217] border border-slate-700 rounded-xl px-3 py-2.5 text-xs text-white focus:outline-none focus:border-emerald-500"
+                className="w-full bg-[#071217] border border-slate-700 rounded-xl px-3 py-2.5 text-xs text-white focus:outline-none focus:border-emerald-500 cursor-pointer"
               >
                 {agencies.map((a) => (
                   <option key={a.id} value={a.nombre_agencia}>
@@ -651,14 +740,14 @@ export const SalesEntryTab: React.FC = () => {
               <label className="text-xs font-semibold text-slate-300">Sistema Asignado *</label>
               <select
                 value={formSistema}
-                onChange={(e) => setFormSistema(e.target.value)}
+                onChange={(e) => handleSystemChange(e.target.value)}
                 required
-                className="w-full bg-[#071217] border border-slate-700 rounded-xl px-3 py-2.5 text-xs text-white focus:outline-none focus:border-emerald-500"
+                className="w-full bg-[#071217] border border-slate-700 rounded-xl px-3 py-2.5 text-xs text-white focus:outline-none focus:border-emerald-500 cursor-pointer"
               >
-                {agencySystems.length === 0 ? (
+                {currentAgencySystems.length === 0 ? (
                   <option value="">Sin sistemas disponibles</option>
                 ) : (
-                  agencySystems.map((s) => (
+                  currentAgencySystems.map((s) => (
                     <option key={s.id} value={s.nombre_sistema}>
                       {s.nombre_sistema}
                     </option>
@@ -673,9 +762,9 @@ export const SalesEntryTab: React.FC = () => {
                 value={formMoneda}
                 onChange={(e) => setFormMoneda(e.target.value)}
                 required
-                className="w-full bg-[#071217] border border-slate-700 rounded-xl px-3 py-2.5 text-xs text-white focus:outline-none focus:border-emerald-500"
+                className="w-full bg-[#071217] border border-slate-700 rounded-xl px-3 py-2.5 text-xs text-white focus:outline-none focus:border-emerald-500 cursor-pointer"
               >
-                {agencyCurrencies.map((m) => (
+                {currentAgencyCurrencies.map((m) => (
                   <option key={m.id} value={m.nombre_moneda}>
                     {m.nombre_moneda} {m.simbolo ? `(${m.simbolo})` : ''}
                   </option>
@@ -830,7 +919,7 @@ export const SalesEntryTab: React.FC = () => {
             <select
               value={filterAgency}
               onChange={(e) => setFilterAgency(e.target.value)}
-              className="bg-[#071217] border border-slate-700 rounded-xl px-3 py-1.5 text-xs text-white focus:outline-none focus:border-emerald-500"
+              className="bg-[#071217] border border-slate-700 rounded-xl px-3 py-1.5 text-xs text-white focus:outline-none focus:border-emerald-500 cursor-pointer"
             >
               <option value="Todas">Todas las Agencias</option>
               {agencies.map((a) => (
@@ -853,12 +942,12 @@ export const SalesEntryTab: React.FC = () => {
             if (items.length === 0) return null;
 
             const flag = getCurrencyFlag(curr);
-            const totalVenta = items.reduce((sum, r) => sum + (Number(r.venta) || 0), 0);
-            const totalComision = items.reduce((sum, r) => sum + (Number(r.comision) || 0), 0);
-            const totalPremios = items.reduce((sum, r) => sum + (Number(r.premios) || 0), 0);
-            const totalNeto = items.reduce((sum, r) => sum + (Number(r.neto) || 0), 0);
-            const totalUtilOp = items.reduce((sum, r) => sum + (Number(r.util_op) || 0), 0);
-            const totalUtilAg = items.reduce((sum, r) => sum + (Number(r.util_ag) || 0), 0);
+            const totalVenta = items.reduce((sum, r) => sum + parseNum(r.venta), 0);
+            const totalComision = items.reduce((sum, r) => sum + parseNum(r.comision), 0);
+            const totalPremios = items.reduce((sum, r) => sum + parseNum(r.premios), 0);
+            const totalNeto = items.reduce((sum, r) => sum + parseNum(r.neto), 0);
+            const totalUtilOp = items.reduce((sum, r) => sum + parseNum(r.util_op), 0);
+            const totalUtilAg = items.reduce((sum, r) => sum + parseNum(r.util_ag), 0);
 
             return (
               <div
@@ -915,13 +1004,13 @@ export const SalesEntryTab: React.FC = () => {
                           <td className="py-3 px-4 text-right text-white font-bold">{formatCurrency(s.venta || 0, s.moneda)}</td>
                           <td className="py-3 px-4 text-right text-emerald-400">{formatCurrency(s.comision || 0, s.moneda)}</td>
                           <td className="py-3 px-4 text-right text-rose-400">{formatCurrency(s.premios || 0, s.moneda)}</td>
-                          <td className={`py-3 px-4 text-right font-bold ${Number(s.neto) >= 0 ? 'text-white' : 'text-rose-400'}`}>
+                          <td className={`py-3 px-4 text-right font-bold ${parseNum(s.neto) >= 0 ? 'text-white' : 'text-rose-400'}`}>
                             {formatCurrency(s.neto || 0, s.moneda)}
                           </td>
-                          <td className={`py-3 px-4 text-right font-bold ${Number(s.util_op) >= 0 ? 'text-cyan-400' : 'text-rose-400'}`}>
+                          <td className={`py-3 px-4 text-right font-bold ${parseNum(s.util_op) >= 0 ? 'text-cyan-400' : 'text-rose-400'}`}>
                             {formatCurrency(s.util_op || 0, s.moneda)}
                           </td>
-                          <td className={`py-3 px-4 text-right ${Number(s.util_ag) >= 0 ? 'text-amber-400' : 'text-rose-400'}`}>
+                          <td className={`py-3 px-4 text-right ${parseNum(s.util_ag) >= 0 ? 'text-amber-400' : 'text-rose-400'}`}>
                             {formatCurrency(s.util_ag || 0, s.moneda)}
                           </td>
                           <td className="py-3 px-4 text-center">

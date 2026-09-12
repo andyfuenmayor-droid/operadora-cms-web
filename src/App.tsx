@@ -3,6 +3,7 @@ import { AuthProvider, useAuth } from './context/AuthContext';
 import { Login } from './components/Login';
 import { Shell } from './components/Layout/Shell';
 import type { ModuleId } from './types';
+import { ErrorBoundary } from './components/Common/ErrorBoundary';
 
 // Components
 import { HomeDashboard } from './components/Home/HomeDashboard';
@@ -118,7 +119,9 @@ const AppContent: React.FC = () => {
 
   return (
     <Shell currentModule={activeModule} onSelectModule={setCurrentModule}>
-      {renderModuleContent()}
+      <ErrorBoundary>
+        {renderModuleContent()}
+      </ErrorBoundary>
     </Shell>
   );
 };
