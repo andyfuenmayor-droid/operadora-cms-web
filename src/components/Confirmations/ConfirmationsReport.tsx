@@ -42,15 +42,36 @@ interface CustodiaAgencia {
   status: 'custodia' | 'ruta' | 'al_dia';
 }
 
+// Helper to normalize any date format (DD/MM/YYYY, ISO, etc.) to YYYY-MM-DD
+const normalizeToISODate = (dStr: string): string => {
+  if (!dStr) return '';
+  const trimmed = dStr.trim();
+  if (/^\d{2}[\/\-]\d{2}[\/\-]\d{4}/.test(trimmed)) {
+    const parts = trimmed.slice(0, 10).split(/[\/\-]/);
+    return `${parts[2]}-${parts[1].padStart(2, '0')}-${parts[0].padStart(2, '0')}`;
+  }
+  if (/^\d{4}[\/\-]\d{2}[\/\-]\d{2}/.test(trimmed)) {
+    return trimmed.slice(0, 10).replace(/\//g, '-');
+  }
+  try {
+    const d = new Date(trimmed);
+    if (!isNaN(d.getTime())) {
+      return d.toISOString().slice(0, 10);
+    }
+  } catch {}
+  return trimmed.slice(0, 10);
+};
+
 export const ConfirmationsReport: React.FC = () => {
   const { effectiveUserId, systemCycle, user } = useAuth();
+  const todayIso = new Date().toISOString().slice(0, 10);
 
   // Active sub-tab
   const [activeTab, setActiveTab] = useState<'reporte' | 'rechazados' | 'arqueo'>('reporte');
 
-  // Filters state
+  // Filters state (Initial range encompasses from cycle start up to today)
   const [fechaDesde, setFechaDesde] = useState(systemCycle.desde);
-  const [fechaHasta, setFechaHasta] = useState(systemCycle.hasta);
+  const [fechaHasta, setFechaHasta] = useState(todayIso > systemCycle.hasta ? todayIso : systemCycle.hasta);
   const [selAgencia, setSelAgencia] = useState('Todas');
   const [selCategoria, setSelCategoria] = useState('Todas');
   const [selEstado, setSelEstado] = useState<'Todos' | 'Confirmados' | 'En Ruta' | 'Rechazados' | 'Pendientes'>('Todos');
@@ -224,12 +245,21 @@ export const ConfirmationsReport: React.FC = () => {
         const tipoPagoStr = String(r.tipo_pago || 'PAGO').toUpperCase();
         const metRaw = String(r.metodo || 'BANCO').trim().toUpperCase();
 
-        const isSyncedFromTaquilla = (pbRes.data || []).some(
-          (pb: any) =>
-            String(pb.agencia || '').trim().toUpperCase() === agStr &&
-            Math.abs(Number(pb.monto || 0) - Number(r.monto || 0)) < 0.01 &&
-            (refStr.includes(String(pb.referencia || '')) || refStr.includes('CONFIRMADO BANCO'))
-        );
+        const isSyncedFromTaquilla = (pbRes.data || []).some((pb: any) => {
+          const pbAg = String(pb.agencia || '').trim().toUpperCase();
+          const pbMonto = Number(pb.monto || 0);
+          const pbRef = String(pb.referencia || '').trim().toUpperCase();
+          if (pbAg !== agStr || Math.abs(pbMonto - Number(r.monto || 0)) >= 0.01) {
+            return false;
+          }
+          if (refStr.toUpperCase().includes('CONFIRMADO BANCO')) {
+            return true;
+          }
+          if (pbRef && pbRef !== 'N/A' && refStr.toUpperCase().includes(pbRef)) {
+            return true;
+          }
+          return false;
+        });
 
         if (!isSyncedFromTaquilla) {
           let cat = 'Bancos';
@@ -396,14 +426,11 @@ export const ConfirmationsReport: React.FC = () => {
   // Filter transactions
   const filteredTransactions = useMemo(() => {
     return transactions.filter((tx) => {
-      // Date filter
-      if (fechaDesde && tx.fecha) {
-        const txDate = tx.fecha.slice(0, 10);
-        if (txDate < fechaDesde) return false;
-      }
-      if (fechaHasta && tx.fecha) {
-        const txDate = tx.fecha.slice(0, 10);
-        if (txDate > fechaHasta) return false;
+      // Date filter with ISO normalization
+      if (fechaDesde || fechaHasta) {
+        const txIsoDate = normalizeToISODate(tx.fecha);
+        if (fechaDesde && txIsoDate && txIsoDate < fechaDesde) return false;
+        if (fechaHasta && txIsoDate && txIsoDate > fechaHasta) return false;
       }
 
       // Agency filter
@@ -748,15 +775,50 @@ export const ConfirmationsReport: React.FC = () => {
               />
             </div>
 
-            <div className="flex items-center gap-2 shrink-0">
+            <div className="flex flex-wrap items-center gap-2 shrink-0">
               <button
                 onClick={() => {
                   setFechaDesde(systemCycle.desde);
                   setFechaHasta(systemCycle.hasta);
                 }}
-                className="px-3 py-2 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-xl text-xs font-bold transition-all cursor-pointer"
+                className={`px-3 py-2 rounded-xl text-xs font-bold transition-all cursor-pointer ${
+                  fechaDesde === systemCycle.desde && fechaHasta === systemCycle.hasta
+                    ? 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/30'
+                    : 'bg-slate-800 hover:bg-slate-700 text-slate-300'
+                }`}
+                title="Filtrar por ciclo de trabajo activo"
               >
-                Ciclo Actual ({systemCycle.desde} ~ {systemCycle.hasta})
+                📅 Ciclo ({systemCycle.desde} ~ {systemCycle.hasta})
+              </button>
+
+              <button
+                onClick={() => {
+                  setFechaDesde(systemCycle.desde);
+                  setFechaHasta(todayIso);
+                }}
+                className={`px-3 py-2 rounded-xl text-xs font-bold transition-all cursor-pointer ${
+                  fechaHasta === todayIso && fechaDesde !== ''
+                    ? 'bg-sky-500/20 text-sky-400 border border-sky-500/30'
+                    : 'bg-slate-800 hover:bg-slate-700 text-slate-300'
+                }`}
+                title="Mostrar desde inicio de ciclo hasta el día de hoy"
+              >
+                ⚡ Hasta Hoy
+              </button>
+
+              <button
+                onClick={() => {
+                  setFechaDesde('');
+                  setFechaHasta('');
+                }}
+                className={`px-3 py-2 rounded-xl text-xs font-bold transition-all cursor-pointer ${
+                  !fechaDesde && !fechaHasta
+                    ? 'bg-amber-500/20 text-amber-400 border border-amber-500/30'
+                    : 'bg-slate-800 hover:bg-slate-700 text-slate-300'
+                }`}
+                title="Ver todo el historial completo sin límite de fechas"
+              >
+                🌐 Ver Todo
               </button>
 
               <button

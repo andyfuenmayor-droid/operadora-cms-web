@@ -202,12 +202,21 @@ export const ConfirmationsQuick: React.FC = () => {
           const tipoPagoStr = String(r.tipo_pago || 'PAGO').toUpperCase();
           const metRaw = String(r.metodo || 'BANCO').trim().toUpperCase();
 
-          const isSyncedFromTaquilla = (pbRes.data || []).some(
-            (pb: any) =>
-              String(pb.agencia || '').trim().toUpperCase() === agStr &&
-              Math.abs(Number(pb.monto || 0) - Number(r.monto || 0)) < 0.01 &&
-              (refStr.includes(String(pb.referencia || '')) || refStr.includes('CONFIRMADO BANCO'))
-          );
+          const isSyncedFromTaquilla = (pbRes.data || []).some((pb: any) => {
+            const pbAg = String(pb.agencia || '').trim().toUpperCase();
+            const pbMonto = Number(pb.monto || 0);
+            const pbRef = String(pb.referencia || '').trim().toUpperCase();
+            if (pbAg !== agStr || Math.abs(pbMonto - Number(r.monto || 0)) >= 0.01) {
+              return false;
+            }
+            if (refStr.toUpperCase().includes('CONFIRMADO BANCO')) {
+              return true;
+            }
+            if (pbRef && pbRef !== 'N/A' && refStr.toUpperCase().includes(pbRef)) {
+              return true;
+            }
+            return false;
+          });
 
           if (!isSyncedFromTaquilla) {
             let cat = 'Bancos';

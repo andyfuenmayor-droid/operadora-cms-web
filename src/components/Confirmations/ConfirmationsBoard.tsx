@@ -43,15 +43,36 @@ interface CustodiaAgencia {
   status: 'custodia' | 'ruta' | 'al_dia';
 }
 
+// Helper to normalize any date format (DD/MM/YYYY, ISO, etc.) to YYYY-MM-DD
+const normalizeToISODate = (dStr: string): string => {
+  if (!dStr) return '';
+  const trimmed = dStr.trim();
+  if (/^\d{2}[\/\-]\d{2}[\/\-]\d{4}/.test(trimmed)) {
+    const parts = trimmed.slice(0, 10).split(/[\/\-]/);
+    return `${parts[2]}-${parts[1].padStart(2, '0')}-${parts[0].padStart(2, '0')}`;
+  }
+  if (/^\d{4}[\/\-]\d{2}[\/\-]\d{2}/.test(trimmed)) {
+    return trimmed.slice(0, 10).replace(/\//g, '-');
+  }
+  try {
+    const d = new Date(trimmed);
+    if (!isNaN(d.getTime())) {
+      return d.toISOString().slice(0, 10);
+    }
+  } catch {}
+  return trimmed.slice(0, 10);
+};
+
 export const ConfirmationsBoard: React.FC = () => {
   const { effectiveUserId, systemCycle, user } = useAuth();
+  const todayIso = new Date().toISOString().slice(0, 10);
 
   // Active sub-tab
   const [activeTab, setActiveTab] = useState<'rapidas' | 'rechazados' | 'arqueo'>('rapidas');
 
   // Filters state
   const [fechaDesde, setFechaDesde] = useState(systemCycle.desde);
-  const [fechaHasta, setFechaHasta] = useState(systemCycle.hasta);
+  const [fechaHasta, setFechaHasta] = useState(todayIso > systemCycle.hasta ? todayIso : systemCycle.hasta);
   const [selAgencia, setSelAgencia] = useState('Todas');
   const [selCajero, setSelCajero] = useState('Todos');
   const [selCategoria, setSelCategoria] = useState('Todas');
@@ -196,12 +217,21 @@ export const ConfirmationsBoard: React.FC = () => {
         const metRaw = String(r.metodo || 'BANCO').trim().toUpperCase();
 
         // Check if this payment was an automated sync from cda_pagos_bancarios to avoid duplicate display
-        const isSyncedFromTaquilla = (pbRes.data || []).some(
-          (pb: any) =>
-            String(pb.agencia || '').trim().toUpperCase() === agStr &&
-            Math.abs(Number(pb.monto || 0) - Number(r.monto || 0)) < 0.01 &&
-            (refStr.includes(String(pb.referencia || '')) || refStr.includes('CONFIRMADO BANCO'))
-        );
+        const isSyncedFromTaquilla = (pbRes.data || []).some((pb: any) => {
+          const pbAg = String(pb.agencia || '').trim().toUpperCase();
+          const pbMonto = Number(pb.monto || 0);
+          const pbRef = String(pb.referencia || '').trim().toUpperCase();
+          if (pbAg !== agStr || Math.abs(pbMonto - Number(r.monto || 0)) >= 0.01) {
+            return false;
+          }
+          if (refStr.toUpperCase().includes('CONFIRMADO BANCO')) {
+            return true;
+          }
+          if (pbRef && pbRef !== 'N/A' && refStr.toUpperCase().includes(pbRef)) {
+            return true;
+          }
+          return false;
+        });
 
         if (!isSyncedFromTaquilla) {
           let cat = 'Bancos';
@@ -367,10 +397,12 @@ export const ConfirmationsBoard: React.FC = () => {
   // Base metrics & filtered transactions
   const filteredTransactions = useMemo(() => {
     return transactions.filter((t) => {
-      // Date filter
-      const tFecha = t.fecha.slice(0, 10);
-      if (fechaDesde && tFecha < fechaDesde) return false;
-      if (fechaHasta && tFecha > fechaHasta) return false;
+      // Date filter with ISO normalization
+      if (fechaDesde || fechaHasta) {
+        const txIsoDate = normalizeToISODate(t.fecha);
+        if (fechaDesde && txIsoDate && txIsoDate < fechaDesde) return false;
+        if (fechaHasta && txIsoDate && txIsoDate > fechaHasta) return false;
+      }
 
       // Agency filter
       if (selAgencia !== 'Todas' && t.agencia !== selAgencia) return false;
