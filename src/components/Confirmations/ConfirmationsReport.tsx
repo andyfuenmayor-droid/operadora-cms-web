@@ -53,7 +53,7 @@ export const ConfirmationsReport: React.FC = () => {
   const [fechaHasta, setFechaHasta] = useState(systemCycle.hasta);
   const [selAgencia, setSelAgencia] = useState('Todas');
   const [selCategoria, setSelCategoria] = useState('Todas');
-  const [selEstado, setSelEstado] = useState<'Todos' | 'Confirmados' | 'Rechazados' | 'Pendientes'>('Todos');
+  const [selEstado, setSelEstado] = useState<'Todos' | 'Confirmados' | 'En Ruta' | 'Rechazados' | 'Pendientes'>('Todos');
   const [searchQuery, setSearchQuery] = useState('');
 
   // Loaded data
@@ -341,9 +341,20 @@ export const ConfirmationsReport: React.FC = () => {
       }
 
       // Status filter
-      if (selEstado === 'Confirmados' && !tx.confirmado) return false;
-      if (selEstado === 'Rechazados' && !tx.rechazado) return false;
-      if (selEstado === 'Pendientes' && (tx.confirmado || tx.rechazado)) return false;
+      if (selEstado === 'Confirmados') {
+        if (!tx.confirmado || tx.is_cobrador) return false;
+      }
+      if (selEstado === 'En Ruta') {
+        const isRuta = tx.is_cobrador && (tx.confirmado || tx.estado_raw === 'cobrado') && !tx.liquidado_admin && tx.estado_raw !== 'liquidado';
+        if (!isRuta) return false;
+      }
+      if (selEstado === 'Rechazados') {
+        if (!tx.rechazado) return false;
+      }
+      if (selEstado === 'Pendientes') {
+        const isRuta = tx.is_cobrador && (tx.confirmado || tx.estado_raw === 'cobrado');
+        if (tx.confirmado || tx.rechazado || isRuta) return false;
+      }
 
       // Search Query
       if (searchQuery.trim()) {
@@ -368,21 +379,29 @@ export const ConfirmationsReport: React.FC = () => {
   // Metrics
   const metrics = useMemo(() => {
     let confBs = 0, confUsd = 0, confCop = 0;
+    let rutaBs = 0, rutaUsd = 0, rutaCop = 0;
     let pendBs = 0, pendUsd = 0, pendCop = 0;
     let rechBs = 0, rechUsd = 0, rechCop = 0;
-    let totalConf = 0, totalPend = 0, totalRech = 0;
+    let totalConf = 0, totalRuta = 0, totalPend = 0, totalRech = 0;
 
     filteredTransactions.forEach((tx) => {
-      if (tx.confirmado) {
-        totalConf++;
-        if (tx.moneda === 'BS') confBs += tx.monto;
-        else if (tx.moneda === 'COP') confCop += tx.monto;
-        else confUsd += tx.monto;
-      } else if (tx.rechazado) {
+      const isRuta = tx.is_cobrador && (tx.confirmado || tx.estado_raw === 'cobrado') && !tx.liquidado_admin && tx.estado_raw !== 'liquidado';
+
+      if (tx.rechazado) {
         totalRech++;
         if (tx.moneda === 'BS') rechBs += tx.monto;
         else if (tx.moneda === 'COP') rechCop += tx.monto;
         else rechUsd += tx.monto;
+      } else if (isRuta) {
+        totalRuta++;
+        if (tx.moneda === 'BS') rutaBs += tx.monto;
+        else if (tx.moneda === 'COP') rutaCop += tx.monto;
+        else rutaUsd += tx.monto;
+      } else if (tx.confirmado) {
+        totalConf++;
+        if (tx.moneda === 'BS') confBs += tx.monto;
+        else if (tx.moneda === 'COP') confCop += tx.monto;
+        else confUsd += tx.monto;
       } else {
         totalPend++;
         if (tx.moneda === 'BS') pendBs += tx.monto;
@@ -392,8 +411,9 @@ export const ConfirmationsReport: React.FC = () => {
     });
 
     return {
-      totalConf, totalPend, totalRech,
+      totalConf, totalRuta, totalPend, totalRech,
       confBs, confUsd, confCop,
+      rutaBs, rutaUsd, rutaCop,
       pendBs, pendUsd, pendCop,
       rechBs, rechUsd, rechCop,
     };
@@ -631,6 +651,7 @@ export const ConfirmationsReport: React.FC = () => {
               >
                 <option value="Todos">Todos los Estados</option>
                 <option value="Confirmados">✅ Solo Confirmados</option>
+                <option value="En Ruta">🛵 Solo En Ruta (Cobradores)</option>
                 <option value="Rechazados">❌ Solo Rechazados</option>
                 <option value="Pendientes">⏳ Solo Pendientes</option>
               </select>
@@ -687,6 +708,10 @@ export const ConfirmationsReport: React.FC = () => {
                   <span className="font-mono font-bold text-white">{metrics.totalConf}</span>
                 </div>
                 <div className="flex justify-between text-xs">
+                  <span className="text-sky-400 font-bold">🛵 En Ruta (Cobradores):</span>
+                  <span className="font-mono font-bold text-white">{metrics.totalRuta}</span>
+                </div>
+                <div className="flex justify-between text-xs">
                   <span className="text-rose-400 font-bold">❌ Rechazados:</span>
                   <span className="font-mono font-bold text-white">{metrics.totalRech}</span>
                 </div>
@@ -703,6 +728,11 @@ export const ConfirmationsReport: React.FC = () => {
                 <div className="text-xs text-emerald-400 font-bold">
                   Conf: <span className="font-mono font-black">{formatCurrency(metrics.confBs, 'BS')}</span>
                 </div>
+                {metrics.rutaBs > 0 && (
+                  <div className="text-[11px] text-sky-400 font-semibold">
+                    En Ruta: <span className="font-mono font-bold">{formatCurrency(metrics.rutaBs, 'BS')}</span>
+                  </div>
+                )}
                 <div className="text-[11px] text-amber-400 font-semibold">
                   Pend: <span className="font-mono">{formatCurrency(metrics.pendBs, 'BS')}</span>
                 </div>
@@ -718,6 +748,11 @@ export const ConfirmationsReport: React.FC = () => {
                 <div className="text-xs text-emerald-400 font-bold">
                   Conf: <span className="font-mono font-black">{formatCurrency(metrics.confUsd, 'USD')}</span>
                 </div>
+                {metrics.rutaUsd > 0 && (
+                  <div className="text-[11px] text-sky-400 font-semibold">
+                    En Ruta: <span className="font-mono font-bold">{formatCurrency(metrics.rutaUsd, 'USD')}</span>
+                  </div>
+                )}
                 <div className="text-[11px] text-amber-400 font-semibold">
                   Pend: <span className="font-mono">{formatCurrency(metrics.pendUsd, 'USD')}</span>
                 </div>
@@ -732,6 +767,9 @@ export const ConfirmationsReport: React.FC = () => {
               <div className="mt-2 space-y-1">
                 <div className="text-xs text-emerald-400 font-bold">
                   Conf: <span className="font-mono font-black">{formatCurrency(metrics.confCop, 'COP')}</span>
+                </div>
+                <div className="text-[11px] text-sky-400 font-bold">
+                  En Ruta: <span className="font-mono font-black">{formatCurrency(metrics.rutaCop, 'COP')}</span>
                 </div>
                 <div className="text-[11px] text-amber-400 font-semibold">
                   Pend: <span className="font-mono">{formatCurrency(metrics.pendCop, 'COP')}</span>
