@@ -331,32 +331,20 @@ export const ConfirmationsBoard: React.FC = () => {
     // Realtime subscriptions on all transaction tables
     const channel = supabase
       .channel(`pizarra_sync_${effectiveUserId}`)
-      .on(
-        'postgres_changes',
-        { event: '*', schema: 'public', table: 'cda_pagos_bancarios', filter: `user_id=eq.${effectiveUserId}` },
-        () => loadData(true)
-      )
-      .on(
-        'postgres_changes',
-        { event: '*', schema: 'public', table: 'cda_pagos_diarios', filter: `user_id=eq.${effectiveUserId}` },
-        () => loadData(true)
-      )
-      .on(
-        'postgres_changes',
-        { event: '*', schema: 'public', table: 'cda_gastos_diarios', filter: `user_id=eq.${effectiveUserId}` },
-        () => loadData(true)
-      )
-      .on(
-        'postgres_changes',
-        { event: '*', schema: 'public', table: 'cda_caja_efectivo_supervisor', filter: `user_id=eq.${effectiveUserId}` },
-        () => loadData(true)
-      )
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'cda_pagos_bancarios' }, () => loadData(true))
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'cda_pagos_diarios' }, () => loadData(true))
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'cda_gastos_diarios' }, () => loadData(true))
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'gastos' }, () => loadData(true))
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'cda_gastos' }, () => loadData(true))
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'pagos_semana' }, () => loadData(true))
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'gastos_semana' }, () => loadData(true))
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'cda_caja_efectivo_supervisor' }, () => loadData(true))
       .subscribe();
 
-    // Fallback heartbeat polling every 12 seconds as a resilient backup
+    // Fallback heartbeat polling every 8 seconds as a resilient backup
     const intervalId = setInterval(() => {
       loadData(true);
-    }, 12000);
+    }, 8000);
 
     return () => {
       supabase.removeChannel(channel);

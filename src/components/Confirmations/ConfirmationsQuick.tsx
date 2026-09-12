@@ -49,7 +49,9 @@ export const ConfirmationsQuick: React.FC = () => {
   const [message, setMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
 
   // Live Sync
+  const [autoSyncEnabled, setAutoSyncEnabled] = useState(true);
   const [lastSyncTime, setLastSyncTime] = useState<Date>(new Date());
+  const [secondsAgo, setSecondsAgo] = useState(0);
   const [isSilentUpdating, setIsSilentUpdating] = useState(false);
 
   // Load pending data
@@ -335,21 +337,41 @@ export const ConfirmationsQuick: React.FC = () => {
     loadData();
   }, [loadData]);
 
-  // Realtime subscription
+  // Realtime subscription & Heartbeat auto-sync
   useEffect(() => {
-    if (!effectiveUserId) return;
+    if (!effectiveUserId || !autoSyncEnabled) return;
+
     const channel = supabase
       .channel(`quick_conf_live_${effectiveUserId}`)
       .on('postgres_changes', { event: '*', schema: 'public', table: 'cda_pagos_bancarios' }, () => loadData(true))
       .on('postgres_changes', { event: '*', schema: 'public', table: 'cda_gastos_diarios' }, () => loadData(true))
       .on('postgres_changes', { event: '*', schema: 'public', table: 'gastos' }, () => loadData(true))
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'cda_gastos' }, () => loadData(true))
       .on('postgres_changes', { event: '*', schema: 'public', table: 'cda_pagos_diarios' }, () => loadData(true))
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'pagos_semana' }, () => loadData(true))
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'gastos_semana' }, () => loadData(true))
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'cda_caja_efectivo_supervisor' }, () => loadData(true))
       .subscribe();
+
+    // Resilient background auto-sync polling every 8 seconds
+    const intervalId = setInterval(() => {
+      loadData(true);
+    }, 8000);
 
     return () => {
       supabase.removeChannel(channel);
+      clearInterval(intervalId);
     };
-  }, [effectiveUserId, loadData]);
+  }, [effectiveUserId, autoSyncEnabled, loadData]);
+
+  // Relative time counter ("Actualizado hace X seg")
+  useEffect(() => {
+    const timer = setInterval(() => {
+      const diff = Math.floor((Date.now() - lastSyncTime.getTime()) / 1000);
+      setSecondsAgo(diff);
+    }, 1000);
+    return () => clearInterval(timer);
+  }, [lastSyncTime]);
 
   // Filtered list
   const filteredTransactions = useMemo(() => {
@@ -604,14 +626,47 @@ export const ConfirmationsQuick: React.FC = () => {
         </div>
 
         <div className="flex items-center gap-2.5">
-          {/* Realtime / Sync Badge */}
+          {/* Live Auto-sync Toggle Pill */}
           <button
-            onClick={() => loadData()}
-            disabled={isLoading}
-            className="flex items-center gap-2 px-3 py-2 rounded-xl bg-slate-800/80 hover:bg-slate-700/80 text-slate-300 hover:text-white text-xs font-bold transition-all border border-slate-700/50 cursor-pointer"
+            onClick={() => setAutoSyncEnabled(!autoSyncEnabled)}
+            className={`px-3 py-2 rounded-xl border text-xs font-bold flex items-center gap-2 transition-all cursor-pointer shadow-sm ${
+              autoSyncEnabled
+                ? 'bg-emerald-500/10 border-emerald-500/30 text-emerald-400 hover:bg-emerald-500/20'
+                : 'bg-slate-800/80 border-slate-700 text-slate-400 hover:text-slate-200'
+            }`}
+            title={
+              autoSyncEnabled
+                ? 'Sincronización automática en tiempo real activa (clic para pausar)'
+                : 'Sincronización automática en pausa (clic para activar)'
+            }
+          >
+            <span className="relative flex h-2 w-2">
+              {autoSyncEnabled && (
+                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
+              )}
+              <span
+                className={`relative inline-flex rounded-full h-2 w-2 ${
+                  autoSyncEnabled ? 'bg-emerald-500' : 'bg-slate-500'
+                }`}
+              ></span>
+            </span>
+            <span>{autoSyncEnabled ? 'En vivo' : 'En pausa'}</span>
+          </button>
+
+          {/* Relative last updated time */}
+          <span className="text-[11px] text-slate-400 font-mono hidden sm:inline px-1">
+            {secondsAgo < 5 ? 'Actualizado ahora' : `Hace ${secondsAgo}s`}
+          </span>
+
+          {/* Manual Sync Button */}
+          <button
+            onClick={() => loadData(false)}
+            disabled={isLoading || isSilentUpdating}
+            className="flex items-center gap-2 px-3 py-2 rounded-xl bg-slate-800/80 hover:bg-slate-700/80 text-slate-300 hover:text-white text-xs font-bold transition-all border border-slate-700/50 cursor-pointer disabled:opacity-50"
+            title="Sincronizar manualmente"
           >
             <RefreshCw className={`w-3.5 h-3.5 text-emerald-400 ${isLoading || isSilentUpdating ? 'animate-spin' : ''}`} />
-            <span>Sincronizar</span>
+            <span className="hidden sm:inline">Sincronizar</span>
           </button>
 
           {metrics.count > 0 && (

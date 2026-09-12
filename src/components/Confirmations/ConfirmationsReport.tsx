@@ -368,6 +368,31 @@ export const ConfirmationsReport: React.FC = () => {
     loadData();
   }, [loadData]);
 
+  // Realtime subscription & Heartbeat
+  useEffect(() => {
+    if (!effectiveUserId) return;
+    const channel = supabase
+      .channel(`report_conf_live_${effectiveUserId}`)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'cda_pagos_bancarios' }, () => loadData())
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'cda_gastos_diarios' }, () => loadData())
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'gastos' }, () => loadData())
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'cda_gastos' }, () => loadData())
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'cda_pagos_diarios' }, () => loadData())
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'pagos_semana' }, () => loadData())
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'gastos_semana' }, () => loadData())
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'cda_caja_efectivo_supervisor' }, () => loadData())
+      .subscribe();
+
+    const intervalId = setInterval(() => {
+      loadData();
+    }, 15000);
+
+    return () => {
+      supabase.removeChannel(channel);
+      clearInterval(intervalId);
+    };
+  }, [effectiveUserId, loadData]);
+
   // Filter transactions
   const filteredTransactions = useMemo(() => {
     return transactions.filter((tx) => {
