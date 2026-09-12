@@ -373,6 +373,15 @@ export const ConfirmationsQuick: React.FC = () => {
     return () => clearInterval(timer);
   }, [lastSyncTime]);
 
+  // Auto-dismiss feedback message after 6 seconds
+  useEffect(() => {
+    if (!message) return;
+    const timer = setTimeout(() => {
+      setMessage(null);
+    }, 6000);
+    return () => clearTimeout(timer);
+  }, [message]);
+
   // Filtered list
   const filteredTransactions = useMemo(() => {
     return transactions.filter((tx) => {
@@ -494,9 +503,12 @@ export const ConfirmationsQuick: React.FC = () => {
       // Optimistic update
       setTransactions((prev) => prev.filter((item) => !(item.id === tx.id && item.tabla === tx.tabla)));
 
-      if (transactions.length <= 1) {
-        confetti({ particleCount: 80, spread: 70, origin: { y: 0.6 } });
-      }
+      confetti({ particleCount: 50, spread: 65, origin: { y: 0.7 } });
+      const formattedMonto = formatCurrency(tx.monto, tx.moneda);
+      setMessage({
+        type: 'success',
+        text: `¡Aprobado con éxito! ${tx.agencia} • ${formattedMonto} [${tx.metodo}] confirmado e ingresado a caja.`,
+      });
     } catch (err: any) {
       console.error('Confirm error:', err);
       setMessage({ type: 'error', text: `Error al confirmar: ${err.message}` });
@@ -562,6 +574,11 @@ export const ConfirmationsQuick: React.FC = () => {
       setTransactions((prev) =>
         prev.filter((item) => !(item.id === rejectModalItem.id && item.tabla === rejectModalItem.tabla))
       );
+      const rejMonto = formatCurrency(rejectModalItem.monto, rejectModalItem.moneda);
+      setMessage({
+        type: 'success',
+        text: `Transacción de ${rejectModalItem.agencia} por ${rejMonto} fue rechazada (${finalReason}).`,
+      });
       setRejectModalItem(null);
     } catch (err: any) {
       console.error('Reject error:', err);
@@ -682,17 +699,32 @@ export const ConfirmationsQuick: React.FC = () => {
         </div>
       </div>
 
-      {/* Messages */}
+      {/* Messages / Avisos de Confirmación */}
       {message && (
         <div
-          className={`p-4 rounded-xl text-xs font-bold border flex items-center justify-between animate-fade-in ${
+          className={`p-4 rounded-2xl text-sm font-bold border flex items-center justify-between shadow-2xl transition-all animate-fade-in ${
             message.type === 'success'
-              ? 'bg-emerald-500/10 text-emerald-300 border-emerald-500/30'
-              : 'bg-rose-500/10 text-rose-300 border-rose-500/30'
+              ? 'bg-emerald-950/70 text-emerald-300 border-emerald-500/40 shadow-emerald-950/60 backdrop-blur-md'
+              : 'bg-rose-950/70 text-rose-300 border-rose-500/40 shadow-rose-950/60 backdrop-blur-md'
           }`}
         >
-          <span>{message.text}</span>
-          <button onClick={() => setMessage(null)} className="text-slate-400 hover:text-white cursor-pointer font-black">
+          <div className="flex items-center gap-3">
+            <div
+              className={`p-2 rounded-xl shrink-0 ${
+                message.type === 'success'
+                  ? 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/30'
+                  : 'bg-rose-500/20 text-rose-400 border border-rose-500/30'
+              }`}
+            >
+              {message.type === 'success' ? <CheckCircle2 className="w-5 h-5" /> : <AlertTriangle className="w-5 h-5" />}
+            </div>
+            <span className="text-xs sm:text-sm font-extrabold tracking-wide">{message.text}</span>
+          </div>
+          <button
+            onClick={() => setMessage(null)}
+            className="text-slate-400 hover:text-white p-1 rounded-lg hover:bg-white/10 transition-all cursor-pointer font-black text-xs ml-3 shrink-0"
+            title="Cerrar aviso"
+          >
             ✕
           </button>
         </div>

@@ -560,7 +560,11 @@ export const ConfirmationsBoard: React.FC = () => {
         origin: { y: 0.7 },
       });
 
-      setMessage({ type: 'success', text: `¡Transacción #${item.id} confirmada exitosamente!` });
+      const formattedMonto = formatCurrency(item.monto, item.moneda);
+      setMessage({
+        type: 'success',
+        text: `¡Aprobado exitosamente! ${item.agencia} • ${formattedMonto} [${item.metodo}] confirmado en sistema.`,
+      });
     } catch (err: any) {
       console.error('Error confirming transaction:', err);
       setMessage({ type: 'error', text: err?.message || 'Error al confirmar la transacción.' });
