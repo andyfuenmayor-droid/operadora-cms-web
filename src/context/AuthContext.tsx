@@ -54,8 +54,17 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     const defaultMods = PLANES_MODULOS_DEFAULT[plan] || PLANES_MODULOS_DEFAULT.elite;
 
     if (user.isSubUser && user.subUserAccess?.accesos) {
-      const subAccesos = user.subUserAccess.accesos as ModuleId[];
-      const merged = ['Inicio' as ModuleId, ...subAccesos.filter((m) => defaultMods.includes(m))];
+      const rawSubAccesos = (user.subUserAccess.accesos as string[]) || [];
+      const migratedSubAccesos: ModuleId[] = [];
+      rawSubAccesos.forEach((m) => {
+        if (m === 'Pizarra Confirmaciones') {
+          if (!migratedSubAccesos.includes('Confirmaciones')) migratedSubAccesos.push('Confirmaciones');
+          if (!migratedSubAccesos.includes('Rep. Confirmaciones')) migratedSubAccesos.push('Rep. Confirmaciones');
+        } else {
+          migratedSubAccesos.push(m as ModuleId);
+        }
+      });
+      const merged = ['Inicio' as ModuleId, ...migratedSubAccesos.filter((m) => defaultMods.includes(m))];
       return Array.from(new Set(merged));
     }
 
