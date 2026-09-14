@@ -30,7 +30,7 @@ interface ExpenseItem {
 }
 
 export const ExpensesTab: React.FC = () => {
-  const { effectiveUserId, systemCycle } = useAuth();
+  const { effectiveUserId, systemCycle, user } = useAuth();
 
   const [isLoading, setIsLoading] = useState(true);
   const [isProcessing, setIsProcessing] = useState(false);
@@ -51,8 +51,9 @@ export const ExpensesTab: React.FC = () => {
   const [formConcepto, setFormConcepto] = useState('');
   const [formReferencia, setFormReferencia] = useState('');
   const [formFecha, setFormFecha] = useState(systemCycle.hasta || '');
+  const [formConfirmDirecta, setFormConfirmDirecta] = useState(false);
 
-  const [message, setMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
+  const [message, setMessage] = useState<{ type: 'success' | 'error' | 'info'; text: string } | null>(null);
 
   // Selected agency object
   const selectedAgencyObj = useMemo(() => {
@@ -172,6 +173,7 @@ export const ExpensesTab: React.FC = () => {
   // Expenses totals by currency (scoped to current view filter)
   const currencyTotals = useMemo(() => {
     let bs = 0, usd = 0, cop = 0;
+    let pendBs = 0, pendUsd = 0, pendCop = 0;
     const targetList = expenses.filter((e) => {
       if (filterPeriod === 'ciclo' && e.tabla === 'cda_gastos_diarios') {
         const fStr = e.fecha.slice(0, 10);
@@ -181,11 +183,17 @@ export const ExpensesTab: React.FC = () => {
     });
 
     targetList.forEach((e) => {
-      if (e.moneda === 'BS') bs += e.monto;
-      else if (e.moneda === 'USD') usd += e.monto;
-      else if (e.moneda === 'COP') cop += e.monto;
+      if (e.confirmado) {
+        if (e.moneda === 'BS') bs += e.monto;
+        else if (e.moneda === 'USD') usd += e.monto;
+        else if (e.moneda === 'COP') cop += e.monto;
+      } else {
+        if (e.moneda === 'BS') pendBs += e.monto;
+        else if (e.moneda === 'USD') pendUsd += e.monto;
+        else if (e.moneda === 'COP') pendCop += e.monto;
+      }
     });
-    return { bs, usd, cop };
+    return { bs, usd, cop, pendBs, pendUsd, pendCop };
   }, [expenses, filterPeriod, systemCycle.desde, systemCycle.hasta]);
 
   // Filtered expenses list
@@ -239,6 +247,8 @@ export const ExpensesTab: React.FC = () => {
         ? `${formConcepto.trim().toUpperCase()} [REF: ${formReferencia.trim().toUpperCase()}]`
         : formConcepto.trim().toUpperCase();
 
+      const adminNom = user?.nombre || user?.email?.split('@')[0] || 'ADMIN';
+
       const payload = {
         user_id: effectiveUserId,
         agencia: formAgencia,
@@ -246,19 +256,32 @@ export const ExpensesTab: React.FC = () => {
         monto: montoNum,
         concepto: conceptoFinal,
         tipo: 'Agencia',
-        confirmado: true,
+        confirmado: Boolean(formConfirmDirecta),
+        confirmado_por: formConfirmDirecta ? adminNom : null,
+        rechazado: false,
         fecha: formFecha || new Date().toISOString().slice(0, 10),
       };
 
       const { error } = await supabase.from('gastos').insert(payload);
       if (error) throw error;
 
-      confetti({ particleCount: 35, spread: 50 });
-      setMessage({ type: 'success', text: `¡Gasto de ${formMoneda} ${montoNum.toLocaleString()} registrado con éxito!` });
+      if (formConfirmDirecta) {
+        confetti({ particleCount: 35, spread: 50 });
+        setMessage({
+          type: 'success',
+          text: `✅ Gasto de ${formMoneda} ${montoNum.toLocaleString('es-VE', { minimumFractionDigits: 2 })} registrado y confirmado exitosamente.`,
+        });
+      } else {
+        setMessage({
+          type: 'info',
+          text: `⏳ Gasto de ${formMoneda} ${montoNum.toLocaleString('es-VE', { minimumFractionDigits: 2 })} registrado como PENDIENTE. Por favor verifícalo en la Pizarra de Confirmaciones.`,
+        });
+      }
 
       setFormMonto('');
       setFormConcepto('');
       setFormReferencia('');
+      setFormConfirmDirecta(false);
       await loadData();
     } catch (err: any) {
       console.error('Error inserting expense:', err);
@@ -323,11 +346,15 @@ export const ExpensesTab: React.FC = () => {
           className={`p-4 rounded-2xl border flex items-center gap-3 text-sm animate-fade-in ${
             message.type === 'success'
               ? 'bg-emerald-500/10 border-emerald-500/20 text-emerald-400'
+              : message.type === 'info'
+              ? 'bg-amber-500/10 border-amber-500/20 text-amber-400'
               : 'bg-rose-500/10 border-rose-500/20 text-rose-400'
           }`}
         >
           {message.type === 'success' ? (
             <CheckCircle2 className="w-5 h-5 shrink-0" />
+          ) : message.type === 'info' ? (
+            <span className="text-base shrink-0">⏳</span>
           ) : (
             <AlertTriangle className="w-5 h-5 shrink-0" />
           )}
@@ -344,6 +371,13 @@ export const ExpensesTab: React.FC = () => {
           <div className="text-xl font-black text-white font-mono mt-1">
             {formatCurrency(currencyTotals.bs, 'BS')}
           </div>
+          {currencyTotals.pendBs > 0 && (
+            <div className="mt-1.5">
+              <span className="px-2 py-0.5 rounded-full bg-amber-500/15 text-amber-400 text-[10px] font-bold border border-amber-500/30">
+                ⏳ {formatCurrency(currencyTotals.pendBs, 'BS')} por confirmar
+              </span>
+            </div>
+          )}
         </div>
 
         <div className="bg-[#0D1B22] border border-slate-800 rounded-2xl p-4 text-center">
@@ -353,6 +387,13 @@ export const ExpensesTab: React.FC = () => {
           <div className="text-xl font-black text-emerald-400 font-mono mt-1">
             {formatCurrency(currencyTotals.usd, 'USD')}
           </div>
+          {currencyTotals.pendUsd > 0 && (
+            <div className="mt-1.5">
+              <span className="px-2 py-0.5 rounded-full bg-amber-500/15 text-amber-400 text-[10px] font-bold border border-amber-500/30">
+                ⏳ {formatCurrency(currencyTotals.pendUsd, 'USD')} por confirmar
+              </span>
+            </div>
+          )}
         </div>
 
         <div className="bg-[#0D1B22] border border-slate-800 rounded-2xl p-4 text-center">
@@ -362,6 +403,13 @@ export const ExpensesTab: React.FC = () => {
           <div className="text-xl font-black text-cyan-400 font-mono mt-1">
             {formatCurrency(currencyTotals.cop, 'COP')}
           </div>
+          {currencyTotals.pendCop > 0 && (
+            <div className="mt-1.5">
+              <span className="px-2 py-0.5 rounded-full bg-amber-500/15 text-amber-400 text-[10px] font-bold border border-amber-500/30">
+                ⏳ {formatCurrency(currencyTotals.pendCop, 'COP')} por confirmar
+              </span>
+            </div>
+          )}
         </div>
       </div>
 
@@ -454,6 +502,20 @@ export const ExpensesTab: React.FC = () => {
                 className="w-full bg-[#071217] border border-slate-700 rounded-xl px-3 py-2.5 text-xs text-white focus:outline-none focus:border-rose-500"
               />
             </div>
+          </div>
+
+          {/* Direct Confirmation Checkbox */}
+          <div className="flex items-center gap-2.5 pt-1">
+            <input
+              type="checkbox"
+              id="gasto_conf_directa"
+              checked={formConfirmDirecta}
+              onChange={(e) => setFormConfirmDirecta(e.target.checked)}
+              className="w-4 h-4 rounded border-slate-700 text-rose-500 focus:ring-rose-500 bg-[#071217] cursor-pointer"
+            />
+            <label htmlFor="gasto_conf_directa" className="text-xs font-semibold text-slate-300 cursor-pointer flex items-center gap-1">
+              <span>⚡</span> Confirmar de inmediato (omitir Pizarra de Confirmaciones)
+            </label>
           </div>
 
           <div className="flex justify-end">
@@ -575,6 +637,7 @@ export const ExpensesTab: React.FC = () => {
                   <th className="py-3.5 px-4">Concepto</th>
                   <th className="py-3.5 px-4">Referencia</th>
                   <th className="py-3.5 px-4 text-right">Monto</th>
+                  <th className="py-3.5 px-4 text-center">Estado</th>
                   <th className="py-3.5 px-4">Fecha</th>
                   <th className="py-3.5 px-4 text-center">Acciones</th>
                 </tr>
@@ -587,6 +650,17 @@ export const ExpensesTab: React.FC = () => {
                     <td className="py-3.5 px-4 text-slate-400 text-xs font-mono">{ex.referencia}</td>
                     <td className="py-3.5 px-4 text-right font-bold text-rose-400">
                       {formatCurrency(ex.monto, ex.moneda)}
+                    </td>
+                    <td className="py-3.5 px-4 text-center font-sans">
+                      {ex.confirmado ? (
+                        <span className="px-2 py-0.5 rounded-full bg-emerald-500/15 text-emerald-400 text-[10px] font-bold border border-emerald-500/30">
+                          ✅ Confirmado
+                        </span>
+                      ) : (
+                        <span className="px-2 py-0.5 rounded-full bg-amber-500/15 text-amber-400 text-[10px] font-bold border border-amber-500/30">
+                          ⏳ Pendiente
+                        </span>
+                      )}
                     </td>
                     <td className="py-3.5 px-4 text-slate-500 font-sans">{formatDate(ex.fecha)}</td>
                     <td className="py-3.5 px-4 text-center">

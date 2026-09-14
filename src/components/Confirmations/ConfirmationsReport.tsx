@@ -309,6 +309,18 @@ export const ConfirmationsReport: React.FC = () => {
         const agStr = String(r.agencia || r.nombre_agency || '').trim().toUpperCase();
         const cNom = r._table === 'gastos_semana' ? 'Administración (CMS)' : resolveCashierName(cid, agStr);
 
+        let rawConcepto = String(r.concepto || r.descripcion || 'Gasto Operativo').trim();
+        let refStr = String(r.referencia || '').trim();
+        if (!refStr || refStr === 'N/A') {
+          const matchRef = rawConcepto.match(/\[REF:\s*([^\]]+)\]/i);
+          if (matchRef) {
+            refStr = matchRef[1].trim();
+            rawConcepto = rawConcepto.replace(/\[REF:\s*[^\]]+\]/i, '').trim();
+          } else {
+            refStr = 'N/A';
+          }
+        }
+
         list.push({
           id: r.id,
           tabla: r._table,
@@ -320,8 +332,8 @@ export const ConfirmationsReport: React.FC = () => {
           metodo: 'GASTO',
           monto: parseFloat(r.monto) || 0,
           moneda: normalizarMoneda(r.moneda),
-          referencia: String(r.referencia || 'N/A'),
-          concepto: String(r.concepto || r.descripcion || 'Gasto Operativo'),
+          referencia: refStr,
+          concepto: rawConcepto,
           pagador: 'N/A',
           confirmado: isConf,
           confirmado_por: r.confirmado_por || null,

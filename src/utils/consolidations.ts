@@ -329,7 +329,8 @@ export async function getConsolidatedExpenses(
     // 1. Procesar gastos de CMS
     dfGc.forEach((r: any) => {
       const isRech = Boolean(r.rechazado) || String(r.estado || '').toUpperCase() === 'RECHAZADO';
-      if (isRech) return;
+      const isConf = Boolean(r.confirmado) || Boolean(r.confirmado_supervisor);
+      if (!isConf || isRech) return;
 
       const agNom = String(r.agencia || '').trim().toUpperCase();
       const montoVal = Math.round((Number(r.monto) || 0) * 100) / 100;

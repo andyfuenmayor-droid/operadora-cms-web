@@ -279,6 +279,18 @@ export const ConfirmationsBoard: React.FC = () => {
         const isRech = Boolean(r.rechazado) || String(r.estado || '').toUpperCase() === 'RECHAZADO';
         const isConf = (Boolean(r.confirmado) || Boolean(r.confirmado_supervisor)) && !isRech;
 
+        let rawConcepto = String(r.concepto || r.descripcion || 'Gasto Operativo').trim();
+        let refStr = String(r.referencia || '').trim();
+        if (!refStr || refStr === 'N/A') {
+          const matchRef = rawConcepto.match(/\[REF:\s*([^\]]+)\]/i);
+          if (matchRef) {
+            refStr = matchRef[1].trim();
+            rawConcepto = rawConcepto.replace(/\[REF:\s*[^\]]+\]/i, '').trim();
+          } else {
+            refStr = 'N/A';
+          }
+        }
+
         list.push({
           id: r.id,
           tabla: r.__t,
@@ -288,8 +300,8 @@ export const ConfirmationsBoard: React.FC = () => {
           cajero_nombre: c_nom,
           categoria: 'Gastos',
           metodo: 'GASTO',
-          concepto: String(r.concepto || r.descripcion || 'Gasto Operativo'),
-          referencia: String(r.referencia || 'N/A'),
+          concepto: rawConcepto,
+          referencia: refStr,
           pagador: 'N/A',
           monto: Number(r.monto || 0),
           moneda: normalizarMoneda(r.moneda),
