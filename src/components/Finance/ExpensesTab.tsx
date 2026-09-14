@@ -39,19 +39,55 @@ export const ExpensesTab: React.FC = () => {
   const [currencies, setCurrencies] = useState<Currency[]>([]);
 
   // Filters
+  const [filterPeriod, setFilterPeriod] = useState<'ciclo' | 'todos'>('ciclo');
   const [filterAgency, setFilterAgency] = useState('Todas');
   const [filterCurrency, setFilterCurrency] = useState('Todas');
   const [searchQuery, setSearchQuery] = useState('');
 
   // Form State
   const [formAgencia, setFormAgencia] = useState('');
-  const [formMoneda, setFormMoneda] = useState('USD');
+  const [formMoneda, setFormMoneda] = useState('BS');
   const [formMonto, setFormMonto] = useState('');
   const [formConcepto, setFormConcepto] = useState('');
   const [formReferencia, setFormReferencia] = useState('');
-  const [formFecha, setFormFecha] = useState(systemCycle.hasta);
+  const [formFecha, setFormFecha] = useState(systemCycle.hasta || '');
 
   const [message, setMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
+
+  // Selected agency object
+  const selectedAgencyObj = useMemo(() => {
+    return agencies.find(
+      (a) => String(a?.nombre_agencia || '').trim().toUpperCase() === String(formAgencia || '').trim().toUpperCase()
+    );
+  }, [agencies, formAgencia]);
+
+  // Available currencies for selected agency
+  const availableAgencyCurrencies = useMemo(() => {
+    if (!selectedAgencyObj) return ['BS', 'USD', 'COP'];
+    const raw = String(selectedAgencyObj.monedas || '').toUpperCase();
+    const parts = raw
+      .split(',')
+      .map((m) => m.trim())
+      .filter(Boolean);
+    if (parts.length === 0 || parts.includes('TODAS')) {
+      return ['BS', 'USD', 'COP'];
+    }
+    return parts;
+  }, [selectedAgencyObj]);
+
+  // Ensure formMoneda matches available currencies of the selected agency
+  useEffect(() => {
+    if (availableAgencyCurrencies.length > 0 && !availableAgencyCurrencies.includes(formMoneda)) {
+      setFormMoneda(availableAgencyCurrencies[0]);
+    }
+  }, [availableAgencyCurrencies, formMoneda]);
+
+  // Update default form date when systemCycle changes
+  useEffect(() => {
+    if (systemCycle.hasta && !formFecha) {
+      setFormFecha(systemCycle.hasta);
+    }
+  }, [systemCycle.hasta, formFecha]);
 
   const loadData = async () => {
     if (!effectiveUserId) return;
@@ -66,11 +102,12 @@ export const ExpensesTab: React.FC = () => {
         supabase.from('monedas').select('*').eq('user_id', effectiveUserId).order('id', { ascending: true }),
       ]);
 
-      setAgencies(agRes.data || []);
+      const loadedAgencies = agRes.data || [];
+      setAgencies(loadedAgencies);
       setCurrencies(monRes.data || []);
 
-      if (agRes.data && agRes.data.length > 0 && !formAgencia) {
-        setFormAgencia(agRes.data[0].nombre_agencia);
+      if (loadedAgencies.length > 0 && !formAgencia) {
+        setFormAgencia(loadedAgencies[0].nombre_agencia);
       }
 
       const list: ExpenseItem[] = [];
@@ -116,23 +153,45 @@ export const ExpensesTab: React.FC = () => {
     loadData();
   }, [effectiveUserId]);
 
-  // Expenses totals by currency
+  // Expenses totals by currency (scoped to current view filter)
   const currencyTotals = useMemo(() => {
     let bs = 0, usd = 0, cop = 0;
-    expenses.forEach((e) => {
+    const targetList = expenses.filter((e) => {
+      if (filterPeriod === 'ciclo' && e.tabla === 'cda_gastos_diarios') {
+        const fStr = e.fecha.slice(0, 10);
+        return (!systemCycle.desde || fStr >= systemCycle.desde) && (!systemCycle.hasta || fStr <= systemCycle.hasta);
+      }
+      return true;
+    });
+
+    targetList.forEach((e) => {
       if (e.moneda === 'BS') bs += e.monto;
       else if (e.moneda === 'USD') usd += e.monto;
       else if (e.moneda === 'COP') cop += e.monto;
     });
     return { bs, usd, cop };
-  }, [expenses]);
+  }, [expenses, filterPeriod, systemCycle.desde, systemCycle.hasta]);
 
-  // Filtered expenses
+  // Filtered expenses list
   const filteredExpenses = useMemo(() => {
     return expenses.filter((e) => {
+      // 1. Period filter: default 'ciclo' filters by active operative cycle
+      if (filterPeriod === 'ciclo') {
+        // 'gastos' table records always belong to the active open cycle
+        if (e.tabla === 'cda_gastos_diarios') {
+          const fStr = e.fecha.slice(0, 10);
+          const enRango = (!systemCycle.desde || fStr >= systemCycle.desde) && (!systemCycle.hasta || fStr <= systemCycle.hasta);
+          if (!enRango) return false;
+        }
+      }
+
+      // 2. Agency filter
       if (filterAgency !== 'Todas' && e.agencia !== filterAgency) return false;
+
+      // 3. Currency filter
       if (filterCurrency !== 'Todas' && e.moneda !== filterCurrency) return false;
 
+      // 4. Search query
       if (searchQuery.trim()) {
         const q = searchQuery.toLowerCase();
         const match =
@@ -144,7 +203,7 @@ export const ExpensesTab: React.FC = () => {
 
       return true;
     });
-  }, [expenses, filterAgency, filterCurrency, searchQuery]);
+  }, [expenses, filterPeriod, systemCycle.desde, systemCycle.hasta, filterAgency, filterCurrency, searchQuery]);
 
   // Submit New Expense
   const handleSaveExpense = async (e: React.FormEvent) => {
@@ -213,14 +272,19 @@ export const ExpensesTab: React.FC = () => {
       {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
-          <h2 className="text-xl sm:text-2xl font-black text-white flex items-center gap-2">
+          <div className="flex flex-wrap items-center gap-2">
             <span className="p-2 rounded-xl bg-rose-500/10 text-rose-400 border border-rose-500/20">
               <Banknote className="w-5 h-5" />
             </span>
-            Gestión de Gastos Operativos
-          </h2>
+            <h2 className="text-xl sm:text-2xl font-black text-white">
+              Gestión de Gastos Operativos
+            </h2>
+            <span className="text-[11px] px-2.5 py-1 rounded-full bg-amber-500/10 text-amber-400 border border-amber-500/20 font-mono font-bold">
+              {systemCycle.tipo === 'SEMANAL' ? `Semana ${systemCycle.semana}` : `Operación Diaria ${systemCycle.semana}`} ({systemCycle.desde} al {systemCycle.hasta})
+            </span>
+          </div>
           <p className="text-xs sm:text-sm text-slate-400 mt-1">
-            Control y registro de gastos operacionales descontables en el estado de cuenta de cada agencia.
+            Control y registro de gastos operacionales descontables en el estado de cuenta de cada agencia para el ciclo operativo.
           </p>
         </div>
 
@@ -254,21 +318,27 @@ export const ExpensesTab: React.FC = () => {
       {/* Totals by Currency Cards */}
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
         <div className="bg-[#0D1B22] border border-slate-800 rounded-2xl p-4 text-center">
-          <div className="text-[11px] font-bold uppercase tracking-wider text-slate-400">Total Gastos (BS)</div>
+          <div className="text-[11px] font-bold uppercase tracking-wider text-slate-400">
+            Total Gastos (BS) {filterPeriod === 'ciclo' ? `• Semana ${systemCycle.semana}` : '• Histórico'}
+          </div>
           <div className="text-xl font-black text-white font-mono mt-1">
             {formatCurrency(currencyTotals.bs, 'BS')}
           </div>
         </div>
 
         <div className="bg-[#0D1B22] border border-slate-800 rounded-2xl p-4 text-center">
-          <div className="text-[11px] font-bold uppercase tracking-wider text-slate-400">Total Gastos (USD)</div>
+          <div className="text-[11px] font-bold uppercase tracking-wider text-slate-400">
+            Total Gastos (USD) {filterPeriod === 'ciclo' ? `• Semana ${systemCycle.semana}` : '• Histórico'}
+          </div>
           <div className="text-xl font-black text-emerald-400 font-mono mt-1">
             {formatCurrency(currencyTotals.usd, 'USD')}
           </div>
         </div>
 
         <div className="bg-[#0D1B22] border border-slate-800 rounded-2xl p-4 text-center">
-          <div className="text-[11px] font-bold uppercase tracking-wider text-slate-400">Total Gastos (COP)</div>
+          <div className="text-[11px] font-bold uppercase tracking-wider text-slate-400">
+            Total Gastos (COP) {filterPeriod === 'ciclo' ? `• Semana ${systemCycle.semana}` : '• Histórico'}
+          </div>
           <div className="text-xl font-black text-cyan-400 font-mono mt-1">
             {formatCurrency(currencyTotals.cop, 'COP')}
           </div>
@@ -290,7 +360,7 @@ export const ExpensesTab: React.FC = () => {
                 value={formAgencia}
                 onChange={(e) => setFormAgencia(e.target.value)}
                 required
-                className="w-full bg-[#071217] border border-slate-700 rounded-xl px-3 py-2.5 text-xs text-white focus:outline-none focus:border-rose-500"
+                className="w-full bg-[#071217] border border-slate-700 rounded-xl px-3 py-2.5 text-xs text-white focus:outline-none focus:border-rose-500 cursor-pointer"
               >
                 {agencies.map((a) => (
                   <option key={a.id} value={a.nombre_agencia}>
@@ -306,11 +376,11 @@ export const ExpensesTab: React.FC = () => {
                 value={formMoneda}
                 onChange={(e) => setFormMoneda(e.target.value)}
                 required
-                className="w-full bg-[#071217] border border-slate-700 rounded-xl px-3 py-2.5 text-xs text-white focus:outline-none focus:border-rose-500"
+                className="w-full bg-[#071217] border border-slate-700 rounded-xl px-3 py-2.5 text-xs text-white focus:outline-none focus:border-rose-500 cursor-pointer"
               >
-                {currencies.map((m) => (
-                  <option key={m.id} value={m.nombre_moneda}>
-                    {m.nombre_moneda} ({m.simbolo})
+                {availableAgencyCurrencies.map((m) => (
+                  <option key={m} value={m}>
+                    {m === 'BS' ? 'BS (Bolívares)' : m === 'USD' ? 'USD (Dólares)' : m === 'COP' ? 'COP (Pesos)' : m}
                   </option>
                 ))}
               </select>
@@ -381,16 +451,61 @@ export const ExpensesTab: React.FC = () => {
 
       {/* Expenses Table */}
       <div className="bg-[#0D1B22] border border-slate-800 rounded-3xl overflow-hidden shadow-xl">
-        <div className="p-4 sm:p-6 border-b border-slate-800 flex flex-col sm:flex-row items-center justify-between gap-3">
-          <h4 className="text-sm font-bold text-white uppercase tracking-wider">
-            Gastos Registrados ({filteredExpenses.length})
-          </h4>
+        <div className="p-4 sm:p-6 border-b border-slate-800 flex flex-col gap-4">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+            <div className="flex items-center gap-2">
+              <h4 className="text-sm font-bold text-white uppercase tracking-wider">
+                Gastos Registrados ({filteredExpenses.length})
+              </h4>
+              <span className="text-xs text-slate-500 font-mono">
+                {filterPeriod === 'ciclo' ? `(Semana ${systemCycle.semana})` : `(Histórico)`}
+              </span>
+            </div>
 
-          <div className="flex items-center gap-2">
+            {/* Period Selector: Ciclo Actual vs Histórico */}
+            <div className="inline-flex rounded-xl bg-[#071217] p-1 border border-slate-800 text-xs font-semibold self-start sm:self-auto">
+              <button
+                type="button"
+                onClick={() => setFilterPeriod('ciclo')}
+                className={`px-3 py-1.5 rounded-lg transition-all cursor-pointer ${
+                  filterPeriod === 'ciclo'
+                    ? 'bg-rose-600 text-white shadow'
+                    : 'text-slate-400 hover:text-white'
+                }`}
+              >
+                🎯 Ciclo Actual (Semana {systemCycle.semana})
+              </button>
+              <button
+                type="button"
+                onClick={() => setFilterPeriod('todos')}
+                className={`px-3 py-1.5 rounded-lg transition-all cursor-pointer ${
+                  filterPeriod === 'todos'
+                    ? 'bg-rose-600 text-white shadow'
+                    : 'text-slate-400 hover:text-white'
+                }`}
+              >
+                📜 Histórico Completo ({expenses.length})
+              </button>
+            </div>
+          </div>
+
+          {/* Search and Dropdown Filters */}
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+            <div className="relative">
+              <Search className="w-3.5 h-3.5 absolute left-3 top-1/2 -translate-y-1/2 text-slate-500" />
+              <input
+                type="text"
+                placeholder="Buscar por concepto o referencia..."
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                className="w-full bg-[#071217] border border-slate-700 rounded-xl pl-8 pr-3 py-2 text-xs text-white placeholder:text-slate-600 focus:outline-none focus:border-rose-500"
+              />
+            </div>
+
             <select
               value={filterAgency}
               onChange={(e) => setFilterAgency(e.target.value)}
-              className="bg-[#071217] border border-slate-700 rounded-xl px-3 py-1.5 text-xs text-white"
+              className="bg-[#071217] border border-slate-700 rounded-xl px-3 py-2 text-xs text-white focus:outline-none focus:border-rose-500 cursor-pointer"
             >
               <option value="Todas">Todas las Agencias</option>
               {agencies.map((a) => (
@@ -399,44 +514,75 @@ export const ExpensesTab: React.FC = () => {
                 </option>
               ))}
             </select>
+
+            <select
+              value={filterCurrency}
+              onChange={(e) => setFilterCurrency(e.target.value)}
+              className="bg-[#071217] border border-slate-700 rounded-xl px-3 py-2 text-xs text-white focus:outline-none focus:border-rose-500 cursor-pointer"
+            >
+              <option value="Todas">Todas las Monedas</option>
+              <option value="BS">BS (Bolívares)</option>
+              <option value="USD">USD (Dólares)</option>
+              <option value="COP">COP (Pesos)</option>
+            </select>
           </div>
         </div>
 
         <div className="overflow-x-auto">
-          <table className="w-full text-left text-xs">
-            <thead className="bg-[#071217] text-slate-400 border-b border-slate-800 font-bold uppercase tracking-wider">
-              <tr>
-                <th className="py-3.5 px-4">Agencia</th>
-                <th className="py-3.5 px-4">Concepto</th>
-                <th className="py-3.5 px-4">Referencia</th>
-                <th className="py-3.5 px-4 text-right">Monto</th>
-                <th className="py-3.5 px-4">Fecha</th>
-                <th className="py-3.5 px-4 text-center">Acciones</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-slate-800/80 font-mono">
-              {filteredExpenses.map((ex) => (
-                <tr key={`${ex.tabla}_${ex.id}`} className="hover:bg-slate-800/30 transition-colors">
-                  <td className="py-3.5 px-4 font-sans font-bold text-white">{ex.agencia}</td>
-                  <td className="py-3.5 px-4 font-sans text-slate-300">{ex.concepto}</td>
-                  <td className="py-3.5 px-4 text-slate-400 text-xs font-mono">{ex.referencia}</td>
-                  <td className="py-3.5 px-4 text-right font-bold text-rose-400">
-                    {formatCurrency(ex.monto, ex.moneda)}
-                  </td>
-                  <td className="py-3.5 px-4 text-slate-500 font-sans">{formatDate(ex.fecha)}</td>
-                  <td className="py-3.5 px-4 text-center">
-                    <button
-                      onClick={() => handleDeleteExpense(ex)}
-                      className="p-1.5 rounded-lg text-slate-400 hover:text-rose-400 hover:bg-rose-500/10 transition-colors cursor-pointer"
-                      title="Eliminar Gasto"
-                    >
-                      <Trash2 className="w-3.5 h-3.5" />
-                    </button>
-                  </td>
+          {filteredExpenses.length === 0 ? (
+            <div className="p-10 text-center space-y-2">
+              <Banknote className="w-8 h-8 text-slate-600 mx-auto" />
+              <p className="text-xs font-semibold text-slate-300">
+                {filterPeriod === 'ciclo'
+                  ? `No hay gastos registrados en el ciclo operativo actual (Semana ${systemCycle.semana}: ${systemCycle.desde} al ${systemCycle.hasta}).`
+                  : 'No se encontraron gastos con los filtros seleccionados.'}
+              </p>
+              {filterPeriod === 'ciclo' && expenses.length > 0 && (
+                <button
+                  type="button"
+                  onClick={() => setFilterPeriod('todos')}
+                  className="text-xs text-rose-400 hover:underline pt-1 inline-block cursor-pointer font-medium"
+                >
+                  Ver los {expenses.length} gastos del historial anterior
+                </button>
+              )}
+            </div>
+          ) : (
+            <table className="w-full text-left text-xs">
+              <thead className="bg-[#071217] text-slate-400 border-b border-slate-800 font-bold uppercase tracking-wider">
+                <tr>
+                  <th className="py-3.5 px-4">Agencia</th>
+                  <th className="py-3.5 px-4">Concepto</th>
+                  <th className="py-3.5 px-4">Referencia</th>
+                  <th className="py-3.5 px-4 text-right">Monto</th>
+                  <th className="py-3.5 px-4">Fecha</th>
+                  <th className="py-3.5 px-4 text-center">Acciones</th>
                 </tr>
-              ))}
-            </tbody>
-          </table>
+              </thead>
+              <tbody className="divide-y divide-slate-800/80 font-mono">
+                {filteredExpenses.map((ex) => (
+                  <tr key={`${ex.tabla}_${ex.id}`} className="hover:bg-slate-800/30 transition-colors">
+                    <td className="py-3.5 px-4 font-sans font-bold text-white">{ex.agencia}</td>
+                    <td className="py-3.5 px-4 font-sans text-slate-300">{ex.concepto}</td>
+                    <td className="py-3.5 px-4 text-slate-400 text-xs font-mono">{ex.referencia}</td>
+                    <td className="py-3.5 px-4 text-right font-bold text-rose-400">
+                      {formatCurrency(ex.monto, ex.moneda)}
+                    </td>
+                    <td className="py-3.5 px-4 text-slate-500 font-sans">{formatDate(ex.fecha)}</td>
+                    <td className="py-3.5 px-4 text-center">
+                      <button
+                        onClick={() => handleDeleteExpense(ex)}
+                        className="p-1.5 rounded-lg text-slate-400 hover:text-rose-400 hover:bg-rose-500/10 transition-colors cursor-pointer"
+                        title="Eliminar Gasto"
+                      >
+                        <Trash2 className="w-3.5 h-3.5" />
+                      </button>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          )}
         </div>
       </div>
     </div>
