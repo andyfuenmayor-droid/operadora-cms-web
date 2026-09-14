@@ -89,6 +89,23 @@ export const AccountBalancesTab: React.FC = () => {
 
   useEffect(() => {
     loadData();
+
+    if (!effectiveUserId) return;
+
+    const channel = supabase
+      .channel('realtime_account_balances')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'gastos' }, () => loadData())
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'cda_gastos_diarios' }, () => loadData())
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'pagos_semana' }, () => loadData())
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'cda_pagos_bancarios' }, () => loadData())
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'cda_pagos_diarios' }, () => loadData())
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'carga_actual' }, () => loadData())
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'agencias' }, () => loadData())
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
   }, [effectiveUserId]);
 
   // Compute balance rows for given currency
@@ -107,19 +124,19 @@ export const AccountBalancesTab: React.FC = () => {
         .filter((s) => s.agencia === nom && normalizarMoneda(s.moneda) === mon)
         .reduce((sum, curr) => sum + Number(curr.util_op || 0), 0);
 
-      // Gastos
+      // Gastos (solo confirmados en Pizarra de Confirmaciones)
       const gTot = expenses
-        .filter((g) => g.agencia === nom && normalizarMoneda(g.moneda) === mon)
+        .filter((g) => g.agencia === nom && normalizarMoneda(g.moneda) === mon && Boolean(g.confirmado))
         .reduce((sum, curr) => sum + Number(curr.monto || 0), 0);
 
-      // Pagos ordinarios recibidos de la agencia (reducen la deuda)
+      // Pagos ordinarios recibidos de la agencia (solo confirmados, reducen la deuda)
       const pCobros = payments
-        .filter((p) => p.agencia === nom && normalizarMoneda(p.moneda) === mon && !String(p.tipo_pago || '').toUpperCase().includes('PREMIO'))
+        .filter((p) => p.agencia === nom && normalizarMoneda(p.moneda) === mon && !String(p.tipo_pago || '').toUpperCase().includes('PREMIO') && Boolean(p.confirmado))
         .reduce((sum, curr) => sum + Number(curr.monto || 0), 0);
 
-      // Reposición de premios pagados por la operadora a la agencia
+      // Reposición de premios pagados por la operadora a la agencia (solo confirmados)
       const pPremios = payments
-        .filter((p) => p.agencia === nom && normalizarMoneda(p.moneda) === mon && String(p.tipo_pago || '').toUpperCase().includes('PREMIO'))
+        .filter((p) => p.agencia === nom && normalizarMoneda(p.moneda) === mon && String(p.tipo_pago || '').toUpperCase().includes('PREMIO') && Boolean(p.confirmado))
         .reduce((sum, curr) => sum + Number(curr.monto || 0), 0);
 
       // Pagos netos (PAGOS - PREMIOS)
@@ -316,8 +333,8 @@ ${textoSistemas}
     const agName = detailModalAgency;
 
     const agSales = sales.filter((s) => s.agencia === agName && normalizarMoneda(s.moneda) === activeCurrency);
-    const agPayments = payments.filter((p) => p.agencia === agName && normalizarMoneda(p.moneda) === activeCurrency);
-    const agExpenses = expenses.filter((e) => e.agencia === agName && normalizarMoneda(e.moneda) === activeCurrency);
+    const agPayments = payments.filter((p) => p.agencia === agName && normalizarMoneda(p.moneda) === activeCurrency && Boolean(p.confirmado));
+    const agExpenses = expenses.filter((e) => e.agencia === agName && normalizarMoneda(e.moneda) === activeCurrency && Boolean(e.confirmado));
 
     // Group sales by system
     const sistemasMap: Record<string, { venta: number; comision: number; premios: number; neto: number }> = {};

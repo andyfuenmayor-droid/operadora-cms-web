@@ -2,6 +2,7 @@ import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import { supabase } from '../../lib/supabase';
 import { useAuth } from '../../context/AuthContext';
 import { formatCurrency, formatDate, normalizarMoneda } from '../../utils/formatters';
+import { getConsolidatedExpenses } from '../../utils/consolidations';
 import type { Agency, Currency, BankAccount } from '../../types';
 import {
   CreditCard,
@@ -85,7 +86,7 @@ export const PaymentsTab: React.FC = () => {
     setMessage(null);
 
     try {
-      const [psRes, pbRes, pdRes, agRes, monRes, cbRes, salesRes, expRes] = await Promise.all([
+      const [psRes, pbRes, pdRes, agRes, monRes, cbRes, salesRes, gConsolidated] = await Promise.all([
         supabase.from('pagos_semana').select('*').eq('user_id', effectiveUserId).order('id', { ascending: false }),
         supabase.from('cda_pagos_bancarios').select('*').eq('user_id', effectiveUserId).order('id', { ascending: false }),
         supabase.from('cda_pagos_diarios').select('*').eq('user_id', effectiveUserId).order('id', { ascending: false }),
@@ -93,7 +94,7 @@ export const PaymentsTab: React.FC = () => {
         supabase.from('monedas').select('*').eq('user_id', effectiveUserId).order('id', { ascending: true }),
         supabase.from('cuentas_bancarias').select('*').eq('user_id', effectiveUserId).order('banco', { ascending: true }),
         supabase.from('carga_actual').select('*').eq('user_id', effectiveUserId),
-        supabase.from('gastos_semana').select('*').eq('user_id', effectiveUserId),
+        getConsolidatedExpenses(effectiveUserId, { fechaDesde: systemCycle.desde, fechaHasta: systemCycle.hasta }),
       ]);
 
       const loadedAgencies = agRes.data || [];
@@ -101,7 +102,7 @@ export const PaymentsTab: React.FC = () => {
       setCurrencies(monRes.data || []);
       setBankAccounts(cbRes.data || []);
       setSales(salesRes.data || []);
-      setExpenses(expRes.data || []);
+      setExpenses(gConsolidated);
 
       if (loadedAgencies.length > 0) {
         setFormAgencia((prev) => {
@@ -209,8 +210,8 @@ export const PaymentsTab: React.FC = () => {
       const vNeto = agSales.reduce((acc, curr) => acc + Number(curr.neto || 0), 0);
       const uNeta = Math.round((vNeto * (1 - partAg)) * 100) / 100;
 
-      // Gastos
-      const agGastos = expenses.filter((g) => String(g.agencia || '').trim().toUpperCase() === agNom && normalizarMoneda(g.moneda) === m);
+      // Gastos (solo confirmados)
+      const agGastos = expenses.filter((g) => String(g.agencia || '').trim().toUpperCase() === agNom && normalizarMoneda(g.moneda) === m && Boolean(g.confirmado));
       const gTot = agGastos.reduce((acc, curr) => acc + Number(curr.monto || 0), 0);
 
       // Pagos ordinarios recibidos (disminuyen saldo deudor)

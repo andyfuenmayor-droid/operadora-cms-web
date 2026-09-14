@@ -121,11 +121,11 @@ export const HomeDashboard: React.FC<HomeDashboardProps> = ({ onNavigate }) => {
           .reduce((acc: number, v: any) => acc + (Number(v.util_op) || (Number(v.monto_venta || 0) - Number(v.comision || 0) - Number(v.monto_premios || 0))), 0);
 
         const gTot = gastosList
-          .filter((g) => g.moneda === mon)
+          .filter((g) => g.moneda === mon && Boolean(g.confirmado))
           .reduce((acc: number, g) => acc + (Number(g.monto) || 0), 0);
 
         const pTot = pagosList
-          .filter((p) => p.moneda === mon)
+          .filter((p) => p.moneda === mon && Boolean(p.confirmado))
           .reduce((acc: number, p) => {
             const m = Number(p.monto || 0);
             return p.tipo_pago.includes('Premio') ? acc - m : acc + m;

@@ -99,6 +99,23 @@ export const WeeklyClosureTab: React.FC = () => {
 
   useEffect(() => {
     loadData();
+
+    if (!effectiveUserId) return;
+
+    const channel = supabase
+      .channel('realtime_weekly_closure')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'gastos' }, () => loadData())
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'cda_gastos_diarios' }, () => loadData())
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'pagos_semana' }, () => loadData())
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'cda_pagos_bancarios' }, () => loadData())
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'cda_pagos_diarios' }, () => loadData())
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'carga_actual' }, () => loadData())
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'agencias' }, () => loadData())
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
   }, [effectiveUserId]);
 
   // Compute closure movements for all currencies
@@ -120,12 +137,12 @@ export const WeeklyClosureTab: React.FC = () => {
           const brutoTotal = agSales.reduce((sum, curr) => sum + Number(curr.neto || 0), 0);
           const utilVal = brutoTotal;
 
-          // Gastos
-          const agExp = expenses.filter((g) => g.agencia === nom && normalizarMoneda(g.moneda) === m);
+          // Gastos (solo confirmados en Pizarra de Confirmaciones)
+          const agExp = expenses.filter((g) => g.agencia === nom && normalizarMoneda(g.moneda) === m && Boolean(g.confirmado));
           const gastoVal = agExp.reduce((sum, curr) => sum + Number(curr.monto || 0), 0);
 
-          // Pagos & Premios
-          const agPay = payments.filter((p) => p.agencia === nom && normalizarMoneda(p.moneda) === m);
+          // Pagos & Premios (solo confirmados)
+          const agPay = payments.filter((p) => p.agencia === nom && normalizarMoneda(p.moneda) === m && Boolean(p.confirmado));
           let premiosVal = 0, cobrosVal = 0;
           agPay.forEach((p) => {
             const mto = Number(p.monto || 0);
