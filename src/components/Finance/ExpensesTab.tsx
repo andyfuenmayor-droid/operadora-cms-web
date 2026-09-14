@@ -107,10 +107,6 @@ export const ExpensesTab: React.FC = () => {
       setAgencies(loadedAgencies);
       setCurrencies(monRes.data || []);
 
-      if (loadedAgencies.length > 0 && !formAgencia) {
-        setFormAgencia(loadedAgencies[0].nombre_agencia);
-      }
-
       const list: ExpenseItem[] = [];
 
       (gRes.data || []).forEach((r: any) => {
@@ -236,7 +232,7 @@ export const ExpensesTab: React.FC = () => {
 
     const montoNum = Number(formMonto);
     if (!formAgencia || montoNum <= 0 || !formConcepto.trim()) {
-      setMessage({ type: 'error', text: 'Complete los campos obligatorios y un monto mayor a 0.' });
+      setMessage({ type: 'error', text: 'Seleccione una agencia, complete el concepto y un monto mayor a 0.' });
       return;
     }
 
@@ -278,6 +274,7 @@ export const ExpensesTab: React.FC = () => {
         });
       }
 
+      setFormAgencia('');
       setFormMonto('');
       setFormConcepto('');
       setFormReferencia('');
@@ -320,7 +317,7 @@ export const ExpensesTab: React.FC = () => {
               <Banknote className="w-5 h-5" />
             </span>
             <h2 className="text-xl sm:text-2xl font-black text-white">
-              Gestión de Gastos Operativos
+              Gastos por Agencia
             </h2>
             <span className="text-[11px] px-2.5 py-1 rounded-full bg-amber-500/10 text-amber-400 border border-amber-500/20 font-mono font-bold">
               {systemCycle.tipo === 'SEMANAL' ? `Semana ${systemCycle.semana}` : `Operación Diaria ${systemCycle.semana}`} ({systemCycle.desde} al {systemCycle.hasta})
@@ -417,7 +414,7 @@ export const ExpensesTab: React.FC = () => {
       <div className="bg-[#0D1B22] border border-slate-800 rounded-3xl p-6 shadow-xl space-y-4">
         <h3 className="text-sm font-bold text-white flex items-center gap-2">
           <Plus className="w-4 h-4 text-rose-400" />
-          Registrar Gasto Operativo
+          Registrar Gasto por Agencia
         </h3>
 
         <form onSubmit={handleSaveExpense} className="space-y-4">
@@ -430,6 +427,7 @@ export const ExpensesTab: React.FC = () => {
                 required
                 className="w-full bg-[#071217] border border-slate-700 rounded-xl px-3 py-2.5 text-xs text-white focus:outline-none focus:border-rose-500 cursor-pointer"
               >
+                <option value="">-- Seleccione una Agencia --</option>
                 {agencies.map((a) => (
                   <option key={a.id} value={a.nombre_agencia}>
                     {a.nombre_agencia}
@@ -525,7 +523,7 @@ export const ExpensesTab: React.FC = () => {
               className="px-6 py-2.5 rounded-xl bg-gradient-to-r from-rose-600 to-rose-500 text-white font-bold text-xs shadow-lg shadow-rose-600/20 flex items-center gap-2 transition-all cursor-pointer disabled:opacity-50"
             >
               <Plus className="w-4 h-4" />
-              {isProcessing ? 'Guardando...' : 'Registrar Gasto'}
+              {isProcessing ? 'Guardando...' : 'Registrar Gasto por Agencia'}
             </button>
           </div>
         </form>
@@ -537,7 +535,7 @@ export const ExpensesTab: React.FC = () => {
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
             <div className="flex items-center gap-2">
               <h4 className="text-sm font-bold text-white uppercase tracking-wider">
-                Gastos Registrados ({filteredExpenses.length})
+                Gastos Registrados por Agencia ({filteredExpenses.length})
               </h4>
               <span className="text-xs text-slate-500 font-mono">
                 {filterPeriod === 'ciclo' ? `(Semana ${systemCycle.semana})` : `(Histórico)`}

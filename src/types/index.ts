@@ -196,6 +196,7 @@ export type ModuleId =
   | 'Cargar Ventas'
   | 'Pagos Agencias'
   | 'Gastos Agencias'
+  | 'Gastos por Agencia'
   | 'Saldo Agencias'
   | 'Venta Real'
   | 'Auditoría'

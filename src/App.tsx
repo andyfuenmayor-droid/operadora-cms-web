@@ -91,6 +91,7 @@ const AppContent: React.FC = () => {
       case 'Pagos a Operador':
         return <PaymentsTab />;
 
+      case 'Gastos por Agencia':
       case 'Gastos Agencias':
       case 'Gastos Administrativos':
         return <ExpensesTab />;

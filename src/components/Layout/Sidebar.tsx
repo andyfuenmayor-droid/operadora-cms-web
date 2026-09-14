@@ -53,6 +53,7 @@ const moduleIconMap: Record<ModuleId, React.ComponentType<{ className?: string }
   'Cargar Ventas': CloudUpload,
   'Pagos Agencias': CircleDollarSign,
   'Gastos Agencias': Receipt,
+  'Gastos por Agencia': Receipt,
   'Saldo Agencias': Wallet,
   'Venta Real': TrendingUp,
   Auditoría: ShieldCheck,
