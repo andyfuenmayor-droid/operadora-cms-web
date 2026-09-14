@@ -115,12 +115,10 @@ export const WeeklyClosureTab: React.FC = () => {
         const sAnt = Number(ag[colIni] || 0);
 
         if (confMon.includes(m) || Math.abs(sAnt) > 0.01) {
-          // Ventas
+          // Ventas: la venta neta (neto) es la utilidad real del período
           const agSales = sales.filter((s) => s.agencia === nom && normalizarMoneda(s.moneda) === m);
           const brutoTotal = agSales.reduce((sum, curr) => sum + Number(curr.neto || 0), 0);
-
-          const partAg = Number(ag.participacion_ag || 50);
-          const utilVal = brutoTotal !== 0 ? Math.round((brutoTotal - Math.round(brutoTotal * (partAg / 100))) * 100) / 100 : 0;
+          const utilVal = brutoTotal;
 
           // Gastos
           const agExp = expenses.filter((g) => g.agencia === nom && normalizarMoneda(g.moneda) === m);
@@ -136,7 +134,7 @@ export const WeeklyClosureTab: React.FC = () => {
             else cobrosVal += mto;
           });
 
-          // Final Balance
+          // Final Balance: Arrastre + Venta Neta - Gastos - Cobros + Premios
           const sFin = Math.round((sAnt + utilVal - gastoVal - cobrosVal + premiosVal) * 100) / 100;
 
           list.push({
@@ -174,13 +172,12 @@ export const WeeklyClosureTab: React.FC = () => {
   }, [systemCycle]);
 
   const totalsByCurrency = useMemo(() => {
-    const res: Record<string, { totalVenta: number; totalUtilidad: number; totalSaldoFinal: number; count: number }> = {};
+    const res: Record<string, { totalVenta: number; totalSaldoFinal: number; count: number }> = {};
     for (const d of closureData) {
       if (!res[d.moneda]) {
-        res[d.moneda] = { totalVenta: 0, totalUtilidad: 0, totalSaldoFinal: 0, count: 0 };
+        res[d.moneda] = { totalVenta: 0, totalSaldoFinal: 0, count: 0 };
       }
       res[d.moneda].totalVenta += d.venta_bruta;
-      res[d.moneda].totalUtilidad += d.utilidad_semana;
       res[d.moneda].totalSaldoFinal += d.saldo_final;
       res[d.moneda].count += 1;
     }
@@ -195,7 +192,6 @@ export const WeeklyClosureTab: React.FC = () => {
       'Moneda',
       'Arrastre',
       'Venta Neta',
-      'Utilidad Semanal',
       'Gastos',
       'Premios',
       'Cobros',
@@ -206,7 +202,6 @@ export const WeeklyClosureTab: React.FC = () => {
       d.moneda,
       d.saldo_anterior.toFixed(2),
       d.venta_bruta.toFixed(2),
-      d.utilidad_semana.toFixed(2),
       d.gastos.toFixed(2),
       d.premios.toFixed(2),
       d.cobros.toFixed(2),
@@ -559,7 +554,6 @@ export const WeeklyClosureTab: React.FC = () => {
                     <th className="py-3 px-4">Agencia</th>
                     <th className="py-3 px-4 text-right">Arrastre</th>
                     <th className="py-3 px-4 text-right">Venta Neta</th>
-                    <th className="py-3 px-4 text-right">Utilidad</th>
                     <th className="py-3 px-4 text-right">Gastos</th>
                     <th className="py-3 px-4 text-right">Premios</th>
                     <th className="py-3 px-4 text-right">Cobros</th>
@@ -571,8 +565,9 @@ export const WeeklyClosureTab: React.FC = () => {
                     <tr key={`${row.entidad}_${mon}`} className="hover:bg-slate-800/30 transition-colors">
                       <td className="py-3 px-4 font-sans font-bold text-white">{row.entidad}</td>
                       <td className="py-3 px-4 text-right text-slate-400">{formatCurrency(row.saldo_anterior, mon as any)}</td>
-                      <td className="py-3 px-4 text-right text-slate-300">{formatCurrency(row.venta_bruta, mon as any)}</td>
-                      <td className="py-3 px-4 text-right text-emerald-400 font-semibold">{formatCurrency(row.utilidad_semana, mon as any)}</td>
+                      <td className={`py-3 px-4 text-right font-semibold ${row.venta_bruta >= 0 ? 'text-emerald-400' : 'text-rose-400'}`}>
+                        {formatCurrency(row.venta_bruta, mon as any)}
+                      </td>
                       <td className="py-3 px-4 text-right text-rose-400">{formatCurrency(row.gastos, mon as any)}</td>
                       <td className="py-3 px-4 text-right text-amber-400">{formatCurrency(row.premios, mon as any)}</td>
                       <td className="py-3 px-4 text-right text-cyan-400">{formatCurrency(row.cobros, mon as any)}</td>
@@ -672,8 +667,8 @@ export const WeeklyClosureTab: React.FC = () => {
                       <span className="text-xs font-mono font-bold text-white block">
                         {formatCurrency(data.totalSaldoFinal, mon as any)}
                       </span>
-                      <span className="text-[10px] text-slate-500 block">
-                        Utilidad: {formatCurrency(data.totalUtilidad, mon as any)}
+                      <span className="text-[10px] text-slate-400 block">
+                        Venta Neta: {formatCurrency(data.totalVenta, mon as any)}
                       </span>
                     </div>
                   ))}
