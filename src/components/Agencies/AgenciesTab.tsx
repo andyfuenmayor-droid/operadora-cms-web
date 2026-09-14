@@ -144,8 +144,8 @@ export const AgenciesTab: React.FC = () => {
     setFormNombre(ag.nombre_agencia);
     setFormSistemas(ag.sistemas ? ag.sistemas.split(',').map((s) => s.trim()) : []);
     setFormMonedas(ag.monedas ? ag.monedas.split(',').map((m) => m.trim()) : []);
-    setFormComision(String(ag.comision || 10));
-    setFormParticipacion(String(ag.participacion_ag || 50));
+    setFormComision(String(ag.comision !== undefined && ag.comision !== null ? ag.comision : 10));
+    setFormParticipacion(String(ag.participacion_ag !== undefined && ag.participacion_ag !== null ? ag.participacion_ag : 0));
 
     try {
       const cond = ag.condiciones_sistemas;

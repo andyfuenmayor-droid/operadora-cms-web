@@ -95,7 +95,7 @@ export const WeeklyClosureTab: React.FC = () => {
           const agSales = sales.filter((s) => s.agencia === nom && normalizarMoneda(s.moneda) === m);
           const brutoTotal = agSales.reduce((sum, curr) => sum + Number(curr.neto || 0), 0);
 
-          const partAg = Number(ag.participacion_ag || 50);
+          const partAg = ag.participacion_ag !== undefined && ag.participacion_ag !== null ? Number(ag.participacion_ag) : 0;
           const utilVal = brutoTotal !== 0 ? Math.round((brutoTotal - Math.round(brutoTotal * (partAg / 100))) * 100) / 100 : 0;
 
           // Gastos
@@ -185,30 +185,35 @@ export const WeeklyClosureTab: React.FC = () => {
         supabase.from('gastos').delete().eq('user_id', effectiveUserId),
       ]);
 
-      // 4. Advance cycle dates in config_sistema
-      const hastaPrev = new Date(systemCycle.hasta);
-      const nuevaDesdeDt = new Date(hastaPrev);
-      nuevaDesdeDt.setDate(hastaPrev.getDate() + 1);
-
-      const nuevaHastaDt = new Date(nuevaDesdeDt);
+      // 4. Advance cycle dates in config_sistema (timezone-safe)
+      const [y, m, d] = systemCycle.hasta.split('-').map(Number);
+      const nuevaDesdeDt = new Date(y, m - 1, d + 1);
+      const nuevaHastaDt = new Date(y, m - 1, d + 1);
       if (systemCycle.tipo === 'DIARIO') {
-        nuevaHastaDt.setDate(nuevaDesdeDt.getDate());
+        // Misma fecha para ciclo diario
       } else {
-        nuevaHastaDt.setDate(nuevaDesdeDt.getDate() + 6);
+        nuevaHastaDt.setDate(nuevaHastaDt.getDate() + 6);
       }
 
-      const nuevaDesdeStr = nuevaDesdeDt.toISOString().slice(0, 10);
-      const nuevaHastaStr = nuevaHastaDt.toISOString().slice(0, 10);
+      const pad = (n: number) => String(n).padStart(2, '0');
+      const nuevaDesdeStr = `${nuevaDesdeDt.getFullYear()}-${pad(nuevaDesdeDt.getMonth() + 1)}-${pad(nuevaDesdeDt.getDate())}`;
+      const nuevaHastaStr = `${nuevaHastaDt.getFullYear()}-${pad(nuevaHastaDt.getMonth() + 1)}-${pad(nuevaHastaDt.getDate())}`;
       const nuevaSemana = String(Number(systemCycle.semana || 1) + 1);
 
-      // Clean & insert updated cycle configs
-      await supabase.from('config_sistema').delete().eq('user_id', effectiveUserId);
-      await supabase.from('config_sistema').insert([
-        { user_id: effectiveUserId, parametro: 'fecha_desde', valor: nuevaDesdeStr },
-        { user_id: effectiveUserId, parametro: 'fecha_hasta', valor: nuevaHastaStr },
-        { user_id: effectiveUserId, parametro: 'tipo_cierre', valor: systemCycle.tipo },
-        { user_id: effectiveUserId, parametro: 'semana_no', valor: nuevaSemana },
-      ]);
+      // Upsert updated cycle configs without wiping other user settings
+      const cycleUpdates = [
+        { parametro: 'fecha_desde', valor: nuevaDesdeStr },
+        { parametro: 'fecha_hasta', valor: nuevaHastaStr },
+        { parametro: 'tipo_cierre', valor: systemCycle.tipo },
+        { parametro: 'semana_no', valor: nuevaSemana },
+      ];
+
+      for (const item of cycleUpdates) {
+        await supabase.from('config_sistema').upsert(
+          { user_id: effectiveUserId, parametro: item.parametro, valor: item.valor },
+          { onConflict: 'user_id,parametro' }
+        );
+      }
 
       await refreshSystemCycle();
 
