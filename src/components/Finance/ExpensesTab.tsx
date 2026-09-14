@@ -113,28 +113,44 @@ export const ExpensesTab: React.FC = () => {
       const list: ExpenseItem[] = [];
 
       (gRes.data || []).forEach((r: any) => {
+        let rawConcepto = String(r.concepto || r.descripcion || 'Gasto Operativo').trim();
+        let refStr = 'N/A';
+        const matchRef = rawConcepto.match(/\[REF:\s*([^\]]+)\]/i);
+        if (matchRef) {
+          refStr = matchRef[1].trim();
+          rawConcepto = rawConcepto.replace(/\[REF:\s*[^\]]+\]/i, '').trim();
+        }
+
         list.push({
           id: r.id,
           tabla: 'gastos',
           agencia: String(r.agencia || r.nombre_agency || '').trim().toUpperCase(),
           moneda: normalizarMoneda(r.moneda),
           monto: Number(r.monto || 0),
-          concepto: String(r.concepto || r.descripcion || 'Gasto Operativo'),
-          referencia: String(r.referencia || 'N/A'),
+          concepto: rawConcepto,
+          referencia: refStr,
           confirmado: Boolean(r.confirmado),
           fecha: String(r.fecha || r.created_at || ''),
         });
       });
 
       (gdRes.data || []).forEach((r: any) => {
+        let rawConcepto = String(r.concepto || r.descripcion || 'Gasto Taquilla').trim();
+        let refStr = 'N/A';
+        const matchRef = rawConcepto.match(/\[REF:\s*([^\]]+)\]/i);
+        if (matchRef) {
+          refStr = matchRef[1].trim();
+          rawConcepto = rawConcepto.replace(/\[REF:\s*[^\]]+\]/i, '').trim();
+        }
+
         list.push({
           id: r.id,
           tabla: 'cda_gastos_diarios',
-          agencia: String(r.agencia || '').trim().toUpperCase(),
+          agencia: String(r.agencia || r.nombre_agency || '').trim().toUpperCase(),
           moneda: normalizarMoneda(r.moneda),
           monto: Number(r.monto || 0),
-          concepto: String(r.concepto || 'Gasto Taquilla'),
-          referencia: String(r.referencia || 'N/A'),
+          concepto: rawConcepto,
+          referencia: refStr,
           confirmado: Boolean(r.confirmado),
           fecha: String(r.fecha || r.created_at || ''),
         });
@@ -219,15 +235,19 @@ export const ExpensesTab: React.FC = () => {
     setIsProcessing(true);
 
     try {
+      const conceptoFinal = formReferencia.trim()
+        ? `${formConcepto.trim().toUpperCase()} [REF: ${formReferencia.trim().toUpperCase()}]`
+        : formConcepto.trim().toUpperCase();
+
       const payload = {
         user_id: effectiveUserId,
         agencia: formAgencia,
         moneda: formMoneda,
         monto: montoNum,
-        concepto: formConcepto.trim(),
-        referencia: formReferencia.trim().toUpperCase() || 'GASTO DIRECTO',
+        concepto: conceptoFinal,
+        tipo: 'Agencia',
         confirmado: true,
-        fecha: formFecha || new Date().toISOString(),
+        fecha: formFecha || new Date().toISOString().slice(0, 10),
       };
 
       const { error } = await supabase.from('gastos').insert(payload);
