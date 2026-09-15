@@ -84,8 +84,8 @@ export const AuditTab: React.FC = () => {
   const [paymentsOfficial, setPaymentsOfficial] = useState<any[]>([]);
   const [paymentsTaquilla, setPaymentsTaquilla] = useState<any[]>([]);
 
-  // UI accordion state for credentials
-  const [isCredentialsOpen, setIsCredentialsOpen] = useState(false);
+  // UI accordion state for credentials (open by default in unified model)
+  const [isCredentialsOpen, setIsCredentialsOpen] = useState(true);
   const [message, setMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
 
   // Modal / Form state for Taquilla User creation
@@ -614,16 +614,16 @@ export const AuditTab: React.FC = () => {
           <div className="space-y-1.5">
             <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-emerald-500/10 border border-emerald-500/30 text-emerald-400 text-xs font-bold">
               <ShieldCheck className="w-3.5 h-3.5" />
-              <span>Auditoría Híbrida 360° • SaaS Multiusuario</span>
+              <span>Gestión de Usuarios y Accesos de Taquilla POS</span>
             </div>
             <h2 className="text-xl sm:text-2xl font-black text-white tracking-tight flex items-center gap-2.5">
-              <span>Panel de Auditoría</span>
+              <span>Auditoría y Terminales</span>
               <span className="text-xs px-2.5 py-0.5 rounded-full bg-slate-800 text-slate-300 font-mono font-normal">
-                Taquilla vs Carga Oficial
+                Modelo Unificado Oficial
               </span>
             </h2>
             <p className="text-xs sm:text-sm text-slate-400 max-w-2xl">
-              Comparativa por <strong>ciclo completo</strong>: concilia y audita en vivo ventas, comisiones, premios, gastos y cobros entre el CMS central y las terminales de taquilla.
+              Administración de credenciales de taquilla (cajeros, supervisores y agencias). Las terminales de taquilla sincronizan directamente con la <strong>carga oficial</strong> del sistema.
             </p>
           </div>
 
