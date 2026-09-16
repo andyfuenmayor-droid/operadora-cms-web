@@ -495,6 +495,11 @@ export const CollectorsTab: React.FC = () => {
   const inactiveCount = totalCollectors - activeCount;
   const totalAgenciesInRoute = Object.values(routesMap).reduce((acc, curr) => acc + curr.length, 0);
 
+  // Pending in-route QR collections awaiting admin liquidation
+  const pendingRouteCount = useMemo(() => {
+    return qrPayments.filter((p) => Boolean(p.fecha_escaneo_cobrador) && !p.liquidado_admin).length;
+  }, [qrPayments]);
+
   return (
     <div className="space-y-6">
       {/* Header */}
@@ -589,8 +594,12 @@ export const CollectorsTab: React.FC = () => {
         >
           <QrCode className="w-4 h-4" />
           Liquidación de Recaudaciones QR
-          <span className="px-2 py-0.5 rounded-full bg-amber-500/20 text-amber-400 text-[10px] font-mono font-bold">
-            {qrPayments.length}
+          <span className={`px-2 py-0.5 rounded-full text-[10px] font-mono font-bold ${
+            pendingRouteCount > 0
+              ? 'bg-amber-500/20 text-amber-400 border border-amber-500/40 animate-pulse'
+              : 'bg-slate-800 text-slate-400'
+          }`}>
+            {pendingRouteCount}
           </span>
         </button>
       </div>
@@ -1205,7 +1214,7 @@ export const CollectorsTab: React.FC = () => {
                       </div>
 
                       <div className="text-xs text-slate-400">
-                        Cobrador: <strong className="text-slate-300">{p.cobrador_nombre || 'Asignado'}</strong> • Concepto: {p.concepto}
+                        Cobrador: <strong className="text-slate-300">{p.cobrador_nombre || 'Asignado'}</strong> • Concepto: {p.concepto || 'Recaudación en efectivo de taquilla / entrega de caja'}
                       </div>
 
                       {p.fecha_escaneo_cobrador && (
