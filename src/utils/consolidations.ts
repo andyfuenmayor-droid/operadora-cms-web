@@ -184,8 +184,10 @@ export async function getConsolidatedPayments(
       }
     });
 
-    // 3. Incorporar cda_pagos_diarios (efectivo y cobradores confirmados)
+    // 3. Incorporar cda_pagos_diarios (efectivo y cobradores confirmados, deduplicando entregas a supervisor que pasaron a cobrador)
+    const pdByAgMon = new Map<string, { cobrador: any[]; supervisor: any[] }>();
     const pdSeenTx = new Set<string>();
+
     dfPd.forEach((r: any) => {
       const isRech = Boolean(r.rechazado) || String(r.estado || '').toUpperCase() === 'RECHAZADO';
       const isConf = Boolean(r.confirmado) || Boolean(r.confirmado_supervisor) || Boolean(r.fecha_escaneo_cobrador);
@@ -232,12 +234,34 @@ export async function getConsolidatedPayments(
       if (yaEnPs) return;
 
       if (agNom && montoVal > 0) {
-        const metodoCat = tipoP.includes('EFECTIVO')
-          ? 'EFECTIVO'
-          : tipoP.includes('COMERCIALIZADOR')
-          ? 'COMERCIALIZADOR'
-          : 'DIARIO';
+        const key = `${agNom}_${monNorm}`;
+        if (!pdByAgMon.has(key)) {
+          pdByAgMon.set(key, { cobrador: [], supervisor: [] });
+        }
+
+        const isCob = Boolean(r.qr_token) || tipoP.includes('COBRADOR');
+        if (isCob) {
+          pdByAgMon.get(key)!.cobrador.push(r);
+        } else {
+          pdByAgMon.get(key)!.supervisor.push(r);
+        }
+      }
+    });
+
+    // Procesar grupos: Todos los cobradores confirmados + solo el remanente en taquilla de entregas a supervisor
+    pdByAgMon.forEach((group) => {
+      const cobradorSum = group.cobrador.reduce((sum, r) => sum + (Number(r.monto) || 0), 0);
+      const supervisorSum = group.supervisor.reduce((sum, r) => sum + (Number(r.monto) || 0), 0);
+
+      // A. Cobradores y liquidaciones oficiales
+      group.cobrador.forEach((r) => {
+        const agNom = String(r.agencia || '').trim().toUpperCase();
+        const monNorm = normalizarMoneda(r.moneda) as 'BS' | 'USD' | 'COP';
+        const montoVal = Math.round((Number(r.monto) || 0) * 100) / 100;
+        const fechaRaw = String(r.fecha || r.created_at || '').trim();
+        const tipoP = String(r.tipo_pago || 'COBRADOR').trim().toUpperCase();
         const concD = String(r.concepto || '').toUpperCase();
+        const refD = String(r.referencia || '').trim().toUpperCase();
         const isPremD = ['PREMIO', 'PÉRDIDA', 'PERDIDA', 'ABONO', 'REPOSICION', 'REPOSICIÓN'].some(
           (k) => `${tipoP} ${concD} ${refD}`.includes(k)
         );
@@ -247,15 +271,52 @@ export async function getConsolidatedPayments(
           agencia: agNom,
           moneda: monNorm,
           tipo_pago: isPremD ? 'Pago de Premios' : 'Pago',
-          metodo: metodoCat,
+          metodo: 'COBRADOR',
           monto: montoVal,
-          referencia: `PAGO DIARIO: ${tipoP} [✅ CONFIRMADO]`,
+          referencia: `COBRADOR: ${tipoP} [✅ CONFIRMADO]`,
           confirmado: true,
           confirmado_por: String(r.supervisor_nombre || r.confirmado_por || 'ADMIN').trim(),
           rechazado: false,
           fecha: fechaRaw,
           created_at: r.created_at,
           user_id: String(r.cajero_id || r.user_id || effectiveUserId),
+        });
+      });
+
+      // B. Entregado a Supervisor: Solo el remanente físico que NO fue entregado a cobrador
+      let excess = Math.max(0, supervisorSum - cobradorSum);
+      if (excess > 0) {
+        group.supervisor.forEach((r) => {
+          if (excess <= 0) return;
+          const agNom = String(r.agencia || '').trim().toUpperCase();
+          const monNorm = normalizarMoneda(r.moneda) as 'BS' | 'USD' | 'COP';
+          const montoVal = Math.round((Number(r.monto) || 0) * 100) / 100;
+          const fechaRaw = String(r.fecha || r.created_at || '').trim();
+          const tipoP = String(r.tipo_pago || 'EFECTIVO').trim().toUpperCase();
+          const concD = String(r.concepto || '').toUpperCase();
+          const refD = String(r.referencia || '').trim().toUpperCase();
+          const isPremD = ['PREMIO', 'PÉRDIDA', 'PERDIDA', 'ABONO', 'REPOSICION', 'REPOSICIÓN'].some(
+            (k) => `${tipoP} ${concD} ${refD}`.includes(k)
+          );
+
+          const toAdd = Math.min(montoVal, excess);
+          excess -= toAdd;
+
+          listaItems.push({
+            id: `pd_${r.id}`,
+            agencia: agNom,
+            moneda: monNorm,
+            tipo_pago: isPremD ? 'Pago de Premios' : 'Pago',
+            metodo: 'EFECTIVO',
+            monto: toAdd,
+            referencia: `EFECTIVO TAQUILLA: ${tipoP} [✅ CONFIRMADO]`,
+            confirmado: true,
+            confirmado_por: String(r.supervisor_nombre || r.confirmado_por || 'ADMIN').trim(),
+            rechazado: false,
+            fecha: fechaRaw,
+            created_at: r.created_at,
+            user_id: String(r.cajero_id || r.user_id || effectiveUserId),
+          });
         });
       }
     });

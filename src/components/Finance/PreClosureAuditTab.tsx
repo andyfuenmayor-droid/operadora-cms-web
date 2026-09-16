@@ -130,7 +130,9 @@ export const PreClosureAuditTab: React.FC = () => {
             const inCycle = !systemCycle?.desde || (fStr >= systemCycle.desde && fStr <= (systemCycle.hasta || fStr));
             return matchAg && matchMon && !isCob && isConf && inCycle && !p.rechazado;
           });
-          const efectivoTaquillaTot = agEfectivoList.reduce((sum, curr) => sum + Number(curr.monto || 0), 0);
+          const rawEfectivoTaquillaTot = agEfectivoList.reduce((sum, curr) => sum + Number(curr.monto || 0), 0);
+          // Si el efectivo entregado al supervisor ya fue despachado al cobrador / liquidado, solo se computa y muestra el remanente en taquilla
+          const efectivoTaquillaTot = Math.max(0, rawEfectivoTaquillaTot - cobradorRutaTot);
 
           // 3. Bancos ordinarios (pagos_semana + cda_pagos_bancarios sin incluir reposición de premios)
           const agBancosList = payments.filter((p) => {
