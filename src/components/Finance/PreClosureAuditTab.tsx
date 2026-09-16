@@ -354,69 +354,166 @@ export const PreClosureAuditTab: React.FC = () => {
       </div>
 
       {/* KPI Cards Multi-Moneda */}
-      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-5">
         {['BS', 'USD', 'COP'].map((mon) => {
           const tot = totalsByCurrency[mon];
           if (!tot) return null;
+
+          const isSelected = selectedCurrency === mon;
+          const flag = mon === 'BS' ? '🇻🇪' : mon === 'USD' ? '🇺🇸' : '🇨🇴';
+          const currencyName = mon === 'BS' ? 'Bolívares (BS)' : mon === 'USD' ? 'Dólares (USD)' : 'Pesos (COP)';
 
           return (
             <div
               key={mon}
               onClick={() => setSelectedCurrency(mon as any)}
-              className={`p-5 rounded-3xl border transition-all cursor-pointer ${
-                selectedCurrency === mon
-                  ? 'bg-[#0F222D] border-emerald-500/40 shadow-lg shadow-emerald-500/10'
-                  : 'bg-[#0D1B22] border-slate-800 hover:border-slate-700'
+              className={`p-5 rounded-3xl border transition-all cursor-pointer flex flex-col justify-between relative overflow-hidden ${
+                isSelected
+                  ? 'bg-gradient-to-b from-[#0F2633] to-[#0A1A23] border-emerald-500/50 shadow-2xl shadow-emerald-500/15 ring-2 ring-emerald-500/30'
+                  : 'bg-[#0D1B22] border-slate-800 hover:border-slate-700 hover:bg-[#0f1f28]'
               }`}
             >
-              <div className="flex items-center justify-between mb-2">
-                <span className="text-xs font-black uppercase text-amber-400 font-mono tracking-wider">
-                  Caja Consolidada {mon}
-                </span>
-                <span className="text-[10px] text-slate-400 font-mono">
-                  {tot.count} agencias
+              {/* Card Header */}
+              <div className="flex items-center justify-between pb-3 border-b border-slate-800/80 mb-3.5">
+                <div className="flex items-center gap-2.5">
+                  <span className="text-xl">{flag}</span>
+                  <div>
+                    <h4 className="text-xs font-black uppercase text-amber-400 font-mono tracking-wider">
+                      Caja {currencyName}
+                    </h4>
+                    <span className="text-[11px] text-slate-400">
+                      {tot.count} {tot.count === 1 ? 'agencia' : 'agencias registradas'}
+                    </span>
+                  </div>
+                </div>
+
+                <span
+                  className={`text-[10px] font-extrabold uppercase px-2.5 py-1 rounded-full border transition-all ${
+                    isSelected
+                      ? 'bg-emerald-500/20 text-emerald-400 border-emerald-500/40 shadow-sm shadow-emerald-500/20'
+                      : 'bg-slate-800/80 text-slate-400 border-slate-700'
+                  }`}
+                >
+                  {isSelected ? '● Filtrado' : 'Filtrar'}
                 </span>
               </div>
 
-              <div className="text-2xl font-black font-mono text-white mb-3">
-                {formatCurrency(tot.saldoFinal, mon as any)}
-                <span className="text-xs font-semibold text-slate-400 ml-1.5">Saldo Final</span>
+              {/* Big Hero: Saldo Final */}
+              <div className="bg-[#071318] border border-slate-800/90 rounded-2xl p-3.5 mb-3.5 text-center shadow-inner">
+                <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block mb-1">
+                  Saldo Final Consolidado
+                </span>
+                <div
+                  className={`text-2xl sm:text-3xl font-black font-mono tracking-tight ${
+                    tot.saldoFinal > 0
+                      ? 'text-amber-400'
+                      : tot.saldoFinal < 0
+                      ? 'text-rose-400'
+                      : 'text-emerald-400'
+                  }`}
+                >
+                  {formatCurrency(tot.saldoFinal, mon as any)}
+                </div>
               </div>
 
-              <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 text-[11px] font-mono border-t border-slate-800/80 pt-2.5 text-slate-400">
-                <div>
-                  <span className="text-[10px] block text-slate-500">Arrastre Inicial:</span>
-                  <span className="font-semibold text-slate-300">{formatCurrency(tot.saldoAnterior, mon as any)}</span>
+              {/* Two Clean Sections: Operativo + Canales */}
+              <div className="space-y-3 font-mono text-xs">
+                {/* Sección 1: Balance Operativo */}
+                <div className="bg-[#08151D] border border-slate-800/70 rounded-2xl p-3 space-y-2">
+                  <div className="text-[10px] font-black text-slate-400 uppercase tracking-wider border-b border-slate-800/80 pb-1.5 flex items-center justify-between">
+                    <span>📊 Movimiento Operativo</span>
+                    <span className="text-[9px] text-slate-500 font-sans font-normal">Semana {systemCycle.semana}</span>
+                  </div>
+
+                  <div className="space-y-1.5 text-[11px]">
+                    <div className="flex justify-between items-center">
+                      <span className="text-slate-400">Arrastre Inicial:</span>
+                      <span className="font-semibold text-slate-200">
+                        {formatCurrency(tot.saldoAnterior, mon as any)}
+                      </span>
+                    </div>
+                    <div className="flex justify-between items-center">
+                      <span className="text-slate-400">Venta Neta:</span>
+                      <span className={`font-semibold ${tot.ventaNeta >= 0 ? 'text-emerald-400' : 'text-rose-400'}`}>
+                        {formatCurrency(tot.ventaNeta, mon as any)}
+                      </span>
+                    </div>
+                    <div className="flex justify-between items-center">
+                      <span className="text-slate-400">Gastos Operativos:</span>
+                      <span className={`font-semibold ${tot.gastos > 0 ? 'text-rose-400' : 'text-slate-500'}`}>
+                        {tot.gastos > 0 ? `-${formatCurrency(tot.gastos, mon as any)}` : formatCurrency(0, mon as any)}
+                      </span>
+                    </div>
+                  </div>
                 </div>
-                <div>
-                  <span className="text-[10px] block text-slate-500">Venta Neta:</span>
-                  <span className={`font-semibold ${tot.ventaNeta >= 0 ? 'text-emerald-400' : 'text-rose-400'}`}>
-                    {formatCurrency(tot.ventaNeta, mon as any)}
-                  </span>
-                </div>
-                <div>
-                  <span className="text-[10px] block text-slate-500">Gastos:</span>
-                  <span className="font-semibold text-rose-400">{formatCurrency(tot.gastos, mon as any)}</span>
-                </div>
-                <div>
-                  <span className="text-[10px] block text-slate-500">💵 Efec Taquilla:</span>
-                  <span className="font-semibold text-sky-300">{formatCurrency(tot.efectivoTaquilla, mon as any)}</span>
-                </div>
-                <div>
-                  <span className="text-[10px] block text-amber-500/90">🛵 En Ruta:</span>
-                  <span className="font-semibold text-amber-400">{formatCurrency(tot.cobradorEnRuta, mon as any)}</span>
-                </div>
-                <div>
-                  <span className="text-[10px] block text-emerald-500/90">🏛️ Liquidado Admin:</span>
-                  <span className="font-semibold text-emerald-400">{formatCurrency(tot.cobradorLiquidado, mon as any)}</span>
-                </div>
-                <div>
-                  <span className="text-[10px] block text-slate-500">🏛️ Bancos:</span>
-                  <span className="font-semibold text-cyan-400">{formatCurrency(tot.bancos, mon as any)}</span>
-                </div>
-                <div>
-                  <span className="text-[10px] block text-slate-500">🏆 Reposición (+):</span>
-                  <span className="font-bold text-amber-400">+{formatCurrency(tot.reposicionPremios, mon as any)}</span>
+
+                {/* Sección 2: Canales de Cobro y Fondos */}
+                <div className="bg-[#08151D] border border-slate-800/70 rounded-2xl p-3 space-y-2">
+                  <div className="text-[10px] font-black text-slate-400 uppercase tracking-wider border-b border-slate-800/80 pb-1.5 flex items-center justify-between">
+                    <span>💼 Canales de Cobro & Fondos</span>
+                    <span className="text-[9px] text-slate-500 font-sans font-normal">Arqueo Real</span>
+                  </div>
+
+                  <div className="space-y-1.5 text-[11px]">
+                    <div className="flex justify-between items-center">
+                      <span className="text-slate-400 flex items-center gap-1.5">
+                        <span>🛵</span> Cobrador En Ruta:
+                      </span>
+                      <span
+                        className={`font-semibold ${
+                          tot.cobradorEnRuta > 0
+                            ? 'text-amber-400 bg-amber-500/10 px-1.5 py-0.2 rounded border border-amber-500/20 font-bold'
+                            : 'text-slate-500'
+                        }`}
+                      >
+                        {formatCurrency(tot.cobradorEnRuta, mon as any)}
+                      </span>
+                    </div>
+
+                    <div className="flex justify-between items-center">
+                      <span className="text-slate-400 flex items-center gap-1.5">
+                        <span>🏛️</span> Liquidado a Admin:
+                      </span>
+                      <span
+                        className={`font-semibold ${
+                          tot.cobradorLiquidado > 0
+                            ? 'text-emerald-400 bg-emerald-500/10 px-1.5 py-0.2 rounded border border-emerald-500/20 font-bold'
+                            : 'text-slate-500'
+                        }`}
+                      >
+                        {formatCurrency(tot.cobradorLiquidado, mon as any)}
+                      </span>
+                    </div>
+
+                    <div className="flex justify-between items-center">
+                      <span className="text-slate-400 flex items-center gap-1.5">
+                        <span>💵</span> Efectivo Taquilla:
+                      </span>
+                      <span className={`font-semibold ${tot.efectivoTaquilla > 0 ? 'text-sky-300' : 'text-slate-500'}`}>
+                        {formatCurrency(tot.efectivoTaquilla, mon as any)}
+                      </span>
+                    </div>
+
+                    <div className="flex justify-between items-center">
+                      <span className="text-slate-400 flex items-center gap-1.5">
+                        <span>🏛️</span> Bancos / Cobros:
+                      </span>
+                      <span className={`font-semibold ${tot.bancos > 0 ? 'text-cyan-400' : 'text-slate-500'}`}>
+                        {formatCurrency(tot.bancos, mon as any)}
+                      </span>
+                    </div>
+
+                    {tot.reposicionPremios > 0 && (
+                      <div className="flex justify-between items-center pt-1.5 border-t border-slate-800/80">
+                        <span className="text-amber-400 font-bold flex items-center gap-1.5">
+                          <span>🏆</span> Reposición Premios:
+                        </span>
+                        <span className="font-black text-amber-400">
+                          +{formatCurrency(tot.reposicionPremios, mon as any)}
+                        </span>
+                      </div>
+                    )}
+                  </div>
                 </div>
               </div>
             </div>
@@ -496,8 +593,8 @@ export const PreClosureAuditTab: React.FC = () => {
         <div className="overflow-x-auto">
           <table className="w-full text-left text-xs border-collapse">
             <thead className="bg-[#071217] text-slate-400 border-b border-slate-800 font-bold uppercase tracking-wider text-[11px]">
-              <tr>
-                <th className="py-3 px-3">Agencia</th>
+              <tr className="whitespace-nowrap">
+                <th className="py-3 px-3.5">Agencia</th>
                 <th className="py-3 px-2 text-center">Moneda</th>
                 <th className="py-3 px-3 text-right">Arrastre Inicial</th>
                 <th className="py-3 px-3 text-right">Venta Neta</th>
@@ -520,10 +617,10 @@ export const PreClosureAuditTab: React.FC = () => {
                 </tr>
               ) : (
                 filteredRows.map((row) => (
-                  <tr key={`${row.entidad}_${row.moneda}`} className="hover:bg-slate-800/30 transition-colors">
-                    <td className="py-3 px-3 font-sans font-bold text-white flex items-center gap-2 truncate max-w-[160px]">
+                  <tr key={`${row.entidad}_${row.moneda}`} className="hover:bg-slate-800/30 transition-colors whitespace-nowrap">
+                    <td className="py-3 px-3.5 font-sans font-bold text-white flex items-center gap-2">
                       <Building2 className="w-3.5 h-3.5 text-slate-400 shrink-0" />
-                      <span className="truncate">{row.entidad}</span>
+                      <span>{row.entidad}</span>
                     </td>
 
                     <td className="py-3 px-2 text-center">
