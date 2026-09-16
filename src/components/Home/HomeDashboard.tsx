@@ -27,6 +27,8 @@ interface CurrencyBalance {
   saldoAnterior: number;
   ventasSemana: number;
   gastosSemana: number;
+  totalCobros: number;
+  reposicionPremios: number;
   pagosSemana: number;
   balanceFinal: number;
 }
@@ -106,8 +108,8 @@ export const HomeDashboard: React.FC<HomeDashboardProps> = ({ onNavigate }) => {
 
       const [resVentas, gastosList, pagosList] = await Promise.all([
         supabase.from('carga_actual').select('*').eq('user_id', effectiveUserId),
-        getConsolidatedExpenses(effectiveUserId, { fechaDesde: systemCycle.desde, fechaHasta: systemCycle.hasta }),
-        getConsolidatedPayments(effectiveUserId, { fechaDesde: systemCycle.desde, fechaHasta: systemCycle.hasta }),
+        getConsolidatedExpenses(effectiveUserId, { fechaDesde: systemCycle?.desde, fechaHasta: systemCycle?.hasta }),
+        getConsolidatedPayments(effectiveUserId, { fechaDesde: systemCycle?.desde, fechaHasta: systemCycle?.hasta }),
       ]);
 
       const ventasList = resVentas.data || [];
@@ -116,29 +118,37 @@ export const HomeDashboard: React.FC<HomeDashboardProps> = ({ onNavigate }) => {
         const colInicial = `saldo_inicial_${mon.toLowerCase()}`;
         const saldoAnt = agList.reduce((acc: number, ag: any) => acc + (Number(ag[colInicial]) || 0), 0);
 
+        // Venta neta = neto de carga actual
         const vTot = ventasList
-          .filter((v: any) => String(v.moneda || '').toUpperCase() === mon)
-          .reduce((acc: number, v: any) => acc + (Number(v.util_op) || (Number(v.monto_venta || 0) - Number(v.comision || 0) - Number(v.monto_premios || 0))), 0);
+          .filter((v: any) => (v.moneda || '').toUpperCase().includes(mon))
+          .reduce((acc: number, v: any) => acc + Number(v.neto ?? v.util_op ?? 0), 0);
 
+        // Gastos operativos confirmados
         const gTot = gastosList
           .filter((g) => g.moneda === mon && Boolean(g.confirmado))
           .reduce((acc: number, g) => acc + (Number(g.monto) || 0), 0);
 
-        const pTot = pagosList
-          .filter((p) => p.moneda === mon && Boolean(p.confirmado))
-          .reduce((acc: number, p) => {
-            const m = Number(p.monto || 0);
-            return p.tipo_pago.includes('Premio') ? acc - m : acc + m;
-          }, 0);
+        // Cobros ordinarios (Bancos, Efectivo Taquilla, Cobradores QR)
+        const pCobros = pagosList
+          .filter((p) => p.moneda === mon && Boolean(p.confirmado) && !p.tipo_pago.includes('Premio'))
+          .reduce((acc: number, p) => acc + Number(p.monto || 0), 0);
 
-        const bFinal = (saldoAnt + vTot) - gTot - pTot;
+        // Reposición de Premios de la operadora
+        const pPremios = pagosList
+          .filter((p) => p.moneda === mon && Boolean(p.confirmado) && p.tipo_pago.includes('Premio'))
+          .reduce((acc: number, p) => acc + Number(p.monto || 0), 0);
+
+        const pNeto = pCobros - pPremios;
+        const bFinal = Math.round((saldoAnt + vTot - gTot - pCobros + pPremios) * 100) / 100;
 
         balancesMap[mon] = {
           moneda: mon,
           saldoAnterior: saldoAnt,
           ventasSemana: vTot,
           gastosSemana: gTot,
-          pagosSemana: pTot,
+          totalCobros: pCobros,
+          reposicionPremios: pPremios,
+          pagosSemana: pNeto,
           balanceFinal: bFinal,
         };
       });
@@ -149,7 +159,7 @@ export const HomeDashboard: React.FC<HomeDashboardProps> = ({ onNavigate }) => {
     } finally {
       setLoading(false);
     }
-  }, [effectiveUserId]);
+  }, [effectiveUserId, systemCycle?.desde, systemCycle?.hasta]);
 
   useEffect(() => {
     loadDashboardData();
@@ -295,7 +305,7 @@ export const HomeDashboard: React.FC<HomeDashboardProps> = ({ onNavigate }) => {
               <span>Estado Financiero Consolidado por Moneda</span>
             </h3>
             <p className="text-xs text-slate-400 mt-0.5">
-              Fórmula: (Saldo Arrastre + Utilidad Semanal) - Gastos - Pagos = Balance Final
+              Fórmula: Saldo Arrastre + Utilidad Ciclo - Gastos - Cobros + Reposición Premios = Balance Final
             </p>
           </div>
           <button
@@ -314,6 +324,8 @@ export const HomeDashboard: React.FC<HomeDashboardProps> = ({ onNavigate }) => {
               saldoAnterior: 0,
               ventasSemana: 0,
               gastosSemana: 0,
+              totalCobros: 0,
+              reposicionPremios: 0,
               pagosSemana: 0,
               balanceFinal: 0,
             };
@@ -350,16 +362,24 @@ export const HomeDashboard: React.FC<HomeDashboardProps> = ({ onNavigate }) => {
                   </div>
                   <div className="flex justify-between text-slate-400">
                     <span>Utilidad Ciclo (+):</span>
-                    <span className="font-mono text-emerald-400">{formatCurrency(b.ventasSemana, mon)}</span>
+                    <span className={`font-mono ${b.ventasSemana >= 0 ? 'text-emerald-400' : 'text-rose-400'}`}>
+                      {formatCurrency(b.ventasSemana, mon)}
+                    </span>
                   </div>
                   <div className="flex justify-between text-slate-400">
                     <span>Gastos Operativos (-):</span>
                     <span className="font-mono text-rose-400">{formatCurrency(b.gastosSemana, mon)}</span>
                   </div>
                   <div className="flex justify-between text-slate-400">
-                    <span>Cobros / Pagos (-):</span>
-                    <span className="font-mono text-sky-400">{formatCurrency(b.pagosSemana, mon)}</span>
+                    <span>Cobros Ordinarios (-):</span>
+                    <span className="font-mono text-sky-400">{formatCurrency(b.totalCobros, mon)}</span>
                   </div>
+                  {b.reposicionPremios > 0 && (
+                    <div className="flex justify-between text-slate-400">
+                      <span>Reposición Premios (+):</span>
+                      <span className="font-mono text-amber-400 font-bold">+{formatCurrency(b.reposicionPremios, mon)}</span>
+                    </div>
+                  )}
                 </div>
 
                 <div className="pt-2.5 border-t border-slate-800/80 flex items-center justify-between">

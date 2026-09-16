@@ -184,25 +184,20 @@ export async function getConsolidatedPayments(
       }
     });
 
-    // 3. Incorporar cda_pagos_diarios (efectivo confirmado)
+    // 3. Incorporar cda_pagos_diarios (efectivo y cobradores confirmados)
     const pdSeenTx = new Set<string>();
     dfPd.forEach((r: any) => {
       const isRech = Boolean(r.rechazado) || String(r.estado || '').toUpperCase() === 'RECHAZADO';
-      const isConf = Boolean(r.confirmado) || Boolean(r.confirmado_supervisor);
+      const isConf = Boolean(r.confirmado) || Boolean(r.confirmado_supervisor) || Boolean(r.fecha_escaneo_cobrador);
       if (!isConf || isRech) return;
 
       const tipoP = String(r.tipo_pago || 'EFECTIVO').trim().toUpperCase();
 
-      // Si es pura transferencia bancaria, omitir si no involucra efectivo/comercializador
+      // Si es pura transferencia bancaria duplicada sin efectivo, omitir
       if (
         tipoP.includes('TRANSFERENCIA') &&
-        !['EFECTIVO', 'COMERCIALIZADOR', 'ADMIN'].some((k) => tipoP.includes(k))
+        !['EFECTIVO', 'COMERCIALIZADOR', 'ADMIN', 'COBRADOR'].some((k) => tipoP.includes(k))
       ) {
-        return;
-      }
-
-      // Entregas de custodia logística a cobrador / administración no son pagos de agencia
-      if (['COBRADOR', 'ENTREGADO A ADMIN', 'ENTREGA_ADMIN'].some((k) => tipoP.includes(k))) {
         return;
       }
 
