@@ -4,6 +4,14 @@ import type { UserSession, UserProfile, SubUserAccess, SystemCycle, ModuleId, Pl
 import { normalizarNombrePlan, PLANES_MODULOS_DEFAULT, getTodayDateString } from '../utils/formatters';
 
 const getDefaultCycle = (): SystemCycle => {
+  try {
+    const cached = localStorage.getItem('me_cms_system_cycle');
+    if (cached) {
+      const parsed = JSON.parse(cached);
+      if (parsed?.desde && parsed?.hasta) return parsed;
+    }
+  } catch (e) {}
+
   const today = new Date();
   const dayOfWeek = today.getDay(); // 0 Sunday, 1 Monday
   const diffToMonday = (dayOfWeek === 0 ? -6 : 1) - dayOfWeek;
@@ -111,12 +119,17 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
           }
         });
 
-        setSystemCycle({
+        const newCycle: SystemCycle = {
           desde: map['fecha_desde'] || defaultCycle.desde,
           hasta: map['fecha_hasta'] || defaultCycle.hasta,
           tipo: (map['tipo_cierre']?.toUpperCase() === 'DIARIO' ? 'DIARIO' : 'SEMANAL') as 'SEMANAL' | 'DIARIO',
           semana: map['semana_no'] || defaultCycle.semana,
-        });
+        };
+
+        setSystemCycle(newCycle);
+        try {
+          localStorage.setItem('me_cms_system_cycle', JSON.stringify(newCycle));
+        } catch (e) {}
         return;
       }
     } catch (e) {
@@ -280,25 +293,28 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   // Restore session from localStorage on mount
   useEffect(() => {
-    try {
-      const storedUser = localStorage.getItem('me_cms_user');
-      const storedProfile = localStorage.getItem('me_cms_profile');
+    const initSession = async () => {
+      try {
+        const storedUser = localStorage.getItem('me_cms_user');
+        const storedProfile = localStorage.getItem('me_cms_profile');
 
-      if (storedUser) {
-        const u = JSON.parse(storedUser) as UserSession;
-        setUser(u);
-        if (storedProfile) {
-          const p = JSON.parse(storedProfile) as UserProfile;
-          setProfile(p);
-          setSubscriptionError(validateSubscription(p));
+        if (storedUser) {
+          const u = JSON.parse(storedUser) as UserSession;
+          setUser(u);
+          if (storedProfile) {
+            const p = JSON.parse(storedProfile) as UserProfile;
+            setProfile(p);
+            setSubscriptionError(validateSubscription(p));
+          }
+          await fetchSystemCycle(u.effectiveId);
         }
-        fetchSystemCycle(u.effectiveId);
+      } catch (err) {
+        console.error('Failed to restore session:', err);
+      } finally {
+        setIsLoading(false);
       }
-    } catch (err) {
-      console.error('Failed to restore session:', err);
-    } finally {
-      setIsLoading(false);
-    }
+    };
+    initSession();
   }, [fetchSystemCycle, validateSubscription]);
 
   return (

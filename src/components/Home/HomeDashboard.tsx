@@ -163,6 +163,15 @@ export const HomeDashboard: React.FC<HomeDashboardProps> = ({ onNavigate }) => {
 
   useEffect(() => {
     loadDashboardData();
+
+    const handleFocus = () => {
+      loadDashboardData();
+    };
+
+    window.addEventListener('focus', handleFocus);
+    return () => {
+      window.removeEventListener('focus', handleFocus);
+    };
   }, [loadDashboardData]);
 
   const usoAgenciasPct = Math.min(100, Math.round((totalAgencias / (limiteAgencias || 1)) * 100));
