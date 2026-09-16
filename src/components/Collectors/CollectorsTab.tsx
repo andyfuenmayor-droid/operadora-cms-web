@@ -136,12 +136,20 @@ export const CollectorsTab: React.FC = () => {
       });
       setRoutesMap(rMap);
 
-      // 4. Fetch QR Payments
-      const { data: qrData } = await supabase
+      // 4. Fetch QR Payments (supporting multi-agency tenant matching)
+      let qQr = supabase
         .from('cda_pagos_diarios')
         .select('*')
-        .eq('user_id', effectiveUserId)
         .order('id', { ascending: false });
+
+      if (ags.length > 0) {
+        const agNames = ags.map((a: any) => `nombre_agency.ilike.${a.nombre},agencia.ilike.${a.nombre}`).join(',');
+        qQr = qQr.or(`user_id.eq.${effectiveUserId},${agNames}`);
+      } else {
+        qQr = qQr.eq('user_id', effectiveUserId);
+      }
+
+      const { data: qrData } = await qQr;
 
       const filteredQr = (qrData || []).filter((r: any) => {
         return Boolean(r.qr_token) || String(r.tipo_pago || '').toUpperCase().includes('COBRADOR');
@@ -158,6 +166,14 @@ export const CollectorsTab: React.FC = () => {
   useEffect(() => {
     loadData();
   }, [effectiveUserId]);
+
+  // Sincronizar fechas del filtro QR con el ciclo del sistema
+  useEffect(() => {
+    if (systemCycle?.desde && systemCycle?.hasta) {
+      setLiqFechaDesde(systemCycle.desde);
+      setLiqFechaHasta(systemCycle.hasta);
+    }
+  }, [systemCycle?.desde, systemCycle?.hasta]);
 
   // Sync route assignment when selectedCollectorForRoute changes
   useEffect(() => {
