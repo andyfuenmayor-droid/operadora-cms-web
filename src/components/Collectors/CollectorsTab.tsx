@@ -477,8 +477,15 @@ export const CollectorsTab: React.FC = () => {
   const filteredQrPayments = useMemo(() => {
     return qrPayments.filter((item) => {
       const f = (item.fecha || item.created_at || '').slice(0, 10);
-      if (liqFechaDesde && f < liqFechaDesde) return false;
-      if (liqFechaHasta && f > liqFechaHasta) return false;
+      const fLiq = (item.fecha_liquidacion_admin || item.fecha_escaneo_cobrador || '').slice(0, 10);
+      const isUnsettled = !item.liquidado_admin;
+
+      // Las recaudaciones pendientes o en ruta de ciclos anteriores siempre deben ser visibles para permitir su liquidación
+      if (!isUnsettled && (liqFechaDesde || liqFechaHasta)) {
+        const inOperativeRange = (!liqFechaDesde || f >= liqFechaDesde) && (!liqFechaHasta || f <= liqFechaHasta);
+        const inSettlementRange = fLiq && (!liqFechaDesde || fLiq >= liqFechaDesde) && (!liqFechaHasta || fLiq <= liqFechaHasta);
+        if (!inOperativeRange && !inSettlementRange) return false;
+      }
 
       if (liqCollectorFilter !== 'ALL' && item.cobrador_nombre !== liqCollectorFilter) return false;
 
