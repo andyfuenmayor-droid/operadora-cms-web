@@ -263,7 +263,8 @@ export const PreClosureAuditTab: React.FC = () => {
       'Arrastre Inicial',
       'Venta Neta',
       'Gastos',
-      'Cobrador Ruta (QR)',
+      'Cobrador en Ruta',
+      'Liquidado a Admin',
       'Efectivo Taquilla',
       'Bancos (Cobros)',
       'Reposicion Premios (+)',
@@ -277,7 +278,8 @@ export const PreClosureAuditTab: React.FC = () => {
       d.saldo_anterior.toFixed(2),
       d.venta_neta.toFixed(2),
       d.gastos.toFixed(2),
-      d.cobrador_ruta.toFixed(2),
+      (d.cobrador_en_ruta || 0).toFixed(2),
+      (d.cobrador_liquidado || 0).toFixed(2),
       d.efectivo_taquilla.toFixed(2),
       d.bancos.toFixed(2),
       d.reposicion_premios.toFixed(2),
@@ -381,7 +383,7 @@ export const PreClosureAuditTab: React.FC = () => {
                 <span className="text-xs font-semibold text-slate-400 ml-1.5">Saldo Final</span>
               </div>
 
-              <div className="grid grid-cols-2 gap-2 text-[11px] font-mono border-t border-slate-800/80 pt-2.5 text-slate-400">
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 text-[11px] font-mono border-t border-slate-800/80 pt-2.5 text-slate-400">
                 <div>
                   <span className="text-[10px] block text-slate-500">Arrastre Inicial:</span>
                   <span className="font-semibold text-slate-300">{formatCurrency(tot.saldoAnterior, mon as any)}</span>
@@ -393,28 +395,29 @@ export const PreClosureAuditTab: React.FC = () => {
                   </span>
                 </div>
                 <div>
-                  <span className="text-[10px] block text-slate-500">🛵 Cobradores:</span>
-                  <div className="flex items-center gap-1.5 flex-wrap">
-                    <span className="font-semibold text-sky-400">{formatCurrency(tot.cobradorRuta, mon as any)}</span>
-                    {tot.cobradorRuta > 0 && (
-                      <span className={`text-[9px] font-bold px-1.5 py-0.2 rounded-full border ${
-                        tot.cobradorEnRuta > 0 ? 'bg-amber-500/15 text-amber-400 border-amber-500/30' : 'bg-emerald-500/15 text-emerald-400 border-emerald-500/30'
-                      }`}>
-                        {tot.cobradorEnRuta > 0 ? `${formatCurrency(tot.cobradorEnRuta, mon as any)} en ruta` : '🏛️ 100% en Admin'}
-                      </span>
-                    )}
-                  </div>
+                  <span className="text-[10px] block text-slate-500">Gastos:</span>
+                  <span className="font-semibold text-rose-400">{formatCurrency(tot.gastos, mon as any)}</span>
+                </div>
+                <div>
+                  <span className="text-[10px] block text-slate-500">💵 Efec Taquilla:</span>
+                  <span className="font-semibold text-sky-300">{formatCurrency(tot.efectivoTaquilla, mon as any)}</span>
+                </div>
+                <div>
+                  <span className="text-[10px] block text-amber-500/90">🛵 En Ruta:</span>
+                  <span className="font-semibold text-amber-400">{formatCurrency(tot.cobradorEnRuta, mon as any)}</span>
+                </div>
+                <div>
+                  <span className="text-[10px] block text-emerald-500/90">🏛️ Liquidado Admin:</span>
+                  <span className="font-semibold text-emerald-400">{formatCurrency(tot.cobradorLiquidado, mon as any)}</span>
                 </div>
                 <div>
                   <span className="text-[10px] block text-slate-500">🏛️ Bancos:</span>
                   <span className="font-semibold text-cyan-400">{formatCurrency(tot.bancos, mon as any)}</span>
                 </div>
-                {tot.reposicionPremios > 0 && (
-                  <div className="col-span-2 pt-1 border-t border-slate-800/50 flex justify-between">
-                    <span className="text-[10px] text-amber-400/90 font-bold">🏆 Reposición Premios:</span>
-                    <span className="font-bold text-amber-400">+{formatCurrency(tot.reposicionPremios, mon as any)}</span>
-                  </div>
-                )}
+                <div>
+                  <span className="text-[10px] block text-slate-500">🏆 Reposición (+):</span>
+                  <span className="font-bold text-amber-400">+{formatCurrency(tot.reposicionPremios, mon as any)}</span>
+                </div>
               </div>
             </div>
           );
@@ -485,7 +488,7 @@ export const PreClosureAuditTab: React.FC = () => {
               Matriz de Arqueo Detallada por Caja y Agencia ({filteredRows.length})
             </h4>
             <p className="text-[11px] text-slate-400 mt-0.5">
-              Fórmula: Saldo Anterior + Venta Neta - Gastos - Cobros (Efectivo/Bancos) + Reposición de Premios = Saldo Final
+              Fórmula: Saldo Anterior + Venta Neta - Gastos - Cobros (Efectivo/Cobradores/Bancos) + Reposición de Premios = Saldo Final
             </p>
           </div>
         </div>
@@ -499,10 +502,11 @@ export const PreClosureAuditTab: React.FC = () => {
                 <th className="py-3 px-3 text-right">Arrastre Inicial</th>
                 <th className="py-3 px-3 text-right">Venta Neta</th>
                 <th className="py-3 px-3 text-right">Gastos</th>
-                <th className="py-3 px-3 text-right">🛵 Cobrador</th>
-                <th className="py-3 px-3 text-right">💵 Efec Taquilla</th>
-                <th className="py-3 px-3 text-right">🏛️ Bancos</th>
-                <th className="py-3 px-3 text-right">🏆 Reposición (+)</th>
+                <th className="py-3 px-3 text-right text-amber-400">🛵 En Ruta</th>
+                <th className="py-3 px-3 text-right text-emerald-400">🏛️ Liquidado Admin</th>
+                <th className="py-3 px-3 text-right text-sky-300">💵 Efec Taquilla</th>
+                <th className="py-3 px-3 text-right text-cyan-400">🏛️ Bancos</th>
+                <th className="py-3 px-3 text-right text-amber-400">🏆 Reposición (+)</th>
                 <th className="py-3 px-3 text-right font-black">Saldo Final</th>
                 <th className="py-3 px-3 text-center">Estado</th>
               </tr>
@@ -510,7 +514,7 @@ export const PreClosureAuditTab: React.FC = () => {
             <tbody className="divide-y divide-slate-800/70 font-mono text-xs">
               {filteredRows.length === 0 ? (
                 <tr>
-                  <td colSpan={11} className="py-8 text-center text-slate-500 font-sans">
+                  <td colSpan={12} className="py-8 text-center text-slate-500 font-sans">
                     No se encontraron registros de arqueo para los filtros aplicados.
                   </td>
                 </tr>
@@ -540,43 +544,49 @@ export const PreClosureAuditTab: React.FC = () => {
                       {row.gastos > 0 ? formatCurrency(row.gastos, row.moneda) : '-'}
                     </td>
 
+                    {/* 🛵 Cobrador En Ruta */}
                     <td className="py-3 px-3 text-right">
-                      {row.cobrador_ruta > 0 ? (
-                        <div className="flex flex-col items-end">
-                          <span className="font-semibold text-sky-400">
-                            {formatCurrency(row.cobrador_ruta, row.moneda)}
-                          </span>
-                          {row.cobrador_en_ruta && row.cobrador_en_ruta > 0 ? (
-                            <span className="text-[9px] font-bold text-amber-400 bg-amber-500/15 border border-amber-500/30 px-1.5 py-0.5 rounded-full inline-flex items-center gap-0.5 mt-0.5" title="En custodia / ruta">
-                              🛵 En Ruta ({formatCurrency(row.cobrador_en_ruta, row.moneda)})
-                            </span>
-                          ) : (
-                            <span className="text-[9px] font-bold text-emerald-400 bg-emerald-500/15 border border-emerald-500/30 px-1.5 py-0.5 rounded-full inline-flex items-center gap-0.5 mt-0.5" title="Fondos liquidados a la administración central">
-                              🏛️ Liquidado Admin
-                            </span>
-                          )}
-                        </div>
+                      {row.cobrador_en_ruta && row.cobrador_en_ruta > 0 ? (
+                        <span className="font-semibold text-amber-400 bg-amber-500/15 border border-amber-500/30 px-2 py-0.5 rounded-lg inline-block">
+                          {formatCurrency(row.cobrador_en_ruta, row.moneda)}
+                        </span>
                       ) : (
-                        <span className="text-slate-500">-</span>
+                        <span className="text-slate-600">-</span>
                       )}
                     </td>
 
+                    {/* 🏛️ Liquidado Admin */}
+                    <td className="py-3 px-3 text-right">
+                      {row.cobrador_liquidado && row.cobrador_liquidado > 0 ? (
+                        <span className="font-semibold text-emerald-400 bg-emerald-500/15 border border-emerald-500/30 px-2 py-0.5 rounded-lg inline-block">
+                          {formatCurrency(row.cobrador_liquidado, row.moneda)}
+                        </span>
+                      ) : (
+                        <span className="text-slate-600">-</span>
+                      )}
+                    </td>
+
+                    {/* 💵 Efectivo Taquilla */}
                     <td className="py-3 px-3 text-right text-sky-300">
                       {row.efectivo_taquilla > 0 ? formatCurrency(row.efectivo_taquilla, row.moneda) : '-'}
                     </td>
 
+                    {/* 🏛️ Bancos */}
                     <td className="py-3 px-3 text-right text-cyan-400">
                       {row.bancos > 0 ? formatCurrency(row.bancos, row.moneda) : '-'}
                     </td>
 
+                    {/* 🏆 Reposición Premios */}
                     <td className="py-3 px-3 text-right text-amber-400 font-bold">
                       {row.reposicion_premios > 0 ? `+${formatCurrency(row.reposicion_premios, row.moneda)}` : '-'}
                     </td>
 
+                    {/* Saldo Final */}
                     <td className={`py-3 px-3 text-right font-black text-sm ${row.saldo_final > 0 ? 'text-amber-400' : row.saldo_final < 0 ? 'text-rose-400' : 'text-emerald-400'}`}>
                       {formatCurrency(row.saldo_final, row.moneda)}
                     </td>
 
+                    {/* Estado */}
                     <td className="py-3 px-3 text-center font-sans">
                       {row.status === 'pagado' ? (
                         <span className="px-2.5 py-0.5 rounded-full text-[10px] font-bold uppercase bg-emerald-500/15 text-emerald-400 border border-emerald-500/30 inline-flex items-center gap-1">
