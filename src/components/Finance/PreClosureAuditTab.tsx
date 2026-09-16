@@ -117,6 +117,8 @@ export const PreClosureAuditTab: React.FC = () => {
             return matchAg && matchMon && isCob && isConf && inCycle && !p.rechazado;
           });
           const cobradorRutaTot = agCobradorList.reduce((sum, curr) => sum + Number(curr.monto || 0), 0);
+          const cobradorLiquidadoTot = agCobradorList.filter((p) => Boolean(p.liquidado_admin)).reduce((sum, curr) => sum + Number(curr.monto || 0), 0);
+          const cobradorEnRutaTot = agCobradorList.filter((p) => !p.liquidado_admin).reduce((sum, curr) => sum + Number(curr.monto || 0), 0);
 
           // 2. Efectivo Taquilla directo (Entregado a Supervisor en caja taquilla sin QR en el ciclo)
           const agEfectivoList = rawDailyPayments.filter((p) => {
@@ -172,6 +174,8 @@ export const PreClosureAuditTab: React.FC = () => {
             venta_neta: vtaNeta,
             gastos: gTot,
             cobrador_ruta: cobradorRutaTot,
+            cobrador_liquidado: cobradorLiquidadoTot,
+            cobrador_en_ruta: cobradorEnRutaTot,
             efectivo_taquilla: efectivoTaquillaTot,
             bancos: bancosTot,
             reposicion_premios: reposicionPremiosTot,
@@ -193,6 +197,8 @@ export const PreClosureAuditTab: React.FC = () => {
       ventaNeta: number;
       gastos: number;
       cobradorRuta: number;
+      cobradorLiquidado: number;
+      cobradorEnRuta: number;
       efectivoTaquilla: number;
       bancos: number;
       reposicionPremios: number;
@@ -206,6 +212,8 @@ export const PreClosureAuditTab: React.FC = () => {
         ventaNeta: 0,
         gastos: 0,
         cobradorRuta: 0,
+        cobradorLiquidado: 0,
+        cobradorEnRuta: 0,
         efectivoTaquilla: 0,
         bancos: 0,
         reposicionPremios: 0,
@@ -220,6 +228,8 @@ export const PreClosureAuditTab: React.FC = () => {
         res[r.moneda].ventaNeta += r.venta_neta;
         res[r.moneda].gastos += r.gastos;
         res[r.moneda].cobradorRuta += r.cobrador_ruta;
+        res[r.moneda].cobradorLiquidado += r.cobrador_liquidado || 0;
+        res[r.moneda].cobradorEnRuta += r.cobrador_en_ruta || 0;
         res[r.moneda].efectivoTaquilla += r.efectivo_taquilla;
         res[r.moneda].bancos += r.bancos;
         res[r.moneda].reposicionPremios += r.reposicion_premios;
@@ -384,7 +394,16 @@ export const PreClosureAuditTab: React.FC = () => {
                 </div>
                 <div>
                   <span className="text-[10px] block text-slate-500">🛵 Cobradores:</span>
-                  <span className="font-semibold text-sky-400">{formatCurrency(tot.cobradorRuta, mon as any)}</span>
+                  <div className="flex items-center gap-1.5 flex-wrap">
+                    <span className="font-semibold text-sky-400">{formatCurrency(tot.cobradorRuta, mon as any)}</span>
+                    {tot.cobradorRuta > 0 && (
+                      <span className={`text-[9px] font-bold px-1.5 py-0.2 rounded-full border ${
+                        tot.cobradorEnRuta > 0 ? 'bg-amber-500/15 text-amber-400 border-amber-500/30' : 'bg-emerald-500/15 text-emerald-400 border-emerald-500/30'
+                      }`}>
+                        {tot.cobradorEnRuta > 0 ? `${formatCurrency(tot.cobradorEnRuta, mon as any)} en ruta` : '🏛️ 100% en Admin'}
+                      </span>
+                    )}
+                  </div>
                 </div>
                 <div>
                   <span className="text-[10px] block text-slate-500">🏛️ Bancos:</span>
@@ -521,8 +540,25 @@ export const PreClosureAuditTab: React.FC = () => {
                       {row.gastos > 0 ? formatCurrency(row.gastos, row.moneda) : '-'}
                     </td>
 
-                    <td className="py-3 px-3 text-right text-sky-400">
-                      {row.cobrador_ruta > 0 ? formatCurrency(row.cobrador_ruta, row.moneda) : '-'}
+                    <td className="py-3 px-3 text-right">
+                      {row.cobrador_ruta > 0 ? (
+                        <div className="flex flex-col items-end">
+                          <span className="font-semibold text-sky-400">
+                            {formatCurrency(row.cobrador_ruta, row.moneda)}
+                          </span>
+                          {row.cobrador_en_ruta && row.cobrador_en_ruta > 0 ? (
+                            <span className="text-[9px] font-bold text-amber-400 bg-amber-500/15 border border-amber-500/30 px-1.5 py-0.5 rounded-full inline-flex items-center gap-0.5 mt-0.5" title="En custodia / ruta">
+                              🛵 En Ruta ({formatCurrency(row.cobrador_en_ruta, row.moneda)})
+                            </span>
+                          ) : (
+                            <span className="text-[9px] font-bold text-emerald-400 bg-emerald-500/15 border border-emerald-500/30 px-1.5 py-0.5 rounded-full inline-flex items-center gap-0.5 mt-0.5" title="Fondos liquidados a la administración central">
+                              🏛️ Liquidado Admin
+                            </span>
+                          )}
+                        </div>
+                      ) : (
+                        <span className="text-slate-500">-</span>
+                      )}
                     </td>
 
                     <td className="py-3 px-3 text-right text-sky-300">
