@@ -9,6 +9,7 @@ import {
   type ConsolidatedExpenseItem,
 } from '../../utils/consolidations';
 import type { Agency } from '../../types';
+import { PreClosureAuditTab } from './PreClosureAuditTab';
 import {
   Lock,
   CheckCircle2,
@@ -22,7 +23,8 @@ import {
   Download,
   Undo2,
   FileSpreadsheet,
-  X
+  X,
+  FileText
 } from 'lucide-react';
 import confetti from 'canvas-confetti';
 
@@ -42,6 +44,7 @@ interface CierreAgencyData {
 export const WeeklyClosureTab: React.FC = () => {
   const { effectiveUserId, systemCycle, refreshSystemCycle } = useAuth();
 
+  const [activeSubTab, setActiveSubTab] = useState<'precierre' | 'cierre'>('precierre');
   const [isLoading, setIsLoading] = useState(true);
   const [isProcessing, setIsProcessing] = useState(false);
   const [agencies, setAgencies] = useState<Agency[]>([]);
@@ -527,8 +530,39 @@ export const WeeklyClosureTab: React.FC = () => {
         </div>
       )}
 
-      {/* Cycle Banner */}
-      <div className="bg-gradient-to-r from-amber-950/30 via-slate-900 to-slate-900 border border-amber-500/20 rounded-3xl p-6 relative overflow-hidden">
+      {/* Sub-tabs Navigation */}
+      <div className="flex items-center gap-2 border-b border-slate-800 pb-3">
+        <button
+          onClick={() => setActiveSubTab('precierre')}
+          className={`px-4 py-2.5 rounded-xl text-xs sm:text-sm font-bold flex items-center gap-2 transition-all cursor-pointer ${
+            activeSubTab === 'precierre'
+              ? 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/30'
+              : 'text-slate-400 hover:text-white hover:bg-slate-800/60'
+          }`}
+        >
+          <Layers className="w-4 h-4" />
+          <span>📊 Arqueo y Pre-Cierre del Ciclo</span>
+        </button>
+
+        <button
+          onClick={() => setActiveSubTab('cierre')}
+          className={`px-4 py-2.5 rounded-xl text-xs sm:text-sm font-bold flex items-center gap-2 transition-all cursor-pointer ${
+            activeSubTab === 'cierre'
+              ? 'bg-amber-500/10 text-amber-400 border border-amber-500/30'
+              : 'text-slate-400 hover:text-white hover:bg-slate-800/60'
+          }`}
+        >
+          <Lock className="w-4 h-4" />
+          <span>🔒 Finalizar Ciclo y Registro Maestro</span>
+        </button>
+      </div>
+
+      {activeSubTab === 'precierre' ? (
+        <PreClosureAuditTab />
+      ) : (
+        <div className="space-y-6">
+          {/* Cycle Banner */}
+          <div className="bg-gradient-to-r from-amber-950/30 via-slate-900 to-slate-900 border border-amber-500/20 rounded-3xl p-6 relative overflow-hidden">
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 relative z-10">
           <div>
             <span className="text-[11px] font-bold uppercase tracking-wider text-amber-400 bg-amber-400/10 px-2.5 py-1 rounded-full border border-amber-400/20">
@@ -639,6 +673,9 @@ export const WeeklyClosureTab: React.FC = () => {
           </button>
         </div>
       </div>
+
+        </div>
+      )}
 
       {/* Modal de Confirmación Pre-Cierre */}
       {isConfirmModalOpen && (
