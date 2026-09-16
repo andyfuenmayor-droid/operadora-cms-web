@@ -78,7 +78,7 @@ export const PreClosureAuditTab: React.FC = () => {
 
   useEffect(() => {
     loadData();
-  }, [effectiveUserId]);
+  }, [effectiveUserId, systemCycle?.desde, systemCycle?.hasta]);
 
   // Compute detailed audit rows
   const auditRows = useMemo<PreClosureAgencyRow[]>(() => {
@@ -101,32 +101,36 @@ export const PreClosureAuditTab: React.FC = () => {
         const vtaNeta = agSales.reduce((sum, curr) => sum + Number(curr.neto || curr.util_op || 0), 0);
 
         if (confMon.includes(mon) || Math.abs(sAnt) > 0.01 || agSales.length > 0) {
-          // Gastos confirmados
+          // Gastos confirmados en el ciclo
           const agExp = expenses.filter((g) => g.agencia === nom && normalizarMoneda(g.moneda) === mon && Boolean(g.confirmado));
           const gTot = agExp.reduce((sum, curr) => sum + Number(curr.monto || 0), 0);
 
-          // Segregación de Pagos por Canal:
+          // Segregación de Pagos por Canal restringidos estrictamente al ciclo operativo activo:
           // 1. Cobradores de Ruta (recaudaciones QR de cda_pagos_diarios)
           const agCobradorList = rawDailyPayments.filter((p) => {
             const matchAg = (p.agencia || p.nombre_agency || '').trim().toUpperCase() === nom;
             const matchMon = normalizarMoneda(p.moneda) === mon;
             const isCob = Boolean(p.qr_token) || String(p.tipo_pago || '').toUpperCase().includes('COBRADOR');
             const isConf = Boolean(p.confirmado) || Boolean(p.confirmado_supervisor) || Boolean(p.fecha_escaneo_cobrador);
-            return matchAg && matchMon && isCob && isConf && !p.rechazado;
+            const fStr = String(p.fecha || p.created_at || '').slice(0, 10);
+            const inCycle = !systemCycle?.desde || (fStr >= systemCycle.desde && fStr <= (systemCycle.hasta || fStr));
+            return matchAg && matchMon && isCob && isConf && inCycle && !p.rechazado;
           });
           const cobradorRutaTot = agCobradorList.reduce((sum, curr) => sum + Number(curr.monto || 0), 0);
 
-          // 2. Efectivo Taquilla directo
+          // 2. Efectivo Taquilla directo (Entregado a Supervisor en caja taquilla sin QR en el ciclo)
           const agEfectivoList = rawDailyPayments.filter((p) => {
             const matchAg = (p.agencia || p.nombre_agency || '').trim().toUpperCase() === nom;
             const matchMon = normalizarMoneda(p.moneda) === mon;
             const isCob = Boolean(p.qr_token) || String(p.tipo_pago || '').toUpperCase().includes('COBRADOR');
             const isConf = Boolean(p.confirmado) || Boolean(p.confirmado_supervisor);
-            return matchAg && matchMon && !isCob && isConf && !p.rechazado;
+            const fStr = String(p.fecha || p.created_at || '').slice(0, 10);
+            const inCycle = !systemCycle?.desde || (fStr >= systemCycle.desde && fStr <= (systemCycle.hasta || fStr));
+            return matchAg && matchMon && !isCob && isConf && inCycle && !p.rechazado;
           });
           const efectivoTaquillaTot = agEfectivoList.reduce((sum, curr) => sum + Number(curr.monto || 0), 0);
 
-          // 3. Bancos ordinarios (pagos_semana + cda_pagos_bancarios sin incluir premios)
+          // 3. Bancos ordinarios (pagos_semana + cda_pagos_bancarios sin incluir reposición de premios)
           const agBancosList = payments.filter((p) => {
             const matchAg = p.agencia === nom && normalizarMoneda(p.moneda) === mon;
             const isPrem = String(p.tipo_pago || '').toUpperCase().includes('PREMIO') || String(p.referencia || '').toUpperCase().includes('PREMIO');
@@ -135,7 +139,7 @@ export const PreClosureAuditTab: React.FC = () => {
           });
           const bancosTot = agBancosList.reduce((sum, curr) => sum + Number(curr.monto || 0), 0);
 
-          // 4. Reposición de Premios (Abonos de la Operadora por pérdidas)
+          // 4. Reposición de Premios (Abonos de la Operadora a la agencia por pérdidas / faltantes de premio)
           const agPremiosList = payments.filter((p) => {
             const matchAg = p.agencia === nom && normalizarMoneda(p.moneda) === mon;
             const isPrem = String(p.tipo_pago || '').toUpperCase().includes('PREMIO') || String(p.referencia || '').toUpperCase().includes('PREMIO');
@@ -143,7 +147,7 @@ export const PreClosureAuditTab: React.FC = () => {
           });
           const reposicionPremiosTot = agPremiosList.reduce((sum, curr) => sum + Number(curr.monto || 0), 0);
 
-          // Total cobros ordinarios (reducen saldo)
+          // Total cobros ordinarios (reducen saldo de la agencia)
           const totalCobros = cobradorRutaTot + efectivoTaquillaTot + bancosTot;
 
           // Pagos netos
@@ -180,7 +184,7 @@ export const PreClosureAuditTab: React.FC = () => {
     });
 
     return list;
-  }, [agencies, sales, payments, expenses, rawDailyPayments]);
+  }, [agencies, sales, payments, expenses, rawDailyPayments, systemCycle]);
 
   // Totals by currency
   const totalsByCurrency = useMemo(() => {

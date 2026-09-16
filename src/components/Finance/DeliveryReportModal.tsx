@@ -206,16 +206,17 @@ export const DeliveryReportModal: React.FC<DeliveryReportModalProps> = ({
                     <th className="py-2 px-2 text-right">Arrastre</th>
                     <th className="py-2 px-2 text-right">Vta Neta</th>
                     <th className="py-2 px-2 text-right">Gastos</th>
-                    <th className="py-2 px-2 text-right">Cobrador</th>
-                    <th className="py-2 px-2 text-right">Bancos</th>
-                    <th className="py-2 px-2 text-right">Premios</th>
+                    <th className="py-2 px-2 text-right">🛵 Cobrador</th>
+                    <th className="py-2 px-2 text-right">💵 Efectivo</th>
+                    <th className="py-2 px-2 text-right">🏛️ Bancos</th>
+                    <th className="py-2 px-2 text-right">🏆 Reposición</th>
                     <th className="py-2 px-2 text-right font-black">Saldo Final</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-800 print:divide-gray-300 font-mono">
                   {auditRows.map((r, idx) => (
                     <tr key={`${r.entidad}_${r.moneda}_${idx}`} className="hover:bg-slate-800/20 print:hover:bg-transparent">
-                      <td className="py-1.5 px-2 font-sans font-bold text-white print:text-black truncate max-w-[150px]">
+                      <td className="py-1.5 px-2 font-sans font-bold text-white print:text-black truncate max-w-[140px]">
                         {r.entidad}
                       </td>
                       <td className="py-1.5 px-1 text-center text-slate-400 print:text-black font-bold">
@@ -231,7 +232,10 @@ export const DeliveryReportModal: React.FC<DeliveryReportModalProps> = ({
                         {r.gastos > 0 ? formatCurrency(r.gastos, r.moneda) : '-'}
                       </td>
                       <td className="py-1.5 px-2 text-right text-sky-400 print:text-black">
-                        {r.cobrador_ruta > 0 ? formatCurrency(r.cobrador_ruta, r.moneda) : r.efectivo_taquilla > 0 ? formatCurrency(r.efectivo_taquilla, r.moneda) : '-'}
+                        {r.cobrador_ruta > 0 ? formatCurrency(r.cobrador_ruta, r.moneda) : '-'}
+                      </td>
+                      <td className="py-1.5 px-2 text-right text-sky-300 print:text-black">
+                        {r.efectivo_taquilla > 0 ? formatCurrency(r.efectivo_taquilla, r.moneda) : '-'}
                       </td>
                       <td className="py-1.5 px-2 text-right text-cyan-400 print:text-black">
                         {r.bancos > 0 ? formatCurrency(r.bancos, r.moneda) : '-'}
