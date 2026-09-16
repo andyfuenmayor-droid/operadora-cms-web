@@ -81,6 +81,9 @@ export const CollectorsTab: React.FC = () => {
   // Feedback message
   const [message, setMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
 
+  // Settle QR Payment Modal (Tab 4)
+  const [settlePaymentItem, setSettlePaymentItem] = useState<any | null>(null);
+
   // Load everything
   const loadData = async () => {
     if (!effectiveUserId) return;
@@ -405,10 +408,14 @@ export const CollectorsTab: React.FC = () => {
     }
   };
 
-  // Settle QR Payment to Admin (Tab 4)
-  const handleSettleQrToAdmin = async (paymentItem: any) => {
-    if (!effectiveUserId) return;
-    if (!window.confirm(`¿Liquidar a Administración el pago de ${paymentItem.moneda} ${paymentItem.monto} de ${paymentItem.agencia}?`)) return;
+  // Open Settle Modal (Tab 4)
+  const handleOpenSettleModal = (paymentItem: any) => {
+    setSettlePaymentItem(paymentItem);
+  };
+
+  // Confirm Settle QR Payment to Admin (Tab 4)
+  const confirmSettleQrToAdmin = async () => {
+    if (!effectiveUserId || !settlePaymentItem) return;
 
     setIsProcessing(true);
 
@@ -424,22 +431,23 @@ export const CollectorsTab: React.FC = () => {
           fecha_liquidacion_admin: nowStr,
           confirmado: true,
         })
-        .eq('id', paymentItem.id);
+        .eq('id', settlePaymentItem.id);
 
       // 2. Insert into cda_caja_efectivo_supervisor as settled
       await supabase.from('cda_caja_efectivo_supervisor').insert({
         user_id: effectiveUserId,
-        pago_id: paymentItem.id,
-        agencia: paymentItem.agencia,
-        supervisor_nombre: paymentItem.cobrador_nombre || 'Cobrador de Ruta',
+        pago_id: settlePaymentItem.id,
+        agencia: settlePaymentItem.agencia,
+        supervisor_nombre: settlePaymentItem.cobrador_nombre || 'Cobrador de Ruta',
         tipo_movimiento: 'ENTREGA_COBRADOR',
-        monto: paymentItem.monto,
-        moneda: paymentItem.moneda,
-        comentario: `Liquidación de efectivo PIN: ${paymentItem.qr_token || paymentItem.id} [Recibido en Caja Central por: ${adminName}]`,
+        monto: settlePaymentItem.monto,
+        moneda: settlePaymentItem.moneda,
+        comentario: `Liquidación de efectivo PIN: ${settlePaymentItem.qr_token || settlePaymentItem.id} [Recibido en Caja Central por: ${adminName}]`,
       });
 
-      confetti({ particleCount: 35, spread: 50 });
-      setMessage({ type: 'success', text: '¡Recaudación QR liquidada a Administración exitosamente!' });
+      confetti({ particleCount: 45, spread: 60 });
+      setMessage({ type: 'success', text: `¡Recaudación de ${formatCurrency(settlePaymentItem.monto, settlePaymentItem.moneda)} (${settlePaymentItem.agencia}) liquidada a Administración exitosamente!` });
+      setSettlePaymentItem(null);
       await loadData();
     } catch (err: any) {
       console.error('Error settling QR payment:', err);
@@ -1235,7 +1243,7 @@ export const CollectorsTab: React.FC = () => {
                       <div>
                         {!isLiquidated && (
                           <button
-                            onClick={() => handleSettleQrToAdmin(p)}
+                            onClick={() => handleOpenSettleModal(p)}
                             disabled={isProcessing}
                             className="px-3.5 py-1.5 rounded-xl bg-gradient-to-r from-emerald-500 to-teal-600 hover:from-emerald-400 hover:to-teal-500 text-slate-950 font-bold text-xs shadow-lg shadow-emerald-500/20 flex items-center gap-1.5 transition-all cursor-pointer disabled:opacity-50"
                           >
@@ -1379,6 +1387,127 @@ export const CollectorsTab: React.FC = () => {
                 className="px-5 py-2 rounded-xl bg-rose-600 hover:bg-rose-500 text-white font-bold text-xs shadow-lg shadow-rose-600/20 transition-all cursor-pointer disabled:opacity-50"
               >
                 {isProcessing ? 'Eliminando...' : 'Sí, Eliminar'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* =========================================================================
+          SETTLE QR COLLECTION MODAL
+      ========================================================================= */}
+      {settlePaymentItem && (
+        <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-md flex items-center justify-center p-4 animate-fade-in">
+          <div className="bg-gradient-to-b from-[#0F222D] to-[#09151B] border border-emerald-500/30 rounded-3xl p-6 sm:p-7 max-w-lg w-full space-y-5 shadow-2xl relative overflow-hidden">
+            {/* Ambient Background Glow */}
+            <div className="absolute top-0 left-1/2 -translate-x-1/2 w-64 h-24 bg-emerald-500/10 rounded-full blur-2xl pointer-events-none" />
+
+            {/* Header */}
+            <div className="flex items-start gap-3.5 relative z-10">
+              <div className="p-3 rounded-2xl bg-emerald-500/15 text-emerald-400 border border-emerald-500/30 shadow-inner">
+                <CheckCheck className="w-6 h-6" />
+              </div>
+              <div className="flex-1">
+                <div className="text-[10px] uppercase font-extrabold tracking-widest text-emerald-400">
+                  Liquidación de Fondos en Ruta
+                </div>
+                <h3 className="text-lg font-black text-white">
+                  Confirmar Recepción en Caja Central
+                </h3>
+                <p className="text-xs text-slate-400 mt-0.5">
+                  Registra el ingreso físico del dinero recaudado por el cobrador a la administración.
+                </p>
+              </div>
+            </div>
+
+            {/* Amount Box */}
+            <div className="bg-[#060F14] border border-emerald-500/20 rounded-2xl p-4 text-center space-y-1">
+              <div className="text-[11px] font-bold text-slate-400 uppercase tracking-wider">
+                Monto Recaudado a Ingresar
+              </div>
+              <div className="text-3xl font-black font-mono text-emerald-400 tracking-tight">
+                {formatCurrency(settlePaymentItem.monto, settlePaymentItem.moneda)}
+              </div>
+              <div className="text-[10px] text-emerald-300/70 font-semibold uppercase">
+                {settlePaymentItem.moneda} • En Efectivo
+              </div>
+            </div>
+
+            {/* Details Grid */}
+            <div className="grid grid-cols-2 gap-2.5 bg-[#060F14]/70 border border-slate-800 rounded-2xl p-3.5 text-xs">
+              <div className="space-y-0.5">
+                <span className="text-[10px] font-bold uppercase text-slate-500">Agencia Origen</span>
+                <div className="font-bold text-white flex items-center gap-1.5 truncate">
+                  <Building2 className="w-3.5 h-3.5 text-sky-400 shrink-0" />
+                  <span className="truncate">{settlePaymentItem.agencia}</span>
+                </div>
+              </div>
+
+              <div className="space-y-0.5">
+                <span className="text-[10px] font-bold uppercase text-slate-500">Cobrador de Ruta</span>
+                <div className="font-bold text-white flex items-center gap-1.5 truncate">
+                  <Bike className="w-3.5 h-3.5 text-amber-400 shrink-0" />
+                  <span className="truncate">{settlePaymentItem.cobrador_nombre || 'Asignado'}</span>
+                </div>
+              </div>
+
+              <div className="space-y-0.5">
+                <span className="text-[10px] font-bold uppercase text-slate-500">Comprobante / PIN</span>
+                <div className="font-mono font-bold text-sky-300 truncate">
+                  {settlePaymentItem.qr_token || `#${settlePaymentItem.id}`}
+                </div>
+              </div>
+
+              <div className="space-y-0.5">
+                <span className="text-[10px] font-bold uppercase text-slate-500">Fecha de Registro</span>
+                <div className="font-mono text-slate-300">
+                  {formatDate(settlePaymentItem.fecha || settlePaymentItem.created_at)}
+                </div>
+              </div>
+
+              <div className="col-span-2 pt-1 border-t border-slate-800/60 space-y-0.5">
+                <span className="text-[10px] font-bold uppercase text-slate-500">Concepto</span>
+                <div className="text-slate-300 italic text-[11px]">
+                  {settlePaymentItem.concepto || 'Recaudación en efectivo de taquilla / entrega de caja'}
+                </div>
+              </div>
+            </div>
+
+            {/* Informative Note */}
+            <div className="p-3 rounded-xl bg-slate-900/60 border border-slate-800 text-[11px] text-slate-400 flex items-start gap-2">
+              <ShieldCheck className="w-4 h-4 text-emerald-400 shrink-0 mt-0.5" />
+              <span>
+                Al confirmar, este saldo se descargará de la custodia del cobrador y se asentará automáticamente en el arqueo de Caja Central.
+              </span>
+            </div>
+
+            {/* Action Buttons */}
+            <div className="flex items-center justify-end gap-3 pt-2 border-t border-slate-800">
+              <button
+                type="button"
+                onClick={() => setSettlePaymentItem(null)}
+                disabled={isProcessing}
+                className="px-4 py-2.5 rounded-xl text-xs font-bold text-slate-400 hover:text-white hover:bg-slate-800/80 transition-all cursor-pointer disabled:opacity-50"
+              >
+                Cancelar
+              </button>
+              <button
+                type="button"
+                onClick={confirmSettleQrToAdmin}
+                disabled={isProcessing}
+                className="px-5 py-2.5 rounded-xl bg-gradient-to-r from-emerald-500 to-teal-500 hover:from-emerald-400 hover:to-teal-400 text-slate-950 font-black text-xs shadow-lg shadow-emerald-500/25 flex items-center gap-2 transition-all cursor-pointer disabled:opacity-50"
+              >
+                {isProcessing ? (
+                  <>
+                    <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+                    <span>Liquidando...</span>
+                  </>
+                ) : (
+                  <>
+                    <CheckCheck className="w-4 h-4" />
+                    <span>Confirmar Recepción y Liquidar</span>
+                  </>
+                )}
               </button>
             </div>
           </div>
