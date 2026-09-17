@@ -40,14 +40,6 @@ export const CollectorDeliveryActaModal: React.FC<CollectorDeliveryActaModalProp
   const [selectedCurrency, setSelectedCurrency] = useState<'ALL' | 'BS' | 'USD' | 'COP'>('ALL');
   const [selectedStatus, setSelectedStatus] = useState<'ALL' | 'LIQUIDADO' | 'EN_RUTA'>('ALL');
 
-  if (!isOpen) return null;
-
-  const todayFormatted = new Date().toLocaleDateString('es-VE', {
-    day: '2-digit',
-    month: '2-digit',
-    year: 'numeric',
-  });
-
   // Unique list of collectors found in data or passed
   const collectorOptions = useMemo(() => {
     const map = new Map<string, string>();
@@ -127,6 +119,14 @@ export const CollectorDeliveryActaModal: React.FC<CollectorDeliveryActaModalProp
     const found = collectorOptions.find((c) => c.id === selectedCollector);
     return found ? found.nombre.toUpperCase() : `COBRADOR ${selectedCollector}`;
   }, [selectedCollector, collectorOptions]);
+
+  if (!isOpen) return null;
+
+  const todayFormatted = new Date().toLocaleDateString('es-VE', {
+    day: '2-digit',
+    month: '2-digit',
+    year: 'numeric',
+  });
 
   const handlePrint = () => {
     const iframe = document.createElement('iframe');

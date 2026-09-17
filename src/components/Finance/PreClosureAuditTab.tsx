@@ -836,36 +836,42 @@ export const PreClosureAuditTab: React.FC = () => {
       </div>
 
       {/* Modal 1: Acta Oficial de Entrega General */}
-      <DeliveryReportModal
-        isOpen={isActaModalOpen}
-        onClose={() => setIsActaModalOpen(false)}
-        systemCycle={systemCycle}
-        userName={user?.nombre || user?.email?.split('@')[0] || 'Administración'}
-        companyName="CORPORACION CALENDARIO, CA"
-        auditRows={auditRows}
-        totalsByCurrency={totalsByCurrency}
-      />
+      {isActaModalOpen && (
+        <DeliveryReportModal
+          isOpen={isActaModalOpen}
+          onClose={() => setIsActaModalOpen(false)}
+          systemCycle={systemCycle}
+          userName={user?.nombre || user?.email?.split('@')[0] || 'Administración'}
+          companyName="CORPORACION CALENDARIO, CA"
+          auditRows={auditRows}
+          totalsByCurrency={totalsByCurrency}
+        />
+      )}
 
       {/* Modal 2: Acta del Operador de Confirmaciones */}
-      <ConfirmationOperatorActaModal
-        isOpen={isConfirmationActaOpen}
-        onClose={() => setIsConfirmationActaOpen(false)}
-        systemCycle={systemCycle}
-        userName={user?.nombre || user?.email?.split('@')[0] || 'Operador de Confirmaciones'}
-        companyName="CORPORACION CALENDARIO, CA"
-        items={confirmationAuditItems}
-      />
+      {isConfirmationActaOpen && (
+        <ConfirmationOperatorActaModal
+          isOpen={isConfirmationActaOpen}
+          onClose={() => setIsConfirmationActaOpen(false)}
+          systemCycle={systemCycle}
+          userName={user?.nombre || user?.email?.split('@')[0] || 'Operador de Confirmaciones'}
+          companyName="CORPORACION CALENDARIO, CA"
+          items={confirmationAuditItems}
+        />
+      )}
 
       {/* Modal 3: Acta de Entrega del Cobrador de Ruta */}
-      <CollectorDeliveryActaModal
-        isOpen={isCollectorActaOpen}
-        onClose={() => setIsCollectorActaOpen(false)}
-        systemCycle={systemCycle}
-        userName={user?.nombre || user?.email?.split('@')[0] || 'Administración'}
-        companyName="CORPORACION CALENDARIO, CA"
-        collectors={collectors}
-        dailyPayments={collectorDailyPayments}
-      />
+      {isCollectorActaOpen && (
+        <CollectorDeliveryActaModal
+          isOpen={isCollectorActaOpen}
+          onClose={() => setIsCollectorActaOpen(false)}
+          systemCycle={systemCycle}
+          userName={user?.nombre || user?.email?.split('@')[0] || 'Administración'}
+          companyName="CORPORACION CALENDARIO, CA"
+          collectors={collectors}
+          dailyPayments={collectorDailyPayments}
+        />
+      )}
     </div>
   );
 };

@@ -301,7 +301,7 @@ export const DeliveryReportModal: React.FC<DeliveryReportModalProps> = ({
           <div class="signatures-row">
             <div>
               <div class="sig-line">ENTREGADO POR</div>
-              <div class="sig-role">Supervisor / Cobrador de Ruta</div>
+              <div class="sig-role">Operador de Confirmaciones</div>
               <div class="sig-ci">C.I: ____________________</div>
             </div>
             <div>
@@ -547,7 +547,7 @@ export const DeliveryReportModal: React.FC<DeliveryReportModalProps> = ({
               <div className="border-t border-slate-500 pt-1 font-bold text-white">
                 ENTREGADO POR
               </div>
-              <div className="text-slate-400 text-[10px]">Supervisor / Cobrador de Ruta</div>
+              <div className="text-slate-400 text-[10px]">Operador de Confirmaciones</div>
               <div className="text-[10px] text-slate-500 pt-3">C.I: ____________________</div>
             </div>
 

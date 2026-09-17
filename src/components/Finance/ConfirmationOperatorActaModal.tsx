@@ -34,14 +34,6 @@ export const ConfirmationOperatorActaModal: React.FC<ConfirmationOperatorActaMod
   const [selectedCurrency, setSelectedCurrency] = useState<'ALL' | 'BS' | 'USD' | 'COP'>('ALL');
   const [selectedCategory, setSelectedCategory] = useState<'ALL' | 'BANCO' | 'GASTO' | 'REPOSICION' | 'EFECTIVO'>('ALL');
 
-  if (!isOpen) return null;
-
-  const todayFormatted = new Date().toLocaleDateString('es-VE', {
-    day: '2-digit',
-    month: '2-digit',
-    year: 'numeric',
-  });
-
   // Filtered items
   const filteredItems = useMemo(() => {
     return items.filter((item) => {
@@ -77,6 +69,14 @@ export const ConfirmationOperatorActaModal: React.FC<ConfirmationOperatorActaMod
 
     return res;
   }, [items]);
+
+  if (!isOpen) return null;
+
+  const todayFormatted = new Date().toLocaleDateString('es-VE', {
+    day: '2-digit',
+    month: '2-digit',
+    year: 'numeric',
+  });
 
   const handlePrint = () => {
     const iframe = document.createElement('iframe');
