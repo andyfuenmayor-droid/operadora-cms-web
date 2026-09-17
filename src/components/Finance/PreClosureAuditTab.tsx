@@ -29,6 +29,8 @@ import {
   Layers,
   Award,
   Wallet,
+  Landmark,
+  Banknote,
   ChevronDown,
   ChevronRight,
   ChevronUp,
@@ -38,6 +40,8 @@ import {
 import { DeliveryReportModal, type PreClosureAgencyRow } from './DeliveryReportModal';
 import { ConfirmationOperatorActaModal, type ConfirmationAuditItem } from './ConfirmationOperatorActaModal';
 import { CollectorDeliveryActaModal, type CollectorDailyPaymentItem } from './CollectorDeliveryActaModal';
+import { BankIncomeActaModal, type BankTransactionAuditItem } from './BankIncomeActaModal';
+import { CashDeliveryActaModal, type CashDeliveryAuditItem } from './CashDeliveryActaModal';
 
 export const PreClosureAuditTab: React.FC = () => {
   const { effectiveUserId, systemCycle, user } = useAuth();
@@ -63,6 +67,8 @@ export const PreClosureAuditTab: React.FC = () => {
   const [isActaModalOpen, setIsActaModalOpen] = useState(false);
   const [isConfirmationActaOpen, setIsConfirmationActaOpen] = useState(false);
   const [isCollectorActaOpen, setIsCollectorActaOpen] = useState(false);
+  const [isBankIncomeActaOpen, setIsBankIncomeActaOpen] = useState(false);
+  const [isCashDeliveryActaOpen, setIsCashDeliveryActaOpen] = useState(false);
 
   // Load database data
   const loadData = async () => {
@@ -367,6 +373,155 @@ export const PreClosureAuditTab: React.FC = () => {
       .sort((a, b) => (b.fecha_escaneo_cobrador || b.fecha).localeCompare(a.fecha_escaneo_cobrador || a.fecha));
   }, [rawDailyPayments, systemCycle]);
 
+  // Helper para normalizar el nombre del banco receptor
+  const extractBankName = (metodo?: string, referencia?: string): string => {
+    const combined = `${metodo || ''} ${referencia || ''}`.toUpperCase();
+    if (combined.includes('BANCAMIGA')) return 'BANCAMIGA';
+    if (combined.includes('BANESCO')) return 'BANESCO';
+    if (combined.includes('MERCANTIL')) return 'MERCANTIL';
+    if (combined.includes('PROVINCIAL') || combined.includes('BBVA')) return 'BBVA PROVINCIAL';
+    if (combined.includes('VENEZUELA') || combined.includes('BDV')) return 'BANCO DE VENEZUELA';
+    if (combined.includes('BNC') || combined.includes('NACIONAL DE CREDITO')) return 'BNC';
+    if (combined.includes('BANCARIBE')) return 'BANCARIBE';
+    if (combined.includes('EXTERIOR')) return 'BANCO EXTERIOR';
+    if (combined.includes('TESORO')) return 'BANCO DEL TESORO';
+    if (combined.includes('ZELLE')) return 'ZELLE';
+    if (combined.includes('BINANCE')) return 'BINANCE (USDT)';
+    if (combined.includes('BANCOLOMBIA')) return 'BANCOLOMBIA';
+    if (combined.includes('DAVIPLATA')) return 'DAVIPLATA';
+    if (combined.includes('NEQUI')) return 'NEQUI';
+    if (combined.includes('PAGO MOVIL') || combined.includes('PAGO MÓVIL')) return 'PAGO MÓVIL';
+    if (combined.includes('POS') || combined.includes('PUNTO')) return 'PUNTO DE VENTA (POS)';
+    if (metodo && metodo.trim()) return metodo.trim().toUpperCase();
+    return 'BANCO CENTRAL';
+  };
+
+  // Movimientos bancarios detallados (Entradas: Cobros bancarios; Salidas: Reposición de premios y egresos bancarios)
+  const bankTransactionItems = useMemo<BankTransactionAuditItem[]>(() => {
+    const list: BankTransactionAuditItem[] = [];
+
+    // 1. Cobros bancarios y reposiciones de premios en payments
+    payments.forEach((p) => {
+      if (!p.confirmado || p.rechazado) return;
+      const fStr = String(p.fecha || p.created_at || '').slice(0, 10);
+      const inCycle = !systemCycle?.desde || (fStr >= systemCycle.desde && fStr <= (systemCycle.hasta || fStr));
+      if (!inCycle) return;
+
+      const isDiario = p.id.startsWith('pd_');
+      if (isDiario) return; // Efectivo diario de taquilla se procesa en el acta de efectivo
+
+      const isPremio = String(p.tipo_pago || '').toUpperCase().includes('PREMIO') || String(p.referencia || '').toUpperCase().includes('PREMIO');
+      const bName = extractBankName(p.metodo, p.referencia);
+
+      list.push({
+        id: p.id,
+        fecha: fStr,
+        agencia: p.agencia,
+        banco: bName,
+        cuenta: p.referencia.includes('[') ? p.referencia.slice(p.referencia.indexOf('['), p.referencia.indexOf(']') + 1) : undefined,
+        tipo: isPremio ? 'SALIDA' : 'ENTRADA',
+        subtipo: isPremio ? 'REPOSICION' : 'COBRO',
+        referencia: p.referencia || (isPremio ? 'Reposición de Premios' : 'Cobranza Bancaria Recibida'),
+        concepto: isPremio ? 'Reposición de Premios a Agencia' : 'Cobranza Bancaria Recibida',
+        moneda: normalizarMoneda(p.moneda) as 'BS' | 'USD' | 'COP',
+        monto: Number(p.monto) || 0,
+        confirmado_por: p.confirmado_por || undefined,
+        confirmado: true,
+      });
+    });
+
+    // 2. Gastos pagados por vía bancaria (salidas bancarias adicionales)
+    expenses.forEach((g) => {
+      if (!g.confirmado || g.rechazado) return;
+      const met = String(g.tipo || '').toUpperCase();
+      const isBankExpense = met.includes('TRANSFERENCIA') || met.includes('BANCO');
+      if (!isBankExpense) return;
+
+      const fStr = String(g.fecha || g.created_at || '').slice(0, 10);
+      const inCycle = !systemCycle?.desde || (fStr >= systemCycle.desde && fStr <= (systemCycle.hasta || fStr));
+      if (!inCycle) return;
+
+      const bName = extractBankName(g.tipo, g.concepto);
+
+      list.push({
+        id: g.id,
+        fecha: fStr,
+        agencia: g.agencia,
+        banco: bName,
+        tipo: 'SALIDA',
+        subtipo: 'GASTO',
+        referencia: `Gasto: ${g.concepto || 'Egreso Operativo'}`,
+        concepto: g.concepto || 'Gasto Bancario',
+        moneda: normalizarMoneda(g.moneda) as 'BS' | 'USD' | 'COP',
+        monto: Number(g.monto) || 0,
+        confirmado: true,
+      });
+    });
+
+    return list.sort((a, b) => b.fecha.localeCompare(a.fecha));
+  }, [payments, expenses, systemCycle]);
+
+  // Entregas de efectivo en físico (Taquilla directa y Cobradores de Ruta)
+  const cashDeliveryItems = useMemo<CashDeliveryAuditItem[]>(() => {
+    const list: CashDeliveryAuditItem[] = [];
+
+    // 1. Recaudaciones en físico de cda_pagos_diarios
+    rawDailyPayments.forEach((pd) => {
+      const isRech = Boolean(pd.rechazado) || String(pd.estado || '').toUpperCase() === 'RECHAZADO';
+      const isConf = Boolean(pd.confirmado) || Boolean(pd.confirmado_supervisor) || Boolean(pd.fecha_escaneo_cobrador);
+      if (!isConf || isRech) return;
+
+      const fStr = String(pd.fecha || pd.created_at || '').slice(0, 10);
+      const inCycle = !systemCycle?.desde || (fStr >= systemCycle.desde && fStr <= (systemCycle.hasta || fStr));
+      if (!inCycle) return;
+
+      const isCob = Boolean(pd.qr_token) || String(pd.tipo_pago || '').toUpperCase().includes('COBRADOR');
+      const agNom = (pd.agencia || pd.nombre_agency || 'Agencia').trim().toUpperCase();
+
+      list.push({
+        id: String(pd.id),
+        fecha: fStr,
+        agencia: agNom,
+        modalidad: isCob ? 'COBRADOR_RUTA' : 'TAQUILLA',
+        tipo: 'ENTRADA',
+        referencia: pd.qr_token || pd.referencia || (isCob ? 'Token QR Cobrador' : 'Entrega Supervisor Taquilla'),
+        concepto: pd.concepto || (isCob ? 'Recaudación en Ruta QR' : 'Efectivo Entregado en Taquilla'),
+        custodio: pd.cobrador_nombre || pd.supervisor_nombre || (isCob ? `Cobrador #${pd.cobrador_id || ''}` : 'Supervisor de Taquilla'),
+        moneda: normalizarMoneda(pd.moneda) as 'BS' | 'USD' | 'COP',
+        monto: Number(pd.monto) || 0,
+        confirmado_supervisor: Boolean(pd.confirmado_supervisor || pd.confirmado),
+        liquidado_admin: Boolean(pd.liquidado_admin),
+      });
+    });
+
+    // 2. Gastos pagados en efectivo físico (salidas de efectivo)
+    expenses.forEach((g) => {
+      if (!g.confirmado || g.rechazado) return;
+      const met = String(g.tipo || '').toUpperCase();
+      const isCashExpense = met.includes('EFECTIVO');
+      if (!isCashExpense) return;
+
+      const fStr = String(g.fecha || g.created_at || '').slice(0, 10);
+      const inCycle = !systemCycle?.desde || (fStr >= systemCycle.desde && fStr <= (systemCycle.hasta || fStr));
+      if (!inCycle) return;
+
+      list.push({
+        id: g.id,
+        fecha: fStr,
+        agencia: g.agencia,
+        modalidad: 'TAQUILLA',
+        tipo: 'SALIDA',
+        referencia: `Gasto Efectivo: ${g.concepto || 'Egreso'}`,
+        concepto: g.concepto || 'Gasto Menor en Efectivo',
+        custodio: 'Caja Taquilla',
+        moneda: normalizarMoneda(g.moneda) as 'BS' | 'USD' | 'COP',
+        monto: Number(g.monto) || 0,
+      });
+    });
+
+    return list.sort((a, b) => b.fecha.localeCompare(a.fecha));
+  }, [rawDailyPayments, expenses, systemCycle]);
+
   // CSV Export
   const handleExportCSV = () => {
     if (auditRows.length === 0) return;
@@ -500,24 +655,44 @@ export const PreClosureAuditTab: React.FC = () => {
             <span>📜 Acta General</span>
           </button>
 
-          {/* 2. Acta Operador de Confirmaciones */}
+          {/* 2. Acta Cuentas Bancarias (Entradas, Salidas y Total por Banco) */}
+          <button
+            onClick={() => setIsBankIncomeActaOpen(true)}
+            className="px-3.5 py-2.5 rounded-xl bg-gradient-to-r from-cyan-600 to-blue-600 hover:from-cyan-500 hover:to-blue-500 text-white font-black text-xs shadow-lg shadow-cyan-500/20 flex items-center gap-1.5 transition-all cursor-pointer"
+            title="Acta Oficial de Movimientos e Ingresos en Cuentas Bancarias (Entradas, Salidas y Total por Banco)"
+          >
+            <Landmark className="w-4 h-4" />
+            <span>🏛️ Acta Bancaria ({bankTransactionItems.length})</span>
+          </button>
+
+          {/* 3. Acta Entrega de Efectivo */}
+          <button
+            onClick={() => setIsCashDeliveryActaOpen(true)}
+            className="px-3.5 py-2.5 rounded-xl bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-slate-950 font-black text-xs shadow-lg shadow-emerald-500/20 flex items-center gap-1.5 transition-all cursor-pointer"
+            title="Acta Oficial de Entrega y Rendición de Efectivo en Bóveda / Caja Central"
+          >
+            <Banknote className="w-4 h-4" />
+            <span>💵 Acta Efectivo ({cashDeliveryItems.length})</span>
+          </button>
+
+          {/* 4. Acta Operador de Confirmaciones */}
           <button
             onClick={() => setIsConfirmationActaOpen(true)}
             className="px-3.5 py-2.5 rounded-xl bg-gradient-to-r from-sky-500 to-teal-500 hover:from-sky-400 hover:to-teal-400 text-slate-950 font-black text-xs shadow-lg shadow-sky-500/20 flex items-center gap-1.5 transition-all cursor-pointer"
             title="Acta Oficial del Operador de Confirmaciones"
           >
             <ShieldCheck className="w-4 h-4" />
-            <span>🛡️ Acta Confirmaciones ({confirmationAuditItems.length})</span>
+            <span>🛡️ Confirmaciones ({confirmationAuditItems.length})</span>
           </button>
 
-          {/* 3. Acta Cobrador de Ruta */}
+          {/* 5. Acta Cobrador de Ruta */}
           <button
             onClick={() => setIsCollectorActaOpen(true)}
             className="px-3.5 py-2.5 rounded-xl bg-gradient-to-r from-purple-500 to-indigo-500 hover:from-purple-400 hover:to-indigo-400 text-white font-black text-xs shadow-lg shadow-purple-500/20 flex items-center gap-1.5 transition-all cursor-pointer"
             title="Acta Oficial y Desglose de Recaudaciones del Cobrador de Ruta"
           >
             <Bike className="w-4 h-4" />
-            <span>🛵 Acta Cobrador ({collectorDailyPayments.length})</span>
+            <span>🛵 Cobrador ({collectorDailyPayments.length})</span>
           </button>
 
           <button
@@ -658,8 +833,12 @@ export const PreClosureAuditTab: React.FC = () => {
                       </span>
                     </div>
 
-                    <div className="flex justify-between items-center">
-                      <span className="text-slate-400 flex items-center gap-1.5">
+                    <div
+                      onClick={() => setIsCashDeliveryActaOpen(true)}
+                      className="flex justify-between items-center cursor-pointer hover:bg-slate-800/40 p-1 -m-1 rounded-lg transition-colors group"
+                      title="Ver Acta de Entrega de Efectivo"
+                    >
+                      <span className="text-slate-400 group-hover:text-white flex items-center gap-1.5 transition-colors">
                         <span>🏛️</span> Liquidado a Admin:
                       </span>
                       <span
@@ -673,8 +852,12 @@ export const PreClosureAuditTab: React.FC = () => {
                       </span>
                     </div>
 
-                    <div className="flex justify-between items-center">
-                      <span className="text-slate-400 flex items-center gap-1.5">
+                    <div
+                      onClick={() => setIsCashDeliveryActaOpen(true)}
+                      className="flex justify-between items-center cursor-pointer hover:bg-slate-800/40 p-1 -m-1 rounded-lg transition-colors group"
+                      title="Ver Acta de Entrega de Efectivo"
+                    >
+                      <span className="text-slate-400 group-hover:text-white flex items-center gap-1.5 transition-colors">
                         <span>💵</span> Efectivo Taquilla:
                       </span>
                       <span className={`font-semibold ${tot.efectivoTaquilla > 0 ? 'text-sky-300' : 'text-slate-500'}`}>
@@ -682,8 +865,12 @@ export const PreClosureAuditTab: React.FC = () => {
                       </span>
                     </div>
 
-                    <div className="flex justify-between items-center">
-                      <span className="text-slate-400 flex items-center gap-1.5">
+                    <div
+                      onClick={() => setIsBankIncomeActaOpen(true)}
+                      className="flex justify-between items-center cursor-pointer hover:bg-slate-800/40 p-1 -m-1 rounded-lg transition-colors group"
+                      title="Ver Acta de Cuentas Bancarias (Entradas, Salidas y Total por Banco)"
+                    >
+                      <span className="text-slate-400 group-hover:text-cyan-300 flex items-center gap-1.5 transition-colors">
                         <span>🏛️</span> Bancos / Cobros:
                       </span>
                       <span className={`font-semibold ${tot.bancos > 0 ? 'text-cyan-400' : 'text-slate-500'}`}>
@@ -692,7 +879,11 @@ export const PreClosureAuditTab: React.FC = () => {
                     </div>
 
                     {tot.reposicionPremios > 0 && (
-                      <div className="flex justify-between items-center pt-1.5 border-t border-slate-800/80">
+                      <div
+                        onClick={() => setIsBankIncomeActaOpen(true)}
+                        className="flex justify-between items-center pt-1.5 border-t border-slate-800/80 cursor-pointer hover:bg-slate-800/40 p-1 -m-1 rounded-lg transition-colors group"
+                        title="Ver Reposiciones en Acta de Cuentas Bancarias"
+                      >
                         <span className="text-amber-400 font-bold flex items-center gap-1.5">
                           <span>🏆</span> Reposición Premios:
                         </span>
@@ -1214,6 +1405,15 @@ export const PreClosureAuditTab: React.FC = () => {
                                     <span>Movimientos Verificados por Confirmaciones ({agencyConfirmations.length})</span>
                                   </h6>
                                   <div className="flex items-center gap-2 text-[11px] font-mono">
+                                    <button
+                                      type="button"
+                                      onClick={() => setIsBankIncomeActaOpen(true)}
+                                      className="px-2 py-0.5 rounded-lg bg-sky-500/15 hover:bg-sky-500/25 text-sky-300 font-bold text-[10px] flex items-center gap-1 border border-sky-500/30 transition-colors cursor-pointer"
+                                      title="Abrir Acta Oficial de Cuentas Bancarias"
+                                    >
+                                      <Landmark className="w-3 h-3" />
+                                      <span>Acta Bancaria</span>
+                                    </button>
                                     <span className="text-slate-400">Bancos:</span>
                                     <span className="text-cyan-400 font-bold">{formatCurrency(row.bancos, row.moneda)}</span>
                                     {row.reposicion_premios > 0 && (
@@ -1341,9 +1541,20 @@ export const PreClosureAuditTab: React.FC = () => {
                                     <DollarSign className="w-4 h-4" />
                                     <span>Efectivo en Taquilla Directo ({agencyCashList.length})</span>
                                   </h6>
-                                  <span className="text-sky-300 font-bold font-mono text-xs">
-                                    {formatCurrency(row.efectivo_taquilla, row.moneda)}
-                                  </span>
+                                  <div className="flex items-center gap-2 text-[11px] font-mono">
+                                    <button
+                                      type="button"
+                                      onClick={() => setIsCashDeliveryActaOpen(true)}
+                                      className="px-2 py-0.5 rounded-lg bg-emerald-500/15 hover:bg-emerald-500/25 text-emerald-300 font-bold text-[10px] flex items-center gap-1 border border-emerald-500/30 transition-colors cursor-pointer"
+                                      title="Abrir Acta Oficial de Entrega de Efectivo"
+                                    >
+                                      <Banknote className="w-3 h-3" />
+                                      <span>Acta Efectivo</span>
+                                    </button>
+                                    <span className="text-sky-300 font-bold font-mono text-xs">
+                                      {formatCurrency(row.efectivo_taquilla, row.moneda)}
+                                    </span>
+                                  </div>
                                 </div>
                                 <div className="overflow-x-auto rounded-xl border border-slate-800">
                                   <table className="w-full text-left text-xs border-collapse">
@@ -1420,6 +1631,30 @@ export const PreClosureAuditTab: React.FC = () => {
           companyName="CORPORACION CALENDARIO, CA"
           collectors={collectors}
           dailyPayments={collectorDailyPayments}
+        />
+      )}
+
+      {/* Modal 4: Acta Oficial de Ingresos y Movimientos en Cuentas Bancarias */}
+      {isBankIncomeActaOpen && (
+        <BankIncomeActaModal
+          isOpen={isBankIncomeActaOpen}
+          onClose={() => setIsBankIncomeActaOpen(false)}
+          systemCycle={systemCycle}
+          userName={user?.nombre || user?.email?.split('@')[0] || 'Operador de Bancos'}
+          companyName="CORPORACION CALENDARIO, CA"
+          items={bankTransactionItems}
+        />
+      )}
+
+      {/* Modal 5: Acta Oficial de Entrega y Rendición de Efectivo */}
+      {isCashDeliveryActaOpen && (
+        <CashDeliveryActaModal
+          isOpen={isCashDeliveryActaOpen}
+          onClose={() => setIsCashDeliveryActaOpen(false)}
+          systemCycle={systemCycle}
+          userName={user?.nombre || user?.email?.split('@')[0] || 'Supervisor de Caja'}
+          companyName="CORPORACION CALENDARIO, CA"
+          items={cashDeliveryItems}
         />
       )}
     </div>
