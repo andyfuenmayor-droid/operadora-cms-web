@@ -9,6 +9,7 @@ import {
   type ConsolidatedExpenseItem,
 } from '../../utils/consolidations';
 import type { Agency } from '../../types';
+import { AgencyCycleHistoryTab } from './AgencyCycleHistoryTab';
 import {
   FileText,
   RefreshCw,
@@ -24,7 +25,9 @@ import {
   AlertCircle,
   LayoutGrid,
   List,
-  ChevronRight
+  ChevronRight,
+  Layers,
+  History
 } from 'lucide-react';
 
 const WhatsAppIcon: React.FC<{ className?: string }> = ({ className = 'w-4 h-4' }) => (
@@ -48,6 +51,7 @@ interface BalanceRow {
 export const AccountBalancesTab: React.FC = () => {
   const { effectiveUserId, systemCycle } = useAuth();
 
+  const [activeMainSubTab, setActiveMainSubTab] = useState<'activo' | 'historico'>('activo');
   const [isLoading, setIsLoading] = useState(true);
   const [activeCurrency, setActiveCurrency] = useState<'BS' | 'USD' | 'COP'>('BS');
   const [agencies, setAgencies] = useState<Agency[]>([]);
@@ -400,8 +404,39 @@ ${textoSistemas}
         </div>
       </div>
 
-      {/* Currency Switcher & Total Cartera Metric */}
-      <div className="bg-[#0D1B22] border border-slate-800 rounded-3xl p-4 sm:p-6 shadow-xl flex flex-col md:flex-row items-stretch md:items-center justify-between gap-4 sm:gap-6">
+      {/* Sub-tabs Navigation */}
+      <div className="flex items-center gap-2 border-b border-slate-800 pb-3">
+        <button
+          onClick={() => setActiveMainSubTab('activo')}
+          className={`px-4 py-2.5 rounded-xl text-xs sm:text-sm font-bold flex items-center gap-2 transition-all cursor-pointer ${
+            activeMainSubTab === 'activo'
+              ? 'bg-purple-500/10 text-purple-400 border border-purple-500/30'
+              : 'text-slate-400 hover:text-white hover:bg-slate-800/60'
+          }`}
+        >
+          <FileText className="w-4 h-4" />
+          <span>📊 Saldos del Ciclo Activo</span>
+        </button>
+
+        <button
+          onClick={() => setActiveMainSubTab('historico')}
+          className={`px-4 py-2.5 rounded-xl text-xs sm:text-sm font-bold flex items-center gap-2 transition-all cursor-pointer ${
+            activeMainSubTab === 'historico'
+              ? 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/30'
+              : 'text-slate-400 hover:text-white hover:bg-slate-800/60'
+          }`}
+        >
+          <History className="w-4 h-4" />
+          <span>📜 Histórico Individual por Taquilla (Semanal / Mensual)</span>
+        </button>
+      </div>
+
+      {activeMainSubTab === 'historico' ? (
+        <AgencyCycleHistoryTab initialAgency={searchQuery || undefined} />
+      ) : (
+        <>
+          {/* Currency Switcher & Total Cartera Metric */}
+          <div className="bg-[#0D1B22] border border-slate-800 rounded-3xl p-4 sm:p-6 shadow-xl flex flex-col md:flex-row items-stretch md:items-center justify-between gap-4 sm:gap-6">
         {/* Currency Tabs (3 columns on mobile, flex on desktop) */}
         <div className="grid grid-cols-3 sm:flex items-center gap-1.5 sm:gap-2 bg-[#071217] p-1.5 rounded-2xl border border-slate-800 w-full sm:w-auto">
           <button
@@ -1040,6 +1075,8 @@ ${textoSistemas}
             </div>
           </div>
         </div>
+      )}
+        </>
       )}
     </div>
   );

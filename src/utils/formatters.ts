@@ -102,7 +102,8 @@ export function normalizarMoneda(mVal?: string | null): string {
 }
 
 export function formatCurrency(amount: number | string, currency = 'USD'): string {
-  const num = typeof amount === 'number' ? amount : parseFloat(amount) || 0;
+  const rawNum = typeof amount === 'number' ? amount : parseFloat(amount) || 0;
+  const num = Math.abs(rawNum) < 0.0001 ? 0 : rawNum;
   const cleanCurr = normalizarMoneda(currency);
   const formatted = num.toLocaleString('en-US', {
     minimumFractionDigits: 2,

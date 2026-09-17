@@ -324,7 +324,7 @@ export async function getConsolidatedPayments(
     // 4. Filtrar fechas según ciclo operativo (preservando pagos manuales del CMS del ciclo abierto)
     if (filtrarPeriodo && (fechaDesde || fechaHasta)) {
       const hoyStr = getTodayDateString();
-      const limiteHasta = fechaHasta ? (fechaHasta > hoyStr ? fechaHasta : hoyStr) : hoyStr;
+      const limiteHasta = fechaHasta || hoyStr;
 
       return listaItems.filter((item) => {
         // Los pagos ingresados directamente en pagos_semana pertenecen al ciclo abierto actual
@@ -450,7 +450,7 @@ export async function getConsolidatedExpenses(
     // 3. Filtrar fechas según ciclo operativo
     if (filtrarPeriodo && (fechaDesde || fechaHasta)) {
       const hoyStr = getTodayDateString();
-      const limiteHasta = fechaHasta ? (fechaHasta > hoyStr ? fechaHasta : hoyStr) : hoyStr;
+      const limiteHasta = fechaHasta || hoyStr;
 
       return listaGastos.filter((item) => {
         if (!item.id.startsWith('gd_')) return true;

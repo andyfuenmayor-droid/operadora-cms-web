@@ -132,7 +132,8 @@ export const WeeklyClosureTab: React.FC = () => {
       agencies.forEach((ag) => {
         const nom = String(ag.nombre_agencia || '').trim().toUpperCase();
         const confMon = String(ag.monedas || '').toUpperCase();
-        const sAnt = Number(ag[colIni] || 0);
+        const rawAnt = Number(ag[colIni] || 0);
+        const sAnt = Math.abs(rawAnt) < 0.0001 ? 0 : rawAnt;
 
         if (confMon.includes(m) || Math.abs(sAnt) > 0.01) {
           // Ventas: la venta neta (neto) es la utilidad real del período
