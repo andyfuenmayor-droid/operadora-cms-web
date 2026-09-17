@@ -9,6 +9,9 @@ export interface ConsolidatedPaymentItem {
   metodo: string;
   monto: number;
   referencia: string;
+  pos_o_cuenta?: string;
+  datos_pagador?: string;
+  banco?: string;
   confirmado: boolean;
   confirmado_por?: string | null;
   rechazado: boolean;
@@ -103,14 +106,28 @@ export async function getConsolidatedPayments(
         (k) => `${tRaw} ${refVal} ${metRaw}`.includes(k)
       );
 
+      // Buscar coincidencia en cda_pagos_bancarios para enriquecer datos del banco/pos_o_cuenta
+      const matchPb = dfPb.find((pb: any) => {
+        const pbAg = String(pb.agencia || '').trim().toUpperCase();
+        const pbMonto = Math.round((Number(pb.monto) || 0) * 100) / 100;
+        const pbRef = String(pb.referencia || '').trim().toUpperCase();
+        if (pbAg !== ag || Math.abs(pbMonto - mto) >= 0.01) return false;
+        if (refVal.includes('CONFIRMADO BANCO')) return true;
+        if (pbRef && pbRef !== 'N/A' && refVal.includes(pbRef)) return true;
+        return false;
+      });
+
       listaItems.push({
         id: `ps_${r.id}`,
         agencia: ag,
         moneda: mo,
         tipo_pago: isPremPs ? 'Pago de Premios' : 'Pago',
-        metodo: metRaw || 'DIRECTO',
+        metodo: metRaw || (matchPb ? String(matchPb.metodo_pago || 'BANCO').toUpperCase() : 'DIRECTO'),
         monto: mto,
         referencia: refVal || 'PAGO CMS',
+        pos_o_cuenta: matchPb?.pos_o_cuenta || undefined,
+        datos_pagador: matchPb?.datos_pagador || undefined,
+        banco: matchPb?.banco || matchPb?.banco_destino || undefined,
         confirmado: true,
         confirmado_por: r.confirmado_por || 'ADMIN',
         rechazado: false,
@@ -174,6 +191,9 @@ export async function getConsolidatedPayments(
           metodo: metodoRaw,
           monto: montoVal,
           referencia: refLabel,
+          pos_o_cuenta: r.pos_o_cuenta || undefined,
+          datos_pagador: pagadorRaw || undefined,
+          banco: r.banco || r.banco_destino || undefined,
           confirmado: true,
           confirmado_por: String(r.confirmado_por || 'ADMIN').trim(),
           rechazado: false,

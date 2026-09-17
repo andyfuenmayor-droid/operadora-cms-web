@@ -53,6 +53,8 @@ export const PreClosureAuditTab: React.FC = () => {
   const [expenses, setExpenses] = useState<ConsolidatedExpenseItem[]>([]);
   const [rawDailyPayments, setRawDailyPayments] = useState<any[]>([]);
   const [collectors, setCollectors] = useState<{ id: string | number; nombre: string; usuario?: string }[]>([]);
+  const [bankAccounts, setBankAccounts] = useState<any[]>([]);
+  const [rawBankPayments, setRawBankPayments] = useState<any[]>([]);
 
   // Filters
   const [selectedCurrency, setSelectedCurrency] = useState<'ALL' | 'BS' | 'USD' | 'COP'>('ALL');
@@ -76,13 +78,15 @@ export const PreClosureAuditTab: React.FC = () => {
     setIsLoading(true);
 
     try {
-      const [agRes, sRes, pConsolidated, gConsolidated, pdRes, cobRes] = await Promise.all([
+      const [agRes, sRes, pConsolidated, gConsolidated, pdRes, cobRes, cbRes, pbRes] = await Promise.all([
         supabase.from('agencias').select('*').eq('user_id', effectiveUserId).order('id', { ascending: true }),
         supabase.from('carga_actual').select('*').eq('user_id', effectiveUserId),
         getConsolidatedPayments(effectiveUserId, { fechaDesde: systemCycle.desde, fechaHasta: systemCycle.hasta }),
         getConsolidatedExpenses(effectiveUserId, { fechaDesde: systemCycle.desde, fechaHasta: systemCycle.hasta }),
         supabase.from('cda_pagos_diarios').select('*').eq('user_id', effectiveUserId),
         supabase.from('cda_cobradores').select('*').eq('user_id', effectiveUserId),
+        supabase.from('cuentas_bancarias').select('*').eq('user_id', effectiveUserId),
+        supabase.from('cda_pagos_bancarios').select('*').eq('user_id', effectiveUserId).eq('confirmado', true),
       ]);
 
       setAgencies(agRes.data || []);
@@ -91,6 +95,8 @@ export const PreClosureAuditTab: React.FC = () => {
       setExpenses(gConsolidated);
       setRawDailyPayments(pdRes.data || []);
       setCollectors(cobRes.data || []);
+      setBankAccounts(cbRes.data || []);
+      setRawBankPayments(pbRes.data || []);
     } catch (err) {
       console.error('Error loading pre-closure audit data:', err);
     } finally {
@@ -290,6 +296,15 @@ export const PreClosureAuditTab: React.FC = () => {
       if (!inCycle) return;
 
       const isPremio = String(p.tipo_pago || '').toUpperCase().includes('PREMIO') || String(p.referencia || '').toUpperCase().includes('PREMIO');
+      const bInfo = resolveBankName({
+        agencia: p.agencia,
+        moneda: p.moneda,
+        metodo: p.metodo,
+        referencia: p.referencia,
+        pos_o_cuenta: p.pos_o_cuenta,
+        banco: p.banco,
+      });
+
       list.push({
         id: p.id,
         fecha: fStr,
@@ -299,7 +314,7 @@ export const PreClosureAuditTab: React.FC = () => {
         moneda: normalizarMoneda(p.moneda) as 'BS' | 'USD' | 'COP',
         monto: Number(p.monto) || 0,
         confirmado_por: p.confirmado_por || undefined,
-        banco: p.metodo,
+        banco: bInfo.banco,
       });
     });
 
@@ -345,7 +360,7 @@ export const PreClosureAuditTab: React.FC = () => {
     });
 
     return list.sort((a, b) => b.fecha.localeCompare(a.fecha));
-  }, [payments, expenses, rawDailyPayments, systemCycle]);
+  }, [payments, expenses, rawDailyPayments, systemCycle, bankAccounts, rawBankPayments]);
 
   // Recaudaciones en ruta para el Acta del Cobrador
   const collectorDailyPayments = useMemo<CollectorDailyPaymentItem[]>(() => {
@@ -373,27 +388,70 @@ export const PreClosureAuditTab: React.FC = () => {
       .sort((a, b) => (b.fecha_escaneo_cobrador || b.fecha).localeCompare(a.fecha_escaneo_cobrador || a.fecha));
   }, [rawDailyPayments, systemCycle]);
 
-  // Helper para normalizar el nombre del banco receptor
-  const extractBankName = (metodo?: string, referencia?: string): string => {
-    const combined = `${metodo || ''} ${referencia || ''}`.toUpperCase();
-    if (combined.includes('BANCAMIGA')) return 'BANCAMIGA';
-    if (combined.includes('BANESCO')) return 'BANESCO';
-    if (combined.includes('MERCANTIL')) return 'MERCANTIL';
-    if (combined.includes('PROVINCIAL') || combined.includes('BBVA')) return 'BBVA PROVINCIAL';
-    if (combined.includes('VENEZUELA') || combined.includes('BDV')) return 'BANCO DE VENEZUELA';
-    if (combined.includes('BNC') || combined.includes('NACIONAL DE CREDITO')) return 'BNC';
-    if (combined.includes('BANCARIBE')) return 'BANCARIBE';
-    if (combined.includes('EXTERIOR')) return 'BANCO EXTERIOR';
-    if (combined.includes('TESORO')) return 'BANCO DEL TESORO';
-    if (combined.includes('ZELLE')) return 'ZELLE';
-    if (combined.includes('BINANCE')) return 'BINANCE (USDT)';
-    if (combined.includes('BANCOLOMBIA')) return 'BANCOLOMBIA';
-    if (combined.includes('DAVIPLATA')) return 'DAVIPLATA';
-    if (combined.includes('NEQUI')) return 'NEQUI';
-    if (combined.includes('PAGO MOVIL') || combined.includes('PAGO MÓVIL')) return 'PAGO MÓVIL';
-    if (combined.includes('POS') || combined.includes('PUNTO')) return 'PUNTO DE VENTA (POS)';
-    if (metodo && metodo.trim()) return metodo.trim().toUpperCase();
-    return 'BANCO CENTRAL';
+  // Helper robusto para normalizar el nombre real del banco (nunca genérico como BANCO o PAGO MOVIL)
+  const resolveBankName = (p: {
+    agencia?: string;
+    moneda?: string;
+    metodo?: string;
+    referencia?: string;
+    pos_o_cuenta?: string;
+    concepto?: string;
+    banco?: string;
+  }): { banco: string; cuenta?: string } => {
+    const combined = `${p.banco || ''} ${p.pos_o_cuenta || ''} ${p.referencia || ''} ${p.metodo || ''} ${p.concepto || ''}`.toUpperCase();
+    const mon = normalizarMoneda(p.moneda) as 'BS' | 'USD' | 'COP';
+    const agUpper = String(p.agencia || '').trim().toUpperCase();
+
+    // 1. Detección directa por nombres de entidades bancarias conocidas
+    if (combined.includes('BANCOLOMBIA')) return { banco: 'BANCOLOMBIA' };
+    if (combined.includes('BANCAMIGA')) return { banco: 'BANCAMIGA' };
+    if (combined.includes('BANESCO')) return { banco: 'BANESCO' };
+    if (combined.includes('PROVINCIAL') || combined.includes('BBVA')) return { banco: 'BBVA PROVINCIAL' };
+    if (combined.includes('MERCANTIL')) return { banco: 'MERCANTIL' };
+    if (combined.includes('VENEZUELA') || combined.includes('BDV')) return { banco: 'BANCO DE VENEZUELA' };
+    if (combined.includes('BNC') || combined.includes('NACIONAL DE CREDITO')) return { banco: 'BNC' };
+    if (combined.includes('BANCARIBE')) return { banco: 'BANCARIBE' };
+    if (combined.includes('EXTERIOR')) return { banco: 'BANCO EXTERIOR' };
+    if (combined.includes('TESORO')) return { banco: 'BANCO DEL TESORO' };
+    if (combined.includes('CITI') || combined.includes('ZELLE')) return { banco: 'CITI BANK (ZELLE)' };
+    if (combined.includes('BINANCE')) return { banco: 'BINANCE (USDT)' };
+    if (combined.includes('DAVIPLATA')) return { banco: 'DAVIPLATA' };
+    if (combined.includes('NEQUI')) return { banco: 'NEQUI' };
+
+    // 2. Mapeo por cuenta asignada a la agencia en cuentas_bancarias
+    const assigned = bankAccounts.find((cb: any) => {
+      const cbAg = String(cb.agencia_asignada || '').trim().toUpperCase();
+      const cbMon = normalizarMoneda(cb.moneda);
+      return cbAg && cbAg === agUpper && cbMon === mon;
+    });
+    if (assigned) {
+      const bn = String(assigned.banco || '').trim().toUpperCase();
+      if (bn.includes('PROVINCIAL') || bn.includes('BBVA')) return { banco: 'BBVA PROVINCIAL', cuenta: assigned.numero_cuenta };
+      if (bn.includes('BANESCO')) return { banco: 'BANESCO', cuenta: assigned.numero_cuenta };
+      if (bn.includes('BANCOLOMBIA')) return { banco: 'BANCOLOMBIA', cuenta: assigned.numero_cuenta };
+      if (bn.includes('BANCAMIGA')) return { banco: 'BANCAMIGA', cuenta: assigned.numero_cuenta };
+      return { banco: bn, cuenta: assigned.numero_cuenta };
+    }
+
+    // 3. Fallbacks por moneda con banco único registrado
+    if (mon === 'COP') return { banco: 'BANCOLOMBIA' };
+    if (mon === 'USD') return { banco: 'CITI BANK (ZELLE)' };
+
+    // 4. Mapeo histórico: si la agencia tiene cobros previos en cda_pagos_bancarios con cuenta registrada
+    const pastPb = rawBankPayments.find((pb: any) => {
+      const pbAg = String(pb.agencia || '').trim().toUpperCase();
+      const posStr = String(pb.pos_o_cuenta || '').toUpperCase();
+      return pbAg === agUpper && (posStr.includes('BANESCO') || posStr.includes('PROVINCIAL') || posStr.includes('BANCAMIGA'));
+    });
+    if (pastPb) {
+      const posStr = String(pastPb.pos_o_cuenta || '').toUpperCase();
+      if (posStr.includes('BANESCO')) return { banco: 'BANESCO' };
+      if (posStr.includes('PROVINCIAL') || posStr.includes('BBVA')) return { banco: 'BBVA PROVINCIAL' };
+      if (posStr.includes('BANCAMIGA')) return { banco: 'BANCAMIGA' };
+    }
+
+    // 5. Default para BS: En esta operadora los pagos móviles y transferencias se centralizan en BANESCO
+    return { banco: 'BANESCO' };
   };
 
   // Movimientos bancarios detallados (Entradas: Cobros bancarios; Salidas: Reposición de premios y egresos bancarios)
@@ -411,14 +469,21 @@ export const PreClosureAuditTab: React.FC = () => {
       if (isDiario) return; // Efectivo diario de taquilla se procesa en el acta de efectivo
 
       const isPremio = String(p.tipo_pago || '').toUpperCase().includes('PREMIO') || String(p.referencia || '').toUpperCase().includes('PREMIO');
-      const bName = extractBankName(p.metodo, p.referencia);
+      const bInfo = resolveBankName({
+        agencia: p.agencia,
+        moneda: p.moneda,
+        metodo: p.metodo,
+        referencia: p.referencia,
+        pos_o_cuenta: p.pos_o_cuenta,
+        banco: p.banco,
+      });
 
       list.push({
         id: p.id,
         fecha: fStr,
         agencia: p.agencia,
-        banco: bName,
-        cuenta: p.referencia.includes('[') ? p.referencia.slice(p.referencia.indexOf('['), p.referencia.indexOf(']') + 1) : undefined,
+        banco: bInfo.banco,
+        cuenta: bInfo.cuenta || (p.referencia.includes('[') ? p.referencia.slice(p.referencia.indexOf('['), p.referencia.indexOf(']') + 1) : undefined),
         tipo: isPremio ? 'SALIDA' : 'ENTRADA',
         subtipo: isPremio ? 'REPOSICION' : 'COBRO',
         referencia: p.referencia || (isPremio ? 'Reposición de Premios' : 'Cobranza Bancaria Recibida'),
@@ -441,13 +506,18 @@ export const PreClosureAuditTab: React.FC = () => {
       const inCycle = !systemCycle?.desde || (fStr >= systemCycle.desde && fStr <= (systemCycle.hasta || fStr));
       if (!inCycle) return;
 
-      const bName = extractBankName(g.tipo, g.concepto);
+      const bInfo = resolveBankName({
+        agencia: g.agencia,
+        moneda: g.moneda,
+        metodo: g.tipo,
+        concepto: g.concepto,
+      });
 
       list.push({
         id: g.id,
         fecha: fStr,
         agencia: g.agencia,
-        banco: bName,
+        banco: bInfo.banco,
         tipo: 'SALIDA',
         subtipo: 'GASTO',
         referencia: `Gasto: ${g.concepto || 'Egreso Operativo'}`,
@@ -459,7 +529,7 @@ export const PreClosureAuditTab: React.FC = () => {
     });
 
     return list.sort((a, b) => b.fecha.localeCompare(a.fecha));
-  }, [payments, expenses, systemCycle]);
+  }, [payments, expenses, systemCycle, bankAccounts, rawBankPayments]);
 
   // Entregas de efectivo en físico (Taquilla directa y Cobradores de Ruta)
   const cashDeliveryItems = useMemo<CashDeliveryAuditItem[]>(() => {
