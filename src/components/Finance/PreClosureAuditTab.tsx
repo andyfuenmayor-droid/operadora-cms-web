@@ -31,6 +31,8 @@ import {
   Wallet
 } from 'lucide-react';
 import { DeliveryReportModal, type PreClosureAgencyRow } from './DeliveryReportModal';
+import { ConfirmationOperatorActaModal, type ConfirmationAuditItem } from './ConfirmationOperatorActaModal';
+import { CollectorDeliveryActaModal, type CollectorDailyPaymentItem } from './CollectorDeliveryActaModal';
 
 export const PreClosureAuditTab: React.FC = () => {
   const { effectiveUserId, systemCycle, user } = useAuth();
@@ -41,14 +43,17 @@ export const PreClosureAuditTab: React.FC = () => {
   const [payments, setPayments] = useState<ConsolidatedPaymentItem[]>([]);
   const [expenses, setExpenses] = useState<ConsolidatedExpenseItem[]>([]);
   const [rawDailyPayments, setRawDailyPayments] = useState<any[]>([]);
+  const [collectors, setCollectors] = useState<{ id: string | number; nombre: string; usuario?: string }[]>([]);
 
   // Filters
   const [selectedCurrency, setSelectedCurrency] = useState<'ALL' | 'BS' | 'USD' | 'COP'>('ALL');
   const [searchQuery, setSearchQuery] = useState('');
   const [statusFilter, setStatusFilter] = useState<'all' | 'pagado' | 'pendiente' | 'favor'>('all');
 
-  // Modal for Acta de Entrega
+  // Modals for Actas de Entrega
   const [isActaModalOpen, setIsActaModalOpen] = useState(false);
+  const [isConfirmationActaOpen, setIsConfirmationActaOpen] = useState(false);
+  const [isCollectorActaOpen, setIsCollectorActaOpen] = useState(false);
 
   // Load database data
   const loadData = async () => {
@@ -56,12 +61,13 @@ export const PreClosureAuditTab: React.FC = () => {
     setIsLoading(true);
 
     try {
-      const [agRes, sRes, pConsolidated, gConsolidated, pdRes] = await Promise.all([
+      const [agRes, sRes, pConsolidated, gConsolidated, pdRes, cobRes] = await Promise.all([
         supabase.from('agencias').select('*').eq('user_id', effectiveUserId).order('id', { ascending: true }),
         supabase.from('carga_actual').select('*').eq('user_id', effectiveUserId),
         getConsolidatedPayments(effectiveUserId, { fechaDesde: systemCycle.desde, fechaHasta: systemCycle.hasta }),
         getConsolidatedExpenses(effectiveUserId, { fechaDesde: systemCycle.desde, fechaHasta: systemCycle.hasta }),
         supabase.from('cda_pagos_diarios').select('*').eq('user_id', effectiveUserId),
+        supabase.from('cda_cobradores').select('*').eq('user_id', effectiveUserId),
       ]);
 
       setAgencies(agRes.data || []);
@@ -69,6 +75,7 @@ export const PreClosureAuditTab: React.FC = () => {
       setPayments(pConsolidated);
       setExpenses(gConsolidated);
       setRawDailyPayments(pdRes.data || []);
+      setCollectors(cobRes.data || []);
     } catch (err) {
       console.error('Error loading pre-closure audit data:', err);
     } finally {
@@ -256,6 +263,101 @@ export const PreClosureAuditTab: React.FC = () => {
     });
   }, [auditRows, selectedCurrency, statusFilter, searchQuery]);
 
+  // Movimientos auditados para el Acta del Operador de Confirmaciones
+  const confirmationAuditItems = useMemo<ConfirmationAuditItem[]>(() => {
+    const list: ConfirmationAuditItem[] = [];
+
+    // 1. Pagos / Bancos y Reposiciones de Premios
+    payments.forEach((p) => {
+      if (!p.confirmado || p.rechazado) return;
+      const fStr = String(p.fecha || p.created_at || '').slice(0, 10);
+      const inCycle = !systemCycle?.desde || (fStr >= systemCycle.desde && fStr <= (systemCycle.hasta || fStr));
+      if (!inCycle) return;
+
+      const isPremio = String(p.tipo_pago || '').toUpperCase().includes('PREMIO') || String(p.referencia || '').toUpperCase().includes('PREMIO');
+      list.push({
+        id: p.id,
+        fecha: fStr,
+        agencia: p.agencia,
+        categoria: isPremio ? 'REPOSICION' : 'BANCO',
+        referencia: p.referencia || (isPremio ? 'Reposición de Premios' : 'Transferencia Bancaria'),
+        moneda: normalizarMoneda(p.moneda) as 'BS' | 'USD' | 'COP',
+        monto: Number(p.monto) || 0,
+        confirmado_por: p.confirmado_por || undefined,
+        banco: p.metodo,
+      });
+    });
+
+    // 2. Gastos operativos confirmados
+    expenses.forEach((g) => {
+      if (!g.confirmado || g.rechazado) return;
+      const fStr = String(g.fecha || g.created_at || '').slice(0, 10);
+      const inCycle = !systemCycle?.desde || (fStr >= systemCycle.desde && fStr <= (systemCycle.hasta || fStr));
+      if (!inCycle) return;
+
+      list.push({
+        id: g.id,
+        fecha: fStr,
+        agencia: g.agencia,
+        categoria: 'GASTO',
+        referencia: `${g.tipo ? `[${g.tipo}] ` : ''}${g.concepto || 'Gasto Operativo'}`,
+        moneda: normalizarMoneda(g.moneda) as 'BS' | 'USD' | 'COP',
+        monto: Number(g.monto) || 0,
+      });
+    });
+
+    // 3. Efectivo en taquilla confirmado (entregado a supervisor, sin QR)
+    rawDailyPayments.forEach((pd) => {
+      const isCob = Boolean(pd.qr_token) || String(pd.tipo_pago || '').toUpperCase().includes('COBRADOR');
+      if (isCob) return; // Las recaudaciones de cobrador van en el Acta de Cobrador
+      const isConf = Boolean(pd.confirmado) || Boolean(pd.confirmado_supervisor);
+      if (!isConf || pd.rechazado) return;
+
+      const fStr = String(pd.fecha || pd.created_at || '').slice(0, 10);
+      const inCycle = !systemCycle?.desde || (fStr >= systemCycle.desde && fStr <= (systemCycle.hasta || fStr));
+      if (!inCycle) return;
+
+      list.push({
+        id: `pd_${pd.id}`,
+        fecha: fStr,
+        agencia: (pd.agencia || pd.nombre_agency || 'Agencia').trim().toUpperCase(),
+        categoria: 'EFECTIVO',
+        referencia: pd.referencia || pd.concepto || 'Efectivo Entregado a Supervisor',
+        moneda: normalizarMoneda(pd.moneda) as 'BS' | 'USD' | 'COP',
+        monto: Number(pd.monto) || 0,
+        confirmado_por: pd.confirmado_por || undefined,
+      });
+    });
+
+    return list.sort((a, b) => b.fecha.localeCompare(a.fecha));
+  }, [payments, expenses, rawDailyPayments, systemCycle]);
+
+  // Recaudaciones en ruta para el Acta del Cobrador
+  const collectorDailyPayments = useMemo<CollectorDailyPaymentItem[]>(() => {
+    return rawDailyPayments
+      .filter((pd) => {
+        const isCob = Boolean(pd.qr_token) || String(pd.tipo_pago || '').toUpperCase().includes('COBRADOR');
+        const fStr = String(pd.fecha || pd.created_at || '').slice(0, 10);
+        const inCycle = !systemCycle?.desde || (fStr >= systemCycle.desde && fStr <= (systemCycle.hasta || fStr));
+        return isCob && inCycle && !pd.rechazado;
+      })
+      .map((pd) => ({
+        id: String(pd.id),
+        fecha: String(pd.fecha || pd.created_at || '').slice(0, 10),
+        agencia: (pd.agencia || pd.nombre_agency || 'Agencia').trim().toUpperCase(),
+        moneda: normalizarMoneda(pd.moneda) as 'BS' | 'USD' | 'COP',
+        monto: Number(pd.monto) || 0,
+        qr_token: pd.qr_token,
+        referencia: pd.referencia,
+        cobrador_nombre: pd.cobrador_nombre || (pd.cobrador_id ? `Cobrador #${pd.cobrador_id}` : 'Cobrador de Ruta'),
+        cobrador_id: pd.cobrador_id,
+        liquidado_admin: Boolean(pd.liquidado_admin),
+        confirmado_supervisor: Boolean(pd.confirmado_supervisor || pd.confirmado),
+        fecha_escaneo_cobrador: pd.fecha_escaneo_cobrador,
+      }))
+      .sort((a, b) => (b.fecha_escaneo_cobrador || b.fecha).localeCompare(a.fecha_escaneo_cobrador || a.fecha));
+  }, [rawDailyPayments, systemCycle]);
+
   // CSV Export
   const handleExportCSV = () => {
     if (auditRows.length === 0) return;
@@ -326,22 +428,45 @@ export const PreClosureAuditTab: React.FC = () => {
           </p>
         </div>
 
-        <div className="flex flex-wrap items-center gap-2.5">
+        <div className="flex flex-wrap items-center gap-2">
+          {/* 1. Acta General de Arqueo */}
           <button
             onClick={() => setIsActaModalOpen(true)}
-            className="px-4 py-2.5 rounded-xl bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-400 hover:to-amber-500 text-slate-950 font-black text-xs shadow-lg shadow-amber-500/20 flex items-center gap-2 transition-all cursor-pointer"
+            className="px-3.5 py-2.5 rounded-xl bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-400 hover:to-amber-500 text-slate-950 font-black text-xs shadow-lg shadow-amber-500/20 flex items-center gap-1.5 transition-all cursor-pointer"
+            title="Acta General de Arqueo y Rendición de Puntos de Venta"
           >
             <FileText className="w-4 h-4" />
-            <span>📜 Generar Acta Oficial de Entrega</span>
+            <span>📜 Acta General</span>
+          </button>
+
+          {/* 2. Acta Operador de Confirmaciones */}
+          <button
+            onClick={() => setIsConfirmationActaOpen(true)}
+            className="px-3.5 py-2.5 rounded-xl bg-gradient-to-r from-sky-500 to-teal-500 hover:from-sky-400 hover:to-teal-400 text-slate-950 font-black text-xs shadow-lg shadow-sky-500/20 flex items-center gap-1.5 transition-all cursor-pointer"
+            title="Acta Oficial del Operador de Confirmaciones"
+          >
+            <ShieldCheck className="w-4 h-4" />
+            <span>🛡️ Acta Confirmaciones ({confirmationAuditItems.length})</span>
+          </button>
+
+          {/* 3. Acta Cobrador de Ruta */}
+          <button
+            onClick={() => setIsCollectorActaOpen(true)}
+            className="px-3.5 py-2.5 rounded-xl bg-gradient-to-r from-purple-500 to-indigo-500 hover:from-purple-400 hover:to-indigo-400 text-white font-black text-xs shadow-lg shadow-purple-500/20 flex items-center gap-1.5 transition-all cursor-pointer"
+            title="Acta Oficial y Desglose de Recaudaciones del Cobrador de Ruta"
+          >
+            <Bike className="w-4 h-4" />
+            <span>🛵 Acta Cobrador ({collectorDailyPayments.length})</span>
           </button>
 
           <button
             onClick={handleExportCSV}
             disabled={auditRows.length === 0}
-            className="px-3.5 py-2.5 rounded-xl bg-slate-800/80 hover:bg-slate-700 text-slate-300 text-xs font-bold flex items-center gap-1.5 transition-all border border-slate-700 cursor-pointer disabled:opacity-50"
+            className="px-3 py-2.5 rounded-xl bg-slate-800/80 hover:bg-slate-700 text-slate-300 text-xs font-bold flex items-center gap-1.5 transition-all border border-slate-700 cursor-pointer disabled:opacity-50"
+            title="Exportar archivo CSV"
           >
             <Download className="w-3.5 h-3.5" />
-            <span>Exportar CSV</span>
+            <span>CSV</span>
           </button>
 
           <button
@@ -710,7 +835,7 @@ export const PreClosureAuditTab: React.FC = () => {
         </div>
       </div>
 
-      {/* Modal Acta Oficial de Entrega */}
+      {/* Modal 1: Acta Oficial de Entrega General */}
       <DeliveryReportModal
         isOpen={isActaModalOpen}
         onClose={() => setIsActaModalOpen(false)}
@@ -720,6 +845,28 @@ export const PreClosureAuditTab: React.FC = () => {
         auditRows={auditRows}
         totalsByCurrency={totalsByCurrency}
       />
+
+      {/* Modal 2: Acta del Operador de Confirmaciones */}
+      <ConfirmationOperatorActaModal
+        isOpen={isConfirmationActaOpen}
+        onClose={() => setIsConfirmationActaOpen(false)}
+        systemCycle={systemCycle}
+        userName={user?.nombre || user?.email?.split('@')[0] || 'Operador de Confirmaciones'}
+        companyName="CORPORACION CALENDARIO, CA"
+        items={confirmationAuditItems}
+      />
+
+      {/* Modal 3: Acta de Entrega del Cobrador de Ruta */}
+      <CollectorDeliveryActaModal
+        isOpen={isCollectorActaOpen}
+        onClose={() => setIsCollectorActaOpen(false)}
+        systemCycle={systemCycle}
+        userName={user?.nombre || user?.email?.split('@')[0] || 'Administración'}
+        companyName="CORPORACION CALENDARIO, CA"
+        collectors={collectors}
+        dailyPayments={collectorDailyPayments}
+      />
     </div>
   );
 };
+
