@@ -2,7 +2,7 @@ import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import { supabase } from '../../lib/supabase';
 import { useAuth } from '../../context/AuthContext';
 import { formatCurrency, formatDate, normalizarMoneda } from '../../utils/formatters';
-import { getConsolidatedExpenses } from '../../utils/consolidations';
+import { getConsolidatedExpenses, getConsolidatedPayments, type ConsolidatedPaymentItem } from '../../utils/consolidations';
 import type { Agency, Currency, BankAccount } from '../../types';
 import {
   CreditCard,
@@ -62,6 +62,7 @@ export const PaymentsTab: React.FC = () => {
   const [bankAccounts, setBankAccounts] = useState<BankAccount[]>([]);
   const [sales, setSales] = useState<any[]>([]);
   const [expenses, setExpenses] = useState<any[]>([]);
+  const [consolidatedPayments, setConsolidatedPayments] = useState<ConsolidatedPaymentItem[]>([]);
 
   // Period Filter: default 'ciclo' filters by active operative cycle
   const [filterPeriod, setFilterPeriod] = useState<'ciclo' | 'todos'>('ciclo');
@@ -98,7 +99,7 @@ export const PaymentsTab: React.FC = () => {
     setMessage(null);
 
     try {
-      const [psRes, pbRes, pdRes, agRes, monRes, cbRes, salesRes, gConsolidated] = await Promise.all([
+      const [psRes, pbRes, pdRes, agRes, monRes, cbRes, salesRes, gConsolidated, pConsolidated] = await Promise.all([
         supabase.from('pagos_semana').select('*').eq('user_id', effectiveUserId).order('id', { ascending: false }),
         supabase.from('cda_pagos_bancarios').select('*').eq('user_id', effectiveUserId).order('id', { ascending: false }),
         supabase.from('cda_pagos_diarios').select('*').eq('user_id', effectiveUserId).order('id', { ascending: false }),
@@ -107,6 +108,7 @@ export const PaymentsTab: React.FC = () => {
         supabase.from('cuentas_bancarias').select('*').eq('user_id', effectiveUserId).order('banco', { ascending: true }),
         supabase.from('carga_actual').select('*').eq('user_id', effectiveUserId),
         getConsolidatedExpenses(effectiveUserId, { fechaDesde: systemCycle.desde, fechaHasta: systemCycle.hasta }),
+        getConsolidatedPayments(effectiveUserId, { fechaDesde: systemCycle.desde, fechaHasta: systemCycle.hasta }),
       ]);
 
       const loadedAgencies = agRes.data || [];
@@ -115,6 +117,7 @@ export const PaymentsTab: React.FC = () => {
       setBankAccounts(cbRes.data || []);
       setSales(salesRes.data || []);
       setExpenses(gConsolidated);
+      setConsolidatedPayments(pConsolidated);
 
       // Opción neutral por defecto: solo conservar agencia si el usuario ya la había seleccionado
       setFormAgencia((prev) => {
@@ -259,11 +262,10 @@ export const PaymentsTab: React.FC = () => {
     }
   }, [availableAgencyCurrencies, formMoneda]);
 
-  // Live Balances per Agency for BS, USD, COP (matching Streamlit pagos_gastos.py)
+  // Live Balances per Agency for BS, USD, COP (matching PreClosureAuditTab and WeeklyClosureTab exactly)
   const agencyBalances = useMemo(() => {
     if (!selectedAgencyObj) return { BS: 0, USD: 0, COP: 0 };
     const agNom = String(selectedAgencyObj.nombre_agencia || '').trim().toUpperCase();
-    const partAg = Number(selectedAgencyObj.participacion_ag || 0) / 100;
 
     const result = { BS: 0, USD: 0, COP: 0 };
 
@@ -271,34 +273,67 @@ export const PaymentsTab: React.FC = () => {
       const colIni = m === 'BS' ? 'saldo_inicial_bs' : m === 'USD' ? 'saldo_inicial_usd' : 'saldo_inicial_cop';
       const sIni = Number(selectedAgencyObj[colIni] || 0);
 
-      // Ventas
+      // Ventas / Utilidad operativa neta del ciclo
       const agSales = sales.filter((s) => String(s.agencia || '').trim().toUpperCase() === agNom && normalizarMoneda(s.moneda) === m);
-      const vNeto = agSales.reduce((acc, curr) => acc + Number(curr.neto || 0), 0);
-      const uNeta = Math.round((vNeto * (1 - partAg)) * 100) / 100;
+      const vNeto = agSales.reduce((acc, curr) => acc + Number(curr.neto !== undefined && curr.neto !== null ? curr.neto : curr.util_op || 0), 0);
 
-      // Gastos (solo confirmados)
+      // Gastos (solo confirmados en el ciclo)
       const agGastos = expenses.filter((g) => String(g.agencia || '').trim().toUpperCase() === agNom && normalizarMoneda(g.moneda) === m && Boolean(g.confirmado));
       const gTot = agGastos.reduce((acc, curr) => acc + Number(curr.monto || 0), 0);
 
-      // Pagos ordinarios recibidos (disminuyen saldo deudor) - SOLO CONFIRMADOS
-      const pCobros = payments
-        .filter((p) => String(p.agencia || '').trim().toUpperCase() === agNom && normalizarMoneda(p.moneda) === m && !String(p.tipo_pago || '').toUpperCase().includes('PREMIO') && p.confirmado)
-        .reduce((acc, curr) => acc + Number(curr.monto || 0), 0);
+      // Pagos y Cobros confirmados en el ciclo (utilizando la consolidación unificada)
+      const agPayments = consolidatedPayments.filter((p) => String(p.agencia || '').trim().toUpperCase() === agNom && normalizarMoneda(p.moneda) === m && Boolean(p.confirmado));
+      let pPremios = 0;
+      let pCobros = 0;
+      agPayments.forEach((p) => {
+        const mto = Number(p.monto || 0);
+        const tipo = String(p.tipo_pago || '').toUpperCase();
+        if (tipo.includes('PREMIO')) pPremios += mto;
+        else pCobros += mto;
+      });
 
-      // Reposición de premios pagados por operadora (aumenta o resta) - SOLO CONFIRMADOS
-      const pPremios = payments
-        .filter((p) => String(p.agencia || '').trim().toUpperCase() === agNom && normalizarMoneda(p.moneda) === m && String(p.tipo_pago || '').toUpperCase().includes('PREMIO') && p.confirmado)
-        .reduce((acc, curr) => acc + Number(curr.monto || 0), 0);
-
-      const pNetos = pCobros - pPremios;
-      const finalBalance = Math.round((sIni + uNeta - gTot - pNetos) * 100) / 100;
+      // Saldo Final = Arrastre Inicial + Venta Neta - Gastos - Cobros + Premios
+      const finalBalance = Math.round((sIni + vNeto - gTot - pCobros + pPremios) * 100) / 100;
       result[m] = finalBalance;
     });
 
     return result;
-  }, [selectedAgencyObj, sales, expenses, payments]);
+  }, [selectedAgencyObj, sales, expenses, consolidatedPayments]);
 
-  // Agency transit payments (payments reported but not yet confirmed)
+  // Audit breakdown details for the selected agency (for transparent inspection)
+  const agencyAuditDetails = useMemo(() => {
+    if (!selectedAgencyObj) return null;
+    const agNom = String(selectedAgencyObj.nombre_agencia || '').trim().toUpperCase();
+    const details: Record<string, { sIni: number; vNeto: number; gTot: number; pCobros: number; pPremios: number; finalBalance: number }> = {};
+
+    (['BS', 'USD', 'COP'] as const).forEach((m) => {
+      const colIni = m === 'BS' ? 'saldo_inicial_bs' : m === 'USD' ? 'saldo_inicial_usd' : 'saldo_inicial_cop';
+      const sIni = Number(selectedAgencyObj[colIni] || 0);
+
+      const agSales = sales.filter((s) => String(s.agencia || '').trim().toUpperCase() === agNom && normalizarMoneda(s.moneda) === m);
+      const vNeto = agSales.reduce((acc, curr) => acc + Number(curr.neto !== undefined && curr.neto !== null ? curr.neto : curr.util_op || 0), 0);
+
+      const agGastos = expenses.filter((g) => String(g.agencia || '').trim().toUpperCase() === agNom && normalizarMoneda(g.moneda) === m && Boolean(g.confirmado));
+      const gTot = agGastos.reduce((acc, curr) => acc + Number(curr.monto || 0), 0);
+
+      const agPayments = consolidatedPayments.filter((p) => String(p.agencia || '').trim().toUpperCase() === agNom && normalizarMoneda(p.moneda) === m && Boolean(p.confirmado));
+      let pPremios = 0;
+      let pCobros = 0;
+      agPayments.forEach((p) => {
+        const mto = Number(p.monto || 0);
+        const tipo = String(p.tipo_pago || '').toUpperCase();
+        if (tipo.includes('PREMIO')) pPremios += mto;
+        else pCobros += mto;
+      });
+
+      const finalBalance = Math.round((sIni + vNeto - gTot - pCobros + pPremios) * 100) / 100;
+      details[m] = { sIni, vNeto, gTot, pCobros, pPremios, finalBalance };
+    });
+
+    return details;
+  }, [selectedAgencyObj, sales, expenses, consolidatedPayments]);
+
+  // Agency transit payments (payments reported in the active cycle but not yet confirmed)
   const agencyTransit = useMemo(() => {
     if (!selectedAgencyObj) return { BS: 0, USD: 0, COP: 0 };
     const agNom = String(selectedAgencyObj.nombre_agencia || '').trim().toUpperCase();
@@ -306,18 +341,19 @@ export const PaymentsTab: React.FC = () => {
 
     (['BS', 'USD', 'COP'] as const).forEach((m) => {
       result[m] = payments
-        .filter(
-          (p) =>
-            String(p.agencia || '').trim().toUpperCase() === agNom &&
-            normalizarMoneda(p.moneda) === m &&
-            !p.confirmado &&
-            !p.rechazado
-        )
+        .filter((p) => {
+          const matchAg = String(p.agencia || '').trim().toUpperCase() === agNom;
+          const matchMon = normalizarMoneda(p.moneda) === m;
+          const isPending = !p.confirmado && !p.rechazado;
+          const fStr = (p.fecha || '').slice(0, 10);
+          const inCycle = (!systemCycle.desde || fStr >= systemCycle.desde) && (!systemCycle.hasta || fStr <= systemCycle.hasta);
+          return matchAg && matchMon && isPending && inCycle;
+        })
         .reduce((acc, curr) => acc + Number(curr.monto || 0), 0);
     });
 
     return result;
-  }, [selectedAgencyObj, payments]);
+  }, [selectedAgencyObj, payments, systemCycle.desde, systemCycle.hasta]);
 
   // Bank Accounts / Destination Accounts filtered by Currency
   const bankAccountOptions = useMemo(() => {
@@ -815,56 +851,81 @@ export const PaymentsTab: React.FC = () => {
             </h4>
 
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-              {/* Saldo BS */}
-              <div className="bg-[#071217] border border-slate-800 p-3.5 rounded-2xl flex flex-col justify-between">
-                <div>
-                  <div className="text-[11px] font-bold text-slate-400 uppercase">Saldo BS</div>
-                  <div className={`text-xl sm:text-2xl font-black font-mono mt-0.5 ${agencyBalances.BS > 0.5 ? 'text-white' : 'text-emerald-400'}`}>
-                    {agencyBalances.BS.toLocaleString('es-VE', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                  </div>
-                </div>
-                {agencyTransit.BS > 0 && (
-                  <div className="mt-2 pt-1.5 border-t border-slate-800/80">
-                    <span className="text-[10px] font-bold font-mono text-amber-400 block">
-                      ⏳ {agencyTransit.BS.toLocaleString('es-VE', { minimumFractionDigits: 2 })} en tránsito
-                    </span>
-                  </div>
-                )}
-              </div>
+              {(['BS', 'USD', 'COP'] as const).map((m) => {
+                const bal = agencyBalances[m];
+                const det = agencyAuditDetails ? agencyAuditDetails[m] : null;
+                const transit = agencyTransit[m];
+                const isFavor = bal < -0.05;
+                const isDeuda = bal > 0.05;
 
-              {/* Saldo USD */}
-              <div className="bg-[#071217] border border-slate-800 p-3.5 rounded-2xl flex flex-col justify-between">
-                <div>
-                  <div className="text-[11px] font-bold text-slate-400 uppercase">Saldo USD</div>
-                  <div className={`text-xl sm:text-2xl font-black font-mono mt-0.5 ${agencyBalances.USD > 0.5 ? 'text-white' : 'text-emerald-400'}`}>
-                    {agencyBalances.USD.toLocaleString('es-VE', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                  </div>
-                </div>
-                {agencyTransit.USD > 0 && (
-                  <div className="mt-2 pt-1.5 border-t border-slate-800/80">
-                    <span className="text-[10px] font-bold font-mono text-amber-400 block">
-                      ⏳ {agencyTransit.USD.toLocaleString('es-VE', { minimumFractionDigits: 2 })} en tránsito
-                    </span>
-                  </div>
-                )}
-              </div>
+                return (
+                  <div key={m} className="bg-[#071217] border border-slate-800 p-3.5 rounded-2xl flex flex-col justify-between shadow-md">
+                    <div>
+                      <div className="flex justify-between items-center gap-1">
+                        <span className="text-[11px] font-bold text-slate-400 uppercase">Saldo {m}</span>
+                        {isFavor ? (
+                          <span className="text-[9px] font-black uppercase px-2 py-0.5 rounded-full bg-cyan-500/20 text-cyan-400 border border-cyan-500/30">
+                            🔵 A Favor Agencia
+                          </span>
+                        ) : isDeuda ? (
+                          <span className="text-[9px] font-black uppercase px-2 py-0.5 rounded-full bg-rose-500/20 text-rose-400 border border-rose-500/30">
+                            🔴 Debe a Operadora
+                          </span>
+                        ) : (
+                          <span className="text-[9px] font-black uppercase px-2 py-0.5 rounded-full bg-emerald-500/20 text-emerald-400 border border-emerald-500/30">
+                            🟢 Al Día
+                          </span>
+                        )}
+                      </div>
 
-              {/* Saldo COP */}
-              <div className="bg-[#071217] border border-slate-800 p-3.5 rounded-2xl flex flex-col justify-between">
-                <div>
-                  <div className="text-[11px] font-bold text-slate-400 uppercase">Saldo COP</div>
-                  <div className={`text-xl sm:text-2xl font-black font-mono mt-0.5 ${agencyBalances.COP > 0.5 ? 'text-white' : 'text-emerald-400'}`}>
-                    {agencyBalances.COP.toLocaleString('es-VE', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                      <div
+                        className={`text-xl sm:text-2xl font-black font-mono mt-1 ${
+                          isFavor ? 'text-cyan-400' : isDeuda ? 'text-rose-400' : 'text-emerald-400'
+                        }`}
+                      >
+                        {bal.toLocaleString('es-VE', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} {m === 'BS' ? 'Bs.' : m}
+                      </div>
+
+                      {det && (
+                        <div className="mt-2.5 pt-2 border-t border-slate-800/80 text-[10px] text-slate-400 space-y-0.5 font-mono">
+                          <div className="flex justify-between">
+                            <span>Arrastre Inicial:</span>
+                            <span className="text-slate-300 font-semibold">{formatCurrency(det.sIni, m as any)}</span>
+                          </div>
+                          <div className="flex justify-between">
+                            <span>Venta Neta (+):</span>
+                            <span className="text-emerald-400 font-semibold">+{formatCurrency(det.vNeto, m as any)}</span>
+                          </div>
+                          {det.gTot > 0 && (
+                            <div className="flex justify-between">
+                              <span>Gastos (-):</span>
+                              <span className="text-rose-400 font-semibold">-{formatCurrency(det.gTot, m as any)}</span>
+                            </div>
+                          )}
+                          <div className="flex justify-between">
+                            <span>Cobros Ciclo (-):</span>
+                            <span className="text-cyan-400 font-semibold">-{formatCurrency(det.pCobros, m as any)}</span>
+                          </div>
+                          {det.pPremios > 0 && (
+                            <div className="flex justify-between">
+                              <span>Premios Repuestos (+):</span>
+                              <span className="text-amber-400 font-semibold">+{formatCurrency(det.pPremios, m as any)}</span>
+                            </div>
+                          )}
+                        </div>
+                      )}
+                    </div>
+
+                    {transit > 0 && (
+                      <div className="mt-2.5 pt-1.5 border-t border-slate-800/80">
+                        <span className="text-[10px] font-bold font-mono text-amber-400 block">
+                          ⏳ {transit.toLocaleString('es-VE', { minimumFractionDigits: 2 })} en tránsito
+                        </span>
+                      </div>
+                    )}
                   </div>
-                </div>
-                {agencyTransit.COP > 0 && (
-                  <div className="mt-2 pt-1.5 border-t border-slate-800/80">
-                    <span className="text-[10px] font-bold font-mono text-amber-400 block">
-                      ⏳ {agencyTransit.COP.toLocaleString('es-VE', { minimumFractionDigits: 2 })} en tránsito
-                    </span>
-                  </div>
-                )}
-              </div>
+                );
+              })}
             </div>
           </div>
         ) : (
