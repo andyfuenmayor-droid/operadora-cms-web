@@ -15,7 +15,7 @@ export interface ConfirmationAuditItem {
 }
 
 interface ConfirmationOperatorActaModalProps {
-  isOpen: boolean;
+  isOpen?: boolean;
   onClose: () => void;
   systemCycle: { semana: string; desde: string; hasta: string; tipo: string };
   userName?: string;
@@ -24,7 +24,7 @@ interface ConfirmationOperatorActaModalProps {
 }
 
 export const ConfirmationOperatorActaModal: React.FC<ConfirmationOperatorActaModalProps> = ({
-  isOpen,
+  isOpen = true,
   onClose,
   systemCycle,
   userName = 'Operador de Confirmaciones',
@@ -69,8 +69,6 @@ export const ConfirmationOperatorActaModal: React.FC<ConfirmationOperatorActaMod
 
     return res;
   }, [items]);
-
-  if (!isOpen) return null;
 
   const todayFormatted = new Date().toLocaleDateString('es-VE', {
     day: '2-digit',
@@ -336,7 +334,7 @@ export const ConfirmationOperatorActaModal: React.FC<ConfirmationOperatorActaMod
             </div>
             <div>
               <div class="sig-line">AUDITADO POR</div>
-              <div class="sig-role">Gerencia Operativa / Auditoría</div>
+              <div class="sig-role">Contabilidad / Auditoría</div>
               <div class="sig-ci">C.I: ____________________</div>
             </div>
           </div>
@@ -613,7 +611,7 @@ export const ConfirmationOperatorActaModal: React.FC<ConfirmationOperatorActaMod
               <div className="border-t border-slate-500 pt-1 font-bold text-white">
                 AUDITADO POR
               </div>
-              <div className="text-slate-400 text-[10px]">Gerencia Operativa / Auditoría</div>
+              <div className="text-slate-400 text-[10px]">Contabilidad / Auditoría</div>
               <div className="text-[10px] text-slate-500 pt-3">C.I: ____________________</div>
             </div>
           </div>

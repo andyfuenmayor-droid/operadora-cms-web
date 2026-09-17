@@ -18,7 +18,7 @@ export interface CollectorDailyPaymentItem {
 }
 
 interface CollectorDeliveryActaModalProps {
-  isOpen: boolean;
+  isOpen?: boolean;
   onClose: () => void;
   systemCycle: { semana: string; desde: string; hasta: string; tipo: string };
   userName?: string;
@@ -28,7 +28,7 @@ interface CollectorDeliveryActaModalProps {
 }
 
 export const CollectorDeliveryActaModal: React.FC<CollectorDeliveryActaModalProps> = ({
-  isOpen,
+  isOpen = true,
   onClose,
   systemCycle,
   userName = 'Administración',
@@ -119,8 +119,6 @@ export const CollectorDeliveryActaModal: React.FC<CollectorDeliveryActaModalProp
     const found = collectorOptions.find((c) => c.id === selectedCollector);
     return found ? found.nombre.toUpperCase() : `COBRADOR ${selectedCollector}`;
   }, [selectedCollector, collectorOptions]);
-
-  if (!isOpen) return null;
 
   const todayFormatted = new Date().toLocaleDateString('es-VE', {
     day: '2-digit',
@@ -366,7 +364,7 @@ export const CollectorDeliveryActaModal: React.FC<CollectorDeliveryActaModalProp
           <div class="signatures-row">
             <div>
               <div class="sig-line">ENTREGADO POR</div>
-              <div class="sig-role">Cobrador de Ruta</div>
+              <div class="sig-role">Supervisor / Cobrador de Ruta</div>
               <div class="sig-ci">C.I: ____________________</div>
             </div>
             <div>
@@ -375,7 +373,7 @@ export const CollectorDeliveryActaModal: React.FC<CollectorDeliveryActaModalProp
               <div class="sig-ci">C.I: ____________________</div>
             </div>
             <div>
-              <div class="sig-line">SUPERVISADO POR</div>
+              <div class="sig-line">AUDITADO POR</div>
               <div class="sig-role">Auditoría / Supervisor de Ruta</div>
               <div class="sig-ci">C.I: ____________________</div>
             </div>
@@ -637,7 +635,7 @@ export const CollectorDeliveryActaModal: React.FC<CollectorDeliveryActaModalProp
               <div className="border-t border-slate-500 pt-1 font-bold text-white">
                 ENTREGADO POR
               </div>
-              <div className="text-slate-400 text-[10px]">Cobrador de Ruta</div>
+              <div className="text-slate-400 text-[10px]">Supervisor / Cobrador de Ruta</div>
               <div className="text-[10px] text-slate-500 pt-3">C.I: ____________________</div>
             </div>
 
@@ -651,7 +649,7 @@ export const CollectorDeliveryActaModal: React.FC<CollectorDeliveryActaModalProp
 
             <div className="space-y-1">
               <div className="border-t border-slate-500 pt-1 font-bold text-white">
-                SUPERVISADO POR
+                AUDITADO POR
               </div>
               <div className="text-slate-400 text-[10px]">Auditoría / Supervisor de Ruta</div>
               <div className="text-[10px] text-slate-500 pt-3">C.I: ____________________</div>

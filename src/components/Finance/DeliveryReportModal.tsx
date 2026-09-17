@@ -24,7 +24,7 @@ export interface PreClosureAgencyRow {
 }
 
 interface DeliveryReportModalProps {
-  isOpen: boolean;
+  isOpen?: boolean;
   onClose: () => void;
   systemCycle: { semana: string; desde: string; hasta: string; tipo: string };
   userName?: string;
@@ -45,7 +45,7 @@ interface DeliveryReportModalProps {
 }
 
 export const DeliveryReportModal: React.FC<DeliveryReportModalProps> = ({
-  isOpen,
+  isOpen = true,
   onClose,
   systemCycle,
   userName = 'Administración',
@@ -53,8 +53,6 @@ export const DeliveryReportModal: React.FC<DeliveryReportModalProps> = ({
   auditRows,
   totalsByCurrency,
 }) => {
-  if (!isOpen) return null;
-
   const todayFormatted = new Date().toLocaleDateString('es-VE', {
     day: '2-digit',
     month: '2-digit',

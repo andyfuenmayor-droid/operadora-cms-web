@@ -28,7 +28,12 @@ import {
   Receipt,
   Layers,
   Award,
-  Wallet
+  Wallet,
+  ChevronDown,
+  ChevronRight,
+  ChevronUp,
+  Eye,
+  ExternalLink
 } from 'lucide-react';
 import { DeliveryReportModal, type PreClosureAgencyRow } from './DeliveryReportModal';
 import { ConfirmationOperatorActaModal, type ConfirmationAuditItem } from './ConfirmationOperatorActaModal';
@@ -49,6 +54,10 @@ export const PreClosureAuditTab: React.FC = () => {
   const [selectedCurrency, setSelectedCurrency] = useState<'ALL' | 'BS' | 'USD' | 'COP'>('ALL');
   const [searchQuery, setSearchQuery] = useState('');
   const [statusFilter, setStatusFilter] = useState<'all' | 'pagado' | 'pendiente' | 'favor'>('all');
+
+  // Inline Row Expansion for Detailed Collector and Confirmation Movements
+  const [expandedAgencyKey, setExpandedAgencyKey] = useState<string | null>(null);
+  const [drawerTab, setDrawerTab] = useState<'all' | 'cobradores' | 'confirmaciones' | 'gastos' | 'efectivo'>('all');
 
   // Modals for Actas de Entrega
   const [isActaModalOpen, setIsActaModalOpen] = useState(false);
@@ -404,6 +413,58 @@ export const PreClosureAuditTab: React.FC = () => {
     URL.revokeObjectURL(url);
   };
 
+  const handleToggleRow = (key: string, initialTab?: 'all' | 'cobradores' | 'confirmaciones' | 'gastos' | 'efectivo') => {
+    if (expandedAgencyKey === key && (!initialTab || drawerTab === initialTab)) {
+      setExpandedAgencyKey(null);
+    } else {
+      setExpandedAgencyKey(key);
+      if (initialTab) {
+        setDrawerTab(initialTab);
+      }
+    }
+  };
+
+  const getAgencyCollectorMovements = (entidad: string, moneda: string) => {
+    return rawDailyPayments
+      .filter((p) => {
+        const matchAg = (p.agencia || p.nombre_agency || '').trim().toUpperCase() === entidad.trim().toUpperCase();
+        const matchMon = normalizarMoneda(p.moneda) === moneda;
+        const isCob = Boolean(p.qr_token) || String(p.tipo_pago || '').toUpperCase().includes('COBRADOR');
+        const fStr = String(p.fecha || p.created_at || '').slice(0, 10);
+        const inCycle = !systemCycle?.desde || (fStr >= systemCycle.desde && fStr <= (systemCycle.hasta || fStr));
+        return matchAg && matchMon && isCob && inCycle && !p.rechazado;
+      })
+      .sort((a, b) => (b.fecha_escaneo_cobrador || b.fecha || '').localeCompare(a.fecha_escaneo_cobrador || a.fecha || ''));
+  };
+
+  const getAgencyConfirmationMovements = (entidad: string, moneda: string) => {
+    return confirmationAuditItems.filter((item) => {
+      return item.agencia.trim().toUpperCase() === entidad.trim().toUpperCase() && item.moneda === moneda;
+    });
+  };
+
+  const getAgencyExpenses = (entidad: string, moneda: string) => {
+    return expenses.filter((g) => {
+      const matchAg = g.agencia.trim().toUpperCase() === entidad.trim().toUpperCase();
+      const matchMon = normalizarMoneda(g.moneda) === moneda;
+      const fStr = String(g.fecha || g.created_at || '').slice(0, 10);
+      const inCycle = !systemCycle?.desde || (fStr >= systemCycle.desde && fStr <= (systemCycle.hasta || fStr));
+      return matchAg && matchMon && Boolean(g.confirmado) && inCycle && !g.rechazado;
+    });
+  };
+
+  const getAgencyCashMovements = (entidad: string, moneda: string) => {
+    return rawDailyPayments.filter((pd) => {
+      const matchAg = (pd.agencia || pd.nombre_agency || '').trim().toUpperCase() === entidad.trim().toUpperCase();
+      const matchMon = normalizarMoneda(pd.moneda) === moneda;
+      const isCob = Boolean(pd.qr_token) || String(pd.tipo_pago || '').toUpperCase().includes('COBRADOR');
+      const isConf = Boolean(pd.confirmado) || Boolean(pd.confirmado_supervisor);
+      const fStr = String(pd.fecha || pd.created_at || '').slice(0, 10);
+      const inCycle = !systemCycle?.desde || (fStr >= systemCycle.desde && fStr <= (systemCycle.hasta || fStr));
+      return matchAg && matchMon && !isCob && isConf && inCycle && !pd.rechazado;
+    });
+  };
+
   const currentTotals = selectedCurrency === 'ALL' ? totalsByCurrency['COP'] || totalsByCurrency['BS'] : totalsByCurrency[selectedCurrency];
 
   return (
@@ -743,92 +804,581 @@ export const PreClosureAuditTab: React.FC = () => {
                   </td>
                 </tr>
               ) : (
-                filteredRows.map((row) => (
-                  <tr key={`${row.entidad}_${row.moneda}`} className="hover:bg-slate-800/30 transition-colors whitespace-nowrap">
-                    <td className="py-3 px-3.5 font-sans font-bold text-white flex items-center gap-2">
-                      <Building2 className="w-3.5 h-3.5 text-slate-400 shrink-0" />
-                      <span>{row.entidad}</span>
-                    </td>
+                filteredRows.map((row) => {
+                  const rowKey = `${row.entidad}_${row.moneda}`;
+                  const isExpanded = expandedAgencyKey === rowKey;
+                  const agencyCollectors = isExpanded ? getAgencyCollectorMovements(row.entidad, row.moneda) : [];
+                  const agencyConfirmations = isExpanded ? getAgencyConfirmationMovements(row.entidad, row.moneda) : [];
+                  const agencyExpensesList = isExpanded ? getAgencyExpenses(row.entidad, row.moneda) : [];
+                  const agencyCashList = isExpanded ? getAgencyCashMovements(row.entidad, row.moneda) : [];
+                  const totalCobros = (row.cobrador_ruta || 0) + (row.efectivo_taquilla || 0) + (row.bancos || 0);
 
-                    <td className="py-3 px-2 text-center">
-                      <span className="px-2 py-0.5 rounded-md bg-slate-800 text-slate-300 font-bold text-[10px]">
-                        {row.moneda}
-                      </span>
-                    </td>
+                  return (
+                    <React.Fragment key={rowKey}>
+                      <tr
+                        onClick={() => handleToggleRow(rowKey)}
+                        className={`transition-colors whitespace-nowrap cursor-pointer select-none ${
+                          isExpanded ? 'bg-slate-800/60 border-l-4 border-l-emerald-400' : 'hover:bg-slate-800/30'
+                        }`}
+                      >
+                        <td className="py-3 px-3.5 font-sans font-bold text-white flex items-center gap-2">
+                          <button
+                            type="button"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              handleToggleRow(rowKey);
+                            }}
+                            className="p-1 rounded-md hover:bg-slate-700/60 text-slate-400 hover:text-white transition-colors cursor-pointer"
+                            title="Expandir movimientos de cobradores y confirmaciones"
+                          >
+                            {isExpanded ? (
+                              <ChevronDown className="w-3.5 h-3.5 text-emerald-400" />
+                            ) : (
+                              <ChevronRight className="w-3.5 h-3.5 text-slate-400" />
+                            )}
+                          </button>
+                          <Building2 className="w-3.5 h-3.5 text-slate-400 shrink-0" />
+                          <span className="hover:text-emerald-300 transition-colors">{row.entidad}</span>
+                          {(row.cobrador_ruta > 0 || row.bancos > 0 || row.reposicion_premios > 0) && (
+                            <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 shrink-0" title="Contiene movimientos auditados" />
+                          )}
+                        </td>
 
-                    <td className="py-3 px-3 text-right text-slate-400">
-                      {formatCurrency(row.saldo_anterior, row.moneda)}
-                    </td>
+                        <td className="py-3 px-2 text-center">
+                          <span className="px-2 py-0.5 rounded-md bg-slate-800 text-slate-300 font-bold text-[10px]">
+                            {row.moneda}
+                          </span>
+                        </td>
 
-                    <td className={`py-3 px-3 text-right font-semibold ${row.venta_neta >= 0 ? 'text-emerald-400' : 'text-rose-400'}`}>
-                      {formatCurrency(row.venta_neta, row.moneda)}
-                    </td>
+                        <td className="py-3 px-3 text-right text-slate-400">
+                          {formatCurrency(row.saldo_anterior, row.moneda)}
+                        </td>
 
-                    <td className="py-3 px-3 text-right text-rose-400">
-                      {row.gastos > 0 ? formatCurrency(row.gastos, row.moneda) : '-'}
-                    </td>
+                        <td className={`py-3 px-3 text-right font-semibold ${row.venta_neta >= 0 ? 'text-emerald-400' : 'text-rose-400'}`}>
+                          {formatCurrency(row.venta_neta, row.moneda)}
+                        </td>
 
-                    {/* 🛵 Cobrador En Ruta */}
-                    <td className="py-3 px-3 text-right">
-                      {row.cobrador_en_ruta && row.cobrador_en_ruta > 0 ? (
-                        <span className="font-semibold text-amber-400 bg-amber-500/15 border border-amber-500/30 px-2 py-0.5 rounded-lg inline-block">
-                          {formatCurrency(row.cobrador_en_ruta, row.moneda)}
-                        </span>
-                      ) : (
-                        <span className="text-slate-600">-</span>
+                        <td
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            handleToggleRow(rowKey, 'gastos');
+                          }}
+                          className="py-3 px-3 text-right text-rose-400 hover:underline hover:text-rose-300 transition-all cursor-pointer"
+                          title="Click para ver gastos operativos"
+                        >
+                          {row.gastos > 0 ? formatCurrency(row.gastos, row.moneda) : '-'}
+                        </td>
+
+                        {/* 🛵 Cobrador En Ruta */}
+                        <td
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            handleToggleRow(rowKey, 'cobradores');
+                          }}
+                          className="py-3 px-3 text-right cursor-pointer"
+                          title="Click para ver cobranzas en ruta"
+                        >
+                          {row.cobrador_en_ruta && row.cobrador_en_ruta > 0 ? (
+                            <span className="font-semibold text-amber-400 bg-amber-500/15 hover:bg-amber-500/25 border border-amber-500/30 px-2 py-0.5 rounded-lg inline-block transition-all hover:scale-105">
+                              {formatCurrency(row.cobrador_en_ruta, row.moneda)}
+                            </span>
+                          ) : (
+                            <span className="text-slate-600">-</span>
+                          )}
+                        </td>
+
+                        {/* 🏛️ Liquidado Admin */}
+                        <td
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            handleToggleRow(rowKey, 'cobradores');
+                          }}
+                          className="py-3 px-3 text-right cursor-pointer"
+                          title="Click para ver cobranzas liquidadas"
+                        >
+                          {row.cobrador_liquidado && row.cobrador_liquidado > 0 ? (
+                            <span className="font-semibold text-emerald-400 bg-emerald-500/15 hover:bg-emerald-500/25 border border-emerald-500/30 px-2 py-0.5 rounded-lg inline-block transition-all hover:scale-105">
+                              {formatCurrency(row.cobrador_liquidado, row.moneda)}
+                            </span>
+                          ) : (
+                            <span className="text-slate-600">-</span>
+                          )}
+                        </td>
+
+                        {/* 💵 Efectivo Taquilla */}
+                        <td
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            handleToggleRow(rowKey, 'efectivo');
+                          }}
+                          className="py-3 px-3 text-right text-sky-300 hover:underline hover:text-sky-200 transition-all cursor-pointer"
+                          title="Click para ver entregas de efectivo en taquilla"
+                        >
+                          {row.efectivo_taquilla > 0 ? formatCurrency(row.efectivo_taquilla, row.moneda) : '-'}
+                        </td>
+
+                        {/* 🏛️ Bancos */}
+                        <td
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            handleToggleRow(rowKey, 'confirmaciones');
+                          }}
+                          className="py-3 px-3 text-right text-cyan-400 hover:underline hover:text-cyan-300 transition-all cursor-pointer"
+                          title="Click para ver transferencias bancarias verificadas"
+                        >
+                          {row.bancos > 0 ? formatCurrency(row.bancos, row.moneda) : '-'}
+                        </td>
+
+                        {/* 🏆 Reposición Premios */}
+                        <td
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            handleToggleRow(rowKey, 'confirmaciones');
+                          }}
+                          className="py-3 px-3 text-right text-amber-400 font-bold hover:underline hover:text-amber-300 transition-all cursor-pointer"
+                          title="Click para ver reposición de premios"
+                        >
+                          {row.reposicion_premios > 0 ? `+${formatCurrency(row.reposicion_premios, row.moneda)}` : '-'}
+                        </td>
+
+                        {/* Saldo Final */}
+                        <td className={`py-3 px-3 text-right font-black text-sm ${row.saldo_final > 0 ? 'text-amber-400' : row.saldo_final < 0 ? 'text-rose-400' : 'text-emerald-400'}`}>
+                          {formatCurrency(row.saldo_final, row.moneda)}
+                        </td>
+
+                        {/* Estado */}
+                        <td className="py-3 px-3 text-center font-sans">
+                          {row.status === 'pagado' ? (
+                            <span className="px-2.5 py-0.5 rounded-full text-[10px] font-bold uppercase bg-emerald-500/15 text-emerald-400 border border-emerald-500/30 inline-flex items-center gap-1">
+                              <CheckCircle2 className="w-3 h-3" />
+                              Pagado
+                            </span>
+                          ) : row.status === 'pendiente' ? (
+                            <span className="px-2.5 py-0.5 rounded-full text-[10px] font-bold uppercase bg-amber-500/15 text-amber-400 border border-amber-500/30">
+                              Operadora
+                            </span>
+                          ) : (
+                            <span className="px-2.5 py-0.5 rounded-full text-[10px] font-bold uppercase bg-rose-500/15 text-rose-400 border border-rose-500/30">
+                              Agencia
+                            </span>
+                          )}
+                        </td>
+                      </tr>
+
+                      {/* INLINE EXPANDED DRAWER FOR COBRADORES & CONFIRMACIONES */}
+                      {isExpanded && (
+                        <tr className="bg-[#08151D] border-y-2 border-emerald-500/40 animate-fade-in">
+                          <td colSpan={12} className="p-4 sm:p-6 space-y-4">
+                            {/* Drawer Header & Equation Bar */}
+                            <div className="flex flex-col md:flex-row md:items-center justify-between gap-3 pb-3 border-b border-slate-800">
+                              <div className="flex items-center gap-2.5">
+                                <span className="p-2 rounded-xl bg-emerald-500/15 text-emerald-400 border border-emerald-500/30">
+                                  <Building2 className="w-4 h-4" />
+                                </span>
+                                <div>
+                                  <h5 className="text-sm font-black text-white flex items-center gap-2">
+                                    <span>{row.entidad}</span>
+                                    <span className="px-2 py-0.5 rounded bg-slate-800 text-slate-300 text-[10px] font-mono">
+                                      {row.moneda}
+                                    </span>
+                                  </h5>
+                                  <span className="text-[11px] text-slate-400">
+                                    Auditoría detallada de recaudaciones por cobrador y confirmaciones de tesorería del ciclo activo
+                                  </span>
+                                </div>
+                              </div>
+
+                              <div className="flex flex-wrap items-center gap-2">
+                                <button
+                                  type="button"
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    setIsCollectorActaOpen(true);
+                                  }}
+                                  className="px-3 py-1.5 rounded-xl bg-purple-500/15 hover:bg-purple-500/25 text-purple-300 border border-purple-500/30 text-[11px] font-bold flex items-center gap-1.5 cursor-pointer transition-all"
+                                >
+                                  <Bike className="w-3.5 h-3.5" />
+                                  <span>Acta Cobrador</span>
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    setIsConfirmationActaOpen(true);
+                                  }}
+                                  className="px-3 py-1.5 rounded-xl bg-sky-500/15 hover:bg-sky-500/25 text-sky-300 border border-sky-500/30 text-[11px] font-bold flex items-center gap-1.5 cursor-pointer transition-all"
+                                >
+                                  <ShieldCheck className="w-3.5 h-3.5" />
+                                  <span>Acta Confirmaciones</span>
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    handleToggleRow(rowKey);
+                                  }}
+                                  className="px-3 py-1.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 text-[11px] font-bold flex items-center gap-1 cursor-pointer transition-all"
+                                >
+                                  <span>Cerrar Detalle</span>
+                                  <ChevronUp className="w-3 h-3" />
+                                </button>
+                              </div>
+                            </div>
+
+                            {/* Mathematical Equation Verification Card */}
+                            <div className="p-3.5 rounded-2xl bg-[#061015] border border-slate-800 font-mono text-[11px] flex flex-wrap items-center justify-between gap-3 shadow-inner">
+                              <div className="flex flex-wrap items-center gap-2">
+                                <span className="text-slate-400">Arrastre:</span>
+                                <span className="text-slate-200 font-bold">{formatCurrency(row.saldo_anterior, row.moneda)}</span>
+                                <span className="text-slate-500">+</span>
+                                <span className="text-slate-400">Venta Neta:</span>
+                                <span className="text-emerald-400 font-bold">{formatCurrency(row.venta_neta, row.moneda)}</span>
+                                <span className="text-slate-500">-</span>
+                                <span className="text-slate-400">Gastos:</span>
+                                <span className="text-rose-400 font-bold">{formatCurrency(row.gastos, row.moneda)}</span>
+                                <span className="text-slate-500">-</span>
+                                <span className="text-slate-400">Cobros Totales:</span>
+                                <span className="text-cyan-400 font-bold">{formatCurrency(totalCobros, row.moneda)}</span>
+                                <span className="text-slate-500">+</span>
+                                <span className="text-slate-400">Reposición:</span>
+                                <span className="text-amber-400 font-bold">+{formatCurrency(row.reposicion_premios, row.moneda)}</span>
+                                <span className="text-slate-500">=</span>
+                              </div>
+                              <div className="flex items-center gap-2">
+                                <span className="text-slate-400 uppercase text-[10px]">Saldo Final:</span>
+                                <span
+                                  className={`text-sm font-black px-2 py-0.5 rounded-lg ${
+                                    row.saldo_final > 0
+                                      ? 'text-amber-400 bg-amber-500/10 border border-amber-500/20'
+                                      : row.saldo_final < 0
+                                      ? 'text-rose-400 bg-rose-500/10 border border-rose-500/20'
+                                      : 'text-emerald-400 bg-emerald-500/10 border border-emerald-500/20'
+                                  }`}
+                                >
+                                  {formatCurrency(row.saldo_final, row.moneda)}
+                                </span>
+                              </div>
+                            </div>
+
+                            {/* Drawer Sub-tabs */}
+                            <div className="flex flex-wrap items-center gap-2 border-b border-slate-800/80 pb-2.5">
+                              <button
+                                type="button"
+                                onClick={() => setDrawerTab('all')}
+                                className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer ${
+                                  drawerTab === 'all'
+                                    ? 'bg-slate-700 text-white'
+                                    : 'text-slate-400 hover:text-white bg-slate-900/60'
+                                }`}
+                              >
+                                📋 Todos los Movimientos ({agencyCollectors.length + agencyConfirmations.length + agencyExpensesList.length + agencyCashList.length})
+                              </button>
+
+                              <button
+                                type="button"
+                                onClick={() => setDrawerTab('cobradores')}
+                                className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer ${
+                                  drawerTab === 'cobradores'
+                                    ? 'bg-purple-500 text-white shadow-lg shadow-purple-500/20'
+                                    : 'text-purple-300 hover:text-white bg-purple-500/10 border border-purple-500/20'
+                                }`}
+                              >
+                                <Bike className="w-3.5 h-3.5" />
+                                <span>🛵 Cobradores de Ruta ({agencyCollectors.length})</span>
+                              </button>
+
+                              <button
+                                type="button"
+                                onClick={() => setDrawerTab('confirmaciones')}
+                                className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer ${
+                                  drawerTab === 'confirmaciones'
+                                    ? 'bg-sky-500 text-slate-950 font-black shadow-lg shadow-sky-500/20'
+                                    : 'text-sky-300 hover:text-white bg-sky-500/10 border border-sky-500/20'
+                                }`}
+                              >
+                                <ShieldCheck className="w-3.5 h-3.5" />
+                                <span>🛡️ Confirmaciones & Bancos ({agencyConfirmations.length})</span>
+                              </button>
+
+                              <button
+                                type="button"
+                                onClick={() => setDrawerTab('gastos')}
+                                className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer ${
+                                  drawerTab === 'gastos'
+                                    ? 'bg-rose-500 text-white shadow-lg shadow-rose-500/20'
+                                    : 'text-rose-300 hover:text-white bg-rose-500/10 border border-rose-500/20'
+                                }`}
+                              >
+                                <Receipt className="w-3.5 h-3.5" />
+                                <span>📉 Gastos Operativos ({agencyExpensesList.length})</span>
+                              </button>
+
+                              <button
+                                type="button"
+                                onClick={() => setDrawerTab('efectivo')}
+                                className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer ${
+                                  drawerTab === 'efectivo'
+                                    ? 'bg-emerald-500 text-slate-950 font-black shadow-lg shadow-emerald-500/20'
+                                    : 'text-emerald-300 hover:text-white bg-emerald-500/10 border border-emerald-500/20'
+                                }`}
+                              >
+                                <DollarSign className="w-3.5 h-3.5" />
+                                <span>💵 Efectivo en Taquilla ({agencyCashList.length})</span>
+                              </button>
+                            </div>
+
+                            {/* Section 1: Cobradores de Ruta Table */}
+                            {(drawerTab === 'all' || drawerTab === 'cobradores') && (
+                              <div className="space-y-2">
+                                <div className="flex items-center justify-between">
+                                  <h6 className="text-xs font-black uppercase text-purple-400 flex items-center gap-1.5">
+                                    <Bike className="w-4 h-4" />
+                                    <span>Recaudaciones del Cobrador de Ruta ({agencyCollectors.length})</span>
+                                  </h6>
+                                  <div className="flex items-center gap-2 text-[11px] font-mono">
+                                    <span className="text-slate-400">En Ruta:</span>
+                                    <span className="text-amber-400 font-bold">{formatCurrency(row.cobrador_en_ruta || 0, row.moneda)}</span>
+                                    <span className="text-slate-500">|</span>
+                                    <span className="text-slate-400">Liquidado Admin:</span>
+                                    <span className="text-emerald-400 font-bold">{formatCurrency(row.cobrador_liquidado || 0, row.moneda)}</span>
+                                  </div>
+                                </div>
+
+                                {agencyCollectors.length === 0 ? (
+                                  <div className="p-4 rounded-xl bg-slate-900/40 border border-slate-800 text-center text-slate-500 text-xs font-sans">
+                                    No se registraron recaudaciones QR de cobrador para esta agencia en el ciclo activo.
+                                  </div>
+                                ) : (
+                                  <div className="overflow-x-auto rounded-xl border border-slate-800">
+                                    <table className="w-full text-left text-xs border-collapse">
+                                      <thead className="bg-[#050D11] text-slate-400 font-bold uppercase text-[10px]">
+                                        <tr>
+                                          <th className="py-2 px-3">Fecha / Hora</th>
+                                          <th className="py-2 px-3">Cobrador</th>
+                                          <th className="py-2 px-3">Token QR / Recibo</th>
+                                          <th className="py-2 px-3 text-right">Monto Recaudado</th>
+                                          <th className="py-2 px-3 text-center">Estado Liquidación</th>
+                                          <th className="py-2 px-3 text-center">Validación</th>
+                                        </tr>
+                                      </thead>
+                                      <tbody className="divide-y divide-slate-800/60 font-mono text-[11px] bg-slate-950/40">
+                                        {agencyCollectors.map((p) => {
+                                          const fStr = String(p.fecha_escaneo_cobrador || p.fecha || p.created_at || '').slice(0, 16).replace('T', ' ');
+                                          const isLiq = Boolean(p.liquidado_admin);
+                                          return (
+                                            <tr key={p.id} className="hover:bg-slate-800/40 transition-colors">
+                                              <td className="py-2 px-3 text-slate-300 font-sans">{fStr || '-'}</td>
+                                              <td className="py-2 px-3 font-sans font-semibold text-white">
+                                                {p.cobrador_nombre || (p.cobrador_id ? `Cobrador #${p.cobrador_id}` : 'Cobrador de Ruta')}
+                                              </td>
+                                              <td className="py-2 px-3 text-slate-400">
+                                                <span className="bg-slate-900 px-1.5 py-0.5 rounded border border-slate-800 font-mono text-[10px]">
+                                                  {p.qr_token || p.referencia || `REC-${p.id}`}
+                                                </span>
+                                              </td>
+                                              <td className="py-2 px-3 text-right font-black text-emerald-400">
+                                                {formatCurrency(Number(p.monto) || 0, row.moneda)}
+                                              </td>
+                                              <td className="py-2 px-3 text-center font-sans">
+                                                {isLiq ? (
+                                                  <span className="px-2 py-0.5 rounded-full text-[10px] font-bold uppercase bg-emerald-500/15 text-emerald-400 border border-emerald-500/30 inline-flex items-center gap-1">
+                                                    <CheckCircle2 className="w-3 h-3" />
+                                                    🏛️ Liquidado Admin
+                                                  </span>
+                                                ) : (
+                                                  <span className="px-2 py-0.5 rounded-full text-[10px] font-bold uppercase bg-amber-500/15 text-amber-400 border border-amber-500/30 inline-flex items-center gap-1">
+                                                    <Clock className="w-3 h-3" />
+                                                    🛵 En Ruta
+                                                  </span>
+                                                )}
+                                              </td>
+                                              <td className="py-2 px-3 text-center font-sans text-[10px] text-slate-400">
+                                                {p.confirmado_supervisor ? '✅ Supervisor' : p.fecha_escaneo_cobrador ? '📲 QR Escaneado' : 'Pendiente'}
+                                              </td>
+                                            </tr>
+                                          );
+                                        })}
+                                      </tbody>
+                                    </table>
+                                  </div>
+                                )}
+                              </div>
+                            )}
+
+                            {/* Section 2: Confirmaciones y Bancos Table */}
+                            {(drawerTab === 'all' || drawerTab === 'confirmaciones') && (
+                              <div className="space-y-2 pt-2">
+                                <div className="flex items-center justify-between">
+                                  <h6 className="text-xs font-black uppercase text-sky-400 flex items-center gap-1.5">
+                                    <ShieldCheck className="w-4 h-4" />
+                                    <span>Movimientos Verificados por Confirmaciones ({agencyConfirmations.length})</span>
+                                  </h6>
+                                  <div className="flex items-center gap-2 text-[11px] font-mono">
+                                    <span className="text-slate-400">Bancos:</span>
+                                    <span className="text-cyan-400 font-bold">{formatCurrency(row.bancos, row.moneda)}</span>
+                                    {row.reposicion_premios > 0 && (
+                                      <>
+                                        <span className="text-slate-500">|</span>
+                                        <span className="text-amber-400 font-bold">+{formatCurrency(row.reposicion_premios, row.moneda)} (Reposición)</span>
+                                      </>
+                                    )}
+                                  </div>
+                                </div>
+
+                                {agencyConfirmations.length === 0 ? (
+                                  <div className="p-4 rounded-xl bg-slate-900/40 border border-slate-800 text-center text-slate-500 text-xs font-sans">
+                                    No se registraron confirmaciones bancarias o reposiciones para esta agencia en el ciclo activo.
+                                  </div>
+                                ) : (
+                                  <div className="overflow-x-auto rounded-xl border border-slate-800">
+                                    <table className="w-full text-left text-xs border-collapse">
+                                      <thead className="bg-[#050D11] text-slate-400 font-bold uppercase text-[10px]">
+                                        <tr>
+                                          <th className="py-2 px-3">Fecha</th>
+                                          <th className="py-2 px-3 text-center">Categoría</th>
+                                          <th className="py-2 px-3">Banco / Método</th>
+                                          <th className="py-2 px-3">Referencia / Comprobante</th>
+                                          <th className="py-2 px-3 text-right">Monto Auditado</th>
+                                          <th className="py-2 px-3">Confirmado Por</th>
+                                          <th className="py-2 px-3 text-center">Estatus</th>
+                                        </tr>
+                                      </thead>
+                                      <tbody className="divide-y divide-slate-800/60 font-mono text-[11px] bg-slate-950/40">
+                                        {agencyConfirmations.map((item) => (
+                                          <tr key={item.id} className="hover:bg-slate-800/40 transition-colors">
+                                            <td className="py-2 px-3 text-slate-300 font-sans">{item.fecha}</td>
+                                            <td className="py-2 px-3 text-center font-sans">
+                                              <span
+                                                className={`px-2 py-0.5 rounded-full text-[9px] font-extrabold uppercase border ${
+                                                  item.categoria === 'BANCO'
+                                                    ? 'bg-sky-500/15 text-sky-400 border-sky-500/30'
+                                                    : item.categoria === 'REPOSICION'
+                                                    ? 'bg-amber-500/15 text-amber-400 border-amber-500/30'
+                                                    : item.categoria === 'GASTO'
+                                                    ? 'bg-rose-500/15 text-rose-400 border-rose-500/30'
+                                                    : 'bg-emerald-500/15 text-emerald-400 border-emerald-500/30'
+                                                }`}
+                                              >
+                                                {item.categoria === 'BANCO' ? '🏛️ BANCO' : item.categoria === 'REPOSICION' ? '🏆 REPOSICIÓN' : item.categoria === 'GASTO' ? '📉 GASTO' : '💵 EFECTIVO'}
+                                              </span>
+                                            </td>
+                                            <td className="py-2 px-3 font-sans text-slate-300">{item.banco || '-'}</td>
+                                            <td className="py-2 px-3 text-slate-400 font-mono text-[10px]">
+                                              {item.referencia || '-'}
+                                            </td>
+                                            <td
+                                              className={`py-2 px-3 text-right font-black ${
+                                                item.categoria === 'GASTO'
+                                                  ? 'text-rose-400'
+                                                  : item.categoria === 'REPOSICION'
+                                                  ? 'text-amber-400'
+                                                  : 'text-emerald-400'
+                                              }`}
+                                            >
+                                              {item.categoria === 'REPOSICION' ? '+' : ''}{formatCurrency(item.monto, row.moneda)}
+                                            </td>
+                                            <td className="py-2 px-3 font-sans text-slate-400 text-[10px]">
+                                              {item.confirmado_por || 'Operador de Confirmaciones'}
+                                            </td>
+                                            <td className="py-2 px-3 text-center font-sans font-bold text-emerald-400 text-[10px]">
+                                              VERIFICADO
+                                            </td>
+                                          </tr>
+                                        ))}
+                                      </tbody>
+                                    </table>
+                                  </div>
+                                )}
+                              </div>
+                            )}
+
+                            {/* Section 3: Gastos Operativos Table */}
+                            {(drawerTab === 'all' || drawerTab === 'gastos') && agencyExpensesList.length > 0 && (
+                              <div className="space-y-2 pt-2">
+                                <div className="flex items-center justify-between">
+                                  <h6 className="text-xs font-black uppercase text-rose-400 flex items-center gap-1.5">
+                                    <Receipt className="w-4 h-4" />
+                                    <span>Gastos Operativos Confirmados ({agencyExpensesList.length})</span>
+                                  </h6>
+                                  <span className="text-rose-400 font-bold font-mono text-xs">
+                                    -{formatCurrency(row.gastos, row.moneda)}
+                                  </span>
+                                </div>
+                                <div className="overflow-x-auto rounded-xl border border-slate-800">
+                                  <table className="w-full text-left text-xs border-collapse">
+                                    <thead className="bg-[#050D11] text-slate-400 font-bold uppercase text-[10px]">
+                                      <tr>
+                                        <th className="py-2 px-3">Fecha</th>
+                                        <th className="py-2 px-3">Tipo</th>
+                                        <th className="py-2 px-3">Concepto</th>
+                                        <th className="py-2 px-3 text-right">Monto</th>
+                                        <th className="py-2 px-3 text-center">Estado</th>
+                                      </tr>
+                                    </thead>
+                                    <tbody className="divide-y divide-slate-800/60 font-mono text-[11px] bg-slate-950/40">
+                                      {agencyExpensesList.map((g) => (
+                                        <tr key={g.id} className="hover:bg-slate-800/40 transition-colors">
+                                          <td className="py-2 px-3 text-slate-300 font-sans">{String(g.fecha || g.created_at || '').slice(0, 10)}</td>
+                                          <td className="py-2 px-3 text-slate-300 font-sans">{g.tipo || 'Operativo'}</td>
+                                          <td className="py-2 px-3 text-slate-400 font-sans">{g.concepto || '-'}</td>
+                                          <td className="py-2 px-3 text-right font-black text-rose-400">
+                                            -{formatCurrency(Number(g.monto) || 0, row.moneda)}
+                                          </td>
+                                          <td className="py-2 px-3 text-center text-emerald-400 font-sans font-bold text-[10px]">CONFIRMADO</td>
+                                        </tr>
+                                      ))}
+                                    </tbody>
+                                  </table>
+                                </div>
+                              </div>
+                            )}
+
+                            {/* Section 4: Efectivo en Taquilla Table */}
+                            {(drawerTab === 'all' || drawerTab === 'efectivo') && agencyCashList.length > 0 && (
+                              <div className="space-y-2 pt-2">
+                                <div className="flex items-center justify-between">
+                                  <h6 className="text-xs font-black uppercase text-sky-400 flex items-center gap-1.5">
+                                    <DollarSign className="w-4 h-4" />
+                                    <span>Efectivo en Taquilla Directo ({agencyCashList.length})</span>
+                                  </h6>
+                                  <span className="text-sky-300 font-bold font-mono text-xs">
+                                    {formatCurrency(row.efectivo_taquilla, row.moneda)}
+                                  </span>
+                                </div>
+                                <div className="overflow-x-auto rounded-xl border border-slate-800">
+                                  <table className="w-full text-left text-xs border-collapse">
+                                    <thead className="bg-[#050D11] text-slate-400 font-bold uppercase text-[10px]">
+                                      <tr>
+                                        <th className="py-2 px-3">Fecha</th>
+                                        <th className="py-2 px-3">Concepto</th>
+                                        <th className="py-2 px-3 text-right">Monto</th>
+                                        <th className="py-2 px-3 text-center">Confirmado</th>
+                                      </tr>
+                                    </thead>
+                                    <tbody className="divide-y divide-slate-800/60 font-mono text-[11px] bg-slate-950/40">
+                                      {agencyCashList.map((c) => (
+                                        <tr key={c.id} className="hover:bg-slate-800/40 transition-colors">
+                                          <td className="py-2 px-3 text-slate-300 font-sans">{String(c.fecha || c.created_at || '').slice(0, 10)}</td>
+                                          <td className="py-2 px-3 text-slate-400 font-sans">{c.concepto || c.referencia || 'Entrega en Taquilla'}</td>
+                                          <td className="py-2 px-3 text-right font-black text-sky-300">
+                                            {formatCurrency(Number(c.monto) || 0, row.moneda)}
+                                          </td>
+                                          <td className="py-2 px-3 text-center text-emerald-400 font-sans font-bold text-[10px]">
+                                            {c.confirmado_supervisor ? 'Supervisor' : 'Confirmado'}
+                                          </td>
+                                        </tr>
+                                      ))}
+                                    </tbody>
+                                  </table>
+                                </div>
+                              </div>
+                            )}
+                          </td>
+                        </tr>
                       )}
-                    </td>
-
-                    {/* 🏛️ Liquidado Admin */}
-                    <td className="py-3 px-3 text-right">
-                      {row.cobrador_liquidado && row.cobrador_liquidado > 0 ? (
-                        <span className="font-semibold text-emerald-400 bg-emerald-500/15 border border-emerald-500/30 px-2 py-0.5 rounded-lg inline-block">
-                          {formatCurrency(row.cobrador_liquidado, row.moneda)}
-                        </span>
-                      ) : (
-                        <span className="text-slate-600">-</span>
-                      )}
-                    </td>
-
-                    {/* 💵 Efectivo Taquilla */}
-                    <td className="py-3 px-3 text-right text-sky-300">
-                      {row.efectivo_taquilla > 0 ? formatCurrency(row.efectivo_taquilla, row.moneda) : '-'}
-                    </td>
-
-                    {/* 🏛️ Bancos */}
-                    <td className="py-3 px-3 text-right text-cyan-400">
-                      {row.bancos > 0 ? formatCurrency(row.bancos, row.moneda) : '-'}
-                    </td>
-
-                    {/* 🏆 Reposición Premios */}
-                    <td className="py-3 px-3 text-right text-amber-400 font-bold">
-                      {row.reposicion_premios > 0 ? `+${formatCurrency(row.reposicion_premios, row.moneda)}` : '-'}
-                    </td>
-
-                    {/* Saldo Final */}
-                    <td className={`py-3 px-3 text-right font-black text-sm ${row.saldo_final > 0 ? 'text-amber-400' : row.saldo_final < 0 ? 'text-rose-400' : 'text-emerald-400'}`}>
-                      {formatCurrency(row.saldo_final, row.moneda)}
-                    </td>
-
-                    {/* Estado */}
-                    <td className="py-3 px-3 text-center font-sans">
-                      {row.status === 'pagado' ? (
-                        <span className="px-2.5 py-0.5 rounded-full text-[10px] font-bold uppercase bg-emerald-500/15 text-emerald-400 border border-emerald-500/30 inline-flex items-center gap-1">
-                          <CheckCircle2 className="w-3 h-3" />
-                          Pagado
-                        </span>
-                      ) : row.status === 'pendiente' ? (
-                        <span className="px-2.5 py-0.5 rounded-full text-[10px] font-bold uppercase bg-amber-500/15 text-amber-400 border border-amber-500/30">
-                          Operadora
-                        </span>
-                      ) : (
-                        <span className="px-2.5 py-0.5 rounded-full text-[10px] font-bold uppercase bg-rose-500/15 text-rose-400 border border-rose-500/30">
-                          Agencia
-                        </span>
-                      )}
-                    </td>
-                  </tr>
-                ))
+                    </React.Fragment>
+                  );
+                })
               )}
             </tbody>
           </table>
