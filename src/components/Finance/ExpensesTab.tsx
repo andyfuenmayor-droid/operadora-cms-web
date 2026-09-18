@@ -99,7 +99,7 @@ export const ExpensesTab: React.FC = () => {
       const [gRes, gdRes, agRes, monRes] = await Promise.all([
         supabase.from('gastos').select('*').eq('user_id', effectiveUserId).order('id', { ascending: false }),
         supabase.from('cda_gastos_diarios').select('*').eq('user_id', effectiveUserId).order('id', { ascending: false }),
-        supabase.from('agencias').select('*').eq('user_id', effectiveUserId).order('nombre_agencia', { ascending: true }),
+        supabase.from('agencias').select('*').eq('user_id', effectiveUserId).order('id', { ascending: true }),
         supabase.from('monedas').select('*').eq('user_id', effectiveUserId).order('id', { ascending: true }),
       ]);
 

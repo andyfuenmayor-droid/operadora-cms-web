@@ -103,7 +103,7 @@ export const PaymentsTab: React.FC = () => {
         supabase.from('pagos_semana').select('*').eq('user_id', effectiveUserId).order('id', { ascending: false }),
         supabase.from('cda_pagos_bancarios').select('*').eq('user_id', effectiveUserId).order('id', { ascending: false }),
         supabase.from('cda_pagos_diarios').select('*').eq('user_id', effectiveUserId).order('id', { ascending: false }),
-        supabase.from('agencias').select('*').eq('user_id', effectiveUserId).order('nombre_agencia', { ascending: true }),
+        supabase.from('agencias').select('*').eq('user_id', effectiveUserId).order('id', { ascending: true }),
         supabase.from('monedas').select('*').eq('user_id', effectiveUserId).order('id', { ascending: true }),
         supabase.from('cuentas_bancarias').select('*').eq('user_id', effectiveUserId).order('banco', { ascending: true }),
         supabase.from('carga_actual').select('*').eq('user_id', effectiveUserId),

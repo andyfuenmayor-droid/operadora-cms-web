@@ -83,14 +83,21 @@ export function normalizarNombrePlan(planVal?: string | null): PlanType {
 
 export function cleanAgencyName(val?: string | null): string {
   if (!val) return '';
-  let s = String(val).trim().toUpperCase();
+  let s = String(val).trim().toUpperCase().replace(/["']/g, '');
   if (s.includes('AGENCIA:')) {
     s = s.replace('AGENCIA:', '').trim();
+  }
+  const prefixes = ['AGENCIA ', 'AG. ', 'AG.', 'AG ', 'AG-'];
+  for (const p of prefixes) {
+    if (s.startsWith(p)) {
+      s = s.substring(p.length).trim();
+      break;
+    }
   }
   if (s.includes(' - ') && !isNaN(parseInt(s.split(' - ')[0], 10))) {
     s = s.split(' - ').slice(1).join(' - ').trim();
   }
-  return s;
+  return s.replace(/\s+/g, ' ').trim();
 }
 
 export function normalizarMoneda(mVal?: string | null): string {

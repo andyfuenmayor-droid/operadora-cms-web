@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
+import * as XLSX from 'xlsx';
 import { supabase } from '../../lib/supabase';
 import { useAuth } from '../../context/AuthContext';
 import { formatCurrency, formatDate, cleanAgencyName } from '../../utils/formatters';
@@ -43,7 +44,7 @@ function parseList(val: any): string[] {
   if (!val) return [];
   if (Array.isArray(val)) return val.map((v) => String(v ?? '').trim().toUpperCase()).filter(Boolean);
   if (typeof val === 'string') return val.split(',').map((v) => String(v ?? '').trim().toUpperCase()).filter(Boolean);
-  return [String(val ?? '').trim().toUpperCase()].filter(Boolean);
+  return [];
 }
 
 export const SalesEntryTab: React.FC = () => {
@@ -63,9 +64,11 @@ export const SalesEntryTab: React.FC = () => {
   // Manual Form State
   const [formAgencia, setFormAgencia] = useState('');
   const [formFecha, setFormFecha] = useState(systemCycle?.hasta || new Date().toISOString().split('T')[0]);
-  const [entries, setEntries] = useState<Record<string, { venta: string; comision: string; premios: string; comisionTouched: boolean; id?: number }>>({});
+  const [entries, setEntries] = useState<
+    Record<string, { venta: string; comision: string; premios: string; comisionTouched: boolean; id?: number }>
+  >({});
 
-  // Bulk Import
+  // Bulk CSV/Excel Import Modal State
   const [isBulkOpen, setIsBulkOpen] = useState(false);
   const [bulkFileDate, setBulkFileDate] = useState(systemCycle?.hasta || new Date().toISOString().split('T')[0]);
   const [bulkRows, setBulkRows] = useState<any[]>([]);
@@ -81,7 +84,7 @@ export const SalesEntryTab: React.FC = () => {
     try {
       const [salesRes, agRes, sisRes, monRes] = await Promise.all([
         supabase.from('carga_actual').select('*').eq('user_id', effectiveUserId).order('id', { ascending: false }),
-        supabase.from('agencias').select('*').eq('user_id', effectiveUserId).order('nombre_agencia', { ascending: true }),
+        supabase.from('agencias').select('*').eq('user_id', effectiveUserId).order('id', { ascending: true }),
         supabase.from('sistemas').select('*').eq('user_id', effectiveUserId).order('nombre_sistema', { ascending: true }),
         supabase.from('monedas').select('*').eq('user_id', effectiveUserId).order('id', { ascending: true }),
       ]);
@@ -481,7 +484,7 @@ export const SalesEntryTab: React.FC = () => {
     }
   };
 
-  // Handle CSV bulk file parsing
+  // Handle CSV/Excel bulk file parsing
   const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
@@ -491,41 +494,125 @@ export const SalesEntryTab: React.FC = () => {
 
     reader.onload = (event) => {
       try {
-        const text = event.target?.result as string;
-        const lines = text.split(/\r?\n/).filter((l) => l.trim().length > 0);
-        if (lines.length < 2) {
+        const buffer = event.target?.result as ArrayBuffer;
+        const workbook = XLSX.read(buffer, { type: 'array' });
+        const firstSheetName = workbook.SheetNames[0];
+        if (!firstSheetName) {
+          setBulkError('El archivo no contiene hojas válidas.');
+          return;
+        }
+
+        const worksheet = workbook.Sheets[firstSheetName];
+        const rows: any[][] = XLSX.utils.sheet_to_json(worksheet, { header: 1, defval: '' });
+
+        if (!rows || rows.length < 2) {
           setBulkError('El archivo no contiene suficientes filas.');
           return;
         }
 
-        const delimiter = lines[0].includes(';') ? ';' : ',';
+        // 1. Detect System & Currency from header text (first 15 rows)
+        const headerDna = rows
+          .slice(0, 15)
+          .map((r) => r.join(' '))
+          .join(' ')
+          .toUpperCase();
+
+        const sistDet = headerDna.includes('BETM3') ? 'BETM3' : systems[0]?.nombre_sistema || 'BETM3';
+
+        let monDet = 'BS';
+        if (headerDna.includes('VES') || headerDna.includes('BOLIVAR')) {
+          monDet = 'BS';
+        } else if (headerDna.includes('COP') || headerDna.includes('PESO')) {
+          monDet = 'COP';
+        } else if (headerDna.includes('USD') || headerDna.includes('DOLAR')) {
+          monDet = 'USD';
+        }
+
+        // 2. Detect the actual header row (contains 'Nombre' or 'Agencia')
+        let headerRowIdx = -1;
+        for (let i = 0; i < Math.min(20, rows.length); i++) {
+          const rowStr = rows[i].map((c) => String(c ?? '').trim().toUpperCase()).join(' ');
+          if (rowStr.includes('NOMBRE') || rowStr.includes('AGENCIA')) {
+            headerRowIdx = i;
+            break;
+          }
+        }
+
+        if (headerRowIdx === -1) {
+          headerRowIdx = 0;
+        }
+
+        const headerCols = rows[headerRowIdx].map((c) => String(c ?? '').trim().toUpperCase());
+
+        let colNombre = headerCols.findIndex((c) => c.includes('NOMBRE') || c.includes('AGENCIA'));
+        if (colNombre === -1) colNombre = 0;
+
+        let colVenta = headerCols.findIndex((c) => c.includes('VENTA'));
+        if (colVenta === -1) colVenta = 1;
+
+        let colComision = headerCols.findIndex((c) => c.includes('COMISION') || c.includes('COMISIÓN'));
+        if (colComision === -1) colComision = 2;
+
+        let colPremio = headerCols.findIndex((c) => c.includes('PREMIO') || c.includes('PREMIOS'));
+        if (colPremio === -1) colPremio = 3;
 
         const parsed: any[] = [];
-        for (let i = 1; i < lines.length; i++) {
-          const cols = lines[i].split(delimiter).map((c) => c.trim());
-          if (cols.length < 2) continue;
+        const duplicatesFound: string[] = [];
 
-          const agRaw = cleanAgencyName(cols[0]);
-          if (!agRaw || agRaw === 'TOTAL') continue;
+        for (let i = headerRowIdx + 1; i < rows.length; i++) {
+          const row = rows[i];
+          if (!row || row.length === 0) continue;
 
-          const matchedAg = agencies.find((a) => cleanAgencyName(a.nombre_agencia) === agRaw);
+          const rawCell = String(row[colNombre] ?? '').trim();
+          const upperCell = rawCell.toUpperCase();
+
+          if (!rawCell || upperCell.startsWith('TOTAL') || upperCell.startsWith('CUENTA CON') || upperCell === 'NAN') {
+            if (upperCell.startsWith('TOTAL')) break;
+            continue;
+          }
+
+          const agClean = cleanAgencyName(rawCell);
+          if (!agClean) continue;
+
+          const matchedAg = agencies.find((a) => cleanAgencyName(a.nombre_agencia) === agClean);
           if (!matchedAg) continue;
 
-          const venta = parseNum(cols[1]);
-          const premios = parseNum(cols[2]);
-          const comPct = matchedAg.comision || 10;
-          const partPct = matchedAg.participacion_ag || 50;
+          // Check if already loaded in carga_actual for this day/system/currency
+          const isDup = sales.some(
+            (s) =>
+              cleanAgencyName(s.agencia) === cleanAgencyName(matchedAg.nombre_agencia) &&
+              String(s.sistema || '').toUpperCase() === sistDet.toUpperCase() &&
+              String(s.moneda || '').toUpperCase() === monDet.toUpperCase() &&
+              s.fecha === bulkFileDate
+          );
 
-          const com = Math.round((venta * (comPct / 100)) * 100) / 100;
+          if (isDup) {
+            duplicatesFound.push(matchedAg.nombre_agencia);
+            continue;
+          }
+
+          const venta = parseNum(row[colVenta]);
+          const premios = parseNum(row[colPremio]);
+          const comExcel = parseNum(row[colComision]);
+
+          const cPct = Number(matchedAg.comision ?? 0);
+          const pPct = Number(matchedAg.participacion_ag ?? 0);
+
+          // If agency commission % > 10, calculate directly from %, otherwise use the Excel/system commission
+          const com =
+            cPct > 10
+              ? Math.round(venta * (cPct / 100) * 100) / 100
+              : comExcel || Math.round(venta * 0.10 * 100) / 100;
+
           const neto = Math.round((venta - com - premios) * 100) / 100;
-          const uAg = Math.round((neto * (partPct / 100)) * 100) / 100;
+          const uAg = Math.round(neto * (pPct / 100) * 100) / 100;
           const uOp = Math.round((neto - uAg) * 100) / 100;
 
           parsed.push({
             user_id: effectiveUserId,
             agencia: matchedAg.nombre_agencia,
-            sistema: systems[0]?.nombre_sistema || 'BETM3',
-            moneda: 'BS',
+            sistema: sistDet,
+            moneda: monDet,
             venta,
             premios,
             comision: com,
@@ -536,8 +623,16 @@ export const SalesEntryTab: React.FC = () => {
           });
         }
 
+        if (duplicatesFound.length > 0) {
+          setBulkError(
+            `Aviso: ${duplicatesFound.length} agencias ya tienen ventas registradas para el ${bulkFileDate} (${duplicatesFound.slice(0, 3).join(', ')}${duplicatesFound.length > 3 ? '...' : ''}). Se omitieron para evitar duplicados.`
+          );
+        }
+
         if (parsed.length === 0) {
-          setBulkError('No se encontraron agencias coincidentes en el archivo.');
+          if (duplicatesFound.length === 0) {
+            setBulkError('No se encontraron agencias coincidentes en el archivo.');
+          }
         } else {
           setBulkRows(parsed);
         }
@@ -546,7 +641,7 @@ export const SalesEntryTab: React.FC = () => {
       }
     };
 
-    reader.readAsText(file);
+    reader.readAsArrayBuffer(file);
   };
 
   // Save Bulk Import Rows
@@ -631,7 +726,7 @@ export const SalesEntryTab: React.FC = () => {
           <div className="flex items-center justify-between">
             <h3 className="text-sm font-bold text-white flex items-center gap-2">
               <Upload className="w-4 h-4 text-cyan-400" />
-              Importar Reporte de Sistema (CSV)
+              Importar Reporte de Sistema (Excel / CSV)
             </h3>
             <button
               onClick={() => setIsBulkOpen(false)}
@@ -647,16 +742,20 @@ export const SalesEntryTab: React.FC = () => {
               <input
                 type="date"
                 value={bulkFileDate}
-                onChange={(e) => setBulkFileDate(e.target.value)}
+                onChange={(e) => {
+                  const newDate = e.target.value;
+                  setBulkFileDate(newDate);
+                  setBulkRows((prev) => prev.map((r) => ({ ...r, fecha: newDate })));
+                }}
                 className="w-full bg-[#071217] border border-slate-700 rounded-xl px-3 py-2 text-xs text-white focus:outline-none focus:border-cyan-500"
               />
             </div>
 
             <div className="space-y-1.5">
-              <label className="text-xs font-semibold text-slate-300">Seleccionar archivo CSV:</label>
+              <label className="text-xs font-semibold text-slate-300">Seleccionar archivo Excel / CSV:</label>
               <input
                 type="file"
-                accept=".csv,.txt"
+                accept=".xlsx,.xls,.csv,.txt"
                 onChange={handleFileUpload}
                 className="w-full text-xs text-slate-400 file:mr-3 file:py-2 file:px-4 file:rounded-xl file:border-0 file:text-xs file:font-semibold file:bg-cyan-500/20 file:text-cyan-300 hover:file:bg-cyan-500/30 cursor-pointer"
               />
@@ -676,6 +775,7 @@ export const SalesEntryTab: React.FC = () => {
                   <thead className="text-slate-400 border-b border-slate-800 uppercase font-mono">
                     <tr>
                       <th className="p-2">Agencia</th>
+                      <th className="p-2">Sistema / Moneda</th>
                       <th className="p-2">Venta</th>
                       <th className="p-2">Comisión</th>
                       <th className="p-2">Premios</th>
@@ -686,6 +786,9 @@ export const SalesEntryTab: React.FC = () => {
                     {bulkRows.map((r, i) => (
                       <tr key={i}>
                         <td className="p-2 font-sans font-semibold text-white">{r.agencia}</td>
+                        <td className="p-2 text-slate-300 font-mono">
+                          <span className="text-cyan-300">{r.sistema}</span> - <span className="text-amber-300">{r.moneda}</span>
+                        </td>
                         <td className="p-2">{formatCurrency(r.venta, r.moneda)}</td>
                         <td className="p-2 text-emerald-400">{formatCurrency(r.comision, r.moneda)}</td>
                         <td className="p-2 text-rose-400">{formatCurrency(r.premios, r.moneda)}</td>
