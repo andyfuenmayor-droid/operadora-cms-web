@@ -71,7 +71,22 @@ export const WeeklyClosureTab: React.FC = () => {
         getConsolidatedExpenses(effectiveUserId, { fechaDesde: systemCycle.desde, fechaHasta: systemCycle.hasta }),
       ]);
 
-      setAgencies(agRes.data || []);
+      const agList = agRes.data || [];
+      const maximaAg = agList.find((a: any) => String(a.nombre_agencia || '').toUpperCase().includes('MAXIMA') && Number(a.saldo_inicial_cop) === 328901);
+      if (maximaAg && effectiveUserId) {
+        try {
+          await supabase
+            .from('agencias')
+            .update({ saldo_inicial_cop: 28901.00 })
+            .eq('id', maximaAg.id)
+            .eq('user_id', effectiveUserId);
+          maximaAg.saldo_inicial_cop = 28901.00;
+        } catch (e: any) {
+          console.warn('Auto-repair saldo_inicial_cop error:', e);
+        }
+      }
+
+      setAgencies(agList);
       setSales(sRes.data || []);
       setPayments(pConsolidated);
       setExpenses(gConsolidated);

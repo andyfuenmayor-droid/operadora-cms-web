@@ -207,11 +207,24 @@ export async function getConsolidatedPayments(
     // 3. Incorporar cda_pagos_diarios (efectivo y cobradores confirmados, deduplicando entregas a supervisor que pasaron a cobrador)
     const pdByAgMon = new Map<string, { cobrador: any[]; supervisor: any[] }>();
     const pdSeenTx = new Set<string>();
+    const hoyStr = getTodayDateString();
+    const limiteHasta = fechaHasta || hoyStr;
 
     dfPd.forEach((r: any) => {
       const isRech = Boolean(r.rechazado) || String(r.estado || '').toUpperCase() === 'RECHAZADO';
       const isConf = Boolean(r.confirmado) || Boolean(r.confirmado_supervisor) || Boolean(r.fecha_escaneo_cobrador);
       if (!isConf || isRech) return;
+
+      const fechaRaw = String(r.fecha || r.created_at || '').trim();
+      const fCorta = fechaRaw.slice(0, 10);
+      const cStr = r.created_at ? String(r.created_at).slice(0, 10) : '';
+
+      // Si se filtra por periodo, restringir los pagos diarios al ciclo ANTES de calcular el balance de supervisor vs cobrador
+      if (filtrarPeriodo && (fechaDesde || fechaHasta)) {
+        const enRangoFecha = (!fechaDesde || fCorta >= fechaDesde) && (!limiteHasta || fCorta <= limiteHasta);
+        const enRangoCreacion = (!fCorta || fCorta === 'N/A' || fCorta.length < 10) && cStr && (!fechaDesde || cStr >= fechaDesde) && (!limiteHasta || cStr <= limiteHasta);
+        if (!enRangoFecha && !enRangoCreacion) return;
+      }
 
       const tipoP = String(r.tipo_pago || 'EFECTIVO').trim().toUpperCase();
 
@@ -229,8 +242,6 @@ export async function getConsolidatedPayments(
 
       const agNom = String(r.agencia || '').trim().toUpperCase();
       const montoVal = Math.round((Number(r.monto) || 0) * 100) / 100;
-      const fechaRaw = String(r.fecha || r.created_at || '').trim();
-      const fCorta = fechaRaw.slice(0, 10);
       const monNorm = normalizarMoneda(r.moneda) as 'BS' | 'USD' | 'COP';
       const refD = String(r.referencia || '').trim().toUpperCase();
 
