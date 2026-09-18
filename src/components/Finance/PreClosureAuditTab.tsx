@@ -108,6 +108,72 @@ export const PreClosureAuditTab: React.FC = () => {
     loadData();
   }, [effectiveUserId, systemCycle?.desde, systemCycle?.hasta]);
 
+  // Helper robusto para normalizar el nombre real del banco (nunca genérico como BANCO o PAGO MOVIL)
+  const resolveBankName = (p: {
+    agencia?: string;
+    moneda?: string;
+    metodo?: string;
+    referencia?: string;
+    pos_o_cuenta?: string;
+    concepto?: string;
+    banco?: string;
+  }): { banco: string; cuenta?: string } => {
+    const combined = `${p.banco || ''} ${p.pos_o_cuenta || ''} ${p.referencia || ''} ${p.metodo || ''} ${p.concepto || ''}`.toUpperCase();
+    const mon = normalizarMoneda(p.moneda) as 'BS' | 'USD' | 'COP';
+    const agUpper = String(p.agencia || '').trim().toUpperCase();
+
+    // 1. Detección directa por nombres de entidades bancarias conocidas
+    if (combined.includes('BANCOLOMBIA')) return { banco: 'BANCOLOMBIA' };
+    if (combined.includes('BANCAMIGA')) return { banco: 'BANCAMIGA' };
+    if (combined.includes('BANESCO')) return { banco: 'BANESCO' };
+    if (combined.includes('PROVINCIAL') || combined.includes('BBVA')) return { banco: 'BBVA PROVINCIAL' };
+    if (combined.includes('MERCANTIL')) return { banco: 'MERCANTIL' };
+    if (combined.includes('VENEZUELA') || combined.includes('BDV')) return { banco: 'BANCO DE VENEZUELA' };
+    if (combined.includes('BNC') || combined.includes('NACIONAL DE CREDITO')) return { banco: 'BNC' };
+    if (combined.includes('BANCARIBE')) return { banco: 'BANCARIBE' };
+    if (combined.includes('EXTERIOR')) return { banco: 'BANCO EXTERIOR' };
+    if (combined.includes('TESORO')) return { banco: 'BANCO DEL TESORO' };
+    if (combined.includes('CITI') || combined.includes('ZELLE')) return { banco: 'CITI BANK (ZELLE)' };
+    if (combined.includes('BINANCE')) return { banco: 'BINANCE (USDT)' };
+    if (combined.includes('DAVIPLATA')) return { banco: 'DAVIPLATA' };
+    if (combined.includes('NEQUI')) return { banco: 'NEQUI' };
+
+    // 2. Mapeo por cuenta asignada a la agencia en cuentas_bancarias
+    const assigned = bankAccounts.find((cb: any) => {
+      const cbAg = String(cb.agencia_asignada || '').trim().toUpperCase();
+      const cbMon = normalizarMoneda(cb.moneda);
+      return cbAg && cbAg === agUpper && cbMon === mon;
+    });
+    if (assigned) {
+      const bn = String(assigned.banco || '').trim().toUpperCase();
+      if (bn.includes('PROVINCIAL') || bn.includes('BBVA')) return { banco: 'BBVA PROVINCIAL', cuenta: assigned.numero_cuenta };
+      if (bn.includes('BANESCO')) return { banco: 'BANESCO', cuenta: assigned.numero_cuenta };
+      if (bn.includes('BANCOLOMBIA')) return { banco: 'BANCOLOMBIA', cuenta: assigned.numero_cuenta };
+      if (bn.includes('BANCAMIGA')) return { banco: 'BANCAMIGA', cuenta: assigned.numero_cuenta };
+      return { banco: bn, cuenta: assigned.numero_cuenta };
+    }
+
+    // 3. Fallbacks por moneda con banco único registrado
+    if (mon === 'COP') return { banco: 'BANCOLOMBIA' };
+    if (mon === 'USD') return { banco: 'CITI BANK (ZELLE)' };
+
+    // 4. Mapeo histórico: si la agencia tiene cobros previos en cda_pagos_bancarios con cuenta registrada
+    const pastPb = rawBankPayments.find((pb: any) => {
+      const pbAg = String(pb.agencia || '').trim().toUpperCase();
+      const posStr = String(pb.pos_o_cuenta || '').toUpperCase();
+      return pbAg === agUpper && (posStr.includes('BANESCO') || posStr.includes('PROVINCIAL') || posStr.includes('BANCAMIGA'));
+    });
+    if (pastPb) {
+      const posStr = String(pastPb.pos_o_cuenta || '').toUpperCase();
+      if (posStr.includes('BANESCO')) return { banco: 'BANESCO' };
+      if (posStr.includes('PROVINCIAL') || posStr.includes('BBVA')) return { banco: 'BBVA PROVINCIAL' };
+      if (posStr.includes('BANCAMIGA')) return { banco: 'BANCAMIGA' };
+    }
+
+    // 5. Default para BS: En esta operadora los pagos móviles y transferencias se centralizan en BANESCO
+    return { banco: 'BANESCO' };
+  };
+
   // Compute detailed audit rows
   const auditRows = useMemo<PreClosureAgencyRow[]>(() => {
     const list: PreClosureAgencyRow[] = [];
@@ -387,72 +453,6 @@ export const PreClosureAuditTab: React.FC = () => {
       }))
       .sort((a, b) => (b.fecha_escaneo_cobrador || b.fecha).localeCompare(a.fecha_escaneo_cobrador || a.fecha));
   }, [rawDailyPayments, systemCycle]);
-
-  // Helper robusto para normalizar el nombre real del banco (nunca genérico como BANCO o PAGO MOVIL)
-  const resolveBankName = (p: {
-    agencia?: string;
-    moneda?: string;
-    metodo?: string;
-    referencia?: string;
-    pos_o_cuenta?: string;
-    concepto?: string;
-    banco?: string;
-  }): { banco: string; cuenta?: string } => {
-    const combined = `${p.banco || ''} ${p.pos_o_cuenta || ''} ${p.referencia || ''} ${p.metodo || ''} ${p.concepto || ''}`.toUpperCase();
-    const mon = normalizarMoneda(p.moneda) as 'BS' | 'USD' | 'COP';
-    const agUpper = String(p.agencia || '').trim().toUpperCase();
-
-    // 1. Detección directa por nombres de entidades bancarias conocidas
-    if (combined.includes('BANCOLOMBIA')) return { banco: 'BANCOLOMBIA' };
-    if (combined.includes('BANCAMIGA')) return { banco: 'BANCAMIGA' };
-    if (combined.includes('BANESCO')) return { banco: 'BANESCO' };
-    if (combined.includes('PROVINCIAL') || combined.includes('BBVA')) return { banco: 'BBVA PROVINCIAL' };
-    if (combined.includes('MERCANTIL')) return { banco: 'MERCANTIL' };
-    if (combined.includes('VENEZUELA') || combined.includes('BDV')) return { banco: 'BANCO DE VENEZUELA' };
-    if (combined.includes('BNC') || combined.includes('NACIONAL DE CREDITO')) return { banco: 'BNC' };
-    if (combined.includes('BANCARIBE')) return { banco: 'BANCARIBE' };
-    if (combined.includes('EXTERIOR')) return { banco: 'BANCO EXTERIOR' };
-    if (combined.includes('TESORO')) return { banco: 'BANCO DEL TESORO' };
-    if (combined.includes('CITI') || combined.includes('ZELLE')) return { banco: 'CITI BANK (ZELLE)' };
-    if (combined.includes('BINANCE')) return { banco: 'BINANCE (USDT)' };
-    if (combined.includes('DAVIPLATA')) return { banco: 'DAVIPLATA' };
-    if (combined.includes('NEQUI')) return { banco: 'NEQUI' };
-
-    // 2. Mapeo por cuenta asignada a la agencia en cuentas_bancarias
-    const assigned = bankAccounts.find((cb: any) => {
-      const cbAg = String(cb.agencia_asignada || '').trim().toUpperCase();
-      const cbMon = normalizarMoneda(cb.moneda);
-      return cbAg && cbAg === agUpper && cbMon === mon;
-    });
-    if (assigned) {
-      const bn = String(assigned.banco || '').trim().toUpperCase();
-      if (bn.includes('PROVINCIAL') || bn.includes('BBVA')) return { banco: 'BBVA PROVINCIAL', cuenta: assigned.numero_cuenta };
-      if (bn.includes('BANESCO')) return { banco: 'BANESCO', cuenta: assigned.numero_cuenta };
-      if (bn.includes('BANCOLOMBIA')) return { banco: 'BANCOLOMBIA', cuenta: assigned.numero_cuenta };
-      if (bn.includes('BANCAMIGA')) return { banco: 'BANCAMIGA', cuenta: assigned.numero_cuenta };
-      return { banco: bn, cuenta: assigned.numero_cuenta };
-    }
-
-    // 3. Fallbacks por moneda con banco único registrado
-    if (mon === 'COP') return { banco: 'BANCOLOMBIA' };
-    if (mon === 'USD') return { banco: 'CITI BANK (ZELLE)' };
-
-    // 4. Mapeo histórico: si la agencia tiene cobros previos en cda_pagos_bancarios con cuenta registrada
-    const pastPb = rawBankPayments.find((pb: any) => {
-      const pbAg = String(pb.agencia || '').trim().toUpperCase();
-      const posStr = String(pb.pos_o_cuenta || '').toUpperCase();
-      return pbAg === agUpper && (posStr.includes('BANESCO') || posStr.includes('PROVINCIAL') || posStr.includes('BANCAMIGA'));
-    });
-    if (pastPb) {
-      const posStr = String(pastPb.pos_o_cuenta || '').toUpperCase();
-      if (posStr.includes('BANESCO')) return { banco: 'BANESCO' };
-      if (posStr.includes('PROVINCIAL') || posStr.includes('BBVA')) return { banco: 'BBVA PROVINCIAL' };
-      if (posStr.includes('BANCAMIGA')) return { banco: 'BANCAMIGA' };
-    }
-
-    // 5. Default para BS: En esta operadora los pagos móviles y transferencias se centralizan en BANESCO
-    return { banco: 'BANESCO' };
-  };
 
   // Movimientos bancarios detallados (Entradas: Cobros bancarios; Salidas: Reposición de premios y egresos bancarios)
   const bankTransactionItems = useMemo<BankTransactionAuditItem[]>(() => {
