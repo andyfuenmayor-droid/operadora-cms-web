@@ -26,8 +26,10 @@ import {
   ArrowRight,
   TrendingUp,
   ShieldCheck,
-  ChevronDown
+  ChevronDown,
+  Bell
 } from 'lucide-react';
+import { notificationService } from '../../utils/notificationService';
 import confetti from 'canvas-confetti';
 
 interface CustodiaAgencia {
@@ -370,11 +372,31 @@ export const ConfirmationsBoard: React.FC = () => {
 
     if (!autoSyncEnabled) return;
 
-    // Realtime subscriptions on all transaction tables
+    // Realtime subscriptions on all transaction tables with sound and push notifications
     const channel = supabase
       .channel(`pizarra_sync_${effectiveUserId}`)
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'cda_pagos_bancarios' }, () => loadData(true))
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'cda_pagos_diarios' }, () => loadData(true))
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'cda_pagos_bancarios' }, (payload: any) => {
+        if (payload.eventType === 'INSERT') {
+          const row = payload.new;
+          notificationService.showNotification('🔔 Nuevo Pago Bancario de Taquilla', {
+            body: `Agencia ${row.agencia || 'General'}: ${formatCurrency(Number(row.monto || 0), row.moneda as any)} (Ref: ${row.referencia || 'N/A'})`,
+            soundType: 'new_payment',
+            tag: `pago_banco_${row.id}`,
+          });
+        }
+        loadData(true);
+      })
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'cda_pagos_diarios' }, (payload: any) => {
+        if (payload.eventType === 'INSERT') {
+          const row = payload.new;
+          notificationService.showNotification('💵 Nueva Entrega de Efectivo / Cobrador', {
+            body: `Agencia ${row.agencia || 'General'}: ${formatCurrency(Number(row.monto || 0), row.moneda as any)}`,
+            soundType: 'new_payment',
+            tag: `pago_diario_${row.id}`,
+          });
+        }
+        loadData(true);
+      })
       .on('postgres_changes', { event: '*', schema: 'public', table: 'cda_gastos_diarios' }, () => loadData(true))
       .on('postgres_changes', { event: '*', schema: 'public', table: 'gastos' }, () => loadData(true))
       .on('postgres_changes', { event: '*', schema: 'public', table: 'cda_gastos' }, () => loadData(true))
@@ -970,6 +992,25 @@ export const ConfirmationsBoard: React.FC = () => {
           <span className="text-[11px] text-slate-400 font-mono hidden sm:inline px-1">
             {secondsAgo < 5 ? 'Actualizado ahora' : `Hace ${secondsAgo}s`}
           </span>
+
+          {/* Botón de Notificaciones Push de Escritorio */}
+          <button
+            type="button"
+            onClick={async () => {
+              const granted = await notificationService.requestPermission();
+              if (granted) {
+                notificationService.showNotification('🔔 Alertas en Vivo Activadas', {
+                  body: 'Recibirás sonido y notificaciones push cuando las taquillas registren pagos.',
+                  soundType: 'new_payment',
+                });
+              }
+            }}
+            className="px-3 py-2 rounded-xl border border-slate-700 bg-slate-800/80 hover:bg-slate-700 text-slate-300 hover:text-white text-xs font-bold flex items-center gap-1.5 transition-all cursor-pointer shadow-sm"
+            title="Activar alertas sonoras y notificaciones de escritorio"
+          >
+            <Bell className="w-3.5 h-3.5 text-amber-400" />
+            <span className="hidden sm:inline">Alertas Push</span>
+          </button>
 
           {/* Manual Sync Button */}
           <button

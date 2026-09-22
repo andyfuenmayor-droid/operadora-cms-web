@@ -19,9 +19,11 @@ import {
   Send,
   AlertTriangle,
   Receipt,
-  RotateCcw
+  RotateCcw,
+  Bell
 } from 'lucide-react';
 import confetti from 'canvas-confetti';
+import { notificationService } from '../../utils/notificationService';
 
 export const ConfirmationsQuick: React.FC = () => {
   const { effectiveUserId, user } = useAuth();
@@ -364,11 +366,31 @@ export const ConfirmationsQuick: React.FC = () => {
 
     const channel = supabase
       .channel(`quick_conf_live_${effectiveUserId}`)
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'cda_pagos_bancarios' }, () => loadData(true))
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'cda_pagos_bancarios' }, (payload: any) => {
+        if (payload.eventType === 'INSERT') {
+          const row = payload.new;
+          notificationService.showNotification('🔔 Nuevo Pago Bancario de Taquilla', {
+            body: `Agencia ${row.agencia || 'General'}: ${formatCurrency(Number(row.monto || 0), row.moneda as any)} (Ref: ${row.referencia || 'N/A'})`,
+            soundType: 'new_payment',
+            tag: `quick_pago_banco_${row.id}`,
+          });
+        }
+        loadData(true);
+      })
       .on('postgres_changes', { event: '*', schema: 'public', table: 'cda_gastos_diarios' }, () => loadData(true))
       .on('postgres_changes', { event: '*', schema: 'public', table: 'gastos' }, () => loadData(true))
       .on('postgres_changes', { event: '*', schema: 'public', table: 'cda_gastos' }, () => loadData(true))
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'cda_pagos_diarios' }, () => loadData(true))
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'cda_pagos_diarios' }, (payload: any) => {
+        if (payload.eventType === 'INSERT') {
+          const row = payload.new;
+          notificationService.showNotification('💵 Nueva Entrega de Efectivo / Cobrador', {
+            body: `Agencia ${row.agencia || 'General'}: ${formatCurrency(Number(row.monto || 0), row.moneda as any)}`,
+            soundType: 'new_payment',
+            tag: `quick_pago_diario_${row.id}`,
+          });
+        }
+        loadData(true);
+      })
       .on('postgres_changes', { event: '*', schema: 'public', table: 'pagos_semana' }, () => loadData(true))
       .on('postgres_changes', { event: '*', schema: 'public', table: 'gastos_semana' }, () => loadData(true))
       .on('postgres_changes', { event: '*', schema: 'public', table: 'cda_caja_efectivo_supervisor' }, () => loadData(true))
