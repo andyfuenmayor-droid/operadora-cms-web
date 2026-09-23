@@ -170,12 +170,32 @@ export const ConfirmationsBoard: React.FC = () => {
 
       const list: ConfirmationTransaction[] = [];
 
-      // Process Bancarios
-      (pbRes.data || []).forEach((r: any) => {
+      // Process Bancarios (deduplicando registros idénticos por referencia, agencia, fecha y monto)
+      const sortedPb = [...(pbRes.data || [])].sort((a: any, b: any) => {
+        const aHasName = a.datos_pagador && a.datos_pagador !== 'N/A' ? 1 : 0;
+        const bHasName = b.datos_pagador && b.datos_pagador !== 'N/A' ? 1 : 0;
+        return bHasName - aHasName;
+      });
+
+      const seenPbKeys = new Set<string>();
+      sortedPb.forEach((r: any) => {
+        const refClean = String(r.referencia || '').trim().toUpperCase();
+        const agClean = String(r.agencia || '').trim().toUpperCase();
+        const mto = Number(r.monto || 0);
+        const fStr = String(r.fecha || '').slice(0, 10);
+        const isRech = Boolean(r.rechazado) || String(r.estado || '').toUpperCase() === 'RECHAZADO';
+
+        if (refClean && refClean !== 'N/A' && !isRech) {
+          const dedupeKey = `${agClean}_${refClean}_${mto}_${fStr}`;
+          if (seenPbKeys.has(dedupeKey)) {
+            return;
+          }
+          seenPbKeys.add(dedupeKey);
+        }
+
         const cid = String(r.cajero_id || r.user_id || '');
         const c_nom = cashierMap[cid] || (cid ? `ID ${cid}` : 'Desconocido');
         const metodoRaw = String(r.metodo_pago || 'Bancario').trim().toUpperCase();
-        const isRech = Boolean(r.rechazado) || String(r.estado || '').toUpperCase() === 'RECHAZADO';
         const isConf = (Boolean(r.confirmado) || Boolean(r.confirmado_supervisor)) && !isRech;
 
         const concUpper = String(r.concepto || '').toUpperCase();
