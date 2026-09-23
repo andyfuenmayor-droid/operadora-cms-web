@@ -3,6 +3,7 @@ import { useAuth } from '../../context/AuthContext';
 import type { ModuleId } from '../../types';
 import { Sidebar } from './Sidebar';
 import { Header } from './Header';
+import { ToastContainer } from '../Common/ToastContainer';
 import { AlertTriangle, LogOut } from 'lucide-react';
 
 interface ShellProps {
@@ -31,6 +32,9 @@ export const Shell: React.FC<ShellProps> = ({
 
       {/* Main Content Area (Offset for Desktop Sidebar) */}
       <div className="lg:ml-64 flex-1 flex flex-col min-h-screen">
+        {/* Global In-App Toast Notifications */}
+        <ToastContainer />
+
         {/* Top Header */}
         <Header
           currentModule={currentModule}

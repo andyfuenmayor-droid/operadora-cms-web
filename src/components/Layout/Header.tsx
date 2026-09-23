@@ -5,6 +5,7 @@ import { Menu, Calendar, RefreshCw, UserCheck, Bell } from 'lucide-react';
 import { formatDate } from '../../utils/formatters';
 import { supabase } from '../../lib/supabase';
 import { notificationService } from '../../utils/notificationService';
+import { realtimeBroadcast } from '../../utils/realtimeBroadcast';
 
 interface HeaderProps {
   currentModule: ModuleId;
@@ -24,8 +25,28 @@ export const Header: React.FC<HeaderProps> = ({ currentModule, onOpenMobile }) =
     setTimeout(() => setRefreshing(false), 500);
   };
 
-  // Listener global de pagos bancarios entrantes por WebSocket
+  // Listener global de pagos bancarios entrantes por WebSocket y Postgres Realtime
   React.useEffect(() => {
+    // 1. WebSocket Broadcast ultra-rápido (0ms latency desde Taquilla)
+    const unsubSocket = realtimeBroadcast.subscribe('NEW_BANK_PAYMENT', (data) => {
+      notificationService.showNotification('🔔 Nuevo Pago Bancario de Taquilla', {
+        body: `Agencia ${data.agencia || 'General'}: ${data.monto ? Number(data.monto).toLocaleString() : ''} ${data.moneda || 'Bs'} (Ref: ${data.referencia || 'N/A'})`,
+        soundType: 'new_payment',
+        toastType: 'payment',
+        tag: `pago_banco_${data.id || data.referencia}`,
+      });
+    });
+
+    const unsubCashSocket = realtimeBroadcast.subscribe('NEW_CASH_PAYMENT', (data) => {
+      notificationService.showNotification('💵 Nueva Entrega de Efectivo / Cobrador', {
+        body: `Agencia ${data.agencia || 'General'}: ${data.monto ? Number(data.monto).toLocaleString() : ''} ${data.moneda || 'Bs'}`,
+        soundType: 'new_payment',
+        toastType: 'cash',
+        tag: `pago_efectivo_${data.id || data.referencia}`,
+      });
+    });
+
+    // 2. Postgres Changes Realtime
     const channel = supabase
       .channel('cms_global_incoming_payments')
       .on(
@@ -36,13 +57,16 @@ export const Header: React.FC<HeaderProps> = ({ currentModule, onOpenMobile }) =
           notificationService.showNotification('🔔 Nuevo Pago Bancario de Taquilla', {
             body: `Agencia ${row.agencia || 'General'}: ${row.monto ? Number(row.monto).toLocaleString() : ''} ${row.moneda || 'Bs'} (Ref: ${row.referencia || 'N/A'})`,
             soundType: 'new_payment',
-            tag: `nuevo_pago_header_${row.id}`,
+            toastType: 'payment',
+            tag: `pago_banco_${row.id || row.referencia}`,
           });
         }
       )
       .subscribe();
 
     return () => {
+      unsubSocket();
+      unsubCashSocket();
       supabase.removeChannel(channel);
     };
   }, []);
@@ -68,25 +92,20 @@ export const Header: React.FC<HeaderProps> = ({ currentModule, onOpenMobile }) =
 
       {/* Right: Notification Toggle + Cycle Info Chip + Refresh + User Role */}
       <div className="flex items-center gap-2 sm:gap-3">
-        {/* Botón de Notificaciones Push de Escritorio */}
+        {/* Botón de Alertas y Sonido */}
         <button
           type="button"
           onClick={async () => {
             const granted = await notificationService.requestPermission();
             setHasNotificationPerm(granted);
-            if (granted) {
-              notificationService.showNotification('🔔 Notificaciones en Vivo Activadas', {
-                body: 'El sistema te alertará con sonido y aviso emergente cada vez que entre un pago bancario.',
-                soundType: 'new_payment',
-              });
-            }
+            await notificationService.testAlerts();
           }}
           className={`px-2.5 py-1.5 rounded-xl border text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer shadow-sm ${
             hasNotificationPerm
               ? 'bg-amber-500/10 border-amber-500/30 text-amber-400 hover:bg-amber-500/20'
               : 'bg-slate-800/80 border-slate-700 text-slate-400 hover:text-white'
           }`}
-          title={hasNotificationPerm ? 'Notificaciones push y sonido activados' : 'Activar notificaciones de escritorio para pagos entrantes'}
+          title="Probar sonido y alertas visuales"
         >
           <Bell className="w-3.5 h-3.5 text-amber-400" />
           <span className="hidden sm:inline">{hasNotificationPerm ? 'Alertas ON' : 'Activar Alertas'}</span>

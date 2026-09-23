@@ -393,7 +393,28 @@ export const ConfirmationsBoard: React.FC = () => {
 
     if (!autoSyncEnabled) return;
 
-    // Realtime subscriptions on all transaction tables with sound and push notifications
+    // 1. Direct WebSocket Broadcast Listener (0ms instantáneo desde Taquilla POS)
+    const unsubSocketBank = realtimeBroadcast.subscribe('NEW_BANK_PAYMENT', (data) => {
+      notificationService.showNotification('🔔 Nuevo Pago Bancario de Taquilla', {
+        body: `Agencia ${data.agencia || 'General'}: ${formatCurrency(Number(data.monto || 0), (data.moneda || 'BS') as any)} (Ref: ${data.referencia || 'N/A'})`,
+        soundType: 'new_payment',
+        toastType: 'payment',
+        tag: `pago_banco_${data.id || data.referencia}`,
+      });
+      loadData(true);
+    });
+
+    const unsubSocketCash = realtimeBroadcast.subscribe('NEW_CASH_PAYMENT', (data) => {
+      notificationService.showNotification('💵 Nueva Entrega de Efectivo / Cobrador', {
+        body: `Agencia ${data.agencia || 'General'}: ${formatCurrency(Number(data.monto || 0), (data.moneda || 'BS') as any)}`,
+        soundType: 'new_payment',
+        toastType: 'cash',
+        tag: `pago_efectivo_${data.id || data.referencia}`,
+      });
+      loadData(true);
+    });
+
+    // 2. Realtime subscriptions on all transaction tables with sound and push notifications
     const channel = supabase
       .channel(`pizarra_sync_${effectiveUserId}`)
       .on('postgres_changes', { event: '*', schema: 'public', table: 'cda_pagos_bancarios' }, (payload: any) => {
@@ -402,7 +423,8 @@ export const ConfirmationsBoard: React.FC = () => {
           notificationService.showNotification('🔔 Nuevo Pago Bancario de Taquilla', {
             body: `Agencia ${row.agencia || 'General'}: ${formatCurrency(Number(row.monto || 0), row.moneda as any)} (Ref: ${row.referencia || 'N/A'})`,
             soundType: 'new_payment',
-            tag: `pago_banco_${row.id}`,
+            toastType: 'payment',
+            tag: `pago_banco_${row.id || row.referencia}`,
           });
         }
         loadData(true);
@@ -413,7 +435,8 @@ export const ConfirmationsBoard: React.FC = () => {
           notificationService.showNotification('💵 Nueva Entrega de Efectivo / Cobrador', {
             body: `Agencia ${row.agencia || 'General'}: ${formatCurrency(Number(row.monto || 0), row.moneda as any)}`,
             soundType: 'new_payment',
-            tag: `pago_diario_${row.id}`,
+            toastType: 'cash',
+            tag: `pago_efectivo_${row.id || row.referencia}`,
           });
         }
         loadData(true);
@@ -432,6 +455,8 @@ export const ConfirmationsBoard: React.FC = () => {
     }, 8000);
 
     return () => {
+      unsubSocketBank();
+      unsubSocketCash();
       supabase.removeChannel(channel);
       clearInterval(intervalId);
     };
