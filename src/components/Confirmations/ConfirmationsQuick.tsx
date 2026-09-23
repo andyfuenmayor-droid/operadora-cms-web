@@ -24,6 +24,7 @@ import {
 } from 'lucide-react';
 import confetti from 'canvas-confetti';
 import { notificationService } from '../../utils/notificationService';
+import { realtimeBroadcast } from '../../utils/realtimeBroadcast';
 
 export const ConfirmationsQuick: React.FC = () => {
   const { effectiveUserId, user } = useAuth();
@@ -546,6 +547,18 @@ export const ConfirmationsQuick: React.FC = () => {
       // Optimistic update
       setTransactions((prev) => prev.filter((item) => !(item.id === tx.id && item.tabla === tx.tabla)));
 
+      // Broadcast immediately via WebSocket to Taquilla Web
+      realtimeBroadcast.broadcast('PAYMENT_CONFIRMED', {
+        id: tx.id,
+        tabla: tx.tabla,
+        agencia: tx.agencia,
+        monto: tx.monto,
+        moneda: tx.moneda,
+        referencia: tx.referencia,
+        confirmado_por: currentUser,
+        created_at: new Date().toISOString(),
+      });
+
       confetti({ particleCount: 50, spread: 65, origin: { y: 0.7 } });
       const formattedMonto = formatCurrency(tx.monto, tx.moneda);
       setMessage({
@@ -617,6 +630,20 @@ export const ConfirmationsQuick: React.FC = () => {
       setTransactions((prev) =>
         prev.filter((item) => !(item.id === rejectModalItem.id && item.tabla === rejectModalItem.tabla))
       );
+
+      // Broadcast immediately via WebSocket to Taquilla Web
+      realtimeBroadcast.broadcast('PAYMENT_REJECTED', {
+        id: rejectModalItem.id,
+        tabla: rejectModalItem.tabla,
+        agencia: rejectModalItem.agencia,
+        monto: rejectModalItem.monto,
+        moneda: rejectModalItem.moneda,
+        referencia: rejectModalItem.referencia,
+        rechazado_por: currentUser,
+        motivo_rechazo: finalReason,
+        created_at: new Date().toISOString(),
+      });
+
       const rejMonto = formatCurrency(rejectModalItem.monto, rejectModalItem.moneda);
       setMessage({
         type: 'success',
@@ -653,6 +680,11 @@ export const ConfirmationsQuick: React.FC = () => {
 
       confetti({ particleCount: 120, spread: 90, origin: { y: 0.6 } });
       setMessage({ type: 'success', text: `¡Se confirmaron ${filteredTransactions.length} transacciones exitosamente!` });
+
+      realtimeBroadcast.broadcast('DATA_CHANGED', {
+        created_at: new Date().toISOString(),
+      });
+
       await loadData();
     } catch (err: any) {
       console.error('Bulk confirm error:', err);

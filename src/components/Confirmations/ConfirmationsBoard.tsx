@@ -30,6 +30,7 @@ import {
   Bell
 } from 'lucide-react';
 import { notificationService } from '../../utils/notificationService';
+import { realtimeBroadcast } from '../../utils/realtimeBroadcast';
 import confetti from 'canvas-confetti';
 
 interface CustodiaAgencia {
@@ -640,6 +641,18 @@ export const ConfirmationsBoard: React.FC = () => {
         )
       );
 
+      // Broadcast immediately via WebSocket to Taquilla Web
+      realtimeBroadcast.broadcast('PAYMENT_CONFIRMED', {
+        id: item.id,
+        tabla: item.tabla,
+        agencia: item.agencia,
+        monto: item.monto,
+        moneda: item.moneda,
+        referencia: item.referencia,
+        confirmado_por: currentOperatorName,
+        created_at: new Date().toISOString(),
+      });
+
       confetti({
         particleCount: 50,
         spread: 60,
@@ -689,6 +702,14 @@ export const ConfirmationsBoard: React.FC = () => {
             : t
         )
       );
+
+      // Broadcast to Taquilla Web
+      realtimeBroadcast.broadcast('DATA_CHANGED', {
+        id: item.id,
+        tabla: item.tabla,
+        agencia: item.agencia,
+        created_at: new Date().toISOString(),
+      });
 
       setMessage({ type: 'success', text: `Transacción revertida a estado pendiente.` });
     } catch (err: any) {
@@ -749,6 +770,19 @@ export const ConfirmationsBoard: React.FC = () => {
             : t
         )
       );
+
+      // Broadcast immediately via WebSocket to Taquilla Web
+      realtimeBroadcast.broadcast('PAYMENT_REJECTED', {
+        id: rejectModalItem.id,
+        tabla: rejectModalItem.tabla,
+        agencia: rejectModalItem.agencia,
+        monto: rejectModalItem.monto,
+        moneda: rejectModalItem.moneda,
+        referencia: rejectModalItem.referencia,
+        rechazado_por: currentOperatorName,
+        motivo_rechazo: motivoFinal,
+        created_at: nowStr,
+      });
 
       setRejectModalItem(null);
       setRejectNote('');
