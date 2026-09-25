@@ -413,7 +413,7 @@ export const ExpensesTab: React.FC = () => {
       {/* Manual Expense Form */}
       <div className="bg-[#0D1B22] border border-slate-800 rounded-3xl p-6 shadow-xl space-y-4">
         <h3 className="text-sm font-bold text-white flex items-center gap-2">
-          <Plus className="w-4 h-4 text-rose-400" />
+          <Plus className="w-4 h-4 text-emerald-400" />
           Registrar Gasto por Agencia
         </h3>
 
@@ -425,7 +425,7 @@ export const ExpensesTab: React.FC = () => {
                 value={formAgencia}
                 onChange={(e) => setFormAgencia(e.target.value)}
                 required
-                className="w-full bg-[#071217] border border-slate-700 rounded-xl px-3 py-2.5 text-xs text-white focus:outline-none focus:border-rose-500 cursor-pointer"
+                className="w-full bg-[#071217] border border-slate-700 rounded-xl px-3 py-2.5 text-xs text-white focus:outline-none focus:border-emerald-500 cursor-pointer"
               >
                 <option value="">-- Seleccione una Agencia --</option>
                 {agencies.map((a) => (
@@ -520,7 +520,7 @@ export const ExpensesTab: React.FC = () => {
             <button
               type="submit"
               disabled={isProcessing}
-              className="px-6 py-2.5 rounded-xl bg-gradient-to-r from-rose-600 to-rose-500 text-white font-bold text-xs shadow-lg shadow-rose-600/20 flex items-center gap-2 transition-all cursor-pointer disabled:opacity-50"
+              className="px-6 py-2.5 rounded-xl bg-gradient-to-r from-emerald-500 to-teal-600 hover:from-emerald-400 hover:to-teal-500 text-slate-950 font-black text-xs shadow-lg shadow-emerald-500/20 flex items-center gap-2 transition-all cursor-pointer disabled:opacity-50"
             >
               <Plus className="w-4 h-4" />
               {isProcessing ? 'Guardando...' : 'Registrar Gasto por Agencia'}
@@ -549,7 +549,7 @@ export const ExpensesTab: React.FC = () => {
                 onClick={() => setFilterPeriod('ciclo')}
                 className={`px-3 py-1.5 rounded-lg transition-all cursor-pointer ${
                   filterPeriod === 'ciclo'
-                    ? 'bg-rose-600 text-white shadow'
+                    ? 'bg-emerald-500 text-slate-950 font-black shadow-sm'
                     : 'text-slate-400 hover:text-white'
                 }`}
               >
@@ -560,7 +560,7 @@ export const ExpensesTab: React.FC = () => {
                 onClick={() => setFilterPeriod('todos')}
                 className={`px-3 py-1.5 rounded-lg transition-all cursor-pointer ${
                   filterPeriod === 'todos'
-                    ? 'bg-rose-600 text-white shadow'
+                    ? 'bg-emerald-500 text-slate-950 font-black shadow-sm'
                     : 'text-slate-400 hover:text-white'
                 }`}
               >

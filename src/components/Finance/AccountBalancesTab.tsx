@@ -511,9 +511,9 @@ ${textoSistemas}
           <div className="flex items-center gap-1 bg-[#071217] p-1 rounded-2xl border border-slate-800 self-end sm:self-auto shrink-0">
             <button
               onClick={() => setViewMode('cards')}
-              className={`px-3 py-1.5 rounded-xl text-xs font-semibold flex items-center gap-1.5 transition-all cursor-pointer ${
+              className={`px-3 py-1.5 rounded-xl text-xs font-bold flex items-center gap-1.5 transition-all cursor-pointer ${
                 viewMode === 'cards'
-                  ? 'bg-purple-600/30 text-purple-300 border border-purple-500/40 shadow-sm'
+                  ? 'bg-purple-600 text-white shadow-sm'
                   : 'text-slate-400 hover:text-white'
               }`}
             >
@@ -522,9 +522,9 @@ ${textoSistemas}
             </button>
             <button
               onClick={() => setViewMode('table')}
-              className={`px-3 py-1.5 rounded-xl text-xs font-semibold flex items-center gap-1.5 transition-all cursor-pointer ${
+              className={`px-3 py-1.5 rounded-xl text-xs font-bold flex items-center gap-1.5 transition-all cursor-pointer ${
                 viewMode === 'table'
-                  ? 'bg-purple-600/30 text-purple-300 border border-purple-500/40 shadow-sm'
+                  ? 'bg-purple-600 text-white shadow-sm'
                   : 'text-slate-400 hover:text-white'
               }`}
             >

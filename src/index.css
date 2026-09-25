@@ -73,12 +73,15 @@ html.light .bg-\[\#071217\],
 html.light .bg-\[\#0a1820\],
 html.light .bg-\[\#0B161B\],
 html.light .bg-\[\#0c1e1c\],
+html.light .bg-\[\#071318\],
+html.light .bg-\[\#08151D\],
 html.light .bg-slate-950,
 html.light .bg-slate-900,
 html.light .bg-slate-900\/90,
 html.light .bg-slate-900\/80,
 html.light .bg-slate-900\/70,
-html.light .bg-slate-900\/50 {
+html.light .bg-slate-900\/50,
+html.light .bg-slate-700 {
   background-color: #f1f5f9 !important;
   border-color: #cbd5e1 !important;
   color: #0f172a !important;
@@ -133,6 +136,19 @@ html.light .from-\[\#0D1B22\].via-\[\#0F242C\] .bg-\[\#071217\]\/90 {
   background-color: #ffffff !important;
   border-color: #cbd5e1 !important;
   box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05) !important;
+}
+
+/* Banner de Pre-cierre y Arqueo (Cierre) */
+html.light .from-emerald-950\/30 {
+  background: linear-gradient(135deg, #ffffff 0%, #f0fdf4 50%, #f8fafc 100%) !important;
+  border-color: #cbd5e1 !important;
+  box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05) !important;
+}
+
+/* Tarjetas seleccionadas en Pre-Cierre (Cierre) */
+html.light .from-\[\#0F2633\].to-\[\#0A1A23\] {
+  background: linear-gradient(180deg, #ffffff 0%, #f0fdf4 100%) !important;
+  border-color: #10b981 !important;
 }
 
 /* Botones Secundarios, Acciones y Filtros Rápidos (bg-slate-800 / bg-slate-900) */
