@@ -127,11 +127,15 @@ const AppContent: React.FC = () => {
   );
 };
 
+import { ThemeProvider } from './context/ThemeContext';
+
 export const App: React.FC = () => {
   return (
-    <AuthProvider>
-      <AppContent />
-    </AuthProvider>
+    <ThemeProvider>
+      <AuthProvider>
+        <AppContent />
+      </AuthProvider>
+    </ThemeProvider>
   );
 };
 

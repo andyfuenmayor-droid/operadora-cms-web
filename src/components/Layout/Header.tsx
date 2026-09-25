@@ -6,6 +6,7 @@ import { formatDate } from '../../utils/formatters';
 import { supabase } from '../../lib/supabase';
 import { notificationService } from '../../utils/notificationService';
 import { realtimeBroadcast } from '../../utils/realtimeBroadcast';
+import { ThemeToggle } from '../Common/ThemeToggle';
 
 interface HeaderProps {
   currentModule: ModuleId;
@@ -129,6 +130,9 @@ export const Header: React.FC<HeaderProps> = ({ currentModule, onOpenMobile }) =
             </button>
           </div>
         )}
+
+        {/* Selector de Tema Claro / Oscuro */}
+        <ThemeToggle />
 
         <div className="flex items-center gap-2 px-2.5 py-1 rounded-xl bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 text-xs font-bold">
           <UserCheck className="w-3.5 h-3.5" />

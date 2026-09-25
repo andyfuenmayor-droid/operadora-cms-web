@@ -1,11 +1,13 @@
 import React, { useState, useEffect } from 'react';
 import { supabase } from '../../lib/supabase';
 import { useAuth } from '../../context/AuthContext';
-import { Calendar, Save, CheckCircle2, AlertCircle, RefreshCw, Layers, Clock } from 'lucide-react';
+import { useTheme } from '../../context/ThemeContext';
+import { Calendar, Save, CheckCircle2, AlertCircle, RefreshCw, Layers, Clock, Sun, Moon, Palette } from 'lucide-react';
 import confetti from 'canvas-confetti';
 
 export const CycleSettingsTab: React.FC = () => {
   const { effectiveUserId, systemCycle, refreshSystemCycle } = useAuth();
+  const { theme, setTheme, isLight } = useTheme();
   const [fechaDesde, setFechaDesde] = useState(systemCycle.desde);
   const [fechaHasta, setFechaHasta] = useState(systemCycle.hasta);
   const [tipoCierre, setTipoCierre] = useState<'SEMANAL' | 'DIARIO'>(systemCycle.tipo);
@@ -45,12 +47,13 @@ export const CycleSettingsTab: React.FC = () => {
         .delete()
         .eq('user_id', effectiveUserId);
 
-      // Insert fresh configs
+      // Insert fresh configs including theme
       const records = [
         { user_id: effectiveUserId, parametro: 'fecha_desde', valor: fechaDesde },
         { user_id: effectiveUserId, parametro: 'fecha_hasta', valor: fechaHasta },
         { user_id: effectiveUserId, parametro: 'tipo_cierre', valor: tipoCierre.toUpperCase() },
         { user_id: effectiveUserId, parametro: 'semana_no', valor: semanaNo.trim() },
+        { user_id: effectiveUserId, parametro: 'tema', valor: isLight ? 'Claro' : 'Oscuro' },
       ];
 
       const { error } = await supabase
@@ -210,6 +213,75 @@ export const CycleSettingsTab: React.FC = () => {
             </div>
           </div>
 
+          {/* Selector de Apariencia y Tema */}
+          <div className="pt-4 border-t border-slate-800/80 space-y-3">
+            <label className="text-xs font-bold uppercase tracking-wider text-slate-300 flex items-center gap-1.5">
+              <Palette className="w-4 h-4 text-emerald-400" />
+              <span>Apariencia y Tema Visual del Sistema</span>
+            </label>
+            <p className="text-xs text-slate-400">
+              Selecciona el estilo visual con el que prefieres trabajar. Puedes alternarlo cuando desees con un solo clic.
+            </p>
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 pt-1">
+              {/* Opción 1: Modo Oscuro Original */}
+              <div
+                onClick={() => setTheme('dark')}
+                className={`p-4 rounded-2xl border cursor-pointer transition-all flex items-center justify-between ${
+                  !isLight
+                    ? 'bg-[#0a1820] border-emerald-500/50 ring-1 ring-emerald-500/40 shadow-lg'
+                    : 'bg-[#071217] border-slate-800 hover:border-slate-700 opacity-70 hover:opacity-100'
+                }`}
+              >
+                <div className="flex items-center gap-3">
+                  <div className="p-2.5 rounded-xl bg-slate-800 border border-slate-700 text-slate-200">
+                    <Moon className="w-5 h-5 text-indigo-400" />
+                  </div>
+                  <div>
+                    <h4 className="text-sm font-bold text-white flex items-center gap-2">
+                      <span>Modo Oscuro</span>
+                      <span className="text-[10px] font-mono uppercase px-1.5 py-0.5 rounded bg-slate-800 text-slate-400 border border-slate-700">Original</span>
+                    </h4>
+                    <p className="text-[11px] text-slate-400 mt-0.5">
+                      Fondo oscuro (#071217) y tarjetas en grafito (#0D1B22).
+                    </p>
+                  </div>
+                </div>
+                {!isLight && (
+                  <span className="w-3 h-3 rounded-full bg-emerald-400 shadow-[0_0_8px_rgba(52,211,153,0.8)]" />
+                )}
+              </div>
+
+              {/* Opción 2: Modo Claro / Vista Clara */}
+              <div
+                onClick={() => setTheme('light')}
+                className={`p-4 rounded-2xl border cursor-pointer transition-all flex items-center justify-between ${
+                  isLight
+                    ? 'bg-amber-500/10 border-amber-500/50 ring-1 ring-amber-500/40 shadow-lg'
+                    : 'bg-[#071217] border-slate-800 hover:border-slate-700 opacity-70 hover:opacity-100'
+                }`}
+              >
+                <div className="flex items-center gap-3">
+                  <div className="p-2.5 rounded-xl bg-amber-500/10 border border-amber-500/20 text-amber-400">
+                    <Sun className="w-5 h-5" />
+                  </div>
+                  <div>
+                    <h4 className="text-sm font-bold text-white flex items-center gap-2">
+                      <span>Vista Clara</span>
+                      <span className="text-[10px] font-mono uppercase px-1.5 py-0.5 rounded bg-amber-500/10 text-amber-400 border border-amber-500/20">Light</span>
+                    </h4>
+                    <p className="text-[11px] text-slate-400 mt-0.5">
+                      Fondo claro (#F8FAFC) y tarjetas en blanco nítido (#FFFFFF).
+                    </p>
+                  </div>
+                </div>
+                {isLight && (
+                  <span className="w-3 h-3 rounded-full bg-amber-400 shadow-[0_0_8px_rgba(251,191,36,0.8)]" />
+                )}
+              </div>
+            </div>
+          </div>
+
           <div className="pt-4 border-t border-slate-800/80 flex justify-end">
             <button
               type="submit"
@@ -217,7 +289,7 @@ export const CycleSettingsTab: React.FC = () => {
               className="px-6 py-3 rounded-xl bg-gradient-to-r from-emerald-500 to-teal-600 hover:from-emerald-400 hover:to-teal-500 text-slate-950 font-bold text-sm shadow-lg shadow-emerald-500/20 flex items-center gap-2 transition-all disabled:opacity-50 cursor-pointer"
             >
               <Save className="w-4 h-4" />
-              {isSaving ? 'Guardando...' : 'Guardar Ciclo de Trabajo'}
+              {isSaving ? 'Guardando...' : 'Guardar Ciclo y Configuración'}
             </button>
           </div>
         </form>
