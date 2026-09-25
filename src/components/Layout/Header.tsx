@@ -1,7 +1,7 @@
 import React from 'react';
 import { useAuth } from '../../context/AuthContext';
 import type { ModuleId } from '../../types';
-import { Menu, Calendar, RefreshCw, Bell } from 'lucide-react';
+import { Menu, Calendar, RefreshCw, Bell, LogOut } from 'lucide-react';
 import { formatDate } from '../../utils/formatters';
 import { supabase } from '../../lib/supabase';
 import { notificationService } from '../../utils/notificationService';
@@ -15,7 +15,7 @@ interface HeaderProps {
 }
 
 export const Header: React.FC<HeaderProps> = ({ currentModule, onOpenMobile }) => {
-  const { systemCycle, refreshSystemCycle } = useAuth();
+  const { systemCycle, refreshSystemCycle, logout } = useAuth();
   const [refreshing, setRefreshing] = React.useState(false);
   const [hasNotificationPerm, setHasNotificationPerm] = React.useState(
     notificationService.getPermissionStatus() === 'granted'
@@ -136,6 +136,16 @@ export const Header: React.FC<HeaderProps> = ({ currentModule, onOpenMobile }) =
 
         {/* Selector de Tema Claro / Oscuro */}
         <ThemeToggle />
+
+        {/* Botón de Cerrar Sesión (Estilo Taquilla Web) */}
+        <button
+          type="button"
+          onClick={logout}
+          title="Cerrar Sesión"
+          className="p-2 rounded-xl bg-red-500/10 hover:bg-red-500/20 text-red-400 border border-red-500/20 transition-all cursor-pointer"
+        >
+          <LogOut className="w-4 h-4" />
+        </button>
       </div>
     </header>
   );

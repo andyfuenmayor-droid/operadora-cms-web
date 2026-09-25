@@ -27,7 +27,6 @@ import {
   Lock,
   Settings,
   Users,
-  LogOut,
   X,
   Building2,
   Crown,
@@ -76,7 +75,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
   mobileOpen,
   onCloseMobile,
 }) => {
-  const { user, profile, allowedModules, logout } = useAuth();
+  const { user, profile, allowedModules } = useAuth();
 
   const bancaNombre = (profile?.nombre_banca || profile?.banca || 'BANCA Y OPERADORA').toUpperCase();
   const planRaw = user?.plan || 'elite';
@@ -172,17 +171,6 @@ export const Sidebar: React.FC<SidebarProps> = ({
               </button>
             );
           })}
-        </div>
-
-        {/* Bottom: Logout */}
-        <div className="p-3 border-t border-slate-800/80">
-          <button
-            onClick={() => logout()}
-            className="w-full flex items-center justify-center gap-2 py-2 px-3 rounded-xl bg-slate-800/80 hover:bg-rose-500/20 text-slate-300 hover:text-rose-400 text-xs font-bold transition-colors cursor-pointer"
-          >
-            <LogOut className="w-4 h-4" />
-            <span>Cerrar Sesión</span>
-          </button>
         </div>
       </aside>
     </>
