@@ -7,6 +7,7 @@ import { supabase } from '../../lib/supabase';
 import { notificationService } from '../../utils/notificationService';
 import { realtimeBroadcast } from '../../utils/realtimeBroadcast';
 import { ThemeToggle } from '../Common/ThemeToggle';
+import { Logo } from '../Common/Logo';
 
 interface HeaderProps {
   currentModule: ModuleId;
@@ -83,8 +84,10 @@ export const Header: React.FC<HeaderProps> = ({ currentModule, onOpenMobile }) =
           <Menu className="w-5 h-5" />
         </button>
 
-        <div>
-          <img src="/logo.svg" alt="Multibanca Express" className="h-6 w-auto lg:hidden mr-1 filter drop-shadow-[0_0_6px_rgba(0,229,255,0.3)]" />
+        <div className="flex items-center gap-2">
+          <div className="lg:hidden mr-1">
+            <Logo className="h-6 w-auto" />
+          </div>
           <h1 className="text-base sm:text-lg font-black text-white tracking-tight flex items-center gap-2">
             <span>{currentModule}</span>
           </h1>

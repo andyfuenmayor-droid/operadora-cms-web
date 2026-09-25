@@ -171,10 +171,11 @@ html.light .from-\[\#0D1B22\].via-\[\#0F242C\] .bg-\[\#071217\]\/90 {
   box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05) !important;
 }
 
-/* Banner de Pre-cierre y Arqueo (Cierre) */
-html.light .from-emerald-950\/30 {
+/* Banner de Pre-cierre, Arqueo y Tarjeta de Soporte */
+html.light .from-emerald-950\/30,
+html.light .from-emerald-950\/40 {
   background: linear-gradient(135deg, #ffffff 0%, #f0fdf4 50%, #f8fafc 100%) !important;
-  border-color: #cbd5e1 !important;
+  border-color: #a7f3d0 !important;
   box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05) !important;
 }
 
@@ -370,6 +371,14 @@ html.light select:focus,
 html.light textarea:focus {
   border-color: #10b981 !important;
   box-shadow: 0 0 0 2px rgba(16, 185, 129, 0.15) !important;
+}
+
+html.light input:-webkit-autofill,
+html.light input:-webkit-autofill:hover, 
+html.light input:-webkit-autofill:focus {
+  -webkit-text-fill-color: #0f172a !important;
+  -webkit-box-shadow: 0 0 0px 1000px #f8fafc inset !important;
+  transition: background-color 5000s ease-in-out 0s;
 }
 
 html.light input::placeholder,

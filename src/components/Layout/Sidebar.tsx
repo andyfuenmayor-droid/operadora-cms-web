@@ -1,6 +1,7 @@
 import React from 'react';
 import { useAuth } from '../../context/AuthContext';
 import type { ModuleId } from '../../types';
+import { Logo } from '../Common/Logo';
 import {
   Home,
   CheckSquare,
@@ -106,11 +107,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
         <div className="p-4 border-b border-slate-800/80">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-2">
-              <img 
-                src="/logo.svg" 
-                alt="Multibanca Express" 
-                className="h-9 w-auto filter drop-shadow-[0_0_8px_rgba(0,229,255,0.35)]" 
-              />
+              <Logo className="h-9 w-auto" />
             </div>
 
             <button
