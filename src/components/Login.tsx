@@ -4,7 +4,6 @@ import { useTheme } from '../context/ThemeContext';
 import { Shield, Sparkles, MessageSquare } from 'lucide-react';
 import confetti from 'canvas-confetti';
 import { Logo } from './Common/Logo';
-import { ThemeToggle } from './Common/ThemeToggle';
 
 export const Login: React.FC = () => {
   const { login } = useAuth();
@@ -83,11 +82,6 @@ export const Login: React.FC = () => {
         isLight ? 'bg-slate-50 text-slate-800' : 'bg-[#071217] text-slate-100'
       }`}
     >
-      {/* Floating Theme Switcher */}
-      <div className="fixed top-4 right-4 sm:top-6 sm:right-6 z-50">
-        <ThemeToggle showLabel />
-      </div>
-
       {/* Ambient Lighting Glows */}
       <div
         className={`absolute top-0 right-1/4 w-96 h-96 rounded-full blur-3xl pointer-events-none transition-opacity ${
