@@ -1,4 +1,5 @@
 import React, { useState, useMemo } from 'react';
+import { createPortal } from 'react-dom';
 import { formatCurrency, formatDate } from '../../utils/formatters';
 import { Printer, X, ShieldCheck, Filter } from 'lucide-react';
 
@@ -354,11 +355,18 @@ export const ConfirmationOperatorActaModal: React.FC<ConfirmationOperatorActaMod
     }, 250);
   };
 
-  return (
-    <div className="fixed inset-0 z-50 bg-black/85 backdrop-blur-md flex items-center justify-center p-2 sm:p-4 overflow-y-auto animate-fade-in">
-      <div className="bg-[#0D1B22] border border-sky-500/30 rounded-3xl max-w-5xl w-full p-6 sm:p-8 shadow-2xl space-y-6 relative overflow-hidden">
+  return createPortal(
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 overflow-hidden">
+      {/* Backdrop for full window */}
+      <div
+        data-modal-backdrop="true"
+        onClick={onClose}
+        className="fixed inset-0 cursor-pointer transition-opacity"
+      />
+
+      <div className="relative z-10 bg-[#0D1B22] border border-sky-500/30 rounded-3xl max-w-5xl w-full max-h-[90vh] flex flex-col shadow-2xl overflow-hidden animate-fade-in">
         {/* Top Header */}
-        <div className="flex items-center justify-between border-b border-slate-800 pb-4">
+        <div className="flex items-center justify-between border-b border-slate-800 p-4 sm:p-6 shrink-0 bg-[#0D1B22]/95">
           <div className="flex items-center gap-3">
             <div className="p-2.5 rounded-2xl bg-sky-500/15 text-sky-400 border border-sky-500/30">
               <ShieldCheck className="w-6 h-6" />
@@ -391,6 +399,9 @@ export const ConfirmationOperatorActaModal: React.FC<ConfirmationOperatorActaMod
             </button>
           </div>
         </div>
+
+        {/* Scrollable Body */}
+        <div className="p-4 sm:p-8 overflow-y-auto flex-1 space-y-6">
 
         {/* Filter Bar */}
         <div className="flex flex-wrap items-center justify-between gap-3 bg-[#071217] p-3 rounded-2xl border border-slate-800/80">
@@ -618,5 +629,7 @@ export const ConfirmationOperatorActaModal: React.FC<ConfirmationOperatorActaMod
         </div>
       </div>
     </div>
-  );
+  </div>,
+  document.body
+);
 };

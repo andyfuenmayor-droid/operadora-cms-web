@@ -1,4 +1,5 @@
 import React from 'react';
+import { createPortal } from 'react-dom';
 import { formatCurrency } from '../../utils/formatters';
 import { Printer, X, ShieldCheck } from 'lucide-react';
 
@@ -329,11 +330,18 @@ export const DeliveryReportModal: React.FC<DeliveryReportModalProps> = ({
     }, 250);
   };
 
-  return (
-    <div className="fixed inset-0 z-50 bg-black/85 backdrop-blur-md flex items-center justify-center p-2 sm:p-4 overflow-y-auto animate-fade-in">
-      <div className="bg-[#0D1B22] border border-amber-500/30 rounded-3xl max-w-4xl w-full p-6 sm:p-8 shadow-2xl space-y-6 relative overflow-hidden">
-        {/* Modal Action Bar */}
-        <div className="flex items-center justify-between border-b border-slate-800 pb-4">
+  return createPortal(
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 overflow-hidden">
+      {/* Backdrop for full window */}
+      <div
+        data-modal-backdrop="true"
+        onClick={onClose}
+        className="fixed inset-0 cursor-pointer transition-opacity"
+      />
+
+      <div className="relative z-10 bg-[#0D1B22] border border-amber-500/30 rounded-3xl max-w-4xl w-full max-h-[90vh] flex flex-col shadow-2xl overflow-hidden animate-fade-in">
+        {/* Modal Action Bar (Fixed Header) */}
+        <div className="flex items-center justify-between border-b border-slate-800 p-4 sm:p-6 shrink-0 bg-[#0D1B22]/95">
           <div className="flex items-center gap-3">
             <div className="p-2.5 rounded-2xl bg-amber-500/15 text-amber-400 border border-amber-500/30">
               <ShieldCheck className="w-6 h-6" />
@@ -366,8 +374,8 @@ export const DeliveryReportModal: React.FC<DeliveryReportModalProps> = ({
           </div>
         </div>
 
-        {/* PREVIEW DOCUMENT BODY */}
-        <div className="space-y-6 font-sans text-xs text-slate-200">
+        {/* PREVIEW DOCUMENT BODY (Scrollable inside) */}
+        <div className="p-4 sm:p-8 overflow-y-auto flex-1 space-y-6 font-sans text-xs text-slate-200">
           {/* Document Header */}
           <div className="text-center border-b-2 border-slate-700 pb-4 space-y-1">
             <div className="text-base sm:text-lg font-black tracking-wider uppercase text-white">
@@ -567,6 +575,7 @@ export const DeliveryReportModal: React.FC<DeliveryReportModalProps> = ({
           </div>
         </div>
       </div>
-    </div>
+    </div>,
+    document.body
   );
 };

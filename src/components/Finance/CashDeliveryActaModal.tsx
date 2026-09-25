@@ -1,4 +1,5 @@
 import React, { useState, useMemo } from 'react';
+import { createPortal } from 'react-dom';
 import { formatCurrency, formatDate } from '../../utils/formatters';
 import { Printer, X, Banknote, ShieldCheck, Bike, Building2, Filter, ArrowDownLeft, ArrowUpRight } from 'lucide-react';
 
@@ -343,11 +344,18 @@ export const CashDeliveryActaModal: React.FC<CashDeliveryActaModalProps> = ({
     }, 500);
   };
 
-  return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-black/85 backdrop-blur-md animate-fade-in overflow-y-auto">
-      <div className="bg-[#071510] border border-emerald-500/30 rounded-3xl max-w-5xl w-full max-h-[92vh] flex flex-col shadow-2xl overflow-hidden relative my-auto">
+  return createPortal(
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 overflow-hidden">
+      {/* Backdrop for full window */}
+      <div
+        data-modal-backdrop="true"
+        onClick={onClose}
+        className="fixed inset-0 cursor-pointer transition-opacity"
+      />
+
+      <div className="relative z-10 bg-[#071510] border border-emerald-500/30 rounded-3xl max-w-5xl w-full max-h-[90vh] flex flex-col shadow-2xl overflow-hidden animate-fade-in">
         {/* Header Modal */}
-        <div className="p-4 sm:p-5 border-b border-slate-800 flex items-center justify-between bg-gradient-to-r from-emerald-950/40 via-slate-900 to-slate-900">
+        <div className="p-4 sm:p-5 border-b border-slate-800 flex items-center justify-between shrink-0 bg-[#071510]/95">
           <div className="flex items-center gap-3">
             <div className="p-2.5 rounded-2xl bg-emerald-500/20 text-emerald-400 border border-emerald-500/30">
               <Banknote className="w-5 h-5" />
@@ -606,6 +614,7 @@ export const CashDeliveryActaModal: React.FC<CashDeliveryActaModalProps> = ({
           </div>
         </div>
       </div>
-    </div>
+    </div>,
+    document.body
   );
 };
