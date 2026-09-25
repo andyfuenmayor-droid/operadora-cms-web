@@ -1,7 +1,7 @@
 import React from 'react';
 import { useAuth } from '../../context/AuthContext';
 import type { ModuleId } from '../../types';
-import { Menu, Calendar, RefreshCw, UserCheck, Bell } from 'lucide-react';
+import { Menu, Calendar, RefreshCw, Bell } from 'lucide-react';
 import { formatDate } from '../../utils/formatters';
 import { supabase } from '../../lib/supabase';
 import { notificationService } from '../../utils/notificationService';
@@ -15,7 +15,7 @@ interface HeaderProps {
 }
 
 export const Header: React.FC<HeaderProps> = ({ currentModule, onOpenMobile }) => {
-  const { user, systemCycle, refreshSystemCycle } = useAuth();
+  const { systemCycle, refreshSystemCycle } = useAuth();
   const [refreshing, setRefreshing] = React.useState(false);
   const [hasNotificationPerm, setHasNotificationPerm] = React.useState(
     notificationService.getPermissionStatus() === 'granted'
@@ -94,7 +94,7 @@ export const Header: React.FC<HeaderProps> = ({ currentModule, onOpenMobile }) =
         </div>
       </div>
 
-      {/* Right: Notification Toggle + Cycle Info Chip + Refresh + User Role */}
+      {/* Right: Notification Toggle + Cycle Info Chip + Refresh */}
       <div className="flex items-center gap-2 sm:gap-3">
         {/* Botón de Alertas y Sonido */}
         <button
@@ -136,11 +136,6 @@ export const Header: React.FC<HeaderProps> = ({ currentModule, onOpenMobile }) =
 
         {/* Selector de Tema Claro / Oscuro */}
         <ThemeToggle />
-
-        <div className="flex items-center gap-2 px-2.5 py-1 rounded-xl bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 text-xs font-bold">
-          <UserCheck className="w-3.5 h-3.5" />
-          <span className="capitalize">{user?.role || 'Admin'}</span>
-        </div>
       </div>
     </header>
   );
