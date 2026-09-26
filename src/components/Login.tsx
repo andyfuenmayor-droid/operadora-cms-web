@@ -39,33 +39,33 @@ export const Login: React.FC = () => {
       href="https://wa.me/19542259188?text=Hola%2C%20necesito%20atenci%C3%B3n%20y%20soporte%20en%20Multibanca%20Express"
       target="_blank"
       rel="noopener noreferrer"
-      className={`flex items-center justify-between p-4 rounded-2xl transition-all cursor-pointer group shadow-lg ${
+      className={`flex items-center justify-between gap-2.5 sm:gap-4 p-3 sm:p-4 rounded-2xl transition-all cursor-pointer group shadow-lg overflow-hidden border ${
         isLight
-          ? 'bg-gradient-to-r from-white via-emerald-50/50 to-white border border-emerald-200/90 hover:border-emerald-400 shadow-emerald-500/5'
+          ? 'bg-gradient-to-r from-white via-emerald-50/50 to-white border-emerald-200/90 hover:border-emerald-400 shadow-emerald-500/5'
           : 'bg-gradient-to-r from-emerald-950/40 to-teal-950/40 border border-emerald-500/30 hover:border-emerald-500/60 shadow-black/20'
       }`}
     >
-      <div className="flex items-center gap-3">
+      <div className="flex items-center gap-2.5 sm:gap-3 min-w-0 flex-1">
         <div
-          className={`w-10 h-10 rounded-xl flex items-center justify-center text-lg shrink-0 border transition-transform group-hover:scale-105 ${
+          className={`w-9 h-9 sm:w-10 sm:h-10 rounded-xl flex items-center justify-center text-lg shrink-0 border transition-transform group-hover:scale-105 ${
             isLight
               ? 'bg-emerald-100 text-emerald-700 border-emerald-300'
               : 'bg-emerald-500/20 text-emerald-400 border-emerald-500/30'
           }`}
         >
-          <MessageSquare className="w-5 h-5" />
+          <MessageSquare className="w-4 h-4 sm:w-5 sm:h-5" />
         </div>
-        <div className="min-w-0">
-          <div className={`text-xs font-black truncate ${isLight ? 'text-slate-900' : 'text-white'}`}>
+        <div className="min-w-0 flex-1">
+          <div className={`text-xs sm:text-sm font-black truncate leading-tight ${isLight ? 'text-slate-900' : 'text-white'}`}>
             ¿Necesitas atención o soporte?
           </div>
-          <div className={`text-[11px] font-semibold truncate ${isLight ? 'text-emerald-700' : 'text-emerald-400'}`}>
+          <div className={`text-[10px] sm:text-[11px] font-semibold truncate mt-0.5 ${isLight ? 'text-emerald-700' : 'text-emerald-400'}`}>
             WhatsApp: +1 (954) 225-9188
           </div>
         </div>
       </div>
       <span
-        className={`text-[10px] font-black uppercase px-3 py-1.5 rounded-xl transition-all shrink-0 whitespace-nowrap ml-2 shadow-sm ${
+        className={`text-[10px] sm:text-xs font-black uppercase px-2.5 sm:px-3 py-1.5 rounded-xl transition-all shrink-0 whitespace-nowrap shadow-sm text-center ${
           isLight
             ? 'bg-emerald-600 hover:bg-emerald-500 text-white'
             : 'bg-emerald-500 text-black group-hover:bg-emerald-400'
