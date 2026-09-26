@@ -57,7 +57,7 @@ export const Login: React.FC = () => {
         </div>
         <div className="min-w-0 flex-1">
           <div className={`text-xs sm:text-sm font-black truncate leading-tight ${isLight ? 'text-slate-900' : 'text-white'}`}>
-            ¿Necesitas atención o soporte?
+            ¿Necesitas soporte?
           </div>
           <div className={`text-[10px] sm:text-[11px] font-semibold truncate mt-0.5 ${isLight ? 'text-emerald-700' : 'text-emerald-400'}`}>
             WhatsApp: +1 (954) 225-9188
