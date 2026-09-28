@@ -434,6 +434,17 @@ export const ConfirmationsBoard: React.FC = () => {
       loadData(true);
     });
 
+    const unsubSocketExpense = realtimeBroadcast.subscribe('NEW_EXPENSE', (data) => {
+      const tbl = data.tabla || 'gastos';
+      notificationService.showNotification('🧾 Nuevo Gasto por Agencia', {
+        body: `Agencia ${data.agencia || 'General'}: ${formatCurrency(Number(data.monto || 0), (data.moneda || 'BS') as any)} • ${data.concepto || 'Gasto Operativo'}`,
+        soundType: 'new_payment',
+        toastType: 'expense',
+        tag: `gasto_${tbl}_${data.id || data.referencia || Date.now()}`,
+      });
+      loadData(true);
+    });
+
     // 2. Realtime subscriptions on all transaction tables with sound and push notifications
     const channel = supabase
       .channel(`pizarra_sync_${effectiveUserId}`)
@@ -461,8 +472,34 @@ export const ConfirmationsBoard: React.FC = () => {
         }
         loadData(true);
       })
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'cda_gastos_diarios' }, () => loadData(true))
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'gastos' }, () => loadData(true))
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'cda_gastos_diarios' }, (payload: any) => {
+        if (payload.eventType === 'INSERT') {
+          const row = payload.new;
+          if (!row.confirmado && !row.rechazado) {
+            notificationService.showNotification('🧾 Nuevo Gasto Diario de Agencia', {
+              body: `Agencia ${row.agencia || 'General'}: ${formatCurrency(Number(row.monto || 0), (row.moneda || 'BS') as any)} • ${row.concepto || row.descripcion || 'Gasto'}`,
+              soundType: 'new_payment',
+              toastType: 'expense',
+              tag: `gasto_cda_gastos_diarios_${row.id}`,
+            });
+          }
+        }
+        loadData(true);
+      })
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'gastos' }, (payload: any) => {
+        if (payload.eventType === 'INSERT') {
+          const row = payload.new;
+          if (!row.confirmado && !row.rechazado) {
+            notificationService.showNotification('🧾 Nuevo Gasto por Agencia', {
+              body: `Agencia ${row.agencia || 'General'}: ${formatCurrency(Number(row.monto || 0), (row.moneda || 'BS') as any)} • ${row.concepto || 'Gasto'}`,
+              soundType: 'new_payment',
+              toastType: 'expense',
+              tag: `gasto_gastos_${row.id}`,
+            });
+          }
+        }
+        loadData(true);
+      })
       .on('postgres_changes', { event: '*', schema: 'public', table: 'cda_gastos' }, () => loadData(true))
       .on('postgres_changes', { event: '*', schema: 'public', table: 'pagos_semana' }, (payload: any) => {
         if (payload.eventType === 'INSERT') {
@@ -499,6 +536,7 @@ export const ConfirmationsBoard: React.FC = () => {
       unsubSocketCash();
       unsubSocketAgency();
       unsubSocketPrize();
+      unsubSocketExpense();
       supabase.removeChannel(channel);
       clearInterval(intervalId);
     };

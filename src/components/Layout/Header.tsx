@@ -66,6 +66,16 @@ export const Header: React.FC<HeaderProps> = ({ currentModule, onOpenMobile }) =
       });
     });
 
+    const unsubExpenseSocket = realtimeBroadcast.subscribe('NEW_EXPENSE', (data) => {
+      const tbl = data.tabla || 'gastos';
+      notificationService.showNotification('🧾 Nuevo Gasto por Agencia', {
+        body: `Agencia ${data.agencia || 'General'}: ${formatCurrency(Number(data.monto || 0), (data.moneda || 'BS') as any)} • ${data.concepto || 'Gasto Operativo'}`,
+        soundType: 'new_payment',
+        toastType: 'expense',
+        tag: `gasto_${tbl}_${data.id || data.referencia || Date.now()}`,
+      });
+    });
+
     // 2. Postgres Changes Realtime
     const channel = supabase
       .channel('cms_global_incoming_payments')
@@ -119,6 +129,36 @@ export const Header: React.FC<HeaderProps> = ({ currentModule, onOpenMobile }) =
           }
         }
       )
+      .on(
+        'postgres_changes',
+        { event: 'INSERT', schema: 'public', table: 'gastos' },
+        (payload: any) => {
+          const row = payload.new;
+          if (!row.confirmado && !row.rechazado) {
+            notificationService.showNotification('🧾 Nuevo Gasto por Agencia', {
+              body: `Agencia ${row.agencia || 'General'}: ${formatCurrency(Number(row.monto || 0), (row.moneda || 'BS') as any)} • ${row.concepto || 'Gasto'}`,
+              soundType: 'new_payment',
+              toastType: 'expense',
+              tag: `gasto_gastos_${row.id}`,
+            });
+          }
+        }
+      )
+      .on(
+        'postgres_changes',
+        { event: 'INSERT', schema: 'public', table: 'cda_gastos_diarios' },
+        (payload: any) => {
+          const row = payload.new;
+          if (!row.confirmado && !row.rechazado) {
+            notificationService.showNotification('🧾 Nuevo Gasto Diario de Agencia', {
+              body: `Agencia ${row.agencia || 'General'}: ${formatCurrency(Number(row.monto || 0), (row.moneda || 'BS') as any)} • ${row.concepto || row.descripcion || 'Gasto'}`,
+              soundType: 'new_payment',
+              toastType: 'expense',
+              tag: `gasto_cda_gastos_diarios_${row.id}`,
+            });
+          }
+        }
+      )
       .subscribe();
 
     return () => {
@@ -126,6 +166,7 @@ export const Header: React.FC<HeaderProps> = ({ currentModule, onOpenMobile }) =
       unsubCashSocket();
       unsubAgencySocket();
       unsubPrizeSocket();
+      unsubExpenseSocket();
       supabase.removeChannel(channel);
     };
   }, []);

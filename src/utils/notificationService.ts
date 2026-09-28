@@ -13,7 +13,7 @@ export interface InAppToastPayload {
   id: string;
   title: string;
   body: string;
-  type: 'payment' | 'cash' | 'success' | 'warning' | 'info';
+  type: 'payment' | 'cash' | 'expense' | 'success' | 'warning' | 'info';
   timestamp: number;
   data?: any;
 }
@@ -269,7 +269,7 @@ class NotificationSoundService {
       icon?: string;
       tag?: string;
       soundType?: 'new_payment' | 'confirmed' | 'rejected' | 'alert';
-      toastType?: 'payment' | 'cash' | 'success' | 'warning' | 'info';
+      toastType?: 'payment' | 'cash' | 'expense' | 'success' | 'warning' | 'info';
       toastData?: any;
       onClick?: () => void;
     }

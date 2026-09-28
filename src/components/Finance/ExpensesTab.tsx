@@ -3,6 +3,8 @@ import { supabase } from '../../lib/supabase';
 import { useAuth } from '../../context/AuthContext';
 import { formatCurrency, formatDate, normalizarMoneda } from '../../utils/formatters';
 import type { Agency, Currency } from '../../types';
+import { notificationService } from '../../utils/notificationService';
+import { realtimeBroadcast } from '../../utils/realtimeBroadcast';
 import {
   Banknote,
   Plus,
@@ -258,19 +260,52 @@ export const ExpensesTab: React.FC = () => {
         fecha: formFecha || new Date().toISOString().slice(0, 10),
       };
 
-      const { error } = await supabase.from('gastos').insert(payload);
+      const { data: insertedData, error } = await supabase
+        .from('gastos')
+        .insert(payload)
+        .select()
+        .single();
       if (error) throw error;
 
       if (formConfirmDirecta) {
         confetti({ particleCount: 35, spread: 50 });
+        notificationService.playSound('confirmed');
         setMessage({
           type: 'success',
           text: `✅ Gasto de ${formMoneda} ${montoNum.toLocaleString('es-VE', { minimumFractionDigits: 2 })} registrado y confirmado exitosamente.`,
         });
       } else {
+        const notifTitle = '🧾 Nuevo Gasto por Agencia';
+        const notifBody = `Agencia ${formAgencia}: ${formatCurrency(montoNum, formMoneda as any)} • ${conceptoFinal}`;
+
+        // 1. Broadcast instantáneo por WebSocket a Confirmaciones
+        try {
+          await realtimeBroadcast.broadcast('NEW_EXPENSE', {
+            id: insertedData?.id,
+            tabla: 'gastos',
+            agencia: formAgencia,
+            monto: montoNum,
+            moneda: formMoneda,
+            concepto: conceptoFinal,
+            referencia: formReferencia.trim().toUpperCase() || 'N/A',
+            confirmado: false,
+            created_at: payload.fecha,
+          });
+        } catch (bErr) {
+          console.warn('[ExpensesTab] Error broadcasting expense:', bErr);
+        }
+
+        // 2. Alerta sonora local y notificación in-app inmediata
+        notificationService.showNotification(notifTitle, {
+          body: notifBody,
+          soundType: 'new_payment',
+          toastType: 'expense',
+          tag: `gasto_${insertedData?.id || Date.now()}`,
+        });
+
         setMessage({
           type: 'info',
-          text: `⏳ Gasto de ${formMoneda} ${montoNum.toLocaleString('es-VE', { minimumFractionDigits: 2 })} registrado como PENDIENTE. Por favor verifícalo en la Pizarra de Confirmaciones.`,
+          text: `⏳ Gasto de ${formMoneda} ${montoNum.toLocaleString('es-VE', { minimumFractionDigits: 2 })} registrado como PENDIENTE (enviado a Pizarra de Confirmaciones).`,
         });
       }
 

@@ -11,7 +11,8 @@ import {
   DollarSign, 
   ArrowUpRight, 
   Landmark,
-  Sparkles
+  Sparkles,
+  Receipt
 } from 'lucide-react';
 
 interface ToastItem extends InAppToastPayload {
@@ -70,6 +71,7 @@ export const ToastContainer: React.FC = () => {
       {toasts.map((toast) => {
         const isPayment = toast.type === 'payment';
         const isCash = toast.type === 'cash';
+        const isExpense = toast.type === 'expense';
         const isSuccess = toast.type === 'success';
         const isWarning = toast.type === 'warning';
 
@@ -103,6 +105,16 @@ export const ToastContainer: React.FC = () => {
             badgeText: 'ENTREGA DE EFECTIVO',
             progressBar: 'bg-gradient-to-r from-amber-500 to-yellow-400',
             icon: <DollarSign className="w-4 h-4 text-amber-400 animate-pulse" />,
+          };
+        } else if (isExpense) {
+          themeStyles = {
+            border: 'border-orange-500/50 ring-1 ring-orange-500/30',
+            bg: 'bg-[#1e1008]/95',
+            glow: 'shadow-[0_12px_40px_rgba(249,115,22,0.35)]',
+            badgeBg: 'bg-orange-500/20 text-orange-300 border-orange-500/40',
+            badgeText: 'GASTO POR AGENCIA',
+            progressBar: 'bg-gradient-to-r from-orange-500 to-amber-400',
+            icon: <Receipt className="w-4 h-4 text-orange-400 animate-pulse" />,
           };
         } else if (isSuccess) {
           themeStyles = {

@@ -427,6 +427,19 @@ export const ConfirmationsQuick: React.FC = () => {
       loadData(true);
     });
 
+    const unsubSocketExpense = realtimeBroadcast.subscribe('NEW_EXPENSE', (data) => {
+      const tbl = data.tabla || 'gastos';
+      const tagKey = `gasto_${tbl}_${data.id || data.referencia || Date.now()}`;
+      notificationService.showNotification('🧾 Nuevo Gasto por Agencia', {
+        body: `Agencia ${data.agencia || 'General'}: ${formatCurrency(Number(data.monto || 0), (data.moneda || 'BS') as any)} • ${data.concepto || 'Gasto Operativo'}`,
+        soundType: 'new_payment',
+        toastType: 'expense',
+        tag: tagKey,
+      });
+      if (data.id) markRecentlyArrived(`${tbl}_${data.id}`);
+      loadData(true);
+    });
+
     // 2. Supabase Postgres Changes Listener
     const channel = supabase
       .channel(`quick_conf_live_${effectiveUserId}`)
@@ -443,8 +456,36 @@ export const ConfirmationsQuick: React.FC = () => {
         }
         loadData(true);
       })
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'cda_gastos_diarios' }, () => loadData(true))
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'gastos' }, () => loadData(true))
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'cda_gastos_diarios' }, (payload: any) => {
+        if (payload.eventType === 'INSERT') {
+          const row = payload.new;
+          if (!row.confirmado && !row.rechazado) {
+            if (row.id) markRecentlyArrived(`cda_gastos_diarios_${row.id}`);
+            notificationService.showNotification('🧾 Nuevo Gasto Diario de Agencia', {
+              body: `Agencia ${row.agencia || 'General'}: ${formatCurrency(Number(row.monto || 0), (row.moneda || 'BS') as any)} • ${row.concepto || row.descripcion || 'Gasto'}`,
+              soundType: 'new_payment',
+              toastType: 'expense',
+              tag: `gasto_cda_gastos_diarios_${row.id}`,
+            });
+          }
+        }
+        loadData(true);
+      })
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'gastos' }, (payload: any) => {
+        if (payload.eventType === 'INSERT') {
+          const row = payload.new;
+          if (!row.confirmado && !row.rechazado) {
+            if (row.id) markRecentlyArrived(`gastos_${row.id}`);
+            notificationService.showNotification('🧾 Nuevo Gasto por Agencia', {
+              body: `Agencia ${row.agencia || 'General'}: ${formatCurrency(Number(row.monto || 0), (row.moneda || 'BS') as any)} • ${row.concepto || 'Gasto'}`,
+              soundType: 'new_payment',
+              toastType: 'expense',
+              tag: `gasto_gastos_${row.id}`,
+            });
+          }
+        }
+        loadData(true);
+      })
       .on('postgres_changes', { event: '*', schema: 'public', table: 'cda_gastos' }, () => loadData(true))
       .on('postgres_changes', { event: '*', schema: 'public', table: 'cda_pagos_diarios' }, (payload: any) => {
         if (payload.eventType === 'INSERT') {
@@ -495,6 +536,7 @@ export const ConfirmationsQuick: React.FC = () => {
       unsubSocketCash();
       unsubSocketAgency();
       unsubSocketPrize();
+      unsubSocketExpense();
       supabase.removeChannel(channel);
       clearInterval(intervalId);
     };
