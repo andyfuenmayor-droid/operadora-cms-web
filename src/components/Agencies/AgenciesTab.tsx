@@ -31,59 +31,130 @@ import confetti from 'canvas-confetti';
  * Parsea y formatea las cuentas y dispositivos bancarios al modo Ultra Compacto:
  * Ejemplo: "2 - [CUENTA] BANESCO ( BS) | ANDYS FUENMAYOR" -> "Banesco (BS)"
  */
-export const parseAccountDisplay = (raw: string) => {
+export const parseAccountDisplay = (
+  raw: string,
+  accounts: BankAccount[] = [],
+  devices: PaymentDevice[] = []
+) => {
   if (!raw || typeof raw !== 'string') return null;
   const str = raw.trim();
   if (!str || str === 'NINGUNA') return null;
 
-  const isPos = /pos|dispositivo|punto de venta/i.test(str);
-
   const idMatch = str.match(/^(\d+)\s*-\s*/);
-  const id = idMatch ? idMatch[1] : '';
-  const withoutId = str.replace(/^(\d+)\s*-\s*/, '');
+  const idNum = idMatch ? parseInt(idMatch[1], 10) : null;
+  const matchedAcc = idNum ? accounts.find((a) => a.id === idNum) : null;
+  const matchedDev = idNum ? devices.find((d) => d.id === idNum) : null;
 
-  const parts = withoutId.split('|');
-  const mainPart = parts[0].trim();
-  const titular = parts[1] ? parts[1].trim() : '';
+  const isPos =
+    /pos|dispositivo|punto de venta/i.test(str) ||
+    Boolean(matchedDev) ||
+    Boolean(matchedAcc && /dispositivo|pos/i.test(matchedAcc.tipo_cuenta || ''));
 
-  // Extraer código de moneda
-  const monMatch = str.match(/\b(BS|USD|COP|EUR|USDT|VES)\b/i);
-  const moneda = monMatch ? monMatch[1].trim().toUpperCase() : '';
+  let banco = '';
+  let tipoCuenta = '';
+  let moneda = '';
+  let titular = '';
+  let numero = '';
 
-  let cleanName = mainPart
-    .replace(/\[[^\]]+\]/g, '')
-    .replace(/\([^)]+\)/g, '')
-    .replace(/DISPOSITIVO:\s*/i, '')
-    .trim();
+  if (matchedAcc) {
+    banco = matchedAcc.banco;
+    tipoCuenta = matchedAcc.tipo_cuenta || '';
+    moneda = (matchedAcc.moneda || '').trim().toUpperCase();
+    titular = matchedAcc.titular || '';
+    numero = matchedAcc.numero_cuenta || '';
+  } else if (matchedDev) {
+    banco = matchedDev.alias_nombre || matchedDev.nombre_dispositivo || matchedDev.alias || 'POS';
+    tipoCuenta = 'POS';
+    moneda = (matchedDev.moneda || '').trim().toUpperCase();
+  } else {
+    // Fallback parser from raw string
+    const withoutId = str.replace(/^(\d+)\s*-\s*/, '');
+    const parts = withoutId.split('|');
+    const mainPart = parts[0].trim();
+    titular = parts[1] ? parts[1].trim() : '';
 
+    const monMatch = str.match(/\b(BS|USD|COP|EUR|USDT|VES)\b/i);
+    moneda = monMatch ? monMatch[1].trim().toUpperCase() : '';
+
+    const bracketMatches = mainPart.match(/\[([^\]]+)\]/g);
+    if (bracketMatches) {
+      bracketMatches.forEach((bm) => {
+        const inner = bm.replace(/\[|\]/g, '').trim();
+        if (/corriente|ahorro|pago\s*movil|zelle|pos/i.test(inner)) {
+          tipoCuenta = inner;
+        }
+      });
+    }
+
+    banco = mainPart
+      .replace(/\[[^\]]+\]/g, '')
+      .replace(/\([^)]+\)/g, '')
+      .replace(/DISPOSITIVO:\s*/i, '')
+      .trim();
+  }
+
+  // Clean bank name
   if (isPos) {
     if (titular && titular.toUpperCase().includes('POS')) {
-      cleanName = titular.replace(/\s*GLO$/i, '');
-    } else if (!cleanName || cleanName.toUpperCase().includes('PUNTO DE VENTA')) {
-      cleanName = titular || 'POS';
+      banco = titular.replace(/\s*GLO$/i, '');
+    } else if (!banco || /punto de venta/i.test(banco)) {
+      banco = titular || 'POS Bancolombia';
     }
   }
 
-  // Capitalización limpia: "BANESCO" -> "Banesco", "CITI BANK" -> "Citi Bank"
-  cleanName = cleanName
+  // Title case for bank
+  banco = banco
     .toLowerCase()
     .split(' ')
     .map((w) => w.charAt(0).toUpperCase() + w.slice(1))
     .join(' ');
 
   if (isPos) {
-    cleanName = cleanName.replace(/^(Pos|pos)\s*/i, 'POS ');
-    if (!cleanName.startsWith('POS ')) {
-      cleanName = `POS ${cleanName}`;
-    }
+    banco = banco.replace(/^(Pos|pos)\s*/i, 'POS ');
+    if (!banco.startsWith('POS ')) banco = `POS ${banco}`;
   }
 
-  const shortTitle = moneda ? `${cleanName} (${moneda})` : cleanName;
-  const tooltip = titular
-    ? `${shortTitle} • Titular: ${titular}${id ? ` (ID: #${id})` : ''}`
-    : `${shortTitle}${id ? ` (ID: #${id})` : ''}`;
+  // Format tipoCuenta cleanly
+  let tipoClean = tipoCuenta.trim();
+  if (/pago\s*m[oó]vil/i.test(tipoClean)) tipoClean = 'Pago Móvil';
+  else if (/ahorros?/i.test(tipoClean)) tipoClean = 'Ahorro';
+  else if (/corriente/i.test(tipoClean)) tipoClean = 'Corriente';
+  else if (/zelle/i.test(tipoClean)) tipoClean = 'Zelle';
+  else if (/dispositivo/i.test(tipoClean)) tipoClean = '';
+  else if (tipoClean) {
+    tipoClean = tipoClean
+      .toLowerCase()
+      .split(' ')
+      .map((w) => w.charAt(0).toUpperCase() + w.slice(1))
+      .join(' ');
+  }
 
-  return { isPos, shortTitle, tooltip, titular, moneda, id };
+  // Short title with tipo de cuenta
+  let shortTitle = '';
+  if (isPos) {
+    shortTitle = moneda ? `${banco} (${moneda})` : banco;
+  } else if (tipoClean) {
+    shortTitle = moneda ? `${banco} • ${tipoClean} (${moneda})` : `${banco} • ${tipoClean}`;
+  } else {
+    shortTitle = moneda ? `${banco} (${moneda})` : banco;
+  }
+
+  const tooltipParts = [shortTitle];
+  if (titular) tooltipParts.push(`Titular: ${titular}`);
+  if (numero) tooltipParts.push(`Nº: ${numero}`);
+  if (idNum) tooltipParts.push(`ID: #${idNum}`);
+
+  return {
+    isPos,
+    banco,
+    tipoCuenta: tipoClean,
+    moneda,
+    titular,
+    numero,
+    shortTitle,
+    tooltip: tooltipParts.join(' • '),
+    id: idNum,
+  };
 };
 
 export const AgenciesTab: React.FC = () => {
@@ -139,8 +210,8 @@ export const AgenciesTab: React.FC = () => {
         supabase.from('agencias').select('*').eq('user_id', effectiveUserId).order('id', { ascending: true }),
         supabase.from('sistemas').select('*').eq('user_id', effectiveUserId).order('nombre_sistema', { ascending: true }),
         supabase.from('monedas').select('*').eq('user_id', effectiveUserId).order('id', { ascending: true }),
-        supabase.from('cuentas_bancarias').select('*').eq('user_id', effectiveUserId),
-        supabase.from('dispositivos_pago').select('*').eq('user_id', effectiveUserId),
+        supabase.from('cuentas_bancarias').select('*').eq('user_id', effectiveUserId).order('id', { ascending: true }),
+        supabase.from('dispositivos_pago').select('*').eq('user_id', effectiveUserId).order('id', { ascending: true }),
       ]);
 
       const rawMonedas = monRes.data || [];
@@ -182,12 +253,14 @@ export const AgenciesTab: React.FC = () => {
     const list: string[] = [];
 
     bankAccounts.forEach((cb) => {
-      const label = `${cb.id} - [CUENTA] ${cb.banco} (${cb.moneda}) | ${cb.titular}`;
+      const tipoClean = cb.tipo_cuenta ? ` [${cb.tipo_cuenta}]` : '';
+      const monClean = (cb.moneda || '').trim().toUpperCase();
+      const label = `${cb.id} - [CUENTA] ${cb.banco}${tipoClean} (${monClean}) | ${cb.titular}`;
       list.push(label);
     });
 
     devices.forEach((d) => {
-      const label = `${d.id} - [POS] ${d.nombre_dispositivo || d.alias || 'POS'} [${d.tipo_dispositivo || 'POS'}] (${d.moneda || 'USD'})`;
+      const label = `${d.id} - [POS] ${d.nombre_dispositivo || d.alias || 'POS'} [${d.tipo_dispositivo || 'POS'}] (${(d.moneda || 'USD').trim().toUpperCase()})`;
       list.push(label);
     });
 
@@ -434,7 +507,10 @@ export const AgenciesTab: React.FC = () => {
         (a.sistemas || '').toLowerCase().includes(q) ||
         (a.monedas || '').toLowerCase().includes(q) ||
         (a.usuario_taquilla || '').toLowerCase().includes(q) ||
-        (a.cuentas_asignadas || '').toLowerCase().includes(q)
+        (a.cuentas_asignadas || '').toLowerCase().includes(q) ||
+        (a.cuentas_asignadas || '')
+          .split(',')
+          .some((acc) => parseAccountDisplay(acc, bankAccounts, devices)?.shortTitle.toLowerCase().includes(q))
       );
     });
   }, [agencies, searchQuery]);
@@ -703,11 +779,13 @@ export const AgenciesTab: React.FC = () => {
                       <td className="py-3 px-4 font-sans">
                         {accArr.length > 0 ? (
                           (() => {
-                            const parsedFirst = parseAccountDisplay(accArr[0]);
-                            const remaining = accArr.slice(1).map((a) => parseAccountDisplay(a)?.shortTitle || a);
+                            const parsedFirst = parseAccountDisplay(accArr[0], bankAccounts, devices);
+                            const remaining = accArr
+                              .slice(1)
+                              .map((a) => parseAccountDisplay(a, bankAccounts, devices)?.shortTitle || a);
                             const fullTooltip = accArr
                               .map((a) => {
-                                const p = parseAccountDisplay(a);
+                                const p = parseAccountDisplay(a, bankAccounts, devices);
                                 return p ? p.tooltip : a;
                               })
                               .join('\n');
@@ -858,7 +936,7 @@ export const AgenciesTab: React.FC = () => {
                   {accArr.length > 0 ? (
                     <div className="flex flex-wrap gap-1.5">
                       {accArr.map((acc) => {
-                        const parsed = parseAccountDisplay(acc);
+                        const parsed = parseAccountDisplay(acc, bankAccounts, devices);
                         return (
                           <span
                             key={acc}
@@ -1024,13 +1102,17 @@ export const AgenciesTab: React.FC = () => {
                 <label className="text-xs font-semibold text-slate-300">
                   Dispositivos de Cobro y Cuentas Bancarias Asignadas
                 </label>
-                <div className="p-3 bg-[#071217] rounded-xl border border-slate-800 max-h-40 overflow-y-auto space-y-1.5">
+                <div className="p-3 bg-[#071217] rounded-xl border border-slate-800 max-h-48 overflow-y-auto space-y-1.5">
                   {accountOptions.length === 0 ? (
                     <span className="text-xs text-slate-500 italic">No hay cuentas ni dispositivos registrados.</span>
                   ) : (
                     accountOptions.map((opt) => {
-                      const parsed = parseAccountDisplay(opt);
-                      const isChecked = formCuentasAsignadas.includes(opt);
+                      const parsed = parseAccountDisplay(opt, bankAccounts, devices);
+                      const optId = opt.match(/^(\d+)\s*-\s*/)?.[1];
+                      const isChecked = formCuentasAsignadas.some((item) => {
+                        const itemId = item.match(/^(\d+)\s*-\s*/)?.[1];
+                        return optId && itemId ? optId === itemId : item.trim() === opt.trim();
+                      });
 
                       return (
                         <label
@@ -1042,8 +1124,20 @@ export const AgenciesTab: React.FC = () => {
                             type="checkbox"
                             checked={isChecked}
                             onChange={(e) => {
-                              if (e.target.checked) setFormCuentasAsignadas([...formCuentasAsignadas, opt]);
-                              else setFormCuentasAsignadas(formCuentasAsignadas.filter((item) => item !== opt));
+                              if (e.target.checked) {
+                                const withoutSame = formCuentasAsignadas.filter((item) => {
+                                  const itemId = item.match(/^(\d+)\s*-\s*/)?.[1];
+                                  return optId && itemId ? optId !== itemId : item.trim() !== opt.trim();
+                                });
+                                setFormCuentasAsignadas([...withoutSame, opt]);
+                              } else {
+                                setFormCuentasAsignadas(
+                                  formCuentasAsignadas.filter((item) => {
+                                    const itemId = item.match(/^(\d+)\s*-\s*/)?.[1];
+                                    return optId && itemId ? optId !== itemId : item.trim() !== opt.trim();
+                                  })
+                                );
+                              }
                             }}
                             className="rounded text-cyan-500 bg-slate-900 border-slate-700 focus:ring-0"
                           />
