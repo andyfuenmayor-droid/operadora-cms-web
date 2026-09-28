@@ -20,7 +20,9 @@ import {
   Save,
   ShieldAlert,
   Sliders,
-  CheckCheck
+  CheckCheck,
+  List,
+  LayoutGrid
 } from 'lucide-react';
 import confetti from 'canvas-confetti';
 
@@ -34,6 +36,17 @@ export const AgenciesTab: React.FC = () => {
   const [currencies, setCurrencies] = useState<Currency[]>([]);
   const [bankAccounts, setBankAccounts] = useState<BankAccount[]>([]);
   const [devices, setDevices] = useState<PaymentDevice[]>([]);
+
+  // View Mode: 'linear' (Table, default) vs 'cards' (Grid)
+  const [viewMode, setViewMode] = useState<'linear' | 'cards'>(() => {
+    if (typeof window !== 'undefined') {
+      try {
+        const saved = localStorage.getItem('cms_agencies_view_mode');
+        if (saved === 'linear' || saved === 'cards') return saved;
+      } catch (_) {}
+    }
+    return 'linear';
+  });
 
   const [searchQuery, setSearchQuery] = useState('');
   const [message, setMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
@@ -437,19 +450,57 @@ export const AgenciesTab: React.FC = () => {
         </div>
       )}
 
-      {/* Search Bar */}
-      <div className="relative">
-        <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
-        <input
-          type="text"
-          placeholder="Buscar agencia por nombre, sistema, moneda, usuario POS..."
-          value={searchQuery}
-          onChange={(e) => setSearchQuery(e.target.value)}
-          className="w-full bg-[#0D1B22] border border-slate-800 rounded-2xl pl-9 pr-4 py-3 text-xs text-white focus:outline-none focus:border-emerald-500 transition-colors"
-        />
+      {/* Search Bar & View Mode Switcher */}
+      <div className="flex flex-col sm:flex-row items-center justify-between gap-3">
+        <div className="relative flex-1 w-full">
+          <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+          <input
+            type="text"
+            placeholder="Buscar agencia por nombre, sistema, moneda, usuario POS..."
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+            className="w-full bg-[#0D1B22] border border-slate-800 rounded-2xl pl-9 pr-4 py-2.5 text-xs text-white focus:outline-none focus:border-emerald-500 transition-colors"
+          />
+        </div>
+
+        {/* View Mode Toggle */}
+        <div className="flex items-center gap-1 bg-[#0D1B22] p-1 rounded-2xl border border-slate-800 shrink-0 self-end sm:self-auto">
+          <button
+            type="button"
+            onClick={() => {
+              setViewMode('linear');
+              try { localStorage.setItem('cms_agencies_view_mode', 'linear'); } catch (_) {}
+            }}
+            className={`px-3 py-1.5 rounded-xl text-xs font-bold flex items-center gap-1.5 transition-all cursor-pointer ${
+              viewMode === 'linear'
+                ? 'bg-emerald-500 text-slate-950 font-black shadow-md shadow-emerald-500/20'
+                : 'text-slate-400 hover:text-white hover:bg-slate-800/60'
+            }`}
+            title="Vista Lineal (Tabla)"
+          >
+            <List className="w-3.5 h-3.5" />
+            <span>Vista Lineal</span>
+          </button>
+          <button
+            type="button"
+            onClick={() => {
+              setViewMode('cards');
+              try { localStorage.setItem('cms_agencies_view_mode', 'cards'); } catch (_) {}
+            }}
+            className={`px-3 py-1.5 rounded-xl text-xs font-bold flex items-center gap-1.5 transition-all cursor-pointer ${
+              viewMode === 'cards'
+                ? 'bg-emerald-500 text-slate-950 font-black shadow-md shadow-emerald-500/20'
+                : 'text-slate-400 hover:text-white hover:bg-slate-800/60'
+            }`}
+            title="Vista Tarjetas (Grid)"
+          >
+            <LayoutGrid className="w-3.5 h-3.5" />
+            <span>Tarjetas</span>
+          </button>
+        </div>
       </div>
 
-      {/* Agencies Cards Grid */}
+      {/* Agencies Cards or Linear Table */}
       {isLoading ? (
         <div className="text-center py-16 bg-[#0D1B22] border border-slate-800 rounded-3xl">
           <RefreshCw className="w-8 h-8 text-emerald-400 animate-spin mx-auto mb-3" />
@@ -470,7 +521,195 @@ export const AgenciesTab: React.FC = () => {
             Registrar Agencia
           </button>
         </div>
+      ) : viewMode === 'linear' ? (
+        /* Patrón Lineal: Tabla Completa de Agencias */
+        <div className="bg-[#0D1B22] border border-slate-800 rounded-3xl overflow-hidden shadow-2xl">
+          <div className="p-4 sm:p-5 border-b border-slate-800 flex items-center justify-between bg-[#071217]/50">
+            <div className="flex items-center gap-2">
+              <h4 className="text-xs font-bold text-white uppercase tracking-wider flex items-center gap-2">
+                <span className="p-1 rounded-md bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">
+                  <List className="w-3.5 h-3.5" />
+                </span>
+                <span>Listado de Agencias ({filteredAgencies.length})</span>
+              </h4>
+              <span className="text-[10px] text-slate-500 font-mono">
+                Patrón Lineal
+              </span>
+            </div>
+            <span className="text-[11px] text-slate-400 font-mono">
+              Mostrando {filteredAgencies.length} de {agencies.length} agencias
+            </span>
+          </div>
+
+          <div className="overflow-x-auto">
+            <table className="w-full text-left text-[11px] border-collapse min-w-[950px]">
+              <thead className="sticky top-0 bg-[#071217] text-slate-400 font-bold uppercase text-[10px] tracking-wider border-b border-slate-800">
+                <tr>
+                  <th className="py-3 px-2.5 text-center w-12">#</th>
+                  <th className="py-3 px-3">Agencia</th>
+                  <th className="py-3 px-3 text-center">Comisión / Part.</th>
+                  <th className="py-3 px-3">Sistemas</th>
+                  <th className="py-3 px-3 text-center">Monedas</th>
+                  <th className="py-3 px-3 text-right">Saldo Bs</th>
+                  <th className="py-3 px-3 text-right">Saldo USD</th>
+                  <th className="py-3 px-3 text-right">Saldo COP</th>
+                  <th className="py-3 px-3">Cuentas / Bancos</th>
+                  <th className="py-3 px-3">Acceso POS</th>
+                  <th className="py-3 px-3 text-center w-20">Acciones</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-800/80 font-mono">
+                {filteredAgencies.map((ag) => {
+                  const sisArr = ag.sistemas ? ag.sistemas.split(',').map((s) => s.trim()).filter(Boolean) : [];
+                  const monArr = ag.monedas ? ag.monedas.split(',').map((m) => m.trim()).filter(Boolean) : [];
+                  const accArr =
+                    ag.cuentas_asignadas && ag.cuentas_asignadas !== 'NINGUNA'
+                      ? ag.cuentas_asignadas.split(',').map((c) => c.trim()).filter(Boolean)
+                      : [];
+
+                  const sBs = Number(ag.saldo_inicial_bs || 0);
+                  const sUsd = Number(ag.saldo_inicial_usd || 0);
+                  const sCop = Number(ag.saldo_inicial_cop || 0);
+
+                  return (
+                    <tr key={ag.id} className="hover:bg-slate-800/30 transition-colors group">
+                      {/* ID */}
+                      <td className="py-2.5 px-2.5 text-center text-slate-500 font-bold">
+                        #{ag.id}
+                      </td>
+
+                      {/* Agency Name + Audit Badge */}
+                      <td className="py-2.5 px-3 font-sans">
+                        <div className="flex items-center gap-1.5">
+                          <span className="font-black text-white text-xs whitespace-nowrap">
+                            {ag.nombre_agencia}
+                          </span>
+                          {ag.auditoria_activa && (
+                            <span className="px-1.5 py-0.5 rounded text-[8.5px] font-bold bg-purple-500/15 text-purple-400 border border-purple-500/30 whitespace-nowrap">
+                              Auditoría
+                            </span>
+                          )}
+                        </div>
+                      </td>
+
+                      {/* Comision / Participacion */}
+                      <td className="py-2.5 px-3 text-center">
+                        <div className="inline-flex items-center gap-1 font-mono text-[10.5px]">
+                          <span className="px-1.5 py-0.5 rounded bg-emerald-500/10 text-emerald-400 font-bold border border-emerald-500/20" title="Comisión">
+                            {ag.comision}%
+                          </span>
+                          <span className="text-slate-600">/</span>
+                          <span className="px-1.5 py-0.5 rounded bg-cyan-500/10 text-cyan-400 font-bold border border-cyan-500/20" title="Participación de Agencia">
+                            {ag.participacion_ag}%
+                          </span>
+                        </div>
+                      </td>
+
+                      {/* Sistemas */}
+                      <td className="py-2.5 px-3 font-sans">
+                        <div className="flex flex-wrap gap-1 max-w-[170px]">
+                          {sisArr.map((s) => (
+                            <span
+                              key={s}
+                              className="px-1.5 py-0.5 rounded text-[9.5px] font-bold bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 whitespace-nowrap"
+                            >
+                              🎰 {s}
+                            </span>
+                          ))}
+                        </div>
+                      </td>
+
+                      {/* Monedas */}
+                      <td className="py-2.5 px-3 text-center font-sans">
+                        <div className="flex flex-wrap gap-1 justify-center">
+                          {monArr.map((m) => (
+                            <span
+                              key={m}
+                              className="px-1.5 py-0.5 rounded text-[9.5px] font-bold bg-amber-500/10 text-amber-400 border border-amber-500/20"
+                            >
+                              🪙 {m}
+                            </span>
+                          ))}
+                        </div>
+                      </td>
+
+                      {/* Saldo Bs */}
+                      <td className="py-2.5 px-3 text-right">
+                        <span className={`text-[11px] font-bold ${sBs < -0.01 ? 'text-rose-400' : sBs > 0.01 ? 'text-white' : 'text-slate-500'}`}>
+                          {formatCurrency(sBs, 'BS')}
+                        </span>
+                      </td>
+
+                      {/* Saldo USD */}
+                      <td className="py-2.5 px-3 text-right">
+                        <span className={`text-[11px] font-bold ${sUsd < -0.01 ? 'text-rose-400' : sUsd > 0.01 ? 'text-emerald-400' : 'text-slate-500'}`}>
+                          {formatCurrency(sUsd, 'USD')}
+                        </span>
+                      </td>
+
+                      {/* Saldo COP */}
+                      <td className="py-2.5 px-3 text-right">
+                        <span className={`text-[11px] font-bold ${sCop < -0.01 ? 'text-rose-400' : sCop > 0.01 ? 'text-cyan-400' : 'text-slate-500'}`}>
+                          {formatCurrency(sCop, 'COP')}
+                        </span>
+                      </td>
+
+                      {/* Cuentas Bancarias / Dispositivos */}
+                      <td className="py-2.5 px-3 font-sans">
+                        {accArr.length > 0 ? (
+                          <div className="flex flex-col gap-0.5 max-w-[210px]" title={accArr.join('\n')}>
+                            <span className="text-[10px] text-cyan-300 font-semibold truncate flex items-center gap-1">
+                              <CreditCard className="w-3 h-3 text-cyan-400 shrink-0" />
+                              <span className="truncate">{accArr[0]}</span>
+                            </span>
+                            {accArr.length > 1 && (
+                              <span className="text-[9px] text-slate-400 font-mono">
+                                +{accArr.length - 1} cuenta(s) más
+                              </span>
+                            )}
+                          </div>
+                        ) : (
+                          <span className="text-[10px] text-slate-500 italic">Ningún método</span>
+                        )}
+                      </td>
+
+                      {/* Acceso POS */}
+                      <td className="py-2.5 px-3">
+                        <div className="flex items-center gap-1 text-[10.5px]">
+                          <Key className="w-3 h-3 text-amber-400 shrink-0" />
+                          <span className="font-bold text-white font-mono">{ag.usuario_taquilla || 'N/A'}</span>
+                          <span className="text-[9.5px] text-slate-400 font-mono">({ag.clave_taquilla || '****'})</span>
+                        </div>
+                      </td>
+
+                      {/* Acciones */}
+                      <td className="py-2.5 px-3 text-center">
+                        <div className="flex items-center justify-center gap-1">
+                          <button
+                            onClick={() => handleOpenEdit(ag)}
+                            className="p-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white transition-all cursor-pointer"
+                            title="Editar Agencia"
+                          >
+                            <Edit2 className="w-3.5 h-3.5 text-cyan-400" />
+                          </button>
+                          <button
+                            onClick={() => setDeleteModalAgency(ag)}
+                            className="p-1.5 rounded-lg bg-rose-500/10 hover:bg-rose-500/20 text-rose-400 transition-all cursor-pointer"
+                            title="Eliminar Agencia"
+                          >
+                            <Trash2 className="w-3.5 h-3.5" />
+                          </button>
+                        </div>
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        </div>
       ) : (
+        /* Vista Tarjetas (Grid) */
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           {filteredAgencies.map((ag) => {
             const sisArr = ag.sistemas ? ag.sistemas.split(',').map((s) => s.trim()) : [];
