@@ -24,7 +24,14 @@ export const CurrenciesTab: React.FC = () => {
         .order('id', { ascending: true });
 
       if (error) throw error;
-      setCurrencies(data || []);
+      const normalized = (data || []).map((c: any) => ({
+        id: c.id,
+        nombre_moneda: String(c.Nombre_Moneda || c.nombre_moneda || c.moneda || '').trim(),
+        simbolo: String(c.Simbolo || c.simbolo || '').trim(),
+        user_id: c.user_id,
+        created_at: c.created_at,
+      }));
+      setCurrencies(normalized);
     } catch (err: any) {
       console.error('Error fetching currencies:', err);
     } finally {
@@ -44,7 +51,7 @@ export const CurrenciesTab: React.FC = () => {
       return;
     }
 
-    if (currencies.some((c) => c.nombre_moneda.toUpperCase() === cleanNombre)) {
+    if (currencies.some((c) => (c.nombre_moneda || '').toUpperCase() === cleanNombre)) {
       setErrorMsg(`La moneda '${cleanNombre}' ya está registrada.`);
       return;
     }
@@ -55,7 +62,8 @@ export const CurrenciesTab: React.FC = () => {
 
     try {
       const { error } = await supabase.from('monedas').insert({
-        nombre_moneda: cleanNombre,
+        Nombre_Moneda: cleanNombre,
+        Simbolo: cleanNombre,
         user_id: effectiveUserId,
       });
 

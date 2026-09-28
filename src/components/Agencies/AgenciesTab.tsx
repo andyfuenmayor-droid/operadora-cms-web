@@ -63,9 +63,6 @@ export const AgenciesTab: React.FC = () => {
   const [formComision, setFormComision] = useState('10');
   const [formParticipacion, setFormParticipacion] = useState('50');
   const [formCondicionesSistemas, setFormCondicionesSistemas] = useState<Record<string, { comision: number; participacion: number }>>({});
-  const [formSaldoBs, setFormSaldoBs] = useState('0');
-  const [formSaldoUsd, setFormSaldoUsd] = useState('0');
-  const [formSaldoCop, setFormSaldoCop] = useState('0');
   const [formCuentasAsignadas, setFormCuentasAsignadas] = useState<string[]>([]);
   const [formUsuarioTaquilla, setFormUsuarioTaquilla] = useState('');
   const [formClaveTaquilla, setFormClaveTaquilla] = useState('1234');
@@ -86,9 +83,26 @@ export const AgenciesTab: React.FC = () => {
         supabase.from('dispositivos_pago').select('*').eq('user_id', effectiveUserId),
       ]);
 
+      const rawMonedas = monRes.data || [];
+      const normalizedMonedas: Currency[] = rawMonedas.map((m: any) => ({
+        id: m.id,
+        nombre_moneda: String(m.Nombre_Moneda || m.nombre_moneda || m.moneda || '').trim().toUpperCase(),
+        simbolo: String(m.Simbolo || m.simbolo || '').trim(),
+        user_id: m.user_id,
+        created_at: m.created_at,
+      }));
+
+      const finalMonedas: Currency[] = normalizedMonedas.some((m) => m.nombre_moneda)
+        ? normalizedMonedas.filter((m) => m.nombre_moneda)
+        : [
+            { id: 1, nombre_moneda: 'BS', simbolo: 'Bs.' },
+            { id: 2, nombre_moneda: 'USD', simbolo: '$' },
+            { id: 3, nombre_moneda: 'COP', simbolo: 'COP' },
+          ];
+
       setAgencies(agRes.data || []);
       setSystems(sisRes.data || []);
-      setCurrencies(monRes.data || []);
+      setCurrencies(finalMonedas);
       setBankAccounts(cbRes.data || []);
       setDevices(dispRes.data || []);
     } catch (err: any) {
@@ -136,13 +150,10 @@ export const AgenciesTab: React.FC = () => {
 
     setFormNombre('');
     setFormSistemas(systems.map((s) => s.nombre_sistema));
-    setFormMonedas(currencies.map((m) => m.nombre_moneda));
+    setFormMonedas(currencies.map((m) => m.nombre_moneda).filter(Boolean));
     setFormComision('10');
     setFormParticipacion('50');
     setFormCondicionesSistemas({});
-    setFormSaldoBs('0');
-    setFormSaldoUsd('0');
-    setFormSaldoCop('0');
     setFormCuentasAsignadas([]);
     setFormUsuarioTaquilla('');
     setFormClaveTaquilla('1234');
@@ -155,8 +166,8 @@ export const AgenciesTab: React.FC = () => {
   const handleOpenEdit = (ag: Agency) => {
     setEditModalAgency(ag);
     setFormNombre(ag.nombre_agencia);
-    setFormSistemas(ag.sistemas ? ag.sistemas.split(',').map((s) => s.trim()) : []);
-    setFormMonedas(ag.monedas ? ag.monedas.split(',').map((m) => m.trim()) : []);
+    setFormSistemas(ag.sistemas ? ag.sistemas.split(',').map((s) => s.trim()).filter(Boolean) : []);
+    setFormMonedas(ag.monedas ? ag.monedas.split(',').map((m) => m.trim().toUpperCase()).filter(Boolean) : []);
     setFormComision(String(ag.comision !== undefined && ag.comision !== null ? ag.comision : 10));
     setFormParticipacion(String(ag.participacion_ag !== undefined && ag.participacion_ag !== null ? ag.participacion_ag : 0));
 
@@ -169,9 +180,6 @@ export const AgenciesTab: React.FC = () => {
       setFormCondicionesSistemas({});
     }
 
-    setFormSaldoBs(String(ag.saldo_inicial_bs || 0));
-    setFormSaldoUsd(String(ag.saldo_inicial_usd || 0));
-    setFormSaldoCop(String(ag.saldo_inicial_cop || 0));
     setFormCuentasAsignadas(
       ag.cuentas_asignadas && ag.cuentas_asignadas !== 'NINGUNA'
         ? ag.cuentas_asignadas.split(',').map((c) => c.trim())
@@ -214,14 +222,17 @@ export const AgenciesTab: React.FC = () => {
         comision: Number(formComision),
         participacion_ag: Number(formParticipacion),
         condiciones_sistemas: JSON.stringify(formCondicionesSistemas),
-        saldo_inicial_bs: Number(formSaldoBs),
-        saldo_inicial_usd: Number(formSaldoUsd),
-        saldo_inicial_cop: Number(formSaldoCop),
         cuentas_asignadas: formCuentasAsignadas.length > 0 ? formCuentasAsignadas.join(', ') : 'NINGUNA',
         usuario_taquilla: formUsuarioTaquilla.trim().toLowerCase(),
         clave_taquilla: formClaveTaquilla.trim(),
         auditoria_activa: formAuditoriaActiva,
       };
+
+      if (!editModalAgency) {
+        payload.saldo_inicial_bs = 0;
+        payload.saldo_inicial_usd = 0;
+        payload.saldo_inicial_cop = 0;
+      }
 
       let targetAgId: number;
 
@@ -550,9 +561,6 @@ export const AgenciesTab: React.FC = () => {
                   <th className="py-3 px-3 text-center">Comisión / Part.</th>
                   <th className="py-3 px-3">Sistemas</th>
                   <th className="py-3 px-3 text-center">Monedas</th>
-                  <th className="py-3 px-3 text-right">Saldo Bs</th>
-                  <th className="py-3 px-3 text-right">Saldo USD</th>
-                  <th className="py-3 px-3 text-right">Saldo COP</th>
                   <th className="py-3 px-3">Cuentas / Bancos</th>
                   <th className="py-3 px-3">Acceso POS</th>
                   <th className="py-3 px-3 text-center w-20">Acciones</th>
@@ -566,10 +574,6 @@ export const AgenciesTab: React.FC = () => {
                     ag.cuentas_asignadas && ag.cuentas_asignadas !== 'NINGUNA'
                       ? ag.cuentas_asignadas.split(',').map((c) => c.trim()).filter(Boolean)
                       : [];
-
-                  const sBs = Number(ag.saldo_inicial_bs || 0);
-                  const sUsd = Number(ag.saldo_inicial_usd || 0);
-                  const sCop = Number(ag.saldo_inicial_cop || 0);
 
                   return (
                     <tr key={ag.id} className="hover:bg-slate-800/30 transition-colors group">
@@ -631,27 +635,6 @@ export const AgenciesTab: React.FC = () => {
                             </span>
                           ))}
                         </div>
-                      </td>
-
-                      {/* Saldo Bs */}
-                      <td className="py-2.5 px-3 text-right">
-                        <span className={`text-[11px] font-bold ${sBs < -0.01 ? 'text-rose-400' : sBs > 0.01 ? 'text-white' : 'text-slate-500'}`}>
-                          {formatCurrency(sBs, 'BS')}
-                        </span>
-                      </td>
-
-                      {/* Saldo USD */}
-                      <td className="py-2.5 px-3 text-right">
-                        <span className={`text-[11px] font-bold ${sUsd < -0.01 ? 'text-rose-400' : sUsd > 0.01 ? 'text-emerald-400' : 'text-slate-500'}`}>
-                          {formatCurrency(sUsd, 'USD')}
-                        </span>
-                      </td>
-
-                      {/* Saldo COP */}
-                      <td className="py-2.5 px-3 text-right">
-                        <span className={`text-[11px] font-bold ${sCop < -0.01 ? 'text-rose-400' : sCop > 0.01 ? 'text-cyan-400' : 'text-slate-500'}`}>
-                          {formatCurrency(sCop, 'COP')}
-                        </span>
                       </td>
 
                       {/* Cuentas Bancarias / Dispositivos */}
@@ -786,22 +769,6 @@ export const AgenciesTab: React.FC = () => {
                   </div>
                 </div>
 
-                {/* Initial Balances */}
-                <div className="grid grid-cols-3 gap-2 bg-[#071217] p-2.5 rounded-2xl border border-slate-800/80 text-center text-xs font-mono">
-                  <div>
-                    <span className="text-[10px] text-slate-500 uppercase block">Saldo Bs</span>
-                    <strong className="text-white">{formatCurrency(ag.saldo_inicial_bs || 0, 'BS')}</strong>
-                  </div>
-                  <div>
-                    <span className="text-[10px] text-slate-500 uppercase block">Saldo USD</span>
-                    <strong className="text-emerald-400">{formatCurrency(ag.saldo_inicial_usd || 0, 'USD')}</strong>
-                  </div>
-                  <div>
-                    <span className="text-[10px] text-slate-500 uppercase block">Saldo COP</span>
-                    <strong className="text-cyan-400">{formatCurrency(ag.saldo_inicial_cop || 0, 'COP')}</strong>
-                  </div>
-                </div>
-
                 {/* Assigned Accounts & POS */}
                 <div className="text-xs space-y-1">
                   <span className="text-[11px] font-bold text-slate-400 block">
@@ -905,20 +872,30 @@ export const AgenciesTab: React.FC = () => {
                 <div className="space-y-2">
                   <label className="text-xs font-semibold text-slate-300">Monedas Permitidas *</label>
                   <div className="p-3 bg-[#071217] rounded-xl border border-slate-800 max-h-36 overflow-y-auto space-y-1.5">
-                    {currencies.map((m) => (
-                      <label key={m.id} className="flex items-center gap-2 text-xs text-slate-300 cursor-pointer">
-                        <input
-                          type="checkbox"
-                          checked={formMonedas.includes(m.nombre_moneda)}
-                          onChange={(e) => {
-                            if (e.target.checked) setFormMonedas([...formMonedas, m.nombre_moneda]);
-                            else setFormMonedas(formMonedas.filter((item) => item !== m.nombre_moneda));
-                          }}
-                          className="rounded text-amber-500 bg-slate-900 border-slate-700 focus:ring-0"
-                        />
-                        <span>{m.nombre_moneda} ({m.simbolo})</span>
-                      </label>
-                    ))}
+                    {currencies.map((m) => {
+                      const monCode = (m.nombre_moneda || '').trim().toUpperCase();
+                      if (!monCode) return null;
+                      const isChecked = formMonedas.some((fm) => fm.trim().toUpperCase() === monCode);
+                      const displayLabel = m.simbolo && m.simbolo !== monCode ? `${monCode} (${m.simbolo})` : monCode;
+
+                      return (
+                        <label key={m.id || monCode} className="flex items-center gap-2 text-xs text-slate-300 cursor-pointer">
+                          <input
+                            type="checkbox"
+                            checked={isChecked}
+                            onChange={(e) => {
+                              if (e.target.checked) {
+                                setFormMonedas([...formMonedas.filter((item) => item.toUpperCase() !== monCode), monCode]);
+                              } else {
+                                setFormMonedas(formMonedas.filter((item) => item.toUpperCase() !== monCode));
+                              }
+                            }}
+                            className="rounded text-amber-500 bg-slate-900 border-slate-700 focus:ring-0"
+                          />
+                          <span className="font-semibold text-white">{displayLabel}</span>
+                        </label>
+                      );
+                    })}
                   </div>
                 </div>
               </div>
@@ -948,37 +925,6 @@ export const AgenciesTab: React.FC = () => {
                     value={formParticipacion}
                     onChange={(e) => setFormParticipacion(e.target.value)}
                     className="w-full bg-[#071217] border border-slate-700 rounded-xl px-4 py-2.5 text-xs text-white font-mono focus:outline-none focus:border-emerald-500"
-                  />
-                </div>
-              </div>
-
-              {/* Initial Balances */}
-              <div className="space-y-2">
-                <label className="text-xs font-semibold text-slate-300">Saldos Iniciales de Arrastre</label>
-                <div className="grid grid-cols-3 gap-3">
-                  <input
-                    type="number"
-                    step="0.01"
-                    placeholder="Saldo Bs"
-                    value={formSaldoBs}
-                    onChange={(e) => setFormSaldoBs(e.target.value)}
-                    className="w-full bg-[#071217] border border-slate-700 rounded-xl px-3 py-2 text-xs text-white font-mono focus:outline-none focus:border-emerald-500"
-                  />
-                  <input
-                    type="number"
-                    step="0.01"
-                    placeholder="Saldo USD"
-                    value={formSaldoUsd}
-                    onChange={(e) => setFormSaldoUsd(e.target.value)}
-                    className="w-full bg-[#071217] border border-slate-700 rounded-xl px-3 py-2 text-xs text-white font-mono focus:outline-none focus:border-emerald-500"
-                  />
-                  <input
-                    type="number"
-                    step="0.01"
-                    placeholder="Saldo COP"
-                    value={formSaldoCop}
-                    onChange={(e) => setFormSaldoCop(e.target.value)}
-                    className="w-full bg-[#071217] border border-slate-700 rounded-xl px-3 py-2 text-xs text-white font-mono focus:outline-none focus:border-emerald-500"
                   />
                 </div>
               </div>

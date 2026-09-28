@@ -72,7 +72,9 @@ export interface BetSystem {
 export interface Currency {
   id: number;
   nombre_moneda: string;
+  Nombre_Moneda?: string;
   simbolo?: string;
+  Simbolo?: string;
   user_id?: string;
   created_at?: string;
 }
