@@ -15,6 +15,7 @@ import { BankAccountsTab } from './components/Catalogs/BankAccountsTab';
 import { AgenciesTab } from './components/Agencies/AgenciesTab';
 import { CollectorsTab } from './components/Collectors/CollectorsTab';
 import { SalesEntryTab } from './components/Finance/SalesEntryTab';
+import { RealSalesTab } from './components/Finance/RealSalesTab';
 import { PaymentsTab } from './components/Finance/PaymentsTab';
 import { ExpensesTab } from './components/Finance/ExpensesTab';
 import { AccountBalancesTab } from './components/Finance/AccountBalancesTab';
@@ -80,8 +81,10 @@ const AppContent: React.FC = () => {
         return <CollectorsTab />;
 
       case 'Cargar Ventas':
-      case 'Venta Real':
         return <SalesEntryTab />;
+
+      case 'Venta Real':
+        return <RealSalesTab />;
 
       case 'Pagos Agencias':
       case 'Pagos a Operador':
