@@ -61,7 +61,6 @@ const AppContent: React.FC = () => {
         return <ConfirmationsQuick />;
 
       case 'Rep. Confirmaciones':
-      case 'Caja Maestra':
         return <ConfirmationsReport />;
 
       case 'Sistemas':

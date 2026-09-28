@@ -212,7 +212,6 @@ export type ModuleId =
   | 'Gastos por Agencia'
   | 'Saldo Agencias'
   | 'Venta Real'
-  | 'Caja Maestra'
   | 'Pagos a Operador'
   | 'Venta Operadora'
   | 'Reporte Operadora'
