@@ -22,9 +22,69 @@ import {
   Sliders,
   CheckCheck,
   List,
-  LayoutGrid
+  LayoutGrid,
+  Smartphone
 } from 'lucide-react';
 import confetti from 'canvas-confetti';
+
+/**
+ * Parsea y formatea las cuentas y dispositivos bancarios al modo Ultra Compacto:
+ * Ejemplo: "2 - [CUENTA] BANESCO ( BS) | ANDYS FUENMAYOR" -> "Banesco (BS)"
+ */
+export const parseAccountDisplay = (raw: string) => {
+  if (!raw || typeof raw !== 'string') return null;
+  const str = raw.trim();
+  if (!str || str === 'NINGUNA') return null;
+
+  const isPos = /pos|dispositivo|punto de venta/i.test(str);
+
+  const idMatch = str.match(/^(\d+)\s*-\s*/);
+  const id = idMatch ? idMatch[1] : '';
+  const withoutId = str.replace(/^(\d+)\s*-\s*/, '');
+
+  const parts = withoutId.split('|');
+  const mainPart = parts[0].trim();
+  const titular = parts[1] ? parts[1].trim() : '';
+
+  // Extraer código de moneda
+  const monMatch = str.match(/\b(BS|USD|COP|EUR|USDT|VES)\b/i);
+  const moneda = monMatch ? monMatch[1].trim().toUpperCase() : '';
+
+  let cleanName = mainPart
+    .replace(/\[[^\]]+\]/g, '')
+    .replace(/\([^)]+\)/g, '')
+    .replace(/DISPOSITIVO:\s*/i, '')
+    .trim();
+
+  if (isPos) {
+    if (titular && titular.toUpperCase().includes('POS')) {
+      cleanName = titular.replace(/\s*GLO$/i, '');
+    } else if (!cleanName || cleanName.toUpperCase().includes('PUNTO DE VENTA')) {
+      cleanName = titular || 'POS';
+    }
+  }
+
+  // Capitalización limpia: "BANESCO" -> "Banesco", "CITI BANK" -> "Citi Bank"
+  cleanName = cleanName
+    .toLowerCase()
+    .split(' ')
+    .map((w) => w.charAt(0).toUpperCase() + w.slice(1))
+    .join(' ');
+
+  if (isPos) {
+    cleanName = cleanName.replace(/^(Pos|pos)\s*/i, 'POS ');
+    if (!cleanName.startsWith('POS ')) {
+      cleanName = `POS ${cleanName}`;
+    }
+  }
+
+  const shortTitle = moneda ? `${cleanName} (${moneda})` : cleanName;
+  const tooltip = titular
+    ? `${shortTitle} • Titular: ${titular}${id ? ` (ID: #${id})` : ''}`
+    : `${shortTitle}${id ? ` (ID: #${id})` : ''}`;
+
+  return { isPos, shortTitle, tooltip, titular, moneda, id };
+};
 
 export const AgenciesTab: React.FC = () => {
   const { effectiveUserId, profile } = useAuth();
@@ -639,22 +699,41 @@ export const AgenciesTab: React.FC = () => {
                         </div>
                       </td>
 
-                      {/* Cuentas Bancarias / Dispositivos */}
+                      {/* Cuentas Bancarias / Dispositivos (Ultra Compacto) */}
                       <td className="py-3 px-4 font-sans">
                         {accArr.length > 0 ? (
-                          <div className="flex flex-col gap-0.5 max-w-sm" title={accArr.join('\n')}>
-                            <span className="text-[11px] text-cyan-300 font-semibold truncate flex items-center gap-1.5">
-                              <CreditCard className="w-3.5 h-3.5 text-cyan-400 shrink-0" />
-                              <span className="truncate">{accArr[0]}</span>
-                            </span>
-                            {accArr.length > 1 && (
-                              <span className="text-[9.5px] text-slate-400 font-mono">
-                                +{accArr.length - 1} cuenta(s) más
-                              </span>
-                            )}
-                          </div>
+                          (() => {
+                            const parsedFirst = parseAccountDisplay(accArr[0]);
+                            const remaining = accArr.slice(1).map((a) => parseAccountDisplay(a)?.shortTitle || a);
+                            const fullTooltip = accArr
+                              .map((a) => {
+                                const p = parseAccountDisplay(a);
+                                return p ? p.tooltip : a;
+                              })
+                              .join('\n');
+
+                            return (
+                              <div className="flex flex-col gap-0.5" title={fullTooltip}>
+                                <div className="inline-flex items-center gap-1.5 text-xs font-semibold text-slate-800 dark:text-cyan-300">
+                                  {parsedFirst?.isPos ? (
+                                    <Smartphone className="w-3.5 h-3.5 text-cyan-600 dark:text-cyan-400 shrink-0" />
+                                  ) : (
+                                    <CreditCard className="w-3.5 h-3.5 text-cyan-600 dark:text-cyan-400 shrink-0" />
+                                  )}
+                                  <span className="whitespace-nowrap font-bold">
+                                    {parsedFirst?.shortTitle || accArr[0]}
+                                  </span>
+                                </div>
+                                {accArr.length > 1 && (
+                                  <span className="text-[10px] text-slate-500 dark:text-slate-400 font-mono">
+                                    +{accArr.length - 1} más ({remaining.join(', ')})
+                                  </span>
+                                )}
+                              </div>
+                            );
+                          })()
                         ) : (
-                          <span className="text-[11px] text-slate-500 italic">Ningún método</span>
+                          <span className="text-[11px] text-slate-400 dark:text-slate-500 italic">Ningún método</span>
                         )}
                       </td>
 
@@ -771,21 +850,30 @@ export const AgenciesTab: React.FC = () => {
                   </div>
                 </div>
 
-                {/* Assigned Accounts & POS */}
+                {/* Assigned Accounts & POS (Ultra Compacto) */}
                 <div className="text-xs space-y-1">
                   <span className="text-[11px] font-bold text-slate-400 block">
                     Cuentas Bancarias y Dispositivos de Cobro ({accArr.length}):
                   </span>
                   {accArr.length > 0 ? (
-                    <div className="flex flex-wrap gap-1">
-                      {accArr.map((acc) => (
-                        <span
-                          key={acc}
-                          className="px-2 py-0.5 rounded-md bg-cyan-500/10 text-cyan-300 text-[10px] font-semibold border border-cyan-500/20"
-                        >
-                          💳 {acc}
-                        </span>
-                      ))}
+                    <div className="flex flex-wrap gap-1.5">
+                      {accArr.map((acc) => {
+                        const parsed = parseAccountDisplay(acc);
+                        return (
+                          <span
+                            key={acc}
+                            title={parsed?.tooltip || acc}
+                            className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-cyan-500/10 text-cyan-700 dark:text-cyan-300 text-xs font-semibold border border-cyan-500/20"
+                          >
+                            {parsed?.isPos ? (
+                              <Smartphone className="w-3 h-3 text-cyan-500 shrink-0" />
+                            ) : (
+                              <CreditCard className="w-3 h-3 text-cyan-500 shrink-0" />
+                            )}
+                            <span>{parsed?.shortTitle || acc}</span>
+                          </span>
+                        );
+                      })}
                     </div>
                   ) : (
                     <span className="text-[11px] text-slate-500 italic">Ningún método asignado</span>
@@ -936,24 +1024,47 @@ export const AgenciesTab: React.FC = () => {
                 <label className="text-xs font-semibold text-slate-300">
                   Dispositivos de Cobro y Cuentas Bancarias Asignadas
                 </label>
-                <div className="p-3 bg-[#071217] rounded-xl border border-slate-800 max-h-36 overflow-y-auto space-y-1.5">
+                <div className="p-3 bg-[#071217] rounded-xl border border-slate-800 max-h-40 overflow-y-auto space-y-1.5">
                   {accountOptions.length === 0 ? (
                     <span className="text-xs text-slate-500 italic">No hay cuentas ni dispositivos registrados.</span>
                   ) : (
-                    accountOptions.map((opt) => (
-                      <label key={opt} className="flex items-center gap-2 text-xs text-slate-300 cursor-pointer">
-                        <input
-                          type="checkbox"
-                          checked={formCuentasAsignadas.includes(opt)}
-                          onChange={(e) => {
-                            if (e.target.checked) setFormCuentasAsignadas([...formCuentasAsignadas, opt]);
-                            else setFormCuentasAsignadas(formCuentasAsignadas.filter((item) => item !== opt));
-                          }}
-                          className="rounded text-cyan-500 bg-slate-900 border-slate-700 focus:ring-0"
-                        />
-                        <span>{opt}</span>
-                      </label>
-                    ))
+                    accountOptions.map((opt) => {
+                      const parsed = parseAccountDisplay(opt);
+                      const isChecked = formCuentasAsignadas.includes(opt);
+
+                      return (
+                        <label
+                          key={opt}
+                          title={parsed?.tooltip || opt}
+                          className="flex items-center gap-2.5 text-xs text-slate-300 cursor-pointer p-1.5 rounded-lg hover:bg-slate-800/50 transition-colors"
+                        >
+                          <input
+                            type="checkbox"
+                            checked={isChecked}
+                            onChange={(e) => {
+                              if (e.target.checked) setFormCuentasAsignadas([...formCuentasAsignadas, opt]);
+                              else setFormCuentasAsignadas(formCuentasAsignadas.filter((item) => item !== opt));
+                            }}
+                            className="rounded text-cyan-500 bg-slate-900 border-slate-700 focus:ring-0"
+                          />
+                          <div className="flex items-center gap-1.5 flex-1 min-w-0">
+                            {parsed?.isPos ? (
+                              <Smartphone className="w-3.5 h-3.5 text-cyan-400 shrink-0" />
+                            ) : (
+                              <CreditCard className="w-3.5 h-3.5 text-cyan-400 shrink-0" />
+                            )}
+                            <span className="font-bold text-white text-xs">
+                              {parsed?.shortTitle || opt}
+                            </span>
+                            {parsed?.titular && (
+                              <span className="text-[11px] text-slate-400 truncate">
+                                — {parsed.titular}
+                              </span>
+                            )}
+                          </div>
+                        </label>
+                      );
+                    })
                   )}
                 </div>
               </div>
