@@ -2,7 +2,7 @@ import React, { useState, useEffect, useMemo } from 'react';
 import { supabase } from '../../lib/supabase';
 import { useAuth } from '../../context/AuthContext';
 import { formatCurrency, formatDate, cleanAgencyName } from '../../utils/formatters';
-import type { Agency, BetSystem, Currency, BankAccount, PaymentDevice } from '../../types';
+import type { Agency, BetSystem, Currency, BankAccount, PaymentDevice, TaquillaUser } from '../../types';
 import {
   Building2,
   Plus,
@@ -23,7 +23,9 @@ import {
   CheckCheck,
   List,
   LayoutGrid,
-  Smartphone
+  Smartphone,
+  Users,
+  UserCheck,
 } from 'lucide-react';
 import confetti from 'canvas-confetti';
 
@@ -197,7 +199,22 @@ export const AgenciesTab: React.FC = () => {
   const [formCuentasAsignadas, setFormCuentasAsignadas] = useState<string[]>([]);
   const [formUsuarioTaquilla, setFormUsuarioTaquilla] = useState('');
   const [formClaveTaquilla, setFormClaveTaquilla] = useState('1234');
-  const [formAuditoriaActiva, setFormAuditoriaActiva] = useState(false);
+
+  // Terminal users state (Cajeros y Supervisores POS)
+  const [taquillaUsers, setTaquillaUsers] = useState<TaquillaUser[]>([]);
+  const [terminalUsersModalAgency, setTerminalUsersModalAgency] = useState<Agency | null>(null);
+
+  // New terminal user form
+  const [newUsuario, setNewUsuario] = useState('');
+  const [newClave, setNewClave] = useState('');
+  const [newNombreCajero, setNewNombreCajero] = useState('');
+  const [newRol, setNewRol] = useState<'cajero' | 'supervisor'>('cajero');
+
+  // Edit terminal user form
+  const [editingUser, setEditingUser] = useState<TaquillaUser | null>(null);
+  const [editRol, setEditRol] = useState<'cajero' | 'supervisor'>('cajero');
+  const [editClave, setEditClave] = useState('');
+  const [editActivo, setEditActivo] = useState(true);
 
   // Load all agencies and catalogs
   const loadData = async () => {
@@ -206,12 +223,13 @@ export const AgenciesTab: React.FC = () => {
     setMessage(null);
 
     try {
-      const [agRes, sisRes, monRes, cbRes, dispRes] = await Promise.all([
+      const [agRes, sisRes, monRes, cbRes, dispRes, tuRes] = await Promise.all([
         supabase.from('agencias').select('*').eq('user_id', effectiveUserId).order('id', { ascending: true }),
         supabase.from('sistemas').select('*').eq('user_id', effectiveUserId).order('nombre_sistema', { ascending: true }),
         supabase.from('monedas').select('*').eq('user_id', effectiveUserId).order('id', { ascending: true }),
         supabase.from('cuentas_bancarias').select('*').eq('user_id', effectiveUserId).order('id', { ascending: true }),
         supabase.from('dispositivos_pago').select('*').eq('user_id', effectiveUserId).order('id', { ascending: true }),
+        supabase.from('taquilla_usuarios').select('*').eq('user_id', effectiveUserId).order('id', { ascending: true }),
       ]);
 
       const rawMonedas = monRes.data || [];
@@ -236,6 +254,7 @@ export const AgenciesTab: React.FC = () => {
       setCurrencies(finalMonedas);
       setBankAccounts(cbRes.data || []);
       setDevices(dispRes.data || []);
+      setTaquillaUsers(tuRes.data || []);
     } catch (err: any) {
       console.error('Error loading agencies data:', err);
       setMessage({ type: 'error', text: err?.message || 'Error al cargar los datos de agencias.' });
@@ -290,7 +309,6 @@ export const AgenciesTab: React.FC = () => {
     setFormCuentasAsignadas([]);
     setFormUsuarioTaquilla('');
     setFormClaveTaquilla('1234');
-    setFormAuditoriaActiva(false);
 
     setIsNewModalOpen(true);
   };
@@ -320,7 +338,6 @@ export const AgenciesTab: React.FC = () => {
     );
     setFormUsuarioTaquilla(ag.usuario_taquilla || '');
     setFormClaveTaquilla(ag.clave_taquilla || '1234');
-    setFormAuditoriaActiva(Boolean(ag.auditoria_activa));
   };
 
   // Auto-fill taquilla username when agency name changes in New Modal
@@ -330,6 +347,102 @@ export const AgenciesTab: React.FC = () => {
     if (!editModalAgency) {
       const userSug = `${clean.toLowerCase().replace(/[^a-z0-9]/g, '_')}_pos`;
       setFormUsuarioTaquilla(userSug);
+    }
+  };
+
+  // Handlers for Terminal Users (Cajeros y Supervisores POS)
+  const handleCreateTaquillaUser = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!effectiveUserId || !terminalUsersModalAgency) return;
+
+    if (!newUsuario.trim() || !newClave.trim()) {
+      setMessage({ type: 'error', text: 'Usuario y clave requeridos.' });
+      return;
+    }
+
+    setIsProcessing(true);
+    try {
+      const payload = {
+        usuario: newUsuario.trim().toLowerCase(),
+        clave: newClave.trim(),
+        rol: newRol,
+        agencia_id: terminalUsersModalAgency.id,
+        nombre_cajero: newNombreCajero.trim() || undefined,
+        activo: true,
+        user_id: effectiveUserId,
+      };
+
+      const { error } = await supabase.from('taquilla_usuarios').insert(payload);
+      if (error) throw error;
+
+      confetti({ particleCount: 35, spread: 60 });
+      setMessage({ type: 'success', text: `Usuario '${newUsuario}' creado como ${newRol}.` });
+      setNewUsuario('');
+      setNewClave('');
+      setNewNombreCajero('');
+      setNewRol('cajero');
+      await loadData();
+    } catch (err: any) {
+      console.error('Error creating taquilla user:', err);
+      setMessage({ type: 'error', text: err?.message || 'Error al crear usuario.' });
+    } finally {
+      setIsProcessing(false);
+    }
+  };
+
+  const handleUpdateTaquillaUser = async () => {
+    if (!editingUser || !effectiveUserId) return;
+    setIsProcessing(true);
+
+    try {
+      const payload: any = {
+        rol: editRol,
+        activo: editActivo,
+      };
+      if (editClave.trim()) {
+        payload.clave = editClave.trim();
+      }
+
+      const { error } = await supabase
+        .from('taquilla_usuarios')
+        .update(payload)
+        .eq('id', editingUser.id)
+        .eq('user_id', effectiveUserId);
+
+      if (error) throw error;
+
+      setMessage({ type: 'success', text: `Usuario '${editingUser.usuario}' actualizado.` });
+      setEditingUser(null);
+      setEditClave('');
+      await loadData();
+    } catch (err: any) {
+      console.error('Error updating taquilla user:', err);
+      setMessage({ type: 'error', text: err?.message || 'Error al actualizar usuario.' });
+    } finally {
+      setIsProcessing(false);
+    }
+  };
+
+  const handleDeleteTaquillaUser = async (userItem: TaquillaUser) => {
+    if (!window.confirm(`¿Eliminar al usuario de taquilla '${userItem.usuario}' (${userItem.rol})?`)) return;
+    setIsProcessing(true);
+
+    try {
+      const { error } = await supabase
+        .from('taquilla_usuarios')
+        .delete()
+        .eq('id', userItem.id)
+        .eq('user_id', effectiveUserId);
+
+      if (error) throw error;
+
+      setMessage({ type: 'success', text: `Usuario '${userItem.usuario}' eliminado.` });
+      await loadData();
+    } catch (err: any) {
+      console.error('Error deleting taquilla user:', err);
+      setMessage({ type: 'error', text: err?.message || 'Error al eliminar usuario.' });
+    } finally {
+      setIsProcessing(false);
     }
   };
 
@@ -358,7 +471,6 @@ export const AgenciesTab: React.FC = () => {
         cuentas_asignadas: formCuentasAsignadas.length > 0 ? formCuentasAsignadas.join(', ') : 'NINGUNA',
         usuario_taquilla: formUsuarioTaquilla.trim().toLowerCase(),
         clave_taquilla: formClaveTaquilla.trim(),
-        auditoria_activa: formAuditoriaActiva,
       };
 
       if (!editModalAgency) {
@@ -720,18 +832,11 @@ export const AgenciesTab: React.FC = () => {
                         #{ag.id}
                       </td>
 
-                      {/* Agency Name + Audit Badge */}
+                      {/* Agency Name */}
                       <td className="py-3 px-4 font-sans">
-                        <div className="flex items-center gap-2">
-                          <span className="font-extrabold text-white text-xs whitespace-nowrap">
-                            {ag.nombre_agencia}
-                          </span>
-                          {ag.auditoria_activa && (
-                            <span className="px-1.5 py-0.5 rounded text-[8.5px] font-bold bg-purple-500/15 text-purple-400 border border-purple-500/30 whitespace-nowrap">
-                              Auditoría
-                            </span>
-                          )}
-                        </div>
+                        <span className="font-extrabold text-white text-xs whitespace-nowrap">
+                          {ag.nombre_agencia}
+                        </span>
                       </td>
 
                       {/* Comision / Participacion */}
@@ -815,18 +920,47 @@ export const AgenciesTab: React.FC = () => {
                         )}
                       </td>
 
-                      {/* Acceso POS */}
+                      {/* Acceso POS (Maestro + Sub-usuarios) */}
                       <td className="py-3 px-4 font-sans">
-                        <div className="flex items-center gap-1.5 text-[11px]">
-                          <Key className="w-3.5 h-3.5 text-amber-400 shrink-0" />
-                          <span className="font-bold text-white font-mono">{ag.usuario_taquilla || 'N/A'}</span>
-                          <span className="text-[10px] text-slate-400 font-mono">({ag.clave_taquilla || '****'})</span>
+                        <div className="flex flex-col gap-1">
+                          <div className="flex items-center gap-1.5 text-[11px]">
+                            <Key className="w-3.5 h-3.5 text-amber-400 shrink-0" />
+                            <span className="font-bold text-white font-mono">{ag.usuario_taquilla || 'N/A'}</span>
+                            <span className="text-[10px] text-slate-400 font-mono">({ag.clave_taquilla || '****'})</span>
+                          </div>
+                          {(() => {
+                            const agUsers = taquillaUsers.filter((u) => u.agencia_id === ag.id);
+                            const cajerosCount = agUsers.filter((u) => u.rol === 'cajero').length;
+                            const supervisoresCount = agUsers.filter((u) => u.rol === 'supervisor').length;
+                            return (
+                              <button
+                                type="button"
+                                onClick={() => setTerminalUsersModalAgency(ag)}
+                                className="inline-flex items-center gap-1 text-[10px] text-sky-400 hover:text-sky-300 font-bold cursor-pointer hover:underline"
+                                title="Ver y gestionar cajeros y supervisores"
+                              >
+                                <Users className="w-3 h-3" />
+                                {agUsers.length === 0 ? (
+                                  <span>+ Asignar Cajero / Supervisor</span>
+                                ) : (
+                                  <span>{agUsers.length} usuario{agUsers.length > 1 ? 's' : ''} ({cajerosCount} cajero{cajerosCount !== 1 ? 's' : ''}, {supervisoresCount} sup.)</span>
+                                )}
+                              </button>
+                            );
+                          })()}
                         </div>
                       </td>
 
                       {/* Acciones */}
                       <td className="py-3 px-4 text-center">
                         <div className="flex items-center justify-center gap-1.5">
+                          <button
+                            onClick={() => setTerminalUsersModalAgency(ag)}
+                            className="p-1.5 rounded-xl bg-sky-500/10 hover:bg-sky-500/20 text-sky-400 transition-all cursor-pointer border border-sky-500/20"
+                            title="Gestionar Cajeros y Supervisores POS"
+                          >
+                            <Users className="w-3.5 h-3.5" />
+                          </button>
                           <button
                             onClick={() => handleOpenEdit(ag)}
                             className="p-1.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white transition-all cursor-pointer border border-slate-700"
@@ -959,7 +1093,7 @@ export const AgenciesTab: React.FC = () => {
                 </div>
 
                 {/* Credentials Banner */}
-                <div className="pt-2 border-t border-slate-800/80 flex items-center justify-between text-xs text-slate-400">
+                <div className="pt-2 border-t border-slate-800/80 flex flex-wrap items-center justify-between gap-2 text-xs text-slate-400">
                   <div className="flex items-center gap-1.5">
                     <Key className="w-3.5 h-3.5 text-amber-400" />
                     <span>
@@ -967,11 +1101,19 @@ export const AgenciesTab: React.FC = () => {
                     </span>
                   </div>
 
-                  {ag.auditoria_activa && (
-                    <span className="px-2 py-0.5 rounded-full bg-purple-500/15 text-purple-400 text-[10px] font-bold border border-purple-500/30">
-                      Auditoría
-                    </span>
-                  )}
+                  {(() => {
+                    const agUsers = taquillaUsers.filter((u) => u.agencia_id === ag.id);
+                    return (
+                      <button
+                        type="button"
+                        onClick={() => setTerminalUsersModalAgency(ag)}
+                        className="px-2.5 py-1 rounded-lg bg-sky-500/10 hover:bg-sky-500/20 text-sky-400 border border-sky-500/20 text-[11px] font-bold flex items-center gap-1 transition-all cursor-pointer"
+                      >
+                        <Users className="w-3 h-3" />
+                        <span>{agUsers.length} Usuarios POS</span>
+                      </button>
+                    );
+                  })()}
                 </div>
               </div>
             );
@@ -1247,6 +1389,276 @@ export const AgenciesTab: React.FC = () => {
                 className="px-5 py-2.5 rounded-xl bg-rose-600 hover:bg-rose-500 text-white font-bold text-xs shadow-lg shadow-rose-600/20 transition-all cursor-pointer disabled:opacity-50"
               >
                 {isProcessing ? 'Eliminando...' : 'Sí, Eliminar'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+      {/* =========================================================================
+          TERMINAL USERS MODAL (Cajeros y Supervisores POS)
+      ========================================================================= */}
+      {terminalUsersModalAgency && (
+        <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4 overflow-y-auto">
+          <div className="bg-[#0D1B22] border border-slate-800 rounded-3xl p-6 sm:p-8 max-w-xl w-full space-y-5 shadow-2xl animate-fade-in my-8">
+            <div className="flex items-center justify-between pb-3 border-b border-slate-800">
+              <div className="flex items-center gap-2.5">
+                <div className="p-2 rounded-xl bg-sky-500/10 text-sky-400 border border-sky-500/20">
+                  <Users className="w-5 h-5" />
+                </div>
+                <div>
+                  <h3 className="text-base font-bold text-white flex items-center gap-2">
+                    Terminales y Accesos POS: <span className="text-emerald-400 font-black">{terminalUsersModalAgency.nombre_agencia}</span>
+                  </h3>
+                  <p className="text-xs text-slate-400">
+                    Cajeros y Supervisores de Taquilla Web POS para esta agencia.
+                  </p>
+                </div>
+              </div>
+              <button
+                onClick={() => {
+                  setTerminalUsersModalAgency(null);
+                  setEditingUser(null);
+                }}
+                className="text-slate-400 hover:text-white text-xs font-bold p-1 rounded-lg hover:bg-slate-800 cursor-pointer"
+              >
+                ✕
+              </button>
+            </div>
+
+            {/* Acceso Principal de la Agencia */}
+            <div className="p-3 bg-[#071217] rounded-2xl border border-slate-800/80 flex items-center justify-between text-xs">
+              <div className="flex items-center gap-2">
+                <Key className="w-4 h-4 text-amber-400 shrink-0" />
+                <div>
+                  <span className="text-slate-400 text-[10px] uppercase font-bold block">Acceso Maestro Agencia</span>
+                  <span className="font-mono font-bold text-white">{terminalUsersModalAgency.usuario_taquilla || 'Sin usuario'}</span>
+                  <span className="text-slate-400 font-mono text-[11px] ml-1">({terminalUsersModalAgency.clave_taquilla || '****'})</span>
+                </div>
+              </div>
+              <span className="px-2 py-0.5 rounded-md bg-emerald-500/10 text-emerald-400 text-[10px] font-bold border border-emerald-500/20">
+                Rol: Agencia
+              </span>
+            </div>
+
+            {/* List of sub-cashiers and supervisors */}
+            <div className="space-y-3">
+              <div className="flex items-center justify-between">
+                <h4 className="text-xs font-bold text-slate-300 uppercase tracking-wider flex items-center gap-1.5">
+                  <UserCheck className="w-3.5 h-3.5 text-sky-400" />
+                  <span>Usuarios Asignados ({taquillaUsers.filter((u) => u.agencia_id === terminalUsersModalAgency.id).length})</span>
+                </h4>
+              </div>
+
+              {(() => {
+                const agUsers = taquillaUsers.filter((u) => u.agencia_id === terminalUsersModalAgency.id);
+                if (agUsers.length === 0) {
+                  return (
+                    <div className="p-4 rounded-xl bg-[#071217] border border-dashed border-slate-800 text-center text-xs text-slate-400">
+                      No hay cajeros ni supervisores adicionales registrados. Puedes crear uno abajo.
+                    </div>
+                  );
+                }
+
+                return (
+                  <div className="space-y-2 max-h-56 overflow-y-auto">
+                    {agUsers.map((u) => {
+                      const isSupervisor = u.rol === 'supervisor';
+                      return (
+                        <div
+                          key={u.id}
+                          className="flex items-center justify-between p-3 rounded-xl bg-[#071217] border border-slate-800 text-xs hover:border-slate-700 transition-colors"
+                        >
+                          <div className="space-y-0.5">
+                            <div className="flex items-center gap-2">
+                              <span className="font-mono font-bold text-white">{u.usuario}</span>
+                              <span
+                                className={`text-[9px] px-2 py-0.5 rounded-md font-extrabold uppercase ${
+                                  isSupervisor
+                                    ? 'bg-blue-500/10 text-blue-400 border border-blue-500/30'
+                                    : 'bg-amber-500/10 text-amber-400 border border-amber-500/30'
+                                }`}
+                              >
+                                {u.rol}
+                              </span>
+                              {!u.activo && (
+                                <span className="text-[9px] px-1.5 py-0.5 rounded bg-rose-500/10 text-rose-400 border border-rose-500/20 font-bold">
+                                  Inactivo
+                                </span>
+                              )}
+                            </div>
+                            {u.nombre_cajero && (
+                              <div className="text-[11px] text-slate-400">{u.nombre_cajero}</div>
+                            )}
+                          </div>
+
+                          <div className="flex items-center gap-1.5">
+                            <button
+                              onClick={() => {
+                                setEditingUser(u);
+                                setEditRol((u.rol as any) === 'supervisor' ? 'supervisor' : 'cajero');
+                                setEditActivo(u.activo ?? true);
+                                setEditClave('');
+                              }}
+                              className="p-1.5 rounded-lg text-slate-400 hover:text-white hover:bg-slate-800 transition-colors cursor-pointer"
+                              title="Modificar Rol o Clave"
+                            >
+                              <Edit2 className="w-3.5 h-3.5 text-cyan-400" />
+                            </button>
+                            <button
+                              onClick={() => handleDeleteTaquillaUser(u)}
+                              className="p-1.5 rounded-lg text-slate-400 hover:text-rose-400 hover:bg-rose-500/10 transition-colors cursor-pointer"
+                              title="Eliminar Usuario"
+                            >
+                              <Trash2 className="w-3.5 h-3.5" />
+                            </button>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                );
+              })()}
+            </div>
+
+            {/* Create New User Form */}
+            <form onSubmit={handleCreateTaquillaUser} className="p-4 bg-[#071217] rounded-2xl border border-slate-800 space-y-3 pt-3">
+              <span className="text-xs font-bold text-white block">
+                + Crear Nuevo Usuario (Cajero o Supervisor)
+              </span>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+                <div>
+                  <label className="text-[10px] font-semibold text-slate-400 block mb-1">Rol</label>
+                  <select
+                    value={newRol}
+                    onChange={(e) => setNewRol(e.target.value as any)}
+                    className="w-full bg-[#0D1B22] border border-slate-700 rounded-xl px-3 py-2 text-xs text-white focus:outline-none focus:border-sky-500 font-semibold"
+                  >
+                    <option value="cajero">Cajero (Operador POS)</option>
+                    <option value="supervisor">Supervisor (Control y Pizarra)</option>
+                  </select>
+                </div>
+
+                <div>
+                  <label className="text-[10px] font-semibold text-slate-400 block mb-1">Nombre / Identificador</label>
+                  <input
+                    type="text"
+                    placeholder="Ej: Turno Mañana / Juan"
+                    value={newNombreCajero}
+                    onChange={(e) => setNewNombreCajero(e.target.value)}
+                    className="w-full bg-[#0D1B22] border border-slate-700 rounded-xl px-3 py-2 text-xs text-white focus:outline-none focus:border-sky-500"
+                  />
+                </div>
+
+                <div>
+                  <label className="text-[10px] font-semibold text-slate-400 block mb-1">Usuario de Acceso *</label>
+                  <input
+                    type="text"
+                    required
+                    placeholder="Ej: juan_pos"
+                    value={newUsuario}
+                    onChange={(e) => setNewUsuario(e.target.value)}
+                    className="w-full bg-[#0D1B22] border border-slate-700 rounded-xl px-3 py-2 text-xs text-white font-mono focus:outline-none focus:border-sky-500"
+                  />
+                </div>
+
+                <div>
+                  <label className="text-[10px] font-semibold text-slate-400 block mb-1">Clave / PIN *</label>
+                  <input
+                    type="text"
+                    required
+                    placeholder="Ej: 123456"
+                    value={newClave}
+                    onChange={(e) => setNewClave(e.target.value)}
+                    className="w-full bg-[#0D1B22] border border-slate-700 rounded-xl px-3 py-2 text-xs text-white font-mono focus:outline-none focus:border-sky-500"
+                  />
+                </div>
+              </div>
+
+              <div className="flex justify-end pt-1">
+                <button
+                  type="submit"
+                  disabled={isProcessing}
+                  className="px-4 py-2 rounded-xl bg-sky-500 hover:bg-sky-400 text-slate-950 font-bold text-xs shadow-md transition-all cursor-pointer disabled:opacity-50"
+                >
+                  {isProcessing ? 'Creando...' : 'Crear Usuario'}
+                </button>
+              </div>
+            </form>
+
+            <div className="flex justify-end pt-2 border-t border-slate-800">
+              <button
+                type="button"
+                onClick={() => {
+                  setTerminalUsersModalAgency(null);
+                  setEditingUser(null);
+                }}
+                className="px-5 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-white font-semibold text-xs transition-all cursor-pointer"
+              >
+                Cerrar
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Edit Single Terminal User Modal */}
+      {editingUser && (
+        <div className="fixed inset-0 z-60 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4 animate-fade-in">
+          <div className="bg-[#0D1B22] border border-slate-800 rounded-3xl p-6 max-w-sm w-full space-y-4 shadow-2xl">
+            <h4 className="text-sm font-bold text-white flex items-center gap-2">
+              <Key className="w-4 h-4 text-sky-400" />
+              <span>Editar Usuario: <code className="text-sky-400">{editingUser.usuario}</code></span>
+            </h4>
+
+            <div>
+              <label className="block text-[10px] font-bold text-slate-400 uppercase mb-1">Modificar Rol</label>
+              <select
+                value={editRol}
+                onChange={(e) => setEditRol(e.target.value as any)}
+                className="w-full bg-[#071217] border border-slate-700 rounded-xl px-3 py-2 text-xs text-white font-semibold"
+              >
+                <option value="cajero">Cajero (Operador POS)</option>
+                <option value="supervisor">Supervisor (Control y Pizarra)</option>
+              </select>
+            </div>
+
+            <div>
+              <label className="block text-[10px] font-bold text-slate-400 uppercase mb-1">Nueva Clave (opcional)</label>
+              <input
+                type="text"
+                placeholder="dejar vacío = sin cambios"
+                value={editClave}
+                onChange={(e) => setEditClave(e.target.value)}
+                className="w-full bg-[#071217] border border-slate-700 rounded-xl px-3 py-2 text-xs text-white font-mono"
+              />
+            </div>
+
+            <label className="flex items-center gap-2 text-xs text-slate-300 cursor-pointer">
+              <input
+                type="checkbox"
+                checked={editActivo}
+                onChange={(e) => setEditActivo(e.target.checked)}
+                className="rounded text-sky-500 bg-slate-900 border-slate-700 focus:ring-0"
+              />
+              <span>Usuario Activo (Habilitado para Login)</span>
+            </label>
+
+            <div className="flex items-center justify-end gap-2 pt-2 border-t border-slate-800">
+              <button
+                type="button"
+                onClick={() => setEditingUser(null)}
+                className="px-3 py-1.5 rounded-xl text-xs text-slate-400 hover:text-white"
+              >
+                Cancelar
+              </button>
+              <button
+                type="button"
+                onClick={handleUpdateTaquillaUser}
+                disabled={isProcessing}
+                className="px-4 py-1.5 rounded-xl bg-sky-500 hover:bg-sky-400 text-slate-950 font-bold text-xs disabled:opacity-50"
+              >
+                {isProcessing ? 'Guardando...' : 'Actualizar'}
               </button>
             </div>
           </div>

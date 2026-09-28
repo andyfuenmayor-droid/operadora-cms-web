@@ -14,7 +14,6 @@ export const TODOS_LOS_MODULOS_CMS: ModuleId[] = [
   'Gastos por Agencia',
   'Saldo Agencias',
   'Venta Real',
-  'Auditoría',
   'Caja Maestra',
   'Pagos a Operador',
   'Venta Operadora',

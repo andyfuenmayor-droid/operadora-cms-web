@@ -9,7 +9,6 @@ import { ErrorBoundary } from './components/Common/ErrorBoundary';
 import { HomeDashboard } from './components/Home/HomeDashboard';
 import { ConfirmationsQuick } from './components/Confirmations/ConfirmationsQuick';
 import { ConfirmationsReport } from './components/Confirmations/ConfirmationsReport';
-import { AuditTab } from './components/Audit/AuditTab';
 import { SystemsTab } from './components/Catalogs/SystemsTab';
 import { CurrenciesTab } from './components/Catalogs/CurrenciesTab';
 import { BankAccountsTab } from './components/Catalogs/BankAccountsTab';
@@ -63,9 +62,6 @@ const AppContent: React.FC = () => {
       case 'Rep. Confirmaciones':
       case 'Caja Maestra':
         return <ConfirmationsReport />;
-
-      case 'Auditoría':
-        return <AuditTab />;
 
       case 'Sistemas':
       case 'Config. Proveedores':

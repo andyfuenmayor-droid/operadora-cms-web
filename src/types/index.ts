@@ -54,11 +54,22 @@ export interface Agency {
   cuentas_asignadas?: string;
   usuario_taquilla?: string;
   clave_taquilla?: string;
-  auditoria_activa?: boolean;
   saldo_inicial_bs?: number;
   saldo_inicial_usd?: number;
   saldo_inicial_cop?: number;
   user_id?: string;
+  created_at?: string;
+}
+
+export interface TaquillaUser {
+  id: number;
+  usuario: string;
+  clave?: string;
+  nombre_cajero?: string;
+  rol: 'cajero' | 'supervisor' | 'agencia';
+  agencia_id: number;
+  user_id?: string;
+  activo: boolean;
   created_at?: string;
 }
 
@@ -201,7 +212,6 @@ export type ModuleId =
   | 'Gastos por Agencia'
   | 'Saldo Agencias'
   | 'Venta Real'
-  | 'Auditoría'
   | 'Caja Maestra'
   | 'Pagos a Operador'
   | 'Venta Operadora'

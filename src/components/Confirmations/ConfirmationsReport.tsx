@@ -108,7 +108,7 @@ export const ConfirmationsReport: React.FC = () => {
       // 1. Fetch agencies
       const { data: agData } = await supabase
         .from('agencias')
-        .select('id, nombre_agencia, auditoria_activa')
+        .select('id, nombre_agencia')
         .eq('user_id', effectiveUserId);
 
       const ags = (agData || [])
