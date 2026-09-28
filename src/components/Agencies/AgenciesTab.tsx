@@ -911,18 +911,18 @@ export const AgenciesTab: React.FC = () => {
 
                             return (
                               <div className="flex flex-col gap-0.5" title={fullTooltip}>
-                                <div className="inline-flex items-center gap-1.5 text-xs font-semibold text-slate-800 dark:text-cyan-300">
+                                <div className="inline-flex items-center gap-1.5 text-xs font-semibold text-cyan-300">
                                   {parsedFirst?.isPos ? (
-                                    <Smartphone className="w-3.5 h-3.5 text-cyan-600 dark:text-cyan-400 shrink-0" />
+                                    <Smartphone className="w-3.5 h-3.5 text-cyan-400 shrink-0" />
                                   ) : (
-                                    <CreditCard className="w-3.5 h-3.5 text-cyan-600 dark:text-cyan-400 shrink-0" />
+                                    <CreditCard className="w-3.5 h-3.5 text-cyan-400 shrink-0" />
                                   )}
-                                  <span className="whitespace-nowrap font-bold">
+                                  <span className="whitespace-nowrap font-bold text-cyan-300">
                                     {parsedFirst?.shortTitle || accArr[0]}
                                   </span>
                                 </div>
                                 {accArr.length > 1 && (
-                                  <span className="text-[10px] text-slate-500 dark:text-slate-400 font-mono">
+                                  <span className="text-[10px] text-slate-400 font-mono">
                                     +{accArr.length - 1} más ({remaining.join(', ')})
                                   </span>
                                 )}
@@ -930,7 +930,7 @@ export const AgenciesTab: React.FC = () => {
                             );
                           })()
                         ) : (
-                          <span className="text-[11px] text-slate-400 dark:text-slate-500 italic">Ningún método</span>
+                          <span className="text-[11px] text-slate-500 italic">Ningún método</span>
                         )}
                       </td>
 
@@ -1103,14 +1103,14 @@ export const AgenciesTab: React.FC = () => {
                           <span
                             key={acc}
                             title={parsed?.tooltip || acc}
-                            className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-cyan-500/10 text-cyan-700 dark:text-cyan-300 text-xs font-semibold border border-cyan-500/20"
+                            className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-cyan-500/10 text-cyan-300 text-xs font-semibold border border-cyan-500/20"
                           >
                             {parsed?.isPos ? (
-                              <Smartphone className="w-3 h-3 text-cyan-500 shrink-0" />
+                              <Smartphone className="w-3 h-3 text-cyan-400 shrink-0" />
                             ) : (
-                              <CreditCard className="w-3 h-3 text-cyan-500 shrink-0" />
+                              <CreditCard className="w-3 h-3 text-cyan-400 shrink-0" />
                             )}
-                            <span>{parsed?.shortTitle || acc}</span>
+                            <span className="text-cyan-300 font-bold">{parsed?.shortTitle || acc}</span>
                           </span>
                         );
                       })}
