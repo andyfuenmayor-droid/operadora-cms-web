@@ -3,6 +3,8 @@ import { supabase } from '../lib/supabase';
 export type RealtimeEventType =
   | 'NEW_BANK_PAYMENT'
   | 'NEW_CASH_PAYMENT'
+  | 'NEW_AGENCY_PAYMENT'
+  | 'NEW_PRIZE_PAYMENT'
   | 'PAYMENT_CONFIRMED'
   | 'PAYMENT_REJECTED'
   | 'NEW_EXPENSE'

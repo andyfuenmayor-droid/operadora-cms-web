@@ -403,6 +403,30 @@ export const ConfirmationsQuick: React.FC = () => {
       loadData(true);
     });
 
+    const unsubSocketAgency = realtimeBroadcast.subscribe('NEW_AGENCY_PAYMENT', (data) => {
+      const tagKey = `pago_semana_${data.id || data.referencia}`;
+      notificationService.showNotification(`🔔 Nuevo Pago de Agencia (${data.metodo_pago || 'BANCO'})`, {
+        body: `Agencia ${data.agencia || 'General'}: ${formatCurrency(Number(data.monto || 0), (data.moneda || 'BS') as any)} (Ref: ${data.referencia || 'N/A'})`,
+        soundType: 'new_payment',
+        toastType: data.metodo_pago === 'EFECTIVO' ? 'cash' : 'payment',
+        tag: tagKey,
+      });
+      if (data.id) markRecentlyArrived(`pagos_semana_${data.id}`);
+      loadData(true);
+    });
+
+    const unsubSocketPrize = realtimeBroadcast.subscribe('NEW_PRIZE_PAYMENT', (data) => {
+      const tagKey = `pago_semana_premio_${data.id || data.referencia}`;
+      notificationService.showNotification('🏆 Nuevo Pago de Premios de Agencia', {
+        body: `Agencia ${data.agencia || 'General'}: ${formatCurrency(Number(data.monto || 0), (data.moneda || 'BS') as any)} (Ref: ${data.referencia || 'N/A'})`,
+        soundType: 'new_payment',
+        toastType: 'payment',
+        tag: tagKey,
+      });
+      if (data.id) markRecentlyArrived(`pagos_semana_${data.id}`);
+      loadData(true);
+    });
+
     // 2. Supabase Postgres Changes Listener
     const channel = supabase
       .channel(`quick_conf_live_${effectiveUserId}`)
@@ -435,7 +459,28 @@ export const ConfirmationsQuick: React.FC = () => {
         }
         loadData(true);
       })
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'pagos_semana' }, () => loadData(true))
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'pagos_semana' }, (payload: any) => {
+        if (payload.eventType === 'INSERT') {
+          const row = payload.new;
+          const isRech = Boolean(row.rechazado);
+          const isConf = Boolean(row.confirmado);
+          if (!isConf && !isRech) {
+            const isPremio = String(row.tipo_pago || '').toUpperCase().includes('PREMIO') ||
+              String(row.referencia || '').toUpperCase().includes('PREMIO');
+            const notifTitle = isPremio ? '🏆 Nuevo Pago de Premios de Agencia' : `🔔 Nuevo Pago de Agencia (${row.metodo || 'BANCO'})`;
+            const tagKey = isPremio ? `pago_semana_premio_${row.id || row.referencia}` : `pago_semana_${row.id || row.referencia}`;
+
+            if (row.id) markRecentlyArrived(`pagos_semana_${row.id}`);
+            notificationService.showNotification(notifTitle, {
+              body: `Agencia ${row.agencia || 'General'}: ${formatCurrency(Number(row.monto || 0), (row.moneda || 'BS') as any)} (Ref: ${row.referencia || 'N/A'})`,
+              soundType: 'new_payment',
+              toastType: row.metodo === 'EFECTIVO' ? 'cash' : 'payment',
+              tag: tagKey,
+            });
+          }
+        }
+        loadData(true);
+      })
       .on('postgres_changes', { event: '*', schema: 'public', table: 'gastos_semana' }, () => loadData(true))
       .on('postgres_changes', { event: '*', schema: 'public', table: 'cda_caja_efectivo_supervisor' }, () => loadData(true))
       .subscribe();
@@ -448,6 +493,8 @@ export const ConfirmationsQuick: React.FC = () => {
     return () => {
       unsubSocketBank();
       unsubSocketCash();
+      unsubSocketAgency();
+      unsubSocketPrize();
       supabase.removeChannel(channel);
       clearInterval(intervalId);
     };

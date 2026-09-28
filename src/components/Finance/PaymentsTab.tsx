@@ -4,6 +4,8 @@ import { useAuth } from '../../context/AuthContext';
 import { formatCurrency, formatDate, normalizarMoneda } from '../../utils/formatters';
 import { getConsolidatedExpenses, getConsolidatedPayments, type ConsolidatedPaymentItem } from '../../utils/consolidations';
 import type { Agency, Currency, BankAccount } from '../../types';
+import { notificationService } from '../../utils/notificationService';
+import { realtimeBroadcast } from '../../utils/realtimeBroadcast';
 import {
   CreditCard,
   Plus,
@@ -550,19 +552,56 @@ export const PaymentsTab: React.FC = () => {
         fecha: formFecha ? `${formFecha} ${new Date().toTimeString().split(' ')[0]}` : new Date().toISOString(),
       };
 
-      const { error } = await supabase.from('pagos_semana').insert(payload);
+      const { data: insertedData, error } = await supabase
+        .from('pagos_semana')
+        .insert(payload)
+        .select()
+        .single();
       if (error) throw error;
 
       if (formConfirmDirecta) {
         confetti({ particleCount: 50, spread: 60 });
+        notificationService.playSound('confirmed');
         setMessage({
           type: 'success',
           text: `✅ ${tipoDb} de ${formMoneda} ${montoNum.toLocaleString('es-VE', { minimumFractionDigits: 2 })} registrado como DINERO ENTRANTE CONFIRMADO.`,
         });
       } else {
+        const isPremio = tipoDb === 'Pago de Premios';
+        const eventType = isPremio ? 'NEW_PRIZE_PAYMENT' : 'NEW_AGENCY_PAYMENT';
+        const notifTitle = isPremio ? '🏆 Nuevo Pago de Premios de Agencia' : `🔔 Nuevo Pago de Agencia (${metodoDb})`;
+        const notifBody = `Agencia ${formAgencia}: ${formatCurrency(montoNum, formMoneda as any)} (Ref: ${refCompleta.toUpperCase().trim()})`;
+
+        // 1. Broadcast instantáneo por WebSocket a Confirmaciones
+        try {
+          await realtimeBroadcast.broadcast(eventType, {
+            id: insertedData?.id,
+            tabla: 'pagos_semana',
+            agencia: formAgencia,
+            monto: montoNum,
+            moneda: formMoneda,
+            referencia: refCompleta.toUpperCase().trim(),
+            metodo_pago: metodoDb,
+            tipo_pago: tipoDb,
+            concepto: isPremio ? 'Pago de Premios' : 'Pago de Agencia',
+            confirmado: false,
+            created_at: payload.fecha,
+          });
+        } catch (bErr) {
+          console.warn('[PaymentsTab] Error broadcasting payment:', bErr);
+        }
+
+        // 2. Alerta sonora local y notificación in-app inmediata
+        notificationService.showNotification(notifTitle, {
+          body: notifBody,
+          soundType: 'new_payment',
+          toastType: metodoDb === 'EFECTIVO' ? 'cash' : 'payment',
+          tag: `pago_semana_${insertedData?.id || Date.now()}`,
+        });
+
         setMessage({
           type: 'info',
-          text: `⏳ ${tipoDb} de ${formMoneda} ${montoNum.toLocaleString('es-VE', { minimumFractionDigits: 2 })} registrado EN TRÁNSITO (pendiente por verificar en la Pizarra de Confirmaciones).`,
+          text: `⏳ ${tipoDb} de ${formMoneda} ${montoNum.toLocaleString('es-VE', { minimumFractionDigits: 2 })} registrado EN TRÁNSITO (enviado a Pizarra de Confirmaciones).`,
         });
       }
 

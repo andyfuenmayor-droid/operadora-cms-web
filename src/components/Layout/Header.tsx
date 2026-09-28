@@ -2,7 +2,7 @@ import React from 'react';
 import { useAuth } from '../../context/AuthContext';
 import type { ModuleId } from '../../types';
 import { Menu, Calendar, RefreshCw, Bell, LogOut } from 'lucide-react';
-import { formatDate } from '../../utils/formatters';
+import { formatDate, formatCurrency } from '../../utils/formatters';
 import { supabase } from '../../lib/supabase';
 import { notificationService } from '../../utils/notificationService';
 import { realtimeBroadcast } from '../../utils/realtimeBroadcast';
@@ -27,12 +27,12 @@ export const Header: React.FC<HeaderProps> = ({ currentModule, onOpenMobile }) =
     setTimeout(() => setRefreshing(false), 500);
   };
 
-  // Listener global de pagos bancarios entrantes por WebSocket y Postgres Realtime
+  // Listener global de pagos entrantes (Taquilla + Agencias CMS) por WebSocket y Postgres Realtime
   React.useEffect(() => {
-    // 1. WebSocket Broadcast ultra-rápido (0ms latency desde Taquilla)
+    // 1. WebSocket Broadcast ultra-rápido (0ms latency)
     const unsubSocket = realtimeBroadcast.subscribe('NEW_BANK_PAYMENT', (data) => {
       notificationService.showNotification('🔔 Nuevo Pago Bancario de Taquilla', {
-        body: `Agencia ${data.agencia || 'General'}: ${data.monto ? Number(data.monto).toLocaleString() : ''} ${data.moneda || 'Bs'} (Ref: ${data.referencia || 'N/A'})`,
+        body: `Agencia ${data.agencia || 'General'}: ${formatCurrency(Number(data.monto || 0), (data.moneda || 'BS') as any)} (Ref: ${data.referencia || 'N/A'})`,
         soundType: 'new_payment',
         toastType: 'payment',
         tag: `pago_banco_${data.id || data.referencia}`,
@@ -41,10 +41,28 @@ export const Header: React.FC<HeaderProps> = ({ currentModule, onOpenMobile }) =
 
     const unsubCashSocket = realtimeBroadcast.subscribe('NEW_CASH_PAYMENT', (data) => {
       notificationService.showNotification('💵 Nueva Entrega de Efectivo / Cobrador', {
-        body: `Agencia ${data.agencia || 'General'}: ${data.monto ? Number(data.monto).toLocaleString() : ''} ${data.moneda || 'Bs'}`,
+        body: `Agencia ${data.agencia || 'General'}: ${formatCurrency(Number(data.monto || 0), (data.moneda || 'BS') as any)}`,
         soundType: 'new_payment',
         toastType: 'cash',
         tag: `pago_efectivo_${data.id || data.referencia}`,
+      });
+    });
+
+    const unsubAgencySocket = realtimeBroadcast.subscribe('NEW_AGENCY_PAYMENT', (data) => {
+      notificationService.showNotification(`🔔 Nuevo Pago de Agencia (${data.metodo_pago || 'BANCO'})`, {
+        body: `Agencia ${data.agencia || 'General'}: ${formatCurrency(Number(data.monto || 0), (data.moneda || 'BS') as any)} (Ref: ${data.referencia || 'N/A'})`,
+        soundType: 'new_payment',
+        toastType: data.metodo_pago === 'EFECTIVO' ? 'cash' : 'payment',
+        tag: `pago_semana_${data.id || data.referencia}`,
+      });
+    });
+
+    const unsubPrizeSocket = realtimeBroadcast.subscribe('NEW_PRIZE_PAYMENT', (data) => {
+      notificationService.showNotification('🏆 Nuevo Pago de Premios de Agencia', {
+        body: `Agencia ${data.agencia || 'General'}: ${formatCurrency(Number(data.monto || 0), (data.moneda || 'BS') as any)} (Ref: ${data.referencia || 'N/A'})`,
+        soundType: 'new_payment',
+        toastType: 'payment',
+        tag: `pago_semana_premio_${data.id || data.referencia}`,
       });
     });
 
@@ -56,12 +74,49 @@ export const Header: React.FC<HeaderProps> = ({ currentModule, onOpenMobile }) =
         { event: 'INSERT', schema: 'public', table: 'cda_pagos_bancarios' },
         (payload: any) => {
           const row = payload.new;
-          notificationService.showNotification('🔔 Nuevo Pago Bancario de Taquilla', {
-            body: `Agencia ${row.agencia || 'General'}: ${row.monto ? Number(row.monto).toLocaleString() : ''} ${row.moneda || 'Bs'} (Ref: ${row.referencia || 'N/A'})`,
-            soundType: 'new_payment',
-            toastType: 'payment',
-            tag: `pago_banco_${row.id || row.referencia}`,
-          });
+          if (!row.confirmado && !row.rechazado) {
+            notificationService.showNotification('🔔 Nuevo Pago Bancario de Taquilla', {
+              body: `Agencia ${row.agencia || 'General'}: ${formatCurrency(Number(row.monto || 0), (row.moneda || 'BS') as any)} (Ref: ${row.referencia || 'N/A'})`,
+              soundType: 'new_payment',
+              toastType: 'payment',
+              tag: `pago_banco_${row.id || row.referencia}`,
+            });
+          }
+        }
+      )
+      .on(
+        'postgres_changes',
+        { event: 'INSERT', schema: 'public', table: 'cda_pagos_diarios' },
+        (payload: any) => {
+          const row = payload.new;
+          if (!row.confirmado && !row.rechazado) {
+            notificationService.showNotification('💵 Nueva Entrega de Efectivo / Cobrador', {
+              body: `Agencia ${row.agencia || 'General'}: ${formatCurrency(Number(row.monto || 0), (row.moneda || 'BS') as any)}`,
+              soundType: 'new_payment',
+              toastType: 'cash',
+              tag: `pago_efectivo_${row.id || row.referencia}`,
+            });
+          }
+        }
+      )
+      .on(
+        'postgres_changes',
+        { event: 'INSERT', schema: 'public', table: 'pagos_semana' },
+        (payload: any) => {
+          const row = payload.new;
+          if (!row.confirmado && !row.rechazado) {
+            const isPremio = String(row.tipo_pago || '').toUpperCase().includes('PREMIO') ||
+              String(row.referencia || '').toUpperCase().includes('PREMIO');
+            const notifTitle = isPremio ? '🏆 Nuevo Pago de Premios de Agencia' : `🔔 Nuevo Pago de Agencia (${row.metodo || 'BANCO'})`;
+            const tagKey = isPremio ? `pago_semana_premio_${row.id || row.referencia}` : `pago_semana_${row.id || row.referencia}`;
+
+            notificationService.showNotification(notifTitle, {
+              body: `Agencia ${row.agencia || 'General'}: ${formatCurrency(Number(row.monto || 0), (row.moneda || 'BS') as any)} (Ref: ${row.referencia || 'N/A'})`,
+              soundType: 'new_payment',
+              toastType: row.metodo === 'EFECTIVO' ? 'cash' : 'payment',
+              tag: tagKey,
+            });
+          }
         }
       )
       .subscribe();
@@ -69,6 +124,8 @@ export const Header: React.FC<HeaderProps> = ({ currentModule, onOpenMobile }) =
     return () => {
       unsubSocket();
       unsubCashSocket();
+      unsubAgencySocket();
+      unsubPrizeSocket();
       supabase.removeChannel(channel);
     };
   }, []);
