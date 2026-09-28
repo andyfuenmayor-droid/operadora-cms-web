@@ -487,10 +487,10 @@ export const AgenciesTab: React.FC = () => {
                 ? 'bg-emerald-500 text-slate-950 font-black shadow-md shadow-emerald-500/20'
                 : 'text-slate-400 hover:text-white hover:bg-slate-800/60'
             }`}
-            title="Vista Lineal (Tabla)"
+            title="Vista Tabla"
           >
             <List className="w-3.5 h-3.5" />
-            <span>Vista Lineal</span>
+            <span>Tabla</span>
           </button>
           <button
             type="button"
@@ -503,7 +503,7 @@ export const AgenciesTab: React.FC = () => {
                 ? 'bg-emerald-500 text-slate-950 font-black shadow-md shadow-emerald-500/20'
                 : 'text-slate-400 hover:text-white hover:bg-slate-800/60'
             }`}
-            title="Vista Tarjetas (Grid)"
+            title="Vista Tarjetas"
           >
             <LayoutGrid className="w-3.5 h-3.5" />
             <span>Tarjetas</span>
@@ -533,37 +533,39 @@ export const AgenciesTab: React.FC = () => {
           </button>
         </div>
       ) : viewMode === 'linear' ? (
-        /* Patrón Lineal: Tabla Completa de Agencias */
-        <div className="bg-[#0D1B22] border border-slate-800 rounded-3xl overflow-hidden shadow-2xl">
-          <div className="p-4 sm:p-5 border-b border-slate-800 flex items-center justify-between bg-[#071217]/50">
-            <div className="flex items-center gap-2">
-              <h4 className="text-xs font-bold text-white uppercase tracking-wider flex items-center gap-2">
-                <span className="p-1 rounded-md bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">
-                  <List className="w-3.5 h-3.5" />
-                </span>
-                <span>Listado de Agencias ({filteredAgencies.length})</span>
-              </h4>
-              <span className="text-[10px] text-slate-500 font-mono">
-                Patrón Lineal
+        /* Tabla de Agencias */
+        <div className="bg-[#0D1B22] border border-slate-800 rounded-3xl overflow-hidden shadow-xl">
+          <div className="p-4 sm:p-5 border-b border-slate-800 flex items-center justify-between">
+            <div className="flex items-center gap-2.5">
+              <span className="p-2 rounded-xl bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">
+                <Building2 className="w-4 h-4" />
               </span>
+              <div>
+                <h4 className="text-xs sm:text-sm font-black text-white uppercase tracking-wider">
+                  Listado de Agencias ({filteredAgencies.length})
+                </h4>
+                <p className="text-[11px] text-slate-400 mt-0.5">
+                  Resumen de configuración y accesos por agencia
+                </p>
+              </div>
             </div>
-            <span className="text-[11px] text-slate-400 font-mono">
-              Mostrando {filteredAgencies.length} de {agencies.length} agencias
+            <span className="px-3 py-1 rounded-full bg-slate-800/80 text-slate-300 font-mono text-xs font-bold border border-slate-700">
+              {filteredAgencies.length} de {agencies.length} agencias
             </span>
           </div>
 
           <div className="overflow-x-auto">
-            <table className="w-full text-left text-[11px] border-collapse min-w-[950px]">
+            <table className="w-full text-left text-xs border-collapse">
               <thead className="sticky top-0 bg-[#071217] text-slate-400 font-bold uppercase text-[10px] tracking-wider border-b border-slate-800">
                 <tr>
-                  <th className="py-3 px-2.5 text-center w-12">#</th>
-                  <th className="py-3 px-3">Agencia</th>
-                  <th className="py-3 px-3 text-center">Comisión / Part.</th>
-                  <th className="py-3 px-3">Sistemas</th>
-                  <th className="py-3 px-3 text-center">Monedas</th>
-                  <th className="py-3 px-3">Cuentas / Bancos</th>
-                  <th className="py-3 px-3">Acceso POS</th>
-                  <th className="py-3 px-3 text-center w-20">Acciones</th>
+                  <th className="py-3 px-3 text-center w-12">#</th>
+                  <th className="py-3 px-4 min-w-[140px]">Agencia</th>
+                  <th className="py-3 px-4 text-center w-32">Comisión / Part.</th>
+                  <th className="py-3 px-4 min-w-[150px]">Sistemas</th>
+                  <th className="py-3 px-4 text-center w-28">Monedas</th>
+                  <th className="py-3 px-4 min-w-[260px]">Cuentas / Bancos</th>
+                  <th className="py-3 px-4 min-w-[180px]">Acceso POS</th>
+                  <th className="py-3 px-4 text-center w-24">Acciones</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-800/80 font-mono">
@@ -578,14 +580,14 @@ export const AgenciesTab: React.FC = () => {
                   return (
                     <tr key={ag.id} className="hover:bg-slate-800/30 transition-colors group">
                       {/* ID */}
-                      <td className="py-2.5 px-2.5 text-center text-slate-500 font-bold">
+                      <td className="py-3 px-3 text-center text-slate-400 font-bold font-mono text-xs">
                         #{ag.id}
                       </td>
 
                       {/* Agency Name + Audit Badge */}
-                      <td className="py-2.5 px-3 font-sans">
-                        <div className="flex items-center gap-1.5">
-                          <span className="font-black text-white text-xs whitespace-nowrap">
+                      <td className="py-3 px-4 font-sans">
+                        <div className="flex items-center gap-2">
+                          <span className="font-extrabold text-white text-xs whitespace-nowrap">
                             {ag.nombre_agencia}
                           </span>
                           {ag.auditoria_activa && (
@@ -597,25 +599,25 @@ export const AgenciesTab: React.FC = () => {
                       </td>
 
                       {/* Comision / Participacion */}
-                      <td className="py-2.5 px-3 text-center">
-                        <div className="inline-flex items-center gap-1 font-mono text-[10.5px]">
-                          <span className="px-1.5 py-0.5 rounded bg-emerald-500/10 text-emerald-400 font-bold border border-emerald-500/20" title="Comisión">
+                      <td className="py-3 px-4 text-center">
+                        <div className="inline-flex items-center gap-1 font-mono text-[11px]">
+                          <span className="px-2 py-0.5 rounded-md bg-emerald-500/10 text-emerald-400 font-bold border border-emerald-500/20" title="Comisión General">
                             {ag.comision}%
                           </span>
                           <span className="text-slate-600">/</span>
-                          <span className="px-1.5 py-0.5 rounded bg-cyan-500/10 text-cyan-400 font-bold border border-cyan-500/20" title="Participación de Agencia">
+                          <span className="px-2 py-0.5 rounded-md bg-cyan-500/10 text-cyan-400 font-bold border border-cyan-500/20" title="Participación de Agencia">
                             {ag.participacion_ag}%
                           </span>
                         </div>
                       </td>
 
                       {/* Sistemas */}
-                      <td className="py-2.5 px-3 font-sans">
-                        <div className="flex flex-wrap gap-1 max-w-[170px]">
+                      <td className="py-3 px-4 font-sans">
+                        <div className="flex flex-wrap gap-1 items-center">
                           {sisArr.map((s) => (
                             <span
                               key={s}
-                              className="px-1.5 py-0.5 rounded text-[9.5px] font-bold bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 whitespace-nowrap"
+                              className="px-2 py-0.5 rounded-md text-[10px] font-bold bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 whitespace-nowrap"
                             >
                               🎰 {s}
                             </span>
@@ -624,12 +626,12 @@ export const AgenciesTab: React.FC = () => {
                       </td>
 
                       {/* Monedas */}
-                      <td className="py-2.5 px-3 text-center font-sans">
-                        <div className="flex flex-wrap gap-1 justify-center">
+                      <td className="py-3 px-4 text-center font-sans">
+                        <div className="flex flex-wrap gap-1 justify-center items-center">
                           {monArr.map((m) => (
                             <span
                               key={m}
-                              className="px-1.5 py-0.5 rounded text-[9.5px] font-bold bg-amber-500/10 text-amber-400 border border-amber-500/20"
+                              className="px-2 py-0.5 rounded-md text-[10px] font-bold bg-amber-500/10 text-amber-400 border border-amber-500/20 whitespace-nowrap"
                             >
                               🪙 {m}
                             </span>
@@ -638,46 +640,46 @@ export const AgenciesTab: React.FC = () => {
                       </td>
 
                       {/* Cuentas Bancarias / Dispositivos */}
-                      <td className="py-2.5 px-3 font-sans">
+                      <td className="py-3 px-4 font-sans">
                         {accArr.length > 0 ? (
-                          <div className="flex flex-col gap-0.5 max-w-[210px]" title={accArr.join('\n')}>
-                            <span className="text-[10px] text-cyan-300 font-semibold truncate flex items-center gap-1">
-                              <CreditCard className="w-3 h-3 text-cyan-400 shrink-0" />
+                          <div className="flex flex-col gap-0.5 max-w-sm" title={accArr.join('\n')}>
+                            <span className="text-[11px] text-cyan-300 font-semibold truncate flex items-center gap-1.5">
+                              <CreditCard className="w-3.5 h-3.5 text-cyan-400 shrink-0" />
                               <span className="truncate">{accArr[0]}</span>
                             </span>
                             {accArr.length > 1 && (
-                              <span className="text-[9px] text-slate-400 font-mono">
+                              <span className="text-[9.5px] text-slate-400 font-mono">
                                 +{accArr.length - 1} cuenta(s) más
                               </span>
                             )}
                           </div>
                         ) : (
-                          <span className="text-[10px] text-slate-500 italic">Ningún método</span>
+                          <span className="text-[11px] text-slate-500 italic">Ningún método</span>
                         )}
                       </td>
 
                       {/* Acceso POS */}
-                      <td className="py-2.5 px-3">
-                        <div className="flex items-center gap-1 text-[10.5px]">
-                          <Key className="w-3 h-3 text-amber-400 shrink-0" />
+                      <td className="py-3 px-4 font-sans">
+                        <div className="flex items-center gap-1.5 text-[11px]">
+                          <Key className="w-3.5 h-3.5 text-amber-400 shrink-0" />
                           <span className="font-bold text-white font-mono">{ag.usuario_taquilla || 'N/A'}</span>
-                          <span className="text-[9.5px] text-slate-400 font-mono">({ag.clave_taquilla || '****'})</span>
+                          <span className="text-[10px] text-slate-400 font-mono">({ag.clave_taquilla || '****'})</span>
                         </div>
                       </td>
 
                       {/* Acciones */}
-                      <td className="py-2.5 px-3 text-center">
-                        <div className="flex items-center justify-center gap-1">
+                      <td className="py-3 px-4 text-center">
+                        <div className="flex items-center justify-center gap-1.5">
                           <button
                             onClick={() => handleOpenEdit(ag)}
-                            className="p-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white transition-all cursor-pointer"
+                            className="p-1.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white transition-all cursor-pointer border border-slate-700"
                             title="Editar Agencia"
                           >
                             <Edit2 className="w-3.5 h-3.5 text-cyan-400" />
                           </button>
                           <button
                             onClick={() => setDeleteModalAgency(ag)}
-                            className="p-1.5 rounded-lg bg-rose-500/10 hover:bg-rose-500/20 text-rose-400 transition-all cursor-pointer"
+                            className="p-1.5 rounded-xl bg-rose-500/10 hover:bg-rose-500/20 text-rose-400 transition-all cursor-pointer border border-rose-500/20"
                             title="Eliminar Agencia"
                           >
                             <Trash2 className="w-3.5 h-3.5" />
