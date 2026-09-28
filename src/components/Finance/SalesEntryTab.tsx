@@ -71,8 +71,11 @@ export const SalesEntryTab: React.FC = () => {
   // Bulk CSV/Excel Import Modal State
   const [isBulkOpen, setIsBulkOpen] = useState(false);
   const [bulkFileDate, setBulkFileDate] = useState(systemCycle?.hasta || new Date().toISOString().split('T')[0]);
+  const [bulkSystem, setBulkSystem] = useState('AUTO');
+  const [bulkCurrency, setBulkCurrency] = useState('AUTO');
   const [bulkRows, setBulkRows] = useState<any[]>([]);
   const [bulkError, setBulkError] = useState<string | null>(null);
+  const [bulkUnmatched, setBulkUnmatched] = useState<string[]>([]);
 
   const [message, setMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
 
@@ -484,12 +487,13 @@ export const SalesEntryTab: React.FC = () => {
     }
   };
 
-  // Handle CSV/Excel bulk file parsing
+  // Handle CSV/Excel bulk file parsing (Motor Universal)
   const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
 
     setBulkError(null);
+    setBulkUnmatched([]);
     const reader = new FileReader();
 
     reader.onload = (event) => {
@@ -510,54 +514,100 @@ export const SalesEntryTab: React.FC = () => {
           return;
         }
 
-        // 1. Detect System & Currency from header text (first 15 rows)
+        // 1. Detect System & Currency (Auto o Manual)
+        const fileNameUpper = file.name.toUpperCase();
         const headerDna = rows
           .slice(0, 15)
           .map((r) => r.join(' '))
           .join(' ')
           .toUpperCase();
 
-        const sistDet = headerDna.includes('BETM3') ? 'BETM3' : systems[0]?.nombre_sistema || 'BETM3';
-
-        let monDet = 'BS';
-        if (headerDna.includes('VES') || headerDna.includes('BOLIVAR')) {
-          monDet = 'BS';
-        } else if (headerDna.includes('COP') || headerDna.includes('PESO')) {
-          monDet = 'COP';
-        } else if (headerDna.includes('USD') || headerDna.includes('DOLAR')) {
-          monDet = 'USD';
+        let sistDet = bulkSystem !== 'AUTO' ? bulkSystem : '';
+        if (!sistDet) {
+          for (const s of systems) {
+            const sName = s.nombre_sistema.toUpperCase();
+            if (headerDna.includes(sName) || fileNameUpper.includes(sName)) {
+              sistDet = s.nombre_sistema;
+              break;
+            }
+          }
+          if (!sistDet) {
+            if (headerDna.includes('GATOWEB') || fileNameUpper.includes('GATO')) sistDet = 'GATOWEB';
+            else if (headerDna.includes('BETM3') || fileNameUpper.includes('BET')) sistDet = 'BETM3';
+            else if (headerDna.includes('KENO') || fileNameUpper.includes('KENO')) sistDet = 'KENO';
+            else sistDet = systems[0]?.nombre_sistema || 'BETM3';
+          }
         }
 
-        // 2. Detect the actual header row (contains 'Nombre' or 'Agencia')
+        let monDet = bulkCurrency !== 'AUTO' ? bulkCurrency : '';
+        if (!monDet) {
+          if (headerDna.includes('VES') || headerDna.includes('BOLIVAR') || fileNameUpper.includes('BS') || fileNameUpper.includes('VES')) {
+            monDet = 'BS';
+          } else if (headerDna.includes('COP') || headerDna.includes('PESO') || fileNameUpper.includes('COP')) {
+            monDet = 'COP';
+          } else if (headerDna.includes('USD') || headerDna.includes('DOLAR') || fileNameUpper.includes('USD')) {
+            monDet = 'USD';
+          } else {
+            monDet = currencies[0]?.nombre_moneda || 'BS';
+          }
+        }
+
+        // 2. Detect the actual header row using universal synonyms
+        const NAME_SYNONYMS = ['NOMBRE', 'AGENCIA', 'USUARIO', 'TAQUILLA', 'BANCA', 'SUBBANCA', 'TERMINAL', 'GRUPO', 'CLIENTE'];
+        const VENTA_SYNONYMS = ['VENTA', 'VENTAS', 'TOTAL VENTA', 'JUGADO', 'TOTAL JUGADO', 'BRUTO', 'TOTAL BRUTO', 'APUESTA', 'APUESTAS'];
+        const PREMIO_SYNONYMS = ['PREMIO', 'PREMIOS', 'TOTAL PREMIOS', 'PAGADO', 'PAGADOS', 'ACIERTO', 'ACIERTOS'];
+        const COMISION_SYNONYMS = ['COMISION', 'COMISIÓN', 'COMISIONES', 'COM. AGENCIA', 'GANANCIA', 'COM'];
+
         let headerRowIdx = -1;
-        for (let i = 0; i < Math.min(20, rows.length); i++) {
+        for (let i = 0; i < Math.min(25, rows.length); i++) {
           const rowStr = rows[i].map((c) => String(c ?? '').trim().toUpperCase()).join(' ');
-          if (rowStr.includes('NOMBRE') || rowStr.includes('AGENCIA')) {
+          const hasName = NAME_SYNONYMS.some((syn) => rowStr.includes(syn));
+          const hasFinancial =
+            VENTA_SYNONYMS.some((syn) => rowStr.includes(syn)) ||
+            PREMIO_SYNONYMS.some((syn) => rowStr.includes(syn)) ||
+            COMISION_SYNONYMS.some((syn) => rowStr.includes(syn));
+
+          if (hasName && hasFinancial) {
             headerRowIdx = i;
             break;
           }
         }
 
         if (headerRowIdx === -1) {
-          headerRowIdx = 0;
+          for (let i = 0; i < Math.min(20, rows.length); i++) {
+            const rowStr = rows[i].map((c) => String(c ?? '').trim().toUpperCase()).join(' ');
+            if (NAME_SYNONYMS.some((syn) => rowStr.includes(syn))) {
+              headerRowIdx = i;
+              break;
+            }
+          }
         }
+
+        if (headerRowIdx === -1) headerRowIdx = 0;
 
         const headerCols = rows[headerRowIdx].map((c) => String(c ?? '').trim().toUpperCase());
 
-        let colNombre = headerCols.findIndex((c) => c.includes('NOMBRE') || c.includes('AGENCIA'));
+        let colNombre = headerCols.findIndex((c) => NAME_SYNONYMS.some((syn) => c.includes(syn)));
         if (colNombre === -1) colNombre = 0;
 
-        let colVenta = headerCols.findIndex((c) => c.includes('VENTA'));
+        let colVenta = headerCols.findIndex((c) => VENTA_SYNONYMS.some((syn) => c.includes(syn)));
         if (colVenta === -1) colVenta = 1;
 
-        let colComision = headerCols.findIndex((c) => c.includes('COMISION') || c.includes('COMISIÓN'));
-        if (colComision === -1) colComision = 2;
+        let colComision = headerCols.findIndex((c) => COMISION_SYNONYMS.some((syn) => c.includes(syn)));
+        let colPremio = headerCols.findIndex((c) => PREMIO_SYNONYMS.some((syn) => c.includes(syn)));
 
-        let colPremio = headerCols.findIndex((c) => c.includes('PREMIO') || c.includes('PREMIOS'));
-        if (colPremio === -1) colPremio = 3;
+        if (colComision === -1 && colPremio === -1) {
+          colComision = 2;
+          colPremio = 3;
+        } else if (colComision === -1) {
+          colComision = colPremio === 2 ? 3 : 2;
+        } else if (colPremio === -1) {
+          colPremio = colComision === 2 ? 3 : 2;
+        }
 
         const parsed: any[] = [];
         const duplicatesFound: string[] = [];
+        const unmatchedFound: string[] = [];
 
         for (let i = headerRowIdx + 1; i < rows.length; i++) {
           const row = rows[i];
@@ -572,10 +622,34 @@ export const SalesEntryTab: React.FC = () => {
           }
 
           const agClean = cleanAgencyName(rawCell);
-          if (!agClean) continue;
 
-          const matchedAg = agencies.find((a) => cleanAgencyName(a.nombre_agencia) === agClean);
-          if (!matchedAg) continue;
+          // Matching por Equivalencia de Sistema o por Nombre
+          const matchedAg = agencies.find((a) => {
+            if (a.condiciones_sistemas) {
+              try {
+                const cond = typeof a.condiciones_sistemas === 'string'
+                  ? JSON.parse(a.condiciones_sistemas)
+                  : a.condiciones_sistemas;
+                const sysConf = cond?.[sistDet];
+                if (sysConf?.codigo) {
+                  const codigos = String(sysConf.codigo)
+                    .split(',')
+                    .map((c) => c.trim().toUpperCase());
+                  if (codigos.includes(upperCell) || (agClean && codigos.includes(agClean))) {
+                    return true;
+                  }
+                }
+              } catch (_) {}
+            }
+            if (agClean && cleanAgencyName(a.nombre_agencia) === agClean) return true;
+            if (upperCell && a.nombre_agencia.toUpperCase() === upperCell) return true;
+            return false;
+          });
+
+          if (!matchedAg) {
+            unmatchedFound.push(rawCell);
+            continue;
+          }
 
           // Check if already loaded in carga_actual for this day/system/currency
           const isDup = sales.some(
@@ -623,6 +697,8 @@ export const SalesEntryTab: React.FC = () => {
           });
         }
 
+        setBulkUnmatched(unmatchedFound);
+
         if (duplicatesFound.length > 0) {
           setBulkError(
             `Aviso: ${duplicatesFound.length} agencias ya tienen ventas registradas para el ${bulkFileDate} (${duplicatesFound.slice(0, 3).join(', ')}${duplicatesFound.length > 3 ? '...' : ''}). Se omitieron para evitar duplicados.`
@@ -631,7 +707,11 @@ export const SalesEntryTab: React.FC = () => {
 
         if (parsed.length === 0) {
           if (duplicatesFound.length === 0) {
-            setBulkError('No se encontraron agencias coincidentes en el archivo.');
+            setBulkError(
+              unmatchedFound.length > 0
+                ? `No se encontraron coincidencias para: ${unmatchedFound.slice(0, 3).join(', ')}${unmatchedFound.length > 3 ? '...' : ''}. Configura sus equivalencias en Agencias.`
+                : 'No se encontraron registros de agencias válidos en el archivo.'
+            );
           }
         } else {
           setBulkRows(parsed);
@@ -736,9 +816,9 @@ export const SalesEntryTab: React.FC = () => {
             </button>
           </div>
 
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
             <div className="space-y-1.5">
-              <label className="text-xs font-semibold text-slate-300">Asignar este archivo a la fecha:</label>
+              <label className="text-xs font-semibold text-slate-300">Fecha del Reporte:</label>
               <input
                 type="date"
                 value={bulkFileDate}
@@ -752,15 +832,72 @@ export const SalesEntryTab: React.FC = () => {
             </div>
 
             <div className="space-y-1.5">
-              <label className="text-xs font-semibold text-slate-300">Seleccionar archivo Excel / CSV:</label>
+              <label className="text-xs font-semibold text-slate-300">Sistema / Proveedor:</label>
+              <select
+                value={bulkSystem}
+                onChange={(e) => {
+                  const sVal = e.target.value;
+                  setBulkSystem(sVal);
+                  if (sVal !== 'AUTO') {
+                    setBulkRows((prev) => prev.map((r) => ({ ...r, sistema: sVal })));
+                  }
+                }}
+                className="w-full bg-[#071217] border border-slate-700 rounded-xl px-3 py-2 text-xs text-white focus:outline-none focus:border-cyan-500 cursor-pointer"
+              >
+                <option value="AUTO">✨ Auto-detectar Sistema</option>
+                {systems.map((s) => (
+                  <option key={s.id} value={s.nombre_sistema}>
+                    🎰 {s.nombre_sistema}
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            <div className="space-y-1.5">
+              <label className="text-xs font-semibold text-slate-300">Moneda:</label>
+              <select
+                value={bulkCurrency}
+                onChange={(e) => {
+                  const mVal = e.target.value;
+                  setBulkCurrency(mVal);
+                  if (mVal !== 'AUTO') {
+                    setBulkRows((prev) => prev.map((r) => ({ ...r, moneda: mVal })));
+                  }
+                }}
+                className="w-full bg-[#071217] border border-slate-700 rounded-xl px-3 py-2 text-xs text-white focus:outline-none focus:border-cyan-500 cursor-pointer"
+              >
+                <option value="AUTO">✨ Auto-detectar Moneda</option>
+                {currencies.map((m) => {
+                  const mCode = (m.nombre_moneda || '').trim().toUpperCase();
+                  if (!mCode) return null;
+                  return (
+                    <option key={m.id || mCode} value={mCode}>
+                      🪙 {mCode} {m.simbolo ? `(${m.simbolo})` : ''}
+                    </option>
+                  );
+                })}
+              </select>
+            </div>
+
+            <div className="space-y-1.5">
+              <label className="text-xs font-semibold text-slate-300">Archivo Excel / CSV:</label>
               <input
                 type="file"
                 accept=".xlsx,.xls,.csv,.txt"
                 onChange={handleFileUpload}
-                className="w-full text-xs text-slate-400 file:mr-3 file:py-2 file:px-4 file:rounded-xl file:border-0 file:text-xs file:font-semibold file:bg-cyan-500/20 file:text-cyan-300 hover:file:bg-cyan-500/30 cursor-pointer"
+                className="w-full text-xs text-slate-400 file:mr-2 file:py-1.5 file:px-3 file:rounded-xl file:border-0 file:text-xs file:font-semibold file:bg-cyan-500/20 file:text-cyan-300 hover:file:bg-cyan-500/30 cursor-pointer"
               />
             </div>
           </div>
+
+          {bulkUnmatched.length > 0 && (
+            <div className="p-3 bg-amber-500/10 border border-amber-500/20 rounded-xl text-xs text-amber-300 flex items-start gap-2">
+              <AlertTriangle className="w-4 h-4 shrink-0 text-amber-400 mt-0.5" />
+              <div>
+                <strong>Aviso de Equivalencias:</strong> Se encontraron {bulkUnmatched.length} registros que no coinciden con ninguna agencia ({bulkUnmatched.slice(0, 4).join(', ')}{bulkUnmatched.length > 4 ? '...' : ''}). Para que se carguen automáticamente, configura su ID/correo en la agencia correspondiente dentro de <strong>Agencias</strong>.
+              </div>
+            </div>
+          )}
 
           {bulkError && <p className="text-xs text-rose-400 font-semibold">{bulkError}</p>}
 
