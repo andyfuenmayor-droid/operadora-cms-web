@@ -208,8 +208,8 @@ export const AgencyCycleHistoryTab: React.FC<{ initialAgency?: string }> = ({ in
       return matchAg && matchMon && !isCob && isConf && inCycle && !p.rechazado;
     });
     const rawEfectivoTot = agEfectivoList.reduce((sum, curr) => sum + Number(curr.monto || 0), 0);
-    const efectivoRemanente = Math.max(0, rawEfectivoTot - cobradorTot);
-    const totalEfectivoQR = cobradorTot + efectivoRemanente;
+    // Efectivo directo de taquilla que reduce saldo (las recaudaciones de cobrador son traslados a Caja Central ya procesados en taquilla)
+    const totalEfectivoQR = rawEfectivoTot;
 
     // Active bank transfers
     const agBankList = rawBankPayments.filter((p) => {

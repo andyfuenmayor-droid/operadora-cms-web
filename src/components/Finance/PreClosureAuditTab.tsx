@@ -268,8 +268,12 @@ export const PreClosureAuditTab: React.FC = () => {
           });
           const reposicionPremiosTot = agPremiosList.reduce((sum, curr) => sum + Number(curr.monto || 0), 0);
 
-          // Total cobros ordinarios (reducen saldo de la agencia)
-          const totalCobros = cobradorRutaTot + efectivoTaquillaTot + bancosTot;
+          // Total cobros ordinarios que reducen saldo de la agencia en el pre-cierre:
+          // Bancos confirmados y efectivo depositado directamente en taquilla.
+          // NOTA: Las recaudaciones de cobrador son entregas de efectivo a Caja Central (custodia/traslado)
+          // y NO se vinculan al saldo semanal de la agencia, ya que el importe fue procesado en taquilla
+          // en el momento en que se le entregó al cobrador.
+          const totalCobros = efectivoTaquillaTot + bancosTot;
 
           // Pagos netos
           const pagosNetos = totalCobros - reposicionPremiosTot;
@@ -1119,7 +1123,7 @@ export const PreClosureAuditTab: React.FC = () => {
                   const agencyConfirmations = isExpanded ? getAgencyConfirmationMovements(row.entidad, row.moneda) : [];
                   const agencyExpensesList = isExpanded ? getAgencyExpenses(row.entidad, row.moneda) : [];
                   const agencyCashList = isExpanded ? getAgencyCashMovements(row.entidad, row.moneda) : [];
-                  const totalCobros = (row.cobrador_ruta || 0) + (row.efectivo_taquilla || 0) + (row.bancos || 0);
+                  const totalCobros = (row.efectivo_taquilla || 0) + (row.bancos || 0);
 
                   return (
                     <React.Fragment key={rowKey}>
@@ -1438,17 +1442,26 @@ export const PreClosureAuditTab: React.FC = () => {
                             {/* Section 1: Cobradores de Ruta Table */}
                             {(drawerTab === 'all' || drawerTab === 'cobradores') && (
                               <div className="space-y-2">
-                                <div className="flex items-center justify-between">
-                                  <h6 className="text-xs font-black uppercase text-purple-400 flex items-center gap-1.5">
-                                    <Bike className="w-4 h-4" />
-                                    <span>Recaudaciones del Cobrador de Ruta ({agencyCollectors.length})</span>
-                                  </h6>
-                                  <div className="flex items-center gap-2 text-[11px] font-mono">
-                                    <span className="text-slate-400">En Ruta:</span>
-                                    <span className="text-amber-400 font-bold">{formatCurrency(row.cobrador_en_ruta || 0, row.moneda)}</span>
-                                    <span className="text-slate-500">|</span>
-                                    <span className="text-slate-400">Liquidado Admin:</span>
-                                    <span className="text-emerald-400 font-bold">{formatCurrency(row.cobrador_liquidado || 0, row.moneda)}</span>
+                                <div className="p-3 rounded-xl bg-purple-500/10 border border-purple-500/20 flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                                  <div className="space-y-0.5">
+                                    <h6 className="text-xs font-black uppercase text-purple-400 flex items-center gap-1.5">
+                                      <Bike className="w-4 h-4" />
+                                      <span>Recaudaciones del Cobrador de Ruta ({agencyCollectors.length})</span>
+                                    </h6>
+                                    <p className="text-[11px] text-purple-300/80 font-sans">
+                                      ℹ️ Entrega de efectivo a Caja Central (traslado físico de fondos). No se vincula al saldo de la agencia ya que fue procesado en el momento que se le entregó al cobrador.
+                                    </p>
+                                  </div>
+                                  <div className="flex items-center gap-3 text-xs font-mono shrink-0">
+                                    <div>
+                                      <span className="text-slate-400">En Ruta:</span>{' '}
+                                      <span className="text-amber-400 font-bold">{formatCurrency(row.cobrador_en_ruta || 0, row.moneda)}</span>
+                                    </div>
+                                    <span className="text-slate-600">|</span>
+                                    <div>
+                                      <span className="text-slate-400">Liquidado Admin:</span>{' '}
+                                      <span className="text-emerald-400 font-bold">{formatCurrency(row.cobrador_liquidado || 0, row.moneda)}</span>
+                                    </div>
                                   </div>
                                 </div>
 
