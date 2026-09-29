@@ -241,6 +241,20 @@ export const SystemsTab: React.FC = () => {
 
             <div className="space-y-1">
               <label className="text-xs font-semibold text-slate-300 flex items-center gap-1">
+                <Tag className="w-3 h-3 text-amber-400" />
+                <span>Columna de Agencia / ID</span>
+              </label>
+              <input
+                type="text"
+                value={colAgencia}
+                onChange={(e) => setColAgencia(e.target.value)}
+                placeholder="Ej: Agent, Nombre, USUARIO"
+                className="w-full bg-[#071217] border border-slate-700 rounded-xl px-3 py-2 text-xs text-white font-mono placeholder-slate-600 focus:outline-none focus:border-cyan-500"
+              />
+            </div>
+
+            <div className="space-y-1">
+              <label className="text-xs font-semibold text-slate-300 flex items-center gap-1">
                 <Tag className="w-3 h-3 text-cyan-400" />
                 <span>Columna de Ventas</span>
               </label>
@@ -263,20 +277,6 @@ export const SystemsTab: React.FC = () => {
                 value={colPremio}
                 onChange={(e) => setColPremio(e.target.value)}
                 placeholder="Ej: Total paid, Premio, Pagados"
-                className="w-full bg-[#071217] border border-slate-700 rounded-xl px-3 py-2 text-xs text-white font-mono placeholder-slate-600 focus:outline-none focus:border-cyan-500"
-              />
-            </div>
-
-            <div className="space-y-1">
-              <label className="text-xs font-semibold text-slate-300 flex items-center gap-1">
-                <Tag className="w-3 h-3 text-amber-400" />
-                <span>Columna de Agencia / ID</span>
-              </label>
-              <input
-                type="text"
-                value={colAgencia}
-                onChange={(e) => setColAgencia(e.target.value)}
-                placeholder="Ej: Agent, Nombre, USUARIO"
                 className="w-full bg-[#071217] border border-slate-700 rounded-xl px-3 py-2 text-xs text-white font-mono placeholder-slate-600 focus:outline-none focus:border-cyan-500"
               />
             </div>
@@ -332,9 +332,9 @@ export const SystemsTab: React.FC = () => {
               <tr className="border-b border-slate-800 bg-[#071217] text-slate-400 font-bold uppercase text-[11px]">
                 <th className="py-3 px-4 w-16">ID</th>
                 <th className="py-3 px-4 min-w-[120px]">Sistema</th>
+                <th className="py-3 px-4 min-w-[140px]">Columna Agencia</th>
                 <th className="py-3 px-4 min-w-[140px]">Columna Ventas</th>
                 <th className="py-3 px-4 min-w-[140px]">Columna Premios</th>
-                <th className="py-3 px-4 min-w-[140px]">Columna Agencia</th>
                 <th className="py-3 px-4 text-right w-24">Acciones</th>
               </tr>
             </thead>
@@ -359,6 +359,11 @@ export const SystemsTab: React.FC = () => {
                       <td className="py-3 px-4 font-sans font-black text-white text-sm tracking-wide">
                         🎰 {s.nombre_sistema}
                       </td>
+                      <td className="py-3 px-4 text-amber-300">
+                        <span className="px-2 py-0.5 rounded bg-amber-500/10 border border-amber-500/20">
+                          {conf.agencia || 'Agent / Nombre'}
+                        </span>
+                      </td>
                       <td className="py-3 px-4 text-cyan-300 font-bold">
                         <span className="px-2 py-0.5 rounded bg-cyan-500/10 border border-cyan-500/20">
                           {conf.venta || 'Venta'}
@@ -367,11 +372,6 @@ export const SystemsTab: React.FC = () => {
                       <td className="py-3 px-4 text-rose-300 font-bold">
                         <span className="px-2 py-0.5 rounded bg-rose-500/10 border border-rose-500/20">
                           {conf.premio || 'Premio'}
-                        </span>
-                      </td>
-                      <td className="py-3 px-4 text-amber-300">
-                        <span className="px-2 py-0.5 rounded bg-amber-500/10 border border-amber-500/20">
-                          {conf.agencia || 'Agent / Nombre'}
                         </span>
                       </td>
                       <td className="py-3 px-4 text-right">
@@ -425,6 +425,20 @@ export const SystemsTab: React.FC = () => {
             <form onSubmit={handleSaveEditKeywords} className="space-y-3">
               <div className="space-y-1">
                 <label className="text-xs font-semibold text-slate-300 flex items-center gap-1">
+                  <Tag className="w-3 h-3 text-amber-400" />
+                  <span>Columna de Agencia / ID</span>
+                </label>
+                <input
+                  type="text"
+                  value={editColAgencia}
+                  onChange={(e) => setEditColAgencia(e.target.value)}
+                  placeholder="Ej: Agent, Nombre, USUARIO"
+                  className="w-full bg-[#071217] border border-slate-700 rounded-xl px-3 py-2 text-xs text-white font-mono focus:outline-none focus:border-cyan-500"
+                />
+              </div>
+
+              <div className="space-y-1">
+                <label className="text-xs font-semibold text-slate-300 flex items-center gap-1">
                   <Tag className="w-3 h-3 text-cyan-400" />
                   <span>Columna de Ventas</span>
                 </label>
@@ -449,20 +463,6 @@ export const SystemsTab: React.FC = () => {
                   value={editColPremio}
                   onChange={(e) => setEditColPremio(e.target.value)}
                   placeholder="Ej: Total paid, Premio, PREMIOS"
-                  className="w-full bg-[#071217] border border-slate-700 rounded-xl px-3 py-2 text-xs text-white font-mono focus:outline-none focus:border-cyan-500"
-                />
-              </div>
-
-              <div className="space-y-1">
-                <label className="text-xs font-semibold text-slate-300 flex items-center gap-1">
-                  <Tag className="w-3 h-3 text-amber-400" />
-                  <span>Columna de Agencia / ID</span>
-                </label>
-                <input
-                  type="text"
-                  value={editColAgencia}
-                  onChange={(e) => setEditColAgencia(e.target.value)}
-                  placeholder="Ej: Agent, Nombre, USUARIO"
                   className="w-full bg-[#071217] border border-slate-700 rounded-xl px-3 py-2 text-xs text-white font-mono focus:outline-none focus:border-cyan-500"
                 />
               </div>
