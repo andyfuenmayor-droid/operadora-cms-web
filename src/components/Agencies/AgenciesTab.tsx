@@ -195,7 +195,7 @@ export const AgenciesTab: React.FC = () => {
   const [formMonedas, setFormMonedas] = useState<string[]>([]);
   const [formComision, setFormComision] = useState('10');
   const [formParticipacion, setFormParticipacion] = useState('50');
-  const [formCondicionesSistemas, setFormCondicionesSistemas] = useState<Record<string, { comision?: number; participacion?: number; codigo?: string }>>({});
+  const [formCondicionesSistemas, setFormCondicionesSistemas] = useState<Record<string, { comision?: number | string; participacion?: number | string; codigo?: string }>>({});
   const [formCuentasAsignadas, setFormCuentasAsignadas] = useState<string[]>([]);
   const [formUsuarioTaquilla, setFormUsuarioTaquilla] = useState('');
   const [formClaveTaquilla, setFormClaveTaquilla] = useState('1234');
@@ -467,7 +467,24 @@ export const AgenciesTab: React.FC = () => {
         monedas: formMonedas.join(', '),
         comision: Number(formComision),
         participacion_ag: Number(formParticipacion),
-        condiciones_sistemas: JSON.stringify(formCondicionesSistemas),
+        condiciones_sistemas: (() => {
+          const cleaned: Record<string, any> = {};
+          formSistemas.forEach((s) => {
+            const item = formCondicionesSistemas[s];
+            if (item) {
+              const entry: any = {};
+              if (item.codigo && String(item.codigo).trim()) entry.codigo = String(item.codigo).trim();
+              if (item.comision !== undefined && item.comision !== null && item.comision !== '') {
+                entry.comision = Number(item.comision);
+              }
+              if (item.participacion !== undefined && item.participacion !== null && item.participacion !== '') {
+                entry.participacion = Number(item.participacion);
+              }
+              if (Object.keys(entry).length > 0) cleaned[s] = entry;
+            }
+          });
+          return JSON.stringify(cleaned);
+        })(),
         cuentas_asignadas: formCuentasAsignadas.length > 0 ? formCuentasAsignadas.join(', ') : 'NINGUNA',
         usuario_taquilla: formUsuarioTaquilla.trim().toLowerCase(),
         clave_taquilla: formClaveTaquilla.trim(),
@@ -841,39 +858,107 @@ export const AgenciesTab: React.FC = () => {
 
                       {/* Comision / Participacion */}
                       <td className="py-3 px-4 text-center">
-                        <div className="inline-flex items-center gap-1 font-mono text-[11px]">
-                          <span className="px-2 py-0.5 rounded-md bg-emerald-500/10 text-emerald-400 font-bold border border-emerald-500/20" title="Comisión General">
-                            {ag.comision}%
-                          </span>
-                          <span className="text-slate-600">/</span>
-                          <span className="px-2 py-0.5 rounded-md bg-cyan-500/10 text-cyan-400 font-bold border border-cyan-500/20" title="Participación de Agencia">
-                            {ag.participacion_ag}%
-                          </span>
-                        </div>
+                        {(() => {
+                          let customComs: { sys: string; com: number }[] = [];
+                          try {
+                            const c = typeof ag.condiciones_sistemas === 'string' ? JSON.parse(ag.condiciones_sistemas) : ag.condiciones_sistemas;
+                            if (c) {
+                              sisArr.forEach((s) => {
+                                if (c[s]?.comision !== undefined && c[s]?.comision !== null && c[s]?.comision !== '') {
+                                  customComs.push({ sys: s, com: Number(c[s].comision) });
+                                }
+                              });
+                            }
+                          } catch (_) {}
+
+                          if (customComs.length === 0) {
+                            return (
+                              <div className="inline-flex items-center gap-1 font-mono text-[11px]">
+                                <span className="px-2 py-0.5 rounded-md bg-emerald-500/10 text-emerald-400 font-bold border border-emerald-500/20" title="Comisión General">
+                                  {ag.comision}%
+                                </span>
+                                <span className="text-slate-600">/</span>
+                                <span className="px-2 py-0.5 rounded-md bg-cyan-500/10 text-cyan-400 font-bold border border-cyan-500/20" title="Participación de Agencia">
+                                  {ag.participacion_ag}%
+                                </span>
+                              </div>
+                            );
+                          }
+
+                          return (
+                            <div className="flex flex-col items-center gap-1 font-mono">
+                              <div className="flex flex-wrap gap-1 justify-center max-w-[170px]">
+                                {sisArr.map((s) => {
+                                  let sysC: number | null = null;
+                                  try {
+                                    const c = typeof ag.condiciones_sistemas === 'string' ? JSON.parse(ag.condiciones_sistemas) : ag.condiciones_sistemas;
+                                    if (c?.[s]?.comision !== undefined && c?.[s]?.comision !== null && c?.[s]?.comision !== '') {
+                                      sysC = Number(c[s].comision);
+                                    }
+                                  } catch (_) {}
+                                  const effective = sysC !== null ? sysC : ag.comision;
+                                  const isCustom = sysC !== null;
+                                  return (
+                                    <span
+                                      key={s}
+                                      className={`px-1.5 py-0.5 rounded text-[10px] font-bold ${
+                                        isCustom
+                                          ? 'bg-amber-500/20 text-amber-300 border border-amber-500/30'
+                                          : 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20'
+                                      }`}
+                                      title={isCustom ? `Comisión personalizada para ${s}` : `Comisión general`}
+                                    >
+                                      {s}: {effective}%
+                                    </span>
+                                  );
+                                })}
+                              </div>
+                              <span className="text-[10px] text-cyan-400 font-semibold" title="Participación Agencia">
+                                Part: {ag.participacion_ag}%
+                              </span>
+                            </div>
+                          );
+                        })()}
                       </td>
 
                       {/* Sistemas */}
                       <td className="py-3 px-4 font-sans">
-                        <div className="flex flex-wrap gap-1 items-center">
+                        <div className="flex flex-wrap gap-1.5 items-center">
                           {sisArr.map((s) => {
                             let cod = '';
+                            let sysCom: number | null = null;
                             try {
                               const c = typeof ag.condiciones_sistemas === 'string' ? JSON.parse(ag.condiciones_sistemas) : ag.condiciones_sistemas;
                               if (c?.[s]?.codigo) cod = String(c[s].codigo).trim();
+                              if (c?.[s]?.comision !== undefined && c?.[s]?.comision !== null && c?.[s]?.comision !== '') {
+                                sysCom = Number(c[s].comision);
+                              }
                             } catch (_) {}
+
+                            const effectiveCom = sysCom !== null ? sysCom : ag.comision;
 
                             return (
                               <span
                                 key={s}
-                                title={cod ? `Equivalencia en ${s}: ${cod}` : `En ${s} busca por nombre`}
-                                className="px-2 py-0.5 rounded-md text-[10px] font-bold bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 whitespace-nowrap inline-flex items-center gap-1"
+                                title={cod ? `Equivalencia en ${s}: ${cod} • Comisión: ${effectiveCom}%` : `En ${s} • Comisión: ${effectiveCom}%`}
+                                className="px-2 py-1 rounded-md text-[10px] font-bold bg-[#071217] text-slate-300 border border-slate-800 whitespace-nowrap inline-flex items-center gap-1.5"
                               >
-                                <span>🎰 {s}</span>
+                                <span className="text-emerald-400">🎰 {s}</span>
                                 {cod && (
                                   <span className="text-[9px] font-mono text-cyan-300 bg-cyan-950/70 px-1 py-0.2 rounded border border-cyan-800/40">
                                     {cod}
                                   </span>
                                 )}
+                                <span
+                                  className={`text-[9px] font-mono font-bold px-1.5 py-0.2 rounded ${
+                                    sysCom !== null
+                                      ? 'bg-amber-500/20 text-amber-300 border border-amber-500/30'
+                                      : 'bg-slate-800 text-slate-400 border border-slate-700/50'
+                                  }`}
+                                  title={sysCom !== null ? `Comisión específica para ${s}` : `Comisión general de la agencia`}
+                                >
+                                  {effectiveCom}% com
+                                </span>
                               </span>
                             );
                           })}
@@ -1025,8 +1110,58 @@ export const AgenciesTab: React.FC = () => {
                     </div>
 
                     <div className="text-xs text-slate-400 mt-1 flex flex-wrap items-center gap-2 font-mono">
-                      <span>Comisión: <strong className="text-emerald-400">{ag.comision}%</strong></span>
-                      <span>• Part. Ag: <strong className="text-cyan-400">{ag.participacion_ag}%</strong></span>
+                      {(() => {
+                        let customComs: { sys: string; com: number }[] = [];
+                        try {
+                          const c = typeof ag.condiciones_sistemas === 'string' ? JSON.parse(ag.condiciones_sistemas) : ag.condiciones_sistemas;
+                          if (c) {
+                            sisArr.forEach((s) => {
+                              if (c[s]?.comision !== undefined && c[s]?.comision !== null && c[s]?.comision !== '') {
+                                customComs.push({ sys: s, com: Number(c[s].comision) });
+                              }
+                            });
+                          }
+                        } catch (_) {}
+
+                        if (customComs.length > 0) {
+                          return (
+                            <div className="flex flex-wrap items-center gap-1.5">
+                              <span className="text-slate-400">Comisiones:</span>
+                              {sisArr.map((s) => {
+                                let sysC: number | null = null;
+                                try {
+                                  const c = typeof ag.condiciones_sistemas === 'string' ? JSON.parse(ag.condiciones_sistemas) : ag.condiciones_sistemas;
+                                  if (c?.[s]?.comision !== undefined && c?.[s]?.comision !== null && c?.[s]?.comision !== '') {
+                                    sysC = Number(c[s].comision);
+                                  }
+                                } catch (_) {}
+                                const effective = sysC !== null ? sysC : ag.comision;
+                                const isCustom = sysC !== null;
+                                return (
+                                  <span
+                                    key={s}
+                                    className={`px-1.5 py-0.5 rounded text-[10px] font-bold ${
+                                      isCustom
+                                        ? 'bg-amber-500/20 text-amber-300 border border-amber-500/30'
+                                        : 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20'
+                                    }`}
+                                  >
+                                    {s}: {effective}%
+                                  </span>
+                                );
+                              })}
+                              <span>• Part. Ag: <strong className="text-cyan-400">{ag.participacion_ag}%</strong></span>
+                            </div>
+                          );
+                        }
+
+                        return (
+                          <>
+                            <span>Comisión: <strong className="text-emerald-400">{ag.comision}%</strong></span>
+                            <span>• Part. Ag: <strong className="text-cyan-400">{ag.participacion_ag}%</strong></span>
+                          </>
+                        );
+                      })()}
                     </div>
                   </div>
 
@@ -1051,30 +1186,48 @@ export const AgenciesTab: React.FC = () => {
 
                 {/* Systems & Currencies Chips */}
                 <div className="space-y-2 text-xs">
-                  <div className="flex flex-wrap items-center gap-1.5">
-                    <span className="text-[11px] font-bold text-slate-400">Sistemas:</span>
-                    {sisArr.map((s) => {
-                      let cod = '';
-                      try {
-                        const c = typeof ag.condiciones_sistemas === 'string' ? JSON.parse(ag.condiciones_sistemas) : ag.condiciones_sistemas;
-                        if (c?.[s]?.codigo) cod = String(c[s].codigo).trim();
-                      } catch (_) {}
+                  <div className="space-y-1.5">
+                    <span className="text-[11px] font-bold text-slate-400 block">Sistemas y Comisiones:</span>
+                    <div className="flex flex-wrap gap-1.5 items-center">
+                      {sisArr.map((s) => {
+                        let cod = '';
+                        let sysCom: number | null = null;
+                        try {
+                          const c = typeof ag.condiciones_sistemas === 'string' ? JSON.parse(ag.condiciones_sistemas) : ag.condiciones_sistemas;
+                          if (c?.[s]?.codigo) cod = String(c[s].codigo).trim();
+                          if (c?.[s]?.comision !== undefined && c?.[s]?.comision !== null && c?.[s]?.comision !== '') {
+                            sysCom = Number(c[s].comision);
+                          }
+                        } catch (_) {}
 
-                      return (
-                        <span
-                          key={s}
-                          title={cod ? `Equivalencia en ${s}: ${cod}` : `En ${s} busca por nombre`}
-                          className="px-2 py-0.5 rounded-md bg-emerald-500/10 text-emerald-400 text-[10px] font-semibold border border-emerald-500/20 inline-flex items-center gap-1"
-                        >
-                          <span>🎰 {s}</span>
-                          {cod && (
-                            <span className="text-[9px] font-mono text-cyan-300 bg-cyan-950/70 px-1 py-0.2 rounded border border-cyan-800/40">
-                              {cod}
+                        const effectiveCom = sysCom !== null ? sysCom : ag.comision;
+
+                        return (
+                          <span
+                            key={s}
+                            title={cod ? `Equivalencia en ${s}: ${cod} • Comisión: ${effectiveCom}%` : `En ${s} • Comisión: ${effectiveCom}%`}
+                            className="px-2 py-1 rounded-lg bg-[#071217] text-slate-300 text-[10px] font-semibold border border-slate-800 inline-flex items-center gap-1.5"
+                          >
+                            <span className="text-emerald-400 font-bold">🎰 {s}</span>
+                            {cod && (
+                              <span className="text-[9px] font-mono text-cyan-300 bg-cyan-950/80 px-1 py-0.5 rounded border border-cyan-800/40">
+                                {cod}
+                              </span>
+                            )}
+                            <span
+                              className={`text-[9px] font-mono font-bold px-1.5 py-0.5 rounded ${
+                                sysCom !== null
+                                  ? 'bg-amber-500/20 text-amber-300 border border-amber-500/30'
+                                  : 'bg-slate-800 text-slate-400 border border-slate-700/50'
+                              }`}
+                              title={sysCom !== null ? `Comisión personalizada para ${s}` : `Comisión general de la agencia`}
+                            >
+                              {effectiveCom}% com
                             </span>
-                          )}
-                        </span>
-                      );
-                    })}
+                          </span>
+                        );
+                      })}
+                    </div>
                   </div>
 
                   <div className="flex flex-wrap items-center gap-1.5">
@@ -1244,49 +1397,128 @@ export const AgenciesTab: React.FC = () => {
                   <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-1">
                     <label className="text-xs font-bold text-white flex items-center gap-1.5">
                       <span className="text-cyan-400">🏷️</span>
-                      <span>Equivalencias en Sistemas (Para Cargar Ventas Excel / CSV)</span>
+                      <span>Condiciones y Equivalencias por Sistema (Comisión y Mapeo)</span>
                     </label>
                     <span className="text-[10px] text-slate-400 font-normal">
-                      Opcional: Si se deja vacío, busca por el nombre de la agencia
+                      Configura el código/ID y comisión particular de cada proveedor
                     </span>
                   </div>
                   <p className="text-[11px] text-slate-400 leading-relaxed">
-                    Escribe el usuario, correo, alias o número de taquilla con el que aparece esta agencia en el reporte de cada proveedor (ej. en GATOWEB: <span className="font-mono text-cyan-300">chucho@banklot.net</span> o número <span className="font-mono text-cyan-300">502</span>; en BETM3: <span className="font-mono text-emerald-300">CHUCHO</span> o <span className="font-mono text-emerald-300">045</span>).
+                    Personaliza la <strong>Comisión %</strong> y el <strong>código/ID</strong> para cada sistema. Si la comisión del sistema se deja vacía, se aplicará la <strong>Comisión % General</strong> ({formComision || 0}%).
                   </p>
 
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5 pt-1">
+                  <div className="space-y-2.5 pt-1">
                     {formSistemas.map((sysName) => {
                       const currentCodigo = formCondicionesSistemas[sysName]?.codigo || '';
+                      const currentComision = formCondicionesSistemas[sysName]?.comision !== undefined && formCondicionesSistemas[sysName]?.comision !== null
+                        ? String(formCondicionesSistemas[sysName]?.comision)
+                        : '';
+                      const currentParticipacion = formCondicionesSistemas[sysName]?.participacion !== undefined && formCondicionesSistemas[sysName]?.participacion !== null
+                        ? String(formCondicionesSistemas[sysName]?.participacion)
+                        : '';
+
                       return (
-                        <div key={sysName} className="bg-[#0D1B22] p-2.5 rounded-xl border border-slate-800/80 space-y-1">
-                          <div className="flex items-center justify-between text-[11px]">
-                            <span className="font-bold text-emerald-400 flex items-center gap-1">
-                              🎰 {sysName}
+                        <div key={sysName} className="bg-[#0D1B22] p-3 rounded-xl border border-slate-800/80 space-y-2.5">
+                          <div className="flex items-center justify-between">
+                            <span className="font-bold text-emerald-400 text-xs flex items-center gap-1.5">
+                              <span>🎰 {sysName}</span>
                             </span>
-                            <span className="text-[10px] text-slate-500 font-mono">ID / Usuario / Taquilla</span>
+                            <span className="text-[10px] text-slate-400 font-mono">
+                              Comisión efectiva: <strong className="text-amber-300">{currentComision !== '' ? `${currentComision}%` : `${formComision || 0}% (General)`}</strong>
+                            </span>
                           </div>
-                          <input
-                            type="text"
-                            placeholder={
-                              sysName.toUpperCase().includes('GATO')
-                                ? 'Ej: chucho@banklot.net o 502'
-                                : sysName.toUpperCase().includes('BET')
-                                ? 'Ej: CHUCHO o 045'
-                                : 'Ej: Código, Usuario o ID en sistema'
-                            }
-                            value={currentCodigo}
-                            onChange={(e) => {
-                              const val = e.target.value;
-                              setFormCondicionesSistemas((prev) => ({
-                                ...prev,
-                                [sysName]: {
-                                  ...(prev[sysName] || {}),
-                                  codigo: val,
-                                },
-                              }));
-                            }}
-                            className="w-full bg-[#071217] border border-slate-700/80 rounded-lg px-2.5 py-1.5 text-xs text-white font-mono placeholder:text-slate-600 focus:outline-none focus:border-cyan-500"
-                          />
+
+                          <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5">
+                            <div className="space-y-1 sm:col-span-1">
+                              <label className="text-[10px] font-semibold text-slate-400 block">
+                                ID / Usuario en Reporte
+                              </label>
+                              <input
+                                type="text"
+                                placeholder={
+                                  sysName.toUpperCase().includes('GATO')
+                                    ? 'Ej: chucho@banklot.net o 502'
+                                    : sysName.toUpperCase().includes('BET')
+                                    ? 'Ej: CHUCHO o 045'
+                                    : 'Ej: ID / Código en sistema'
+                                }
+                                value={currentCodigo}
+                                onChange={(e) => {
+                                  const val = e.target.value;
+                                  setFormCondicionesSistemas((prev) => ({
+                                    ...prev,
+                                    [sysName]: {
+                                      ...(prev[sysName] || {}),
+                                      codigo: val,
+                                    },
+                                  }));
+                                }}
+                                className="w-full bg-[#071217] border border-slate-700/80 rounded-lg px-2.5 py-1.5 text-xs text-white font-mono placeholder:text-slate-600 focus:outline-none focus:border-cyan-500"
+                              />
+                            </div>
+
+                            <div className="space-y-1">
+                              <label className="text-[10px] font-semibold text-slate-400 block">
+                                Comisión % para {sysName}
+                              </label>
+                              <input
+                                type="number"
+                                step="0.1"
+                                min="0"
+                                max="100"
+                                placeholder={`General (${formComision || 0}%)`}
+                                value={currentComision}
+                                onChange={(e) => {
+                                  const val = e.target.value;
+                                  setFormCondicionesSistemas((prev) => {
+                                    const next = { ...prev };
+                                    if (val === '') {
+                                      const { comision, ...rest } = next[sysName] || {};
+                                      next[sysName] = rest;
+                                    } else {
+                                      next[sysName] = {
+                                        ...(next[sysName] || {}),
+                                        comision: Number(val),
+                                      };
+                                    }
+                                    return next;
+                                  });
+                                }}
+                                className="w-full bg-[#071217] border border-slate-700/80 rounded-lg px-2.5 py-1.5 text-xs text-amber-300 font-mono placeholder:text-slate-600 focus:outline-none focus:border-amber-500"
+                              />
+                            </div>
+
+                            <div className="space-y-1">
+                              <label className="text-[10px] font-semibold text-slate-400 block">
+                                Participación Agencia %
+                              </label>
+                              <input
+                                type="number"
+                                step="0.1"
+                                min="0"
+                                max="100"
+                                placeholder={`General (${formParticipacion || 0}%)`}
+                                value={currentParticipacion}
+                                onChange={(e) => {
+                                  const val = e.target.value;
+                                  setFormCondicionesSistemas((prev) => {
+                                    const next = { ...prev };
+                                    if (val === '') {
+                                      const { participacion, ...rest } = next[sysName] || {};
+                                      next[sysName] = rest;
+                                    } else {
+                                      next[sysName] = {
+                                        ...(next[sysName] || {}),
+                                        participacion: Number(val),
+                                      };
+                                    }
+                                    return next;
+                                  });
+                                }}
+                                className="w-full bg-[#071217] border border-slate-700/80 rounded-lg px-2.5 py-1.5 text-xs text-cyan-300 font-mono placeholder:text-slate-600 focus:outline-none focus:border-cyan-500"
+                              />
+                            </div>
+                          </div>
                         </div>
                       );
                     })}

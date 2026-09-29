@@ -30,17 +30,51 @@ import {
 function parseNum(val: any): number {
   if (typeof val === 'number') return isNaN(val) ? 0 : val;
   if (!val) return 0;
-  const str = String(val).trim().replace(/\s/g, '');
+  let str = String(val).trim().replace(/\s/g, '');
+  if (!str) return 0;
+
+  // Clean currency symbols or characters except digits, dots, commas, minus
+  str = str.replace(/[^0-9.,-]/g, '');
+  if (!str) return 0;
+
+  // Case 1: Both dot and comma present (e.g. 86.610,00 or 86,610.00)
   if (str.includes(',') && str.includes('.')) {
     if (str.indexOf('.') < str.indexOf(',')) {
+      // European / Spanish: 86.610,00 or 1.234.567,89
       return parseFloat(str.replace(/\./g, '').replace(',', '.')) || 0;
     } else {
+      // US: 86,610.00
       return parseFloat(str.replace(/,/g, '')) || 0;
     }
   }
+
+  // Case 2: Only commas present
   if (str.includes(',')) {
+    const parts = str.split(',');
+    // If multiple commas, e.g. "1,234,567" -> commas are thousands
+    if (parts.length > 2) {
+      return parseFloat(str.replace(/,/g, '')) || 0;
+    }
+    // Single comma: in Spanish/European format "0,00" or "44610,00" or "86,61"
     return parseFloat(str.replace(',', '.')) || 0;
   }
+
+  // Case 3: Only dots present
+  if (str.includes('.')) {
+    const parts = str.split('.');
+    // If multiple dots, e.g. "1.234.567" -> dots are thousands
+    if (parts.length > 2) {
+      return parseFloat(str.replace(/\./g, '')) || 0;
+    }
+    // Single dot: e.g. "86.610" or "42.000"
+    // In Spanish / Latin American lottery & betting reports, integers with thousands separators have 3 digits after dot
+    if (parts[1] && parts[1].length === 3) {
+      return parseFloat(str.replace(/\./g, '')) || 0;
+    }
+    // Otherwise standard decimal e.g. "86.5" or "86.50"
+    return parseFloat(str) || 0;
+  }
+
   const n = parseFloat(str);
   return isNaN(n) ? 0 : n;
 }
@@ -579,15 +613,58 @@ export const SalesEntryTab: React.FC = () => {
 
         let sistDet = bulkSystem !== 'AUTO' ? bulkSystem : '';
         if (!sistDet) {
-          // Dynamic keyword matching for system auto-detection (e.g. Total accepted & Total paid -> KENO)
-          for (const [sysName, conf] of Object.entries(systemKeywords)) {
-            const v = conf?.venta?.trim().toUpperCase();
-            const p = conf?.premio?.trim().toUpperCase();
-            if (v && p && headerDna.includes(v) && headerDna.includes(p)) {
-              sistDet = sysName;
-              break;
+          // 1. Direct provider signature detection (Highest reliability)
+          const isGatoweb =
+            headerDna.includes('BANKLOT') ||
+            headerDna.includes('GATOWEB') ||
+            headerDna.includes('ANALISIS POR PERIODO') ||
+            headerDna.includes('ANÁLISIS POR PERÍODO') ||
+            headerDna.includes('DISTRIBUIDOR') ||
+            fileNameUpper.includes('GATO') ||
+            fileNameUpper.includes('BANKLOT') ||
+            fileNameUpper.includes('ANALISIS') ||
+            fileNameUpper.includes('PERIODO') ||
+            (headerDna.includes('USUARIO') && headerDna.includes('VENTAS') && headerDna.includes('PREMIOS') && (headerDna.includes('SALDO') || headerDna.includes('COMISION')));
+
+          const isKeno =
+            headerDna.includes('KENO') ||
+            headerDna.includes('LOTTERY') ||
+            fileNameUpper.includes('KENO') ||
+            fileNameUpper.includes('LOTTERY') ||
+            (headerDna.includes('TOTAL ACCEPTED') && headerDna.includes('TOTAL PAID'));
+
+          const isBetm3 =
+            headerDna.includes('BETM3') ||
+            fileNameUpper.includes('BETM3') ||
+            (fileNameUpper.includes('BET') && !fileNameUpper.includes('ALPHABET') && !fileNameUpper.includes('GATO') && !fileNameUpper.includes('BANKLOT'));
+
+          if (isGatoweb) {
+            sistDet = 'GATOWEB';
+          } else if (isKeno) {
+            sistDet = 'KENO';
+          } else if (isBetm3) {
+            sistDet = 'BETM3';
+          }
+
+          // 2. Fallback to dynamic keyword matching with strict word boundaries
+          if (!sistDet) {
+            for (const [sysName, conf] of Object.entries(systemKeywords)) {
+              const v = conf?.venta?.trim();
+              const p = conf?.premio?.trim();
+              const a = conf?.agencia?.trim();
+              if (v && p) {
+                const regV = new RegExp(`\\b${v}\\b`, 'i');
+                const regP = new RegExp(`\\b${p}\\b`, 'i');
+                const regA = a ? new RegExp(`\\b${a}\\b`, 'i') : null;
+                if (regV.test(headerDna) && regP.test(headerDna) && (!regA || regA.test(headerDna))) {
+                  sistDet = sysName;
+                  break;
+                }
+              }
             }
           }
+
+          // 3. Fallback to system name matching in header or systems list
           if (!sistDet) {
             for (const s of systems) {
               const sName = s.nombre_sistema.toUpperCase();
@@ -597,19 +674,9 @@ export const SalesEntryTab: React.FC = () => {
               }
             }
           }
+
           if (!sistDet) {
-            if (headerDna.includes('GATOWEB') || fileNameUpper.includes('GATO')) sistDet = 'GATOWEB';
-            else if (headerDna.includes('BETM3') || fileNameUpper.includes('BET')) sistDet = 'BETM3';
-            else if (
-              headerDna.includes('KENO') ||
-              fileNameUpper.includes('KENO') ||
-              fileNameUpper.includes('LOTTERY') ||
-              (headerDna.includes('TOTAL ACCEPTED') && headerDna.includes('TOTAL PAID'))
-            ) {
-              sistDet = 'KENO';
-            } else {
-              sistDet = systems[0]?.nombre_sistema || 'BETM3';
-            }
+            sistDet = systems[0]?.nombre_sistema || 'BETM3';
           }
         }
 
@@ -651,6 +718,7 @@ export const SalesEntryTab: React.FC = () => {
           'TOTAL PAID', 'PAID OUT', 'PREMIO', 'PREMIOS', 'TOTAL PREMIOS', 'PAGADO', 'PAGADOS', 'ACIERTO', 'ACIERTOS'
         ];
         const COMISION_SYNONYMS = ['COMISION', 'COMISIÓN', 'COMISIONES', 'COM. AGENCIA', 'GANANCIA', 'COM'];
+        const NETO_SYNONYMS = ['SALDO', 'TOTAL SALDO', 'NETO', 'TOTAL NETO', 'BALANCE', 'TOTAL BALANCE', 'TOTAL A PAGAR'];
 
         let headerRowIdx = -1;
         for (let i = 0; i < Math.min(25, rows.length); i++) {
@@ -696,6 +764,7 @@ export const SalesEntryTab: React.FC = () => {
         );
 
         let colComision = headerCols.findIndex((c) => COMISION_SYNONYMS.some((syn) => c.includes(syn)));
+        let colNeto = headerCols.findIndex((c) => NETO_SYNONYMS.some((syn) => c === syn || c.includes(syn)));
 
         if (colComision === -1 && colPremio === -1) {
           colComision = 2;
@@ -718,51 +787,89 @@ export const SalesEntryTab: React.FC = () => {
             continue;
           }
 
-          const agClean = cleanAgencyName(rawCell);
-          // Also extract ID inside parentheses, e.g. "MAXIMA CDA 02 T2 (5024)" -> "5024"
-          const parenthesizedId = rawCell.match(/\(([^)]+)\)/)?.[1]?.trim().toUpperCase();
-          // Extract base agency name without parenthesized ID: "MAXIMA CDA 02 T2 (5024)" -> "MAXIMA CDA 02 T2"
-          const baseNameWithoutParen = rawCell.replace(/\s*\([^)]*\)\s*$/, '').trim();
-          const baseClean = cleanAgencyName(baseNameWithoutParen);
+          let matchedAg: Agency | undefined;
+          let matchedSystem = sistDet;
 
-          // Matching por Equivalencia de Sistema o por Nombre
-          const matchedAg = agencies.find((a) => {
-            const agNomClean = cleanAgencyName(a.nombre_agencia);
-            const agNomUpper = a.nombre_agencia.toUpperCase();
+          const checkMatch = (cellVal: string): { agency?: Agency; system?: string } => {
+            const upCell = cellVal.toUpperCase();
+            const clnCell = cleanAgencyName(cellVal);
+            const pId = cellVal.match(/\(([^)]+)\)/)?.[1]?.trim().toUpperCase();
+            const baseWithoutP = cellVal.replace(/\s*\([^)]*\)\s*$/, '').trim();
+            const clnBase = cleanAgencyName(baseWithoutP);
 
-            if (a.condiciones_sistemas) {
-              try {
-                const cond = typeof a.condiciones_sistemas === 'string'
-                  ? JSON.parse(a.condiciones_sistemas)
-                  : a.condiciones_sistemas;
-                // Check detected system first, and also check across all configured systems as fallback
-                const sysEntries = [cond?.[sistDet], ...Object.values(cond)].filter(Boolean);
-                for (const conf of sysEntries as any[]) {
-                  if (conf?.codigo) {
-                    const codigos = String(conf.codigo)
+            for (const a of agencies) {
+              const agNomClean = cleanAgencyName(a.nombre_agencia);
+              const agNomUpper = a.nombre_agencia.toUpperCase();
+
+              if (a.condiciones_sistemas) {
+                try {
+                  const cond = typeof a.condiciones_sistemas === 'string'
+                    ? JSON.parse(a.condiciones_sistemas)
+                    : a.condiciones_sistemas;
+
+                  // 1. Check detected system first
+                  if (sistDet && cond?.[sistDet]?.codigo) {
+                    const codigos = String(cond[sistDet].codigo)
                       .split(',')
                       .map((c) => c.trim().toUpperCase());
                     if (
-                      codigos.includes(upperCell) ||
-                      (parenthesizedId && codigos.includes(parenthesizedId)) ||
-                      (agClean && codigos.includes(agClean)) ||
-                      (baseClean && codigos.includes(baseClean)) ||
-                      codigos.some((c) => upperCell === c || (baseClean && c === baseClean) || upperCell.includes(c))
+                      codigos.includes(upCell) ||
+                      (pId && codigos.includes(pId)) ||
+                      (clnCell && codigos.includes(clnCell)) ||
+                      (clnBase && codigos.includes(clnBase)) ||
+                      codigos.some((c) => upCell === c || (clnBase && c === clnBase) || upCell.includes(c))
                     ) {
-                      return true;
+                      return { agency: a, system: sistDet };
                     }
                   }
-                }
-              } catch (_) {}
-            }
 
-            if (agClean && agNomClean === agClean) return true;
-            if (baseClean && agNomClean === baseClean) return true;
-            if (upperCell && agNomUpper === upperCell) return true;
-            if (baseClean && agNomUpper === baseClean) return true;
-            if (parenthesizedId && (agNomClean === parenthesizedId || String(a.id) === parenthesizedId)) return true;
-            return false;
-          });
+                  // 2. Check across all systems in agency conditions
+                  for (const [sysKey, conf] of Object.entries(cond) as [string, any][]) {
+                    if (conf?.codigo) {
+                      const codigos = String(conf.codigo)
+                        .split(',')
+                        .map((c) => c.trim().toUpperCase());
+                      if (
+                        codigos.includes(upCell) ||
+                        (pId && codigos.includes(pId)) ||
+                        (clnCell && codigos.includes(clnCell)) ||
+                        (clnBase && codigos.includes(clnBase)) ||
+                        codigos.some((c) => upCell === c || (clnBase && c === clnBase) || upCell.includes(c))
+                      ) {
+                        return { agency: a, system: sysKey };
+                      }
+                    }
+                  }
+                } catch (_) {}
+              }
+
+              if (clnCell && agNomClean === clnCell) return { agency: a, system: sistDet };
+              if (clnBase && agNomClean === clnBase) return { agency: a, system: sistDet };
+              if (upCell && agNomUpper === upCell) return { agency: a, system: sistDet };
+              if (clnBase && agNomUpper === clnBase) return { agency: a, system: sistDet };
+              if (pId && (agNomClean === pId || String(a.id) === pId)) return { agency: a, system: sistDet };
+            }
+            return {};
+          };
+
+          let matchResult = checkMatch(rawCell);
+          // If rawCell is a row index like "1" or didn't match, check adjacent column row[colNombre + 1]
+          if (!matchResult.agency && colNombre + 1 < row.length) {
+            const nextCell = String(row[colNombre + 1] ?? '').trim();
+            if (nextCell && !nextCell.startsWith('TOTAL')) {
+              const altResult = checkMatch(nextCell);
+              if (altResult.agency) {
+                matchResult = altResult;
+              }
+            }
+          }
+
+          matchedAg = matchResult.agency;
+          if (bulkSystem === 'AUTO' && matchResult.system) {
+            matchedSystem = matchResult.system;
+          } else {
+            matchedSystem = bulkSystem !== 'AUTO' ? bulkSystem : sistDet;
+          }
 
           if (!matchedAg) {
             unmatchedFound.push(rawCell);
@@ -773,21 +880,23 @@ export const SalesEntryTab: React.FC = () => {
           let comPct: number | null = null;
           let partPct: number | null = null;
           let sysMoneda = '';
+          let hasSpecificSysComision = false;
 
           if (matchedAg.condiciones_sistemas) {
             try {
               const cond = typeof matchedAg.condiciones_sistemas === 'string'
                 ? JSON.parse(matchedAg.condiciones_sistemas)
                 : matchedAg.condiciones_sistemas;
-              if (cond && sistDet && cond[sistDet]) {
-                if (cond[sistDet].comision !== undefined && cond[sistDet].comision !== null && cond[sistDet].comision !== '') {
-                  comPct = Number(cond[sistDet].comision);
+              if (cond && matchedSystem && cond[matchedSystem]) {
+                if (cond[matchedSystem].comision !== undefined && cond[matchedSystem].comision !== null && cond[matchedSystem].comision !== '') {
+                  comPct = Number(cond[matchedSystem].comision);
+                  hasSpecificSysComision = true;
                 }
-                if (cond[sistDet].participacion !== undefined && cond[sistDet].participacion !== null && cond[sistDet].participacion !== '') {
-                  partPct = Number(cond[sistDet].participacion);
+                if (cond[matchedSystem].participacion !== undefined && cond[matchedSystem].participacion !== null && cond[matchedSystem].participacion !== '') {
+                  partPct = Number(cond[matchedSystem].participacion);
                 }
-                if (cond[sistDet].moneda) {
-                  sysMoneda = normalizarMoneda(cond[sistDet].moneda);
+                if (cond[matchedSystem].moneda) {
+                  sysMoneda = normalizarMoneda(cond[matchedSystem].moneda);
                 }
               }
             } catch (e) {
@@ -839,7 +948,7 @@ export const SalesEntryTab: React.FC = () => {
           const isDup = sales.some(
             (s) =>
               cleanAgencyName(s.agencia) === cleanAgencyName(matchedAg.nombre_agencia) &&
-              String(s.sistema || '').toUpperCase() === sistDet.toUpperCase() &&
+              String(s.sistema || '').toUpperCase() === matchedSystem.toUpperCase() &&
               String(s.moneda || '').toUpperCase() === rowMoneda.toUpperCase() &&
               s.fecha === bulkFileDate
           );
@@ -851,29 +960,46 @@ export const SalesEntryTab: React.FC = () => {
 
           const venta = parseNum(row[colVenta]);
           const premios = colPremio !== -1 ? parseNum(row[colPremio]) : 0;
-          const comExcel = colComision !== -1 ? parseNum(row[colComision]) : 0;
+          const hasFileComision = colComision !== -1 && row[colComision] !== undefined && String(row[colComision]).trim() !== '';
+          const comExcel = hasFileComision ? parseNum(row[colComision]) : null;
 
           // Commission calculation:
-          // If agency or system condition defines a commission % (even 0%!), calculate directly from %
-          // Otherwise use the Excel/system commission if present, otherwise 0.
+          // 1. If operator explicitly configured an override commission % for this system in condiciones_sistemas, use it.
+          // 2. Otherwise, if the provider file explicitly reports a COMISION column (e.g. GatoWeb/Banklot has COMISION 0,00), use comExcel!
+          // 3. Otherwise, if agency has a configured commission %, calculate from comPct (even 0%!).
+          // 4. Default to 0.
           let com = 0;
-          if (comPct !== null && !isNaN(comPct)) {
+          if (hasSpecificSysComision && comPct !== null && !isNaN(comPct)) {
             com = Math.round(venta * (comPct / 100) * 100) / 100;
-          } else if (colComision !== -1 && comExcel > 0) {
+          } else if (hasFileComision && comExcel !== null) {
             com = comExcel;
+          } else if (comPct !== null && !isNaN(comPct)) {
+            com = Math.round(venta * (comPct / 100) * 100) / 100;
           } else {
             com = 0;
           }
 
+          let neto = Math.round((venta - com - premios) * 100) / 100;
+          // If file explicitly provides SALDO / NETO and no commission was found, verify/derive:
+          if (colNeto !== -1 && row[colNeto] !== undefined && String(row[colNeto]).trim() !== '') {
+            const saldoFile = parseNum(row[colNeto]);
+            if (!hasFileComision && comPct === null && Math.abs((venta - premios - saldoFile) - com) > 0.01) {
+              const derivedCom = Math.round((venta - premios - saldoFile) * 100) / 100;
+              if (derivedCom >= 0) {
+                com = derivedCom;
+                neto = saldoFile;
+              }
+            }
+          }
+
           const pPct = partPct !== null && !isNaN(partPct) ? partPct : 0;
-          const neto = Math.round((venta - com - premios) * 100) / 100;
           const uAg = Math.round(neto * (pPct / 100) * 100) / 100;
           const uOp = Math.round((neto - uAg) * 100) / 100;
 
           parsed.push({
             user_id: effectiveUserId,
             agencia: matchedAg.nombre_agencia,
-            sistema: sistDet,
+            sistema: matchedSystem,
             moneda: rowMoneda,
             venta,
             premios,
