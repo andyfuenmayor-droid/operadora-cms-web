@@ -16,7 +16,8 @@ import {
   CheckCircle2,
   AlertTriangle,
   Upload,
-  Coins
+  Coins,
+  Edit2
 } from 'lucide-react';
 import confetti from 'canvas-confetti';
 import { extractTextFromPdf } from '../../utils/pdfReader';
@@ -114,6 +115,7 @@ export const SalesEntryTab: React.FC = () => {
   const [bulkSystem, setBulkSystem] = useState('AUTO');
   const [bulkCurrency, setBulkCurrency] = useState('AUTO');
   const [bulkRows, setBulkRows] = useState<any[]>([]);
+  const [editingComIndex, setEditingComIndex] = useState<number | null>(null);
   const [bulkError, setBulkError] = useState<string | null>(null);
   const [bulkUnmatched, setBulkUnmatched] = useState<string[]>([]);
   const [systemKeywords, setSystemKeywords] = useState<SystemKeywordsMap>(DEFAULT_SYSTEM_KEYWORDS);
@@ -1301,14 +1303,37 @@ export const SalesEntryTab: React.FC = () => {
                         </td>
                         <td className="p-2 text-right text-white font-medium">{formatCurrency(r.venta, r.moneda)}</td>
                         <td className="p-2 text-right">
-                          <input
-                            type="number"
-                            step="any"
-                            value={r.comision}
-                            onChange={(e) => handleUpdateBulkRow(i, 'comision', e.target.value)}
-                            className="w-24 bg-[#0D1B22] border border-slate-700 rounded-lg px-1.5 py-0.5 text-right text-emerald-400 font-mono text-[11px] focus:outline-none focus:border-cyan-500"
-                            title="Comisión calculada según la configuración de la agencia"
-                          />
+                          {editingComIndex === i ? (
+                            <div className="inline-flex items-center justify-end gap-1">
+                              <input
+                                autoFocus
+                                type="number"
+                                step="any"
+                                value={r.comision}
+                                onChange={(e) => handleUpdateBulkRow(i, 'comision', e.target.value)}
+                                onBlur={() => setEditingComIndex(null)}
+                                onKeyDown={(e) => {
+                                  if (e.key === 'Enter') setEditingComIndex(null);
+                                }}
+                                className="w-24 bg-[#071217] border border-cyan-500 rounded-lg px-2 py-0.5 text-right text-emerald-400 font-mono text-xs focus:outline-none"
+                              />
+                              <span className="text-[11px] font-bold text-slate-400 font-mono">
+                                {normalizarMoneda(r.moneda) === 'BS' ? 'Bs.' : normalizarMoneda(r.moneda) === 'COP' ? 'COP' : '$'}
+                              </span>
+                            </div>
+                          ) : (
+                            <button
+                              type="button"
+                              onClick={() => setEditingComIndex(i)}
+                              className="inline-flex items-center justify-end gap-1.5 hover:bg-slate-800/60 px-1.5 py-0.5 rounded transition-all group cursor-pointer text-right"
+                              title="Click para modificar comisión"
+                            >
+                              <span className="text-emerald-400 font-medium">
+                                {formatCurrency(r.comision, r.moneda)}
+                              </span>
+                              <Edit2 className="w-3 h-3 text-slate-500 opacity-30 group-hover:opacity-100 transition-opacity" />
+                            </button>
+                          )}
                         </td>
                         <td className="p-2 text-right text-rose-400 font-medium">{formatCurrency(r.premios, r.moneda)}</td>
                         <td className="p-2 text-right font-bold text-white">{formatCurrency(r.neto, r.moneda)}</td>
