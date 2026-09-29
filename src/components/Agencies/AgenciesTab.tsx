@@ -859,19 +859,19 @@ export const AgenciesTab: React.FC = () => {
                       {/* Comision / Participacion */}
                       <td className="py-3 px-4 text-center">
                         {(() => {
-                          let customComs: { sys: string; com: number }[] = [];
+                          let hasCustom = false;
                           try {
                             const c = typeof ag.condiciones_sistemas === 'string' ? JSON.parse(ag.condiciones_sistemas) : ag.condiciones_sistemas;
                             if (c) {
-                              sisArr.forEach((s) => {
-                                if (c[s]?.comision !== undefined && c[s]?.comision !== null && c[s]?.comision !== '') {
-                                  customComs.push({ sys: s, com: Number(c[s].comision) });
-                                }
-                              });
+                              hasCustom = sisArr.some(
+                                (s) =>
+                                  (c[s]?.comision !== undefined && c[s]?.comision !== null && c[s]?.comision !== '') ||
+                                  (c[s]?.participacion !== undefined && c[s]?.participacion !== null && c[s]?.participacion !== '')
+                              );
                             }
                           } catch (_) {}
 
-                          if (customComs.length === 0) {
+                          if (!hasCustom) {
                             return (
                               <div className="inline-flex items-center gap-1 font-mono text-[11px]">
                                 <span className="px-2 py-0.5 rounded-md bg-emerald-500/10 text-emerald-400 font-bold border border-emerald-500/20" title="Comisión General">
@@ -886,36 +886,40 @@ export const AgenciesTab: React.FC = () => {
                           }
 
                           return (
-                            <div className="flex flex-col items-center gap-1 font-mono">
-                              <div className="flex flex-wrap gap-1 justify-center max-w-[170px]">
-                                {sisArr.map((s) => {
-                                  let sysC: number | null = null;
-                                  try {
-                                    const c = typeof ag.condiciones_sistemas === 'string' ? JSON.parse(ag.condiciones_sistemas) : ag.condiciones_sistemas;
-                                    if (c?.[s]?.comision !== undefined && c?.[s]?.comision !== null && c?.[s]?.comision !== '') {
-                                      sysC = Number(c[s].comision);
-                                    }
-                                  } catch (_) {}
-                                  const effective = sysC !== null ? sysC : ag.comision;
-                                  const isCustom = sysC !== null;
-                                  return (
-                                    <span
-                                      key={s}
-                                      className={`px-1.5 py-0.5 rounded text-[10px] font-bold ${
-                                        isCustom
-                                          ? 'bg-amber-500/20 text-amber-300 border border-amber-500/30'
-                                          : 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20'
-                                      }`}
-                                      title={isCustom ? `Comisión personalizada para ${s}` : `Comisión general`}
-                                    >
-                                      {s}: {effective}%
+                            <div className="flex flex-col items-center gap-1 font-mono text-[10px]">
+                              {sisArr.map((s) => {
+                                let sysCom: number | null = null;
+                                let sysPart: number | null = null;
+                                try {
+                                  const c = typeof ag.condiciones_sistemas === 'string' ? JSON.parse(ag.condiciones_sistemas) : ag.condiciones_sistemas;
+                                  if (c?.[s]?.comision !== undefined && c?.[s]?.comision !== null && c?.[s]?.comision !== '') {
+                                    sysCom = Number(c[s].comision);
+                                  }
+                                  if (c?.[s]?.participacion !== undefined && c?.[s]?.participacion !== null && c?.[s]?.participacion !== '') {
+                                    sysPart = Number(c[s].participacion);
+                                  }
+                                } catch (_) {}
+
+                                const effCom = sysCom !== null ? sysCom : ag.comision;
+                                const effPart = sysPart !== null ? sysPart : ag.participacion_ag;
+
+                                return (
+                                  <div
+                                    key={s}
+                                    className="inline-flex items-center gap-1 whitespace-nowrap bg-[#071217] px-1.5 py-0.5 rounded border border-slate-800"
+                                    title={`${s}: Comisión ${effCom}% / Participación ${effPart}%`}
+                                  >
+                                    <span className="text-slate-400 font-sans font-semibold text-[10px]">{s}:</span>
+                                    <span className="text-emerald-400 font-bold" title={`Comisión en ${s}`}>
+                                      {effCom}%
                                     </span>
-                                  );
-                                })}
-                              </div>
-                              <span className="text-[10px] text-cyan-400 font-semibold" title="Participación Agencia">
-                                Part: {ag.participacion_ag}%
-                              </span>
+                                    <span className="text-slate-600">/</span>
+                                    <span className="text-cyan-400 font-bold" title={`Participación en ${s}`}>
+                                      {effPart}%
+                                    </span>
+                                  </div>
+                                );
+                              })}
                             </div>
                           );
                         })()}
@@ -926,39 +930,23 @@ export const AgenciesTab: React.FC = () => {
                         <div className="flex flex-wrap gap-1.5 items-center">
                           {sisArr.map((s) => {
                             let cod = '';
-                            let sysCom: number | null = null;
                             try {
                               const c = typeof ag.condiciones_sistemas === 'string' ? JSON.parse(ag.condiciones_sistemas) : ag.condiciones_sistemas;
                               if (c?.[s]?.codigo) cod = String(c[s].codigo).trim();
-                              if (c?.[s]?.comision !== undefined && c?.[s]?.comision !== null && c?.[s]?.comision !== '') {
-                                sysCom = Number(c[s].comision);
-                              }
                             } catch (_) {}
-
-                            const effectiveCom = sysCom !== null ? sysCom : ag.comision;
 
                             return (
                               <span
                                 key={s}
-                                title={cod ? `Equivalencia en ${s}: ${cod} • Comisión: ${effectiveCom}%` : `En ${s} • Comisión: ${effectiveCom}%`}
+                                title={cod ? `Equivalencia en ${s}: ${cod}` : `Sistema ${s}`}
                                 className="px-2 py-1 rounded-md text-[10px] font-bold bg-[#071217] text-slate-300 border border-slate-800 whitespace-nowrap inline-flex items-center gap-1.5"
                               >
                                 <span className="text-emerald-400">🎰 {s}</span>
                                 {cod && (
-                                  <span className="text-[9px] font-mono text-cyan-300 bg-cyan-950/70 px-1 py-0.2 rounded border border-cyan-800/40">
+                                  <span className="text-[9px] font-mono text-cyan-300 bg-cyan-950/70 px-1.5 py-0.2 rounded border border-cyan-800/40">
                                     {cod}
                                   </span>
                                 )}
-                                <span
-                                  className={`text-[9px] font-mono font-bold px-1.5 py-0.2 rounded ${
-                                    sysCom !== null
-                                      ? 'bg-amber-500/20 text-amber-300 border border-amber-500/30'
-                                      : 'bg-slate-800 text-slate-400 border border-slate-700/50'
-                                  }`}
-                                  title={sysCom !== null ? `Comisión específica para ${s}` : `Comisión general de la agencia`}
-                                >
-                                  {effectiveCom}% com
-                                </span>
                               </span>
                             );
                           })}
@@ -1111,46 +1099,50 @@ export const AgenciesTab: React.FC = () => {
 
                     <div className="text-xs text-slate-400 mt-1 flex flex-wrap items-center gap-2 font-mono">
                       {(() => {
-                        let customComs: { sys: string; com: number }[] = [];
+                        let hasCustom = false;
                         try {
                           const c = typeof ag.condiciones_sistemas === 'string' ? JSON.parse(ag.condiciones_sistemas) : ag.condiciones_sistemas;
                           if (c) {
-                            sisArr.forEach((s) => {
-                              if (c[s]?.comision !== undefined && c[s]?.comision !== null && c[s]?.comision !== '') {
-                                customComs.push({ sys: s, com: Number(c[s].comision) });
-                              }
-                            });
+                            hasCustom = sisArr.some(
+                              (s) =>
+                                (c[s]?.comision !== undefined && c[s]?.comision !== null && c[s]?.comision !== '') ||
+                                (c[s]?.participacion !== undefined && c[s]?.participacion !== null && c[s]?.participacion !== '')
+                            );
                           }
                         } catch (_) {}
 
-                        if (customComs.length > 0) {
+                        if (hasCustom) {
                           return (
                             <div className="flex flex-wrap items-center gap-1.5">
-                              <span className="text-slate-400">Comisiones:</span>
+                              <span className="text-slate-400 font-sans text-xs">Condiciones:</span>
                               {sisArr.map((s) => {
-                                let sysC: number | null = null;
+                                let sysCom: number | null = null;
+                                let sysPart: number | null = null;
                                 try {
                                   const c = typeof ag.condiciones_sistemas === 'string' ? JSON.parse(ag.condiciones_sistemas) : ag.condiciones_sistemas;
                                   if (c?.[s]?.comision !== undefined && c?.[s]?.comision !== null && c?.[s]?.comision !== '') {
-                                    sysC = Number(c[s].comision);
+                                    sysCom = Number(c[s].comision);
+                                  }
+                                  if (c?.[s]?.participacion !== undefined && c?.[s]?.participacion !== null && c?.[s]?.participacion !== '') {
+                                    sysPart = Number(c[s].participacion);
                                   }
                                 } catch (_) {}
-                                const effective = sysC !== null ? sysC : ag.comision;
-                                const isCustom = sysC !== null;
+                                const effCom = sysCom !== null ? sysCom : ag.comision;
+                                const effPart = sysPart !== null ? sysPart : ag.participacion_ag;
+
                                 return (
                                   <span
                                     key={s}
-                                    className={`px-1.5 py-0.5 rounded text-[10px] font-bold ${
-                                      isCustom
-                                        ? 'bg-amber-500/20 text-amber-300 border border-amber-500/30'
-                                        : 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20'
-                                    }`}
+                                    className="inline-flex items-center gap-1 bg-[#071217] px-2 py-0.5 rounded border border-slate-800 text-[10px]"
+                                    title={`${s}: Comisión ${effCom}% / Participación ${effPart}%`}
                                   >
-                                    {s}: {effective}%
+                                    <strong className="text-slate-300 font-sans">{s}:</strong>
+                                    <span className="text-emerald-400 font-bold">{effCom}%</span>
+                                    <span className="text-slate-600">/</span>
+                                    <span className="text-cyan-400 font-bold">{effPart}%</span>
                                   </span>
                                 );
                               })}
-                              <span>• Part. Ag: <strong className="text-cyan-400">{ag.participacion_ag}%</strong></span>
                             </div>
                           );
                         }
@@ -1187,43 +1179,27 @@ export const AgenciesTab: React.FC = () => {
                 {/* Systems & Currencies Chips */}
                 <div className="space-y-2 text-xs">
                   <div className="space-y-1.5">
-                    <span className="text-[11px] font-bold text-slate-400 block">Sistemas y Comisiones:</span>
+                    <span className="text-[11px] font-bold text-slate-400 block">Sistemas:</span>
                     <div className="flex flex-wrap gap-1.5 items-center">
                       {sisArr.map((s) => {
                         let cod = '';
-                        let sysCom: number | null = null;
                         try {
                           const c = typeof ag.condiciones_sistemas === 'string' ? JSON.parse(ag.condiciones_sistemas) : ag.condiciones_sistemas;
                           if (c?.[s]?.codigo) cod = String(c[s].codigo).trim();
-                          if (c?.[s]?.comision !== undefined && c?.[s]?.comision !== null && c?.[s]?.comision !== '') {
-                            sysCom = Number(c[s].comision);
-                          }
                         } catch (_) {}
-
-                        const effectiveCom = sysCom !== null ? sysCom : ag.comision;
 
                         return (
                           <span
                             key={s}
-                            title={cod ? `Equivalencia en ${s}: ${cod} • Comisión: ${effectiveCom}%` : `En ${s} • Comisión: ${effectiveCom}%`}
+                            title={cod ? `Equivalencia en ${s}: ${cod}` : `Sistema ${s}`}
                             className="px-2 py-1 rounded-lg bg-[#071217] text-slate-300 text-[10px] font-semibold border border-slate-800 inline-flex items-center gap-1.5"
                           >
                             <span className="text-emerald-400 font-bold">🎰 {s}</span>
                             {cod && (
-                              <span className="text-[9px] font-mono text-cyan-300 bg-cyan-950/80 px-1 py-0.5 rounded border border-cyan-800/40">
+                              <span className="text-[9px] font-mono text-cyan-300 bg-cyan-950/80 px-1.5 py-0.5 rounded border border-cyan-800/40">
                                 {cod}
                               </span>
                             )}
-                            <span
-                              className={`text-[9px] font-mono font-bold px-1.5 py-0.5 rounded ${
-                                sysCom !== null
-                                  ? 'bg-amber-500/20 text-amber-300 border border-amber-500/30'
-                                  : 'bg-slate-800 text-slate-400 border border-slate-700/50'
-                              }`}
-                              title={sysCom !== null ? `Comisión personalizada para ${s}` : `Comisión general de la agencia`}
-                            >
-                              {effectiveCom}% com
-                            </span>
                           </span>
                         );
                       })}
