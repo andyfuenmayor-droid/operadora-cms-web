@@ -615,12 +615,20 @@ export const SalesEntryTab: React.FC = () => {
 
         let detectedMoneda = bulkCurrency !== 'AUTO' ? bulkCurrency : '';
         if (!detectedMoneda) {
-          if (headerDna.includes('VES') || headerDna.includes('BOLIVAR') || fileNameUpper.includes('BS') || fileNameUpper.includes('VES')) {
+          if (/\b(BS|VES|BOLIVAR|BOLIVARES)\b/i.test(fileNameUpper)) {
             detectedMoneda = 'BS';
-          } else if (headerDna.includes('COP') || headerDna.includes('PESO') || fileNameUpper.includes('COP')) {
+          } else if (/\b(COP|PESO|PESOS)\b/i.test(fileNameUpper)) {
             detectedMoneda = 'COP';
-          } else if (headerDna.includes('USD') || headerDna.includes('DOLAR') || fileNameUpper.includes('USD')) {
+          } else if (/\b(USD|DOLAR|DOLARES)\b/i.test(fileNameUpper)) {
             detectedMoneda = 'USD';
+          } else {
+            if (/\b(VES|BOLIVAR|BOLIVARES)\b/i.test(headerDna)) {
+              detectedMoneda = 'BS';
+            } else if (/\b(COP|PESO|PESOS)\b/i.test(headerDna)) {
+              detectedMoneda = 'COP';
+            } else if (/\b(USD|DOLAR|DOLARES)\b/i.test(headerDna)) {
+              detectedMoneda = 'USD';
+            }
           }
         }
 
@@ -761,10 +769,71 @@ export const SalesEntryTab: React.FC = () => {
             continue;
           }
 
-          // Currency resolution: dropdown if explicitly set, else detected currency, else agency's primary currency, fallback COP
-          const rowMoneda = bulkCurrency !== 'AUTO'
-            ? bulkCurrency
-            : detectedMoneda || (matchedAg.monedas ? normalizarMoneda(matchedAg.monedas.split(',')[0]) : 'COP');
+          // Extract specific conditions for this system from agency configuration
+          let comPct: number | null = null;
+          let partPct: number | null = null;
+          let sysMoneda = '';
+
+          if (matchedAg.condiciones_sistemas) {
+            try {
+              const cond = typeof matchedAg.condiciones_sistemas === 'string'
+                ? JSON.parse(matchedAg.condiciones_sistemas)
+                : matchedAg.condiciones_sistemas;
+              if (cond && sistDet && cond[sistDet]) {
+                if (cond[sistDet].comision !== undefined && cond[sistDet].comision !== null && cond[sistDet].comision !== '') {
+                  comPct = Number(cond[sistDet].comision);
+                }
+                if (cond[sistDet].participacion !== undefined && cond[sistDet].participacion !== null && cond[sistDet].participacion !== '') {
+                  partPct = Number(cond[sistDet].participacion);
+                }
+                if (cond[sistDet].moneda) {
+                  sysMoneda = normalizarMoneda(cond[sistDet].moneda);
+                }
+              }
+            } catch (e) {
+              console.error('Error parsing condiciones_sistemas', e);
+            }
+          }
+
+          if (comPct === null) {
+            comPct = (matchedAg.comision !== undefined && matchedAg.comision !== null && !isNaN(Number(matchedAg.comision)))
+              ? Number(matchedAg.comision)
+              : null;
+          }
+
+          if (partPct === null) {
+            partPct = (matchedAg.participacion_ag !== undefined && matchedAg.participacion_ag !== null && !isNaN(Number(matchedAg.participacion_ag)))
+              ? Number(matchedAg.participacion_ag)
+              : 0;
+          }
+
+          // Currency resolution prioritizing agency configuration:
+          // 1. Explicit dropdown selection (bulkCurrency !== 'AUTO')
+          // 2. System-specific currency in agency condiciones_sistemas
+          // 3. Agency's configured monedas (if strictly 1, MUST use that; if multiple, use detected if in list, else primary)
+          // 4. Detected file currency, fallback to 'COP'
+          const agencyCurrencies = (matchedAg.monedas || '')
+            .split(',')
+            .map((m: string) => normalizarMoneda(m.trim()))
+            .filter(Boolean);
+          const primaryAgencyCurr = agencyCurrencies[0] || 'COP';
+
+          let rowMoneda = 'COP';
+          if (bulkCurrency !== 'AUTO') {
+            rowMoneda = bulkCurrency;
+          } else if (sysMoneda) {
+            rowMoneda = sysMoneda;
+          } else if (agencyCurrencies.length === 1) {
+            rowMoneda = agencyCurrencies[0];
+          } else if (agencyCurrencies.length > 1) {
+            if (detectedMoneda && agencyCurrencies.includes(detectedMoneda)) {
+              rowMoneda = detectedMoneda;
+            } else {
+              rowMoneda = primaryAgencyCurr;
+            }
+          } else {
+            rowMoneda = detectedMoneda || 'COP';
+          }
 
           // Check if already loaded in carga_actual for this day/system/currency
           const isDup = sales.some(
@@ -784,15 +853,19 @@ export const SalesEntryTab: React.FC = () => {
           const premios = colPremio !== -1 ? parseNum(row[colPremio]) : 0;
           const comExcel = colComision !== -1 ? parseNum(row[colComision]) : 0;
 
-          const cPct = Number(matchedAg.comision ?? 0);
-          const pPct = Number(matchedAg.participacion_ag ?? 0);
+          // Commission calculation:
+          // If agency or system condition defines a commission % (even 0%!), calculate directly from %
+          // Otherwise use the Excel/system commission if present, otherwise 0.
+          let com = 0;
+          if (comPct !== null && !isNaN(comPct)) {
+            com = Math.round(venta * (comPct / 100) * 100) / 100;
+          } else if (colComision !== -1 && comExcel > 0) {
+            com = comExcel;
+          } else {
+            com = 0;
+          }
 
-          // If agency commission % > 0, calculate directly from %, otherwise use the Excel/system commission
-          const com =
-            cPct > 0
-              ? Math.round(venta * (cPct / 100) * 100) / 100
-              : comExcel || Math.round(venta * 0.10 * 100) / 100;
-
+          const pPct = partPct !== null && !isNaN(partPct) ? partPct : 0;
           const neto = Math.round((venta - com - premios) * 100) / 100;
           const uAg = Math.round(neto * (pPct / 100) * 100) / 100;
           const uOp = Math.round((neto - uAg) * 100) / 100;
@@ -837,6 +910,48 @@ export const SalesEntryTab: React.FC = () => {
     };
 
     reader.readAsArrayBuffer(file);
+  };
+
+  // Update a single field in bulk import preview rows
+  const handleUpdateBulkRow = (index: number, field: string, value: any) => {
+    setBulkRows((prev) => {
+      const next = [...prev];
+      const row = { ...next[index], [field]: value };
+      if (field === 'moneda') {
+        row.moneda = value;
+      }
+      if (field === 'comision' || field === 'venta' || field === 'premios') {
+        const v = parseNum(row.venta);
+        const c = parseNum(row.comision);
+        const p = parseNum(row.premios);
+        const neto = Math.round((v - c - p) * 100) / 100;
+
+        const ag = agencies.find((a) => cleanAgencyName(a.nombre_agencia) === cleanAgencyName(row.agencia));
+        let pPct = Number(ag?.participacion_ag ?? 0);
+        if (ag?.condiciones_sistemas) {
+          try {
+            const cond = typeof ag.condiciones_sistemas === 'string'
+              ? JSON.parse(ag.condiciones_sistemas)
+              : ag.condiciones_sistemas;
+            if (cond && row.sistema && cond[row.sistema]?.participacion !== undefined && cond[row.sistema]?.participacion !== '') {
+              pPct = Number(cond[row.sistema].participacion);
+            }
+          } catch (_) {}
+        }
+        const uAg = Math.round(neto * (pPct / 100) * 100) / 100;
+        const uOp = Math.round((neto - uAg) * 100) / 100;
+        row.neto = neto;
+        row.util_ag = uAg;
+        row.util_op = uOp;
+      }
+      next[index] = row;
+      return next;
+    });
+  };
+
+  // Remove a row from bulk import preview
+  const handleRemoveBulkRow = (index: number) => {
+    setBulkRows((prev) => prev.filter((_, idx) => idx !== index));
   };
 
   // Save Bulk Import Rows
@@ -1017,40 +1132,84 @@ export const SalesEntryTab: React.FC = () => {
 
           {bulkRows.length > 0 && (
             <div className="space-y-3 pt-2">
-              <div className="text-xs text-emerald-400 font-bold">
-                ✓ Se reconocieron {bulkRows.length} agencias para importar:
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-1 text-xs">
+                <span className="text-emerald-400 font-bold">
+                  ✓ Se reconocieron {bulkRows.length} {bulkRows.length === 1 ? 'agencia' : 'agencias'} para importar:
+                </span>
+                <span className="text-slate-400 text-[11px]">
+                  Puedes modificar la moneda o comisión de cada fila si lo deseas antes de guardar.
+                </span>
               </div>
 
-              <div className="max-h-48 overflow-y-auto border border-slate-800 rounded-xl bg-[#071217]">
+              <div className="max-h-56 overflow-y-auto border border-slate-800 rounded-xl bg-[#071217]">
                 <table className="w-full text-left text-[11px]">
-                  <thead className="text-slate-400 border-b border-slate-800 uppercase font-mono">
+                  <thead className="text-slate-400 border-b border-slate-800 uppercase font-mono sticky top-0 bg-[#071217]">
                     <tr>
                       <th className="p-2">Agencia</th>
-                      <th className="p-2">Sistema / Moneda</th>
-                      <th className="p-2">Venta</th>
-                      <th className="p-2">Comisión</th>
-                      <th className="p-2">Premios</th>
-                      <th className="p-2">Neto</th>
+                      <th className="p-2">Sistema</th>
+                      <th className="p-2">Moneda</th>
+                      <th className="p-2 text-right">Venta</th>
+                      <th className="p-2 text-right">Comisión</th>
+                      <th className="p-2 text-right">Premios</th>
+                      <th className="p-2 text-right">Neto</th>
+                      <th className="p-2 text-center">Acción</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-800/80 font-mono">
                     {bulkRows.map((r, i) => (
-                      <tr key={i}>
+                      <tr key={i} className="hover:bg-slate-800/30 transition-colors">
                         <td className="p-2 font-sans font-semibold text-white">{r.agencia}</td>
-                        <td className="p-2 text-slate-300 font-mono">
-                          <span className="text-cyan-300">{r.sistema}</span> - <span className="text-amber-300">{r.moneda}</span>
+                        <td className="p-2 text-cyan-300 font-mono">{r.sistema}</td>
+                        <td className="p-2">
+                          <select
+                            value={r.moneda}
+                            onChange={(e) => handleUpdateBulkRow(i, 'moneda', e.target.value)}
+                            className="bg-[#0D1B22] border border-slate-700 rounded-lg px-2 py-1 text-[11px] text-amber-300 font-bold focus:outline-none focus:border-cyan-500 cursor-pointer"
+                          >
+                            {availableCurrenciesList.map((m) => (
+                              <option key={m.code} value={m.code}>
+                                {m.code}
+                              </option>
+                            ))}
+                          </select>
                         </td>
-                        <td className="p-2">{formatCurrency(r.venta, r.moneda)}</td>
-                        <td className="p-2 text-emerald-400">{formatCurrency(r.comision, r.moneda)}</td>
-                        <td className="p-2 text-rose-400">{formatCurrency(r.premios, r.moneda)}</td>
-                        <td className="p-2 font-bold text-white">{formatCurrency(r.neto, r.moneda)}</td>
+                        <td className="p-2 text-right text-white font-medium">{formatCurrency(r.venta, r.moneda)}</td>
+                        <td className="p-2 text-right">
+                          <input
+                            type="number"
+                            step="any"
+                            value={r.comision}
+                            onChange={(e) => handleUpdateBulkRow(i, 'comision', e.target.value)}
+                            className="w-24 bg-[#0D1B22] border border-slate-700 rounded-lg px-1.5 py-0.5 text-right text-emerald-400 font-mono text-[11px] focus:outline-none focus:border-cyan-500"
+                            title="Comisión calculada según la configuración de la agencia"
+                          />
+                        </td>
+                        <td className="p-2 text-right text-rose-400 font-medium">{formatCurrency(r.premios, r.moneda)}</td>
+                        <td className="p-2 text-right font-bold text-white">{formatCurrency(r.neto, r.moneda)}</td>
+                        <td className="p-2 text-center">
+                          <button
+                            type="button"
+                            onClick={() => handleRemoveBulkRow(i)}
+                            className="text-slate-500 hover:text-rose-400 p-1 rounded transition-colors cursor-pointer"
+                            title="Descartar esta fila"
+                          >
+                            ✕
+                          </button>
+                        </td>
                       </tr>
                     ))}
                   </tbody>
                 </table>
               </div>
 
-              <div className="flex justify-end">
+              <div className="flex justify-end gap-2">
+                <button
+                  type="button"
+                  onClick={() => setBulkRows([])}
+                  className="px-4 py-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 font-semibold text-xs transition-all cursor-pointer"
+                >
+                  Limpiar Lista
+                </button>
                 <button
                   onClick={handleSaveBulk}
                   disabled={isProcessing}
