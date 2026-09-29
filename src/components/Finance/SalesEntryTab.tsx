@@ -2,7 +2,7 @@ import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import * as XLSX from 'xlsx';
 import { supabase } from '../../lib/supabase';
 import { useAuth } from '../../context/AuthContext';
-import { formatCurrency, formatDate, cleanAgencyName } from '../../utils/formatters';
+import { formatCurrency, formatDate, cleanAgencyName, normalizarMoneda } from '../../utils/formatters';
 import type { DailySaleItem, Agency, BetSystem, Currency } from '../../types';
 import {
   TrendingUp,
@@ -83,6 +83,46 @@ export const SalesEntryTab: React.FC = () => {
   const [bulkError, setBulkError] = useState<string | null>(null);
   const [bulkUnmatched, setBulkUnmatched] = useState<string[]>([]);
   const [systemKeywords, setSystemKeywords] = useState<SystemKeywordsMap>(DEFAULT_SYSTEM_KEYWORDS);
+
+  // Available systems list merging standard defaults, database systems, and configured keywords
+  const availableSystemsList = useMemo(() => {
+    const list = ['BETM3', 'GATOWEB', 'KENO'];
+    systems.forEach((s) => {
+      const name = (s.nombre_sistema || '').trim();
+      if (name && !list.includes(name)) {
+        list.push(name);
+      }
+    });
+    Object.keys(systemKeywords).forEach((name) => {
+      if (name && !list.includes(name)) {
+        list.push(name);
+      }
+    });
+    return list;
+  }, [systems, systemKeywords]);
+
+  // Available currencies list merging standard currencies and database currencies
+  const availableCurrenciesList = useMemo(() => {
+    const defaultList = ['COP', 'USD', 'BS'];
+    const result: { code: string; label: string }[] = [];
+    defaultList.forEach((code) => {
+      const found = currencies.find((c) => (c.nombre_moneda || '').trim().toUpperCase() === code);
+      result.push({
+        code,
+        label: found?.simbolo ? `🪙 ${code} (${found.simbolo})` : `🪙 ${code}`,
+      });
+    });
+    currencies.forEach((c) => {
+      const code = (c.nombre_moneda || '').trim().toUpperCase();
+      if (code && !result.some((r) => r.code === code)) {
+        result.push({
+          code,
+          label: c.simbolo ? `🪙 ${code} (${c.simbolo})` : `🪙 ${code}`,
+        });
+      }
+    });
+    return result;
+  }, [currencies]);
 
   const [message, setMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
 
@@ -539,31 +579,48 @@ export const SalesEntryTab: React.FC = () => {
 
         let sistDet = bulkSystem !== 'AUTO' ? bulkSystem : '';
         if (!sistDet) {
-          for (const s of systems) {
-            const sName = s.nombre_sistema.toUpperCase();
-            if (headerDna.includes(sName) || fileNameUpper.includes(sName)) {
-              sistDet = s.nombre_sistema;
+          // Dynamic keyword matching for system auto-detection (e.g. Total accepted & Total paid -> KENO)
+          for (const [sysName, conf] of Object.entries(systemKeywords)) {
+            const v = conf?.venta?.trim().toUpperCase();
+            const p = conf?.premio?.trim().toUpperCase();
+            if (v && p && headerDna.includes(v) && headerDna.includes(p)) {
+              sistDet = sysName;
               break;
+            }
+          }
+          if (!sistDet) {
+            for (const s of systems) {
+              const sName = s.nombre_sistema.toUpperCase();
+              if (headerDna.includes(sName) || fileNameUpper.includes(sName)) {
+                sistDet = s.nombre_sistema;
+                break;
+              }
             }
           }
           if (!sistDet) {
             if (headerDna.includes('GATOWEB') || fileNameUpper.includes('GATO')) sistDet = 'GATOWEB';
             else if (headerDna.includes('BETM3') || fileNameUpper.includes('BET')) sistDet = 'BETM3';
-            else if (headerDna.includes('KENO') || fileNameUpper.includes('KENO')) sistDet = 'KENO';
-            else sistDet = systems[0]?.nombre_sistema || 'BETM3';
+            else if (
+              headerDna.includes('KENO') ||
+              fileNameUpper.includes('KENO') ||
+              fileNameUpper.includes('LOTTERY') ||
+              (headerDna.includes('TOTAL ACCEPTED') && headerDna.includes('TOTAL PAID'))
+            ) {
+              sistDet = 'KENO';
+            } else {
+              sistDet = systems[0]?.nombre_sistema || 'BETM3';
+            }
           }
         }
 
-        let monDet = bulkCurrency !== 'AUTO' ? bulkCurrency : '';
-        if (!monDet) {
+        let detectedMoneda = bulkCurrency !== 'AUTO' ? bulkCurrency : '';
+        if (!detectedMoneda) {
           if (headerDna.includes('VES') || headerDna.includes('BOLIVAR') || fileNameUpper.includes('BS') || fileNameUpper.includes('VES')) {
-            monDet = 'BS';
+            detectedMoneda = 'BS';
           } else if (headerDna.includes('COP') || headerDna.includes('PESO') || fileNameUpper.includes('COP')) {
-            monDet = 'COP';
+            detectedMoneda = 'COP';
           } else if (headerDna.includes('USD') || headerDna.includes('DOLAR') || fileNameUpper.includes('USD')) {
-            monDet = 'USD';
-          } else {
-            monDet = currencies[0]?.nombre_moneda || 'BS';
+            detectedMoneda = 'USD';
           }
         }
 
@@ -635,10 +692,6 @@ export const SalesEntryTab: React.FC = () => {
         if (colComision === -1 && colPremio === -1) {
           colComision = 2;
           colPremio = 3;
-        } else if (colComision === -1) {
-          colComision = colPremio === 2 ? 3 : 2;
-        } else if (colPremio === -1) {
-          colPremio = colComision === 2 ? 3 : 2;
         }
 
         const parsed: any[] = [];
@@ -660,33 +713,46 @@ export const SalesEntryTab: React.FC = () => {
           const agClean = cleanAgencyName(rawCell);
           // Also extract ID inside parentheses, e.g. "MAXIMA CDA 02 T2 (5024)" -> "5024"
           const parenthesizedId = rawCell.match(/\(([^)]+)\)/)?.[1]?.trim().toUpperCase();
+          // Extract base agency name without parenthesized ID: "MAXIMA CDA 02 T2 (5024)" -> "MAXIMA CDA 02 T2"
+          const baseNameWithoutParen = rawCell.replace(/\s*\([^)]*\)\s*$/, '').trim();
+          const baseClean = cleanAgencyName(baseNameWithoutParen);
 
           // Matching por Equivalencia de Sistema o por Nombre
           const matchedAg = agencies.find((a) => {
+            const agNomClean = cleanAgencyName(a.nombre_agencia);
+            const agNomUpper = a.nombre_agencia.toUpperCase();
+
             if (a.condiciones_sistemas) {
               try {
                 const cond = typeof a.condiciones_sistemas === 'string'
                   ? JSON.parse(a.condiciones_sistemas)
                   : a.condiciones_sistemas;
-                const conf = cond?.[sistDet];
-                if (conf?.codigo) {
-                  const codigos = String(conf.codigo)
-                    .split(',')
-                    .map((c) => c.trim().toUpperCase());
-                  if (
-                    codigos.includes(upperCell) ||
-                    (parenthesizedId && codigos.includes(parenthesizedId)) ||
-                    (agClean && codigos.includes(agClean)) ||
-                    codigos.some((c) => upperCell.includes(c))
-                  ) {
-                    return true;
+                // Check detected system first, and also check across all configured systems as fallback
+                const sysEntries = [cond?.[sistDet], ...Object.values(cond)].filter(Boolean);
+                for (const conf of sysEntries as any[]) {
+                  if (conf?.codigo) {
+                    const codigos = String(conf.codigo)
+                      .split(',')
+                      .map((c) => c.trim().toUpperCase());
+                    if (
+                      codigos.includes(upperCell) ||
+                      (parenthesizedId && codigos.includes(parenthesizedId)) ||
+                      (agClean && codigos.includes(agClean)) ||
+                      (baseClean && codigos.includes(baseClean)) ||
+                      codigos.some((c) => upperCell === c || (baseClean && c === baseClean) || upperCell.includes(c))
+                    ) {
+                      return true;
+                    }
                   }
                 }
               } catch (_) {}
             }
-            if (agClean && cleanAgencyName(a.nombre_agencia) === agClean) return true;
-            if (upperCell && a.nombre_agencia.toUpperCase() === upperCell) return true;
-            if (parenthesizedId && cleanAgencyName(a.nombre_agencia) === parenthesizedId) return true;
+
+            if (agClean && agNomClean === agClean) return true;
+            if (baseClean && agNomClean === baseClean) return true;
+            if (upperCell && agNomUpper === upperCell) return true;
+            if (baseClean && agNomUpper === baseClean) return true;
+            if (parenthesizedId && (agNomClean === parenthesizedId || String(a.id) === parenthesizedId)) return true;
             return false;
           });
 
@@ -695,12 +761,17 @@ export const SalesEntryTab: React.FC = () => {
             continue;
           }
 
+          // Currency resolution: dropdown if explicitly set, else detected currency, else agency's primary currency, fallback COP
+          const rowMoneda = bulkCurrency !== 'AUTO'
+            ? bulkCurrency
+            : detectedMoneda || (matchedAg.monedas ? normalizarMoneda(matchedAg.monedas.split(',')[0]) : 'COP');
+
           // Check if already loaded in carga_actual for this day/system/currency
           const isDup = sales.some(
             (s) =>
               cleanAgencyName(s.agencia) === cleanAgencyName(matchedAg.nombre_agencia) &&
               String(s.sistema || '').toUpperCase() === sistDet.toUpperCase() &&
-              String(s.moneda || '').toUpperCase() === monDet.toUpperCase() &&
+              String(s.moneda || '').toUpperCase() === rowMoneda.toUpperCase() &&
               s.fecha === bulkFileDate
           );
 
@@ -710,15 +781,15 @@ export const SalesEntryTab: React.FC = () => {
           }
 
           const venta = parseNum(row[colVenta]);
-          const premios = parseNum(row[colPremio]);
+          const premios = colPremio !== -1 ? parseNum(row[colPremio]) : 0;
           const comExcel = colComision !== -1 ? parseNum(row[colComision]) : 0;
 
           const cPct = Number(matchedAg.comision ?? 0);
           const pPct = Number(matchedAg.participacion_ag ?? 0);
 
-          // If agency commission % > 10, calculate directly from %, otherwise use the Excel/system commission
+          // If agency commission % > 0, calculate directly from %, otherwise use the Excel/system commission
           const com =
-            cPct > 10
+            cPct > 0
               ? Math.round(venta * (cPct / 100) * 100) / 100
               : comExcel || Math.round(venta * 0.10 * 100) / 100;
 
@@ -730,7 +801,7 @@ export const SalesEntryTab: React.FC = () => {
             user_id: effectiveUserId,
             agencia: matchedAg.nombre_agencia,
             sistema: sistDet,
-            moneda: monDet,
+            moneda: rowMoneda,
             venta,
             premios,
             comision: com,
@@ -818,7 +889,10 @@ export const SalesEntryTab: React.FC = () => {
           </button>
 
           <button
-            onClick={() => setIsBulkOpen(!isBulkOpen)}
+            onClick={() => {
+              if (!isBulkOpen) loadData();
+              setIsBulkOpen(!isBulkOpen);
+            }}
             className="px-4 py-2.5 rounded-xl bg-cyan-500/10 hover:bg-cyan-500/20 text-cyan-400 border border-cyan-500/30 font-bold text-xs flex items-center gap-2 transition-all cursor-pointer"
           >
             <FileSpreadsheet className="w-4 h-4" />
@@ -889,9 +963,9 @@ export const SalesEntryTab: React.FC = () => {
                 className="w-full bg-[#071217] border border-slate-700 rounded-xl px-3 py-2 text-xs text-white focus:outline-none focus:border-cyan-500 cursor-pointer"
               >
                 <option value="AUTO">✨ Auto-detectar Sistema</option>
-                {systems.map((s) => (
-                  <option key={s.id} value={s.nombre_sistema}>
-                    🎰 {s.nombre_sistema}
+                {availableSystemsList.map((sName) => (
+                  <option key={sName} value={sName}>
+                    🎰 {sName}
                   </option>
                 ))}
               </select>
@@ -911,15 +985,11 @@ export const SalesEntryTab: React.FC = () => {
                 className="w-full bg-[#071217] border border-slate-700 rounded-xl px-3 py-2 text-xs text-white focus:outline-none focus:border-cyan-500 cursor-pointer"
               >
                 <option value="AUTO">✨ Auto-detectar Moneda</option>
-                {currencies.map((m) => {
-                  const mCode = (m.nombre_moneda || '').trim().toUpperCase();
-                  if (!mCode) return null;
-                  return (
-                    <option key={m.id || mCode} value={mCode}>
-                      🪙 {mCode} {m.simbolo ? `(${m.simbolo})` : ''}
-                    </option>
-                  );
-                })}
+                {availableCurrenciesList.map((m) => (
+                  <option key={m.code} value={m.code}>
+                    {m.label}
+                  </option>
+                ))}
               </select>
             </div>
 
