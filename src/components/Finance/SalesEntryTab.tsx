@@ -19,6 +19,12 @@ import {
   Coins
 } from 'lucide-react';
 import confetti from 'canvas-confetti';
+import { extractTextFromPdf } from '../../utils/pdfReader';
+import {
+  loadSystemKeywords,
+  DEFAULT_SYSTEM_KEYWORDS,
+  type SystemKeywordsMap
+} from '../../utils/systemKeywords';
 
 // Safe helper to parse numbers from numeric or formatted strings
 function parseNum(val: any): number {
@@ -76,6 +82,7 @@ export const SalesEntryTab: React.FC = () => {
   const [bulkRows, setBulkRows] = useState<any[]>([]);
   const [bulkError, setBulkError] = useState<string | null>(null);
   const [bulkUnmatched, setBulkUnmatched] = useState<string[]>([]);
+  const [systemKeywords, setSystemKeywords] = useState<SystemKeywordsMap>(DEFAULT_SYSTEM_KEYWORDS);
 
   const [message, setMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
 
@@ -85,11 +92,12 @@ export const SalesEntryTab: React.FC = () => {
     setMessage(null);
 
     try {
-      const [salesRes, agRes, sisRes, monRes] = await Promise.all([
+      const [salesRes, agRes, sisRes, monRes, loadedKw] = await Promise.all([
         supabase.from('carga_actual').select('*').eq('user_id', effectiveUserId).order('id', { ascending: false }),
         supabase.from('agencias').select('*').eq('user_id', effectiveUserId).order('id', { ascending: true }),
         supabase.from('sistemas').select('*').eq('user_id', effectiveUserId).order('nombre_sistema', { ascending: true }),
         supabase.from('monedas').select('*').eq('user_id', effectiveUserId).order('id', { ascending: true }),
+        loadSystemKeywords(effectiveUserId),
       ]);
 
       const loadedSales = salesRes.data || [];
@@ -101,6 +109,7 @@ export const SalesEntryTab: React.FC = () => {
       setAgencies(loadedAgencies);
       setSystems(loadedSystems);
       setCurrencies(loadedCurrencies);
+      setSystemKeywords(loadedKw);
 
       if (loadedAgencies.length > 0) {
         setFormAgencia((prev) => {
@@ -487,7 +496,7 @@ export const SalesEntryTab: React.FC = () => {
     }
   };
 
-  // Handle CSV/Excel bulk file parsing (Motor Universal)
+  // Handle CSV/Excel/PDF bulk file parsing (Motor Universal Dinámico)
   const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
@@ -496,21 +505,27 @@ export const SalesEntryTab: React.FC = () => {
     setBulkUnmatched([]);
     const reader = new FileReader();
 
-    reader.onload = (event) => {
+    reader.onload = async (event) => {
       try {
         const buffer = event.target?.result as ArrayBuffer;
-        const workbook = XLSX.read(buffer, { type: 'array' });
-        const firstSheetName = workbook.SheetNames[0];
-        if (!firstSheetName) {
-          setBulkError('El archivo no contiene hojas válidas.');
-          return;
+        let rows: any[][] = [];
+
+        const isPdf = file.name.toLowerCase().endsWith('.pdf');
+        if (isPdf) {
+          rows = await extractTextFromPdf(buffer);
+        } else {
+          const workbook = XLSX.read(buffer, { type: 'array' });
+          const firstSheetName = workbook.SheetNames[0];
+          if (!firstSheetName) {
+            setBulkError('El archivo no contiene hojas válidas.');
+            return;
+          }
+          const worksheet = workbook.Sheets[firstSheetName];
+          rows = XLSX.utils.sheet_to_json(worksheet, { header: 1, defval: '' });
         }
 
-        const worksheet = workbook.Sheets[firstSheetName];
-        const rows: any[][] = XLSX.utils.sheet_to_json(worksheet, { header: 1, defval: '' });
-
         if (!rows || rows.length < 2) {
-          setBulkError('El archivo no contiene suficientes filas.');
+          setBulkError('El archivo no contiene suficientes datos o filas para procesar.');
           return;
         }
 
@@ -552,10 +567,24 @@ export const SalesEntryTab: React.FC = () => {
           }
         }
 
-        // 2. Detect the actual header row using universal synonyms
-        const NAME_SYNONYMS = ['NOMBRE', 'AGENCIA', 'USUARIO', 'TAQUILLA', 'BANCA', 'SUBBANCA', 'TERMINAL', 'GRUPO', 'CLIENTE'];
-        const VENTA_SYNONYMS = ['VENTA', 'VENTAS', 'TOTAL VENTA', 'JUGADO', 'TOTAL JUGADO', 'BRUTO', 'TOTAL BRUTO', 'APUESTA', 'APUESTAS'];
-        const PREMIO_SYNONYMS = ['PREMIO', 'PREMIOS', 'TOTAL PREMIOS', 'PAGADO', 'PAGADOS', 'ACIERTO', 'ACIERTOS'];
+        // 2. Dynamic Keywords Configured for this System + Multilingual Synonyms
+        const sysConf = systemKeywords[sistDet] || DEFAULT_SYSTEM_KEYWORDS[sistDet];
+        const configuredVenta = sysConf?.venta?.trim().toUpperCase();
+        const configuredPremio = sysConf?.premio?.trim().toUpperCase();
+        const configuredAgencia = sysConf?.agencia?.trim().toUpperCase();
+
+        const NAME_SYNONYMS = [
+          ...(configuredAgencia ? [configuredAgencia] : []),
+          'AGENT', 'AGENCIA', 'NOMBRE', 'USUARIO', 'TAQUILLA', 'BANCA', 'SUBBANCA', 'TERMINAL', 'GRUPO', 'CLIENTE'
+        ];
+        const VENTA_SYNONYMS = [
+          ...(configuredVenta ? [configuredVenta] : []),
+          'TOTAL ACCEPTED', 'ACCEPTED', 'VENTA', 'VENTAS', 'TOTAL VENTA', 'JUGADO', 'TOTAL JUGADO', 'BRUTO', 'TOTAL BRUTO', 'APUESTA', 'APUESTAS'
+        ];
+        const PREMIO_SYNONYMS = [
+          ...(configuredPremio ? [configuredPremio] : []),
+          'TOTAL PAID', 'PAID OUT', 'PREMIO', 'PREMIOS', 'TOTAL PREMIOS', 'PAGADO', 'PAGADOS', 'ACIERTO', 'ACIERTOS'
+        ];
         const COMISION_SYNONYMS = ['COMISION', 'COMISIÓN', 'COMISIONES', 'COM. AGENCIA', 'GANANCIA', 'COM'];
 
         let headerRowIdx = -1;
@@ -587,14 +616,21 @@ export const SalesEntryTab: React.FC = () => {
 
         const headerCols = rows[headerRowIdx].map((c) => String(c ?? '').trim().toUpperCase());
 
-        let colNombre = headerCols.findIndex((c) => NAME_SYNONYMS.some((syn) => c.includes(syn)));
+        let colNombre = headerCols.findIndex((c) =>
+          (configuredAgencia && c.includes(configuredAgencia)) || NAME_SYNONYMS.some((syn) => c.includes(syn))
+        );
         if (colNombre === -1) colNombre = 0;
 
-        let colVenta = headerCols.findIndex((c) => VENTA_SYNONYMS.some((syn) => c.includes(syn)));
+        let colVenta = headerCols.findIndex((c) =>
+          (configuredVenta && c.includes(configuredVenta)) || VENTA_SYNONYMS.some((syn) => c.includes(syn))
+        );
         if (colVenta === -1) colVenta = 1;
 
+        let colPremio = headerCols.findIndex((c) =>
+          (configuredPremio && c.includes(configuredPremio)) || PREMIO_SYNONYMS.some((syn) => c.includes(syn))
+        );
+
         let colComision = headerCols.findIndex((c) => COMISION_SYNONYMS.some((syn) => c.includes(syn)));
-        let colPremio = headerCols.findIndex((c) => PREMIO_SYNONYMS.some((syn) => c.includes(syn)));
 
         if (colComision === -1 && colPremio === -1) {
           colComision = 2;
@@ -622,6 +658,8 @@ export const SalesEntryTab: React.FC = () => {
           }
 
           const agClean = cleanAgencyName(rawCell);
+          // Also extract ID inside parentheses, e.g. "MAXIMA CDA 02 T2 (5024)" -> "5024"
+          const parenthesizedId = rawCell.match(/\(([^)]+)\)/)?.[1]?.trim().toUpperCase();
 
           // Matching por Equivalencia de Sistema o por Nombre
           const matchedAg = agencies.find((a) => {
@@ -630,12 +668,17 @@ export const SalesEntryTab: React.FC = () => {
                 const cond = typeof a.condiciones_sistemas === 'string'
                   ? JSON.parse(a.condiciones_sistemas)
                   : a.condiciones_sistemas;
-                const sysConf = cond?.[sistDet];
-                if (sysConf?.codigo) {
-                  const codigos = String(sysConf.codigo)
+                const conf = cond?.[sistDet];
+                if (conf?.codigo) {
+                  const codigos = String(conf.codigo)
                     .split(',')
                     .map((c) => c.trim().toUpperCase());
-                  if (codigos.includes(upperCell) || (agClean && codigos.includes(agClean))) {
+                  if (
+                    codigos.includes(upperCell) ||
+                    (parenthesizedId && codigos.includes(parenthesizedId)) ||
+                    (agClean && codigos.includes(agClean)) ||
+                    codigos.some((c) => upperCell.includes(c))
+                  ) {
                     return true;
                   }
                 }
@@ -643,6 +686,7 @@ export const SalesEntryTab: React.FC = () => {
             }
             if (agClean && cleanAgencyName(a.nombre_agencia) === agClean) return true;
             if (upperCell && a.nombre_agencia.toUpperCase() === upperCell) return true;
+            if (parenthesizedId && cleanAgencyName(a.nombre_agencia) === parenthesizedId) return true;
             return false;
           });
 
@@ -667,7 +711,7 @@ export const SalesEntryTab: React.FC = () => {
 
           const venta = parseNum(row[colVenta]);
           const premios = parseNum(row[colPremio]);
-          const comExcel = parseNum(row[colComision]);
+          const comExcel = colComision !== -1 ? parseNum(row[colComision]) : 0;
 
           const cPct = Number(matchedAg.comision ?? 0);
           const pPct = Number(matchedAg.participacion_ag ?? 0);
@@ -880,10 +924,10 @@ export const SalesEntryTab: React.FC = () => {
             </div>
 
             <div className="space-y-1.5">
-              <label className="text-xs font-semibold text-slate-300">Archivo Excel / CSV:</label>
+              <label className="text-xs font-semibold text-slate-300">Archivo Excel / CSV / PDF:</label>
               <input
                 type="file"
-                accept=".xlsx,.xls,.csv,.txt"
+                accept=".xlsx,.xls,.csv,.txt,.pdf"
                 onChange={handleFileUpload}
                 className="w-full text-xs text-slate-400 file:mr-2 file:py-1.5 file:px-3 file:rounded-xl file:border-0 file:text-xs file:font-semibold file:bg-cyan-500/20 file:text-cyan-300 hover:file:bg-cyan-500/30 cursor-pointer"
               />
