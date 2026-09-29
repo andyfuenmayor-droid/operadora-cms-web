@@ -219,14 +219,25 @@ export async function getConsolidatedPayments(
       const fCorta = fechaRaw.slice(0, 10);
       const cStr = r.created_at ? String(r.created_at).slice(0, 10) : '';
 
+      const tipoP = String(r.tipo_pago || 'EFECTIVO').trim().toUpperCase();
+      const isCob = Boolean(r.qr_token) || tipoP.includes('COBRADOR');
+
       // Si se filtra por periodo, restringir los pagos diarios al ciclo ANTES de calcular el balance de supervisor vs cobrador
       if (filtrarPeriodo && (fechaDesde || fechaHasta)) {
         const enRangoFecha = (!fechaDesde || fCorta >= fechaDesde) && (!limiteHasta || fCorta <= limiteHasta);
         const enRangoCreacion = (!fCorta || fCorta === 'N/A' || fCorta.length < 10) && cStr && (!fechaDesde || cStr >= fechaDesde) && (!limiteHasta || cStr <= limiteHasta);
-        if (!enRangoFecha && !enRangoCreacion) return;
-      }
 
-      const tipoP = String(r.tipo_pago || 'EFECTIVO').trim().toUpperCase();
+        let enRangoCobrador = false;
+        if (isCob) {
+          const fEsc = r.fecha_escaneo_cobrador ? String(r.fecha_escaneo_cobrador).slice(0, 10) : '';
+          const fLiq = r.fecha_liquidacion_admin ? String(r.fecha_liquidacion_admin).slice(0, 10) : '';
+          const enRangoEsc = fEsc && (!fechaDesde || fEsc >= fechaDesde) && (!limiteHasta || fEsc <= limiteHasta);
+          const enRangoLiq = fLiq && (!fechaDesde || fLiq >= fechaDesde) && (!limiteHasta || fLiq <= limiteHasta);
+          enRangoCobrador = Boolean(enRangoEsc || enRangoLiq);
+        }
+
+        if (!enRangoFecha && !enRangoCreacion && !enRangoCobrador) return;
+      }
 
       // Si es pura transferencia bancaria duplicada sin efectivo, omitir
       if (

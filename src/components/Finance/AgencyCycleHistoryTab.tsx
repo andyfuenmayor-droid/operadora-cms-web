@@ -184,9 +184,17 @@ export const AgencyCycleHistoryTab: React.FC<{ initialAgency?: string }> = ({ in
       const matchMon = normalizarMoneda(p.moneda) === mon;
       const isCob = Boolean(p.qr_token) || String(p.tipo_pago || '').toUpperCase().includes('COBRADOR');
       const isConf = Boolean(p.confirmado) || Boolean(p.confirmado_supervisor) || Boolean(p.fecha_escaneo_cobrador);
-      const fStr = String(p.fecha || p.created_at || '').slice(0, 10);
-      const inCycle = (!cycleDesde || fStr >= cycleDesde) && (!cycleHasta || fStr <= cycleHasta);
-      return matchAg && matchMon && isCob && isConf && inCycle && !p.rechazado;
+      if (!matchAg || !matchMon || !isCob || !isConf || p.rechazado) return false;
+
+      const fOperativa = String(p.fecha || '').slice(0, 10);
+      const fEscaneo = String(p.fecha_escaneo_cobrador || '').slice(0, 10);
+      const fLiquidacion = String(p.fecha_liquidacion_admin || '').slice(0, 10);
+
+      const inOperativa = fOperativa && (!cycleDesde || fOperativa >= cycleDesde) && (!cycleHasta || fOperativa <= cycleHasta);
+      const inEscaneo = fEscaneo && (!cycleDesde || fEscaneo >= cycleDesde) && (!cycleHasta || fEscaneo <= cycleHasta);
+      const inLiquidacion = fLiquidacion && (!cycleDesde || fLiquidacion >= cycleDesde) && (!cycleHasta || fLiquidacion <= cycleHasta);
+
+      return inOperativa || inEscaneo || inLiquidacion;
     });
     const cobradorTot = agCobradorList.reduce((sum, curr) => sum + Number(curr.monto || 0), 0);
 

@@ -23,7 +23,8 @@ import {
   Edit2,
   Key,
   Save,
-  CheckCheck
+  CheckCheck,
+  Calendar
 } from 'lucide-react';
 import confetti from 'canvas-confetti';
 
@@ -83,6 +84,7 @@ export const CollectorsTab: React.FC = () => {
 
   // Settle QR Payment Modal (Tab 4)
   const [settlePaymentItem, setSettlePaymentItem] = useState<any | null>(null);
+  const [settleDeliveryDate, setSettleDeliveryDate] = useState<string>('');
 
   // Load everything
   const loadData = async () => {
@@ -427,6 +429,10 @@ export const CollectorsTab: React.FC = () => {
   // Open Settle Modal (Tab 4)
   const handleOpenSettleModal = (paymentItem: any) => {
     setSettlePaymentItem(paymentItem);
+    const defDate = paymentItem.fecha_escaneo_cobrador
+      ? String(paymentItem.fecha_escaneo_cobrador).slice(0, 10)
+      : new Date().toISOString().slice(0, 10);
+    setSettleDeliveryDate(defDate);
   };
 
   // Confirm Settle QR Payment to Admin (Tab 4)
@@ -436,7 +442,7 @@ export const CollectorsTab: React.FC = () => {
     setIsProcessing(true);
 
     try {
-      const nowStr = new Date().toISOString();
+      const nowStr = settleDeliveryDate ? new Date(`${settleDeliveryDate}T12:00:00Z`).toISOString() : new Date().toISOString();
       const adminName = user?.nombre || user?.email?.split('@')[0] || 'Administración';
 
       // 1. Update cda_pagos_diarios
@@ -458,6 +464,7 @@ export const CollectorsTab: React.FC = () => {
         tipo_movimiento: 'ENTREGA_COBRADOR',
         monto: settlePaymentItem.monto,
         moneda: settlePaymentItem.moneda,
+        fecha: nowStr,
         comentario: `Liquidación de efectivo PIN: ${settlePaymentItem.qr_token || settlePaymentItem.id} [Recibido en Caja Central por: ${adminName}]`,
       });
 
@@ -477,14 +484,16 @@ export const CollectorsTab: React.FC = () => {
   const filteredQrPayments = useMemo(() => {
     return qrPayments.filter((item) => {
       const f = (item.fecha || item.created_at || '').slice(0, 10);
-      const fLiq = (item.fecha_liquidacion_admin || item.fecha_escaneo_cobrador || '').slice(0, 10);
+      const fScan = (item.fecha_escaneo_cobrador || '').slice(0, 10);
+      const fLiq = (item.fecha_liquidacion_admin || '').slice(0, 10);
       const isUnsettled = !item.liquidado_admin;
 
       // Las recaudaciones pendientes o en ruta de ciclos anteriores siempre deben ser visibles para permitir su liquidación
       if (!isUnsettled && (liqFechaDesde || liqFechaHasta)) {
         const inOperativeRange = (!liqFechaDesde || f >= liqFechaDesde) && (!liqFechaHasta || f <= liqFechaHasta);
+        const inScanRange = fScan && (!liqFechaDesde || fScan >= liqFechaDesde) && (!liqFechaHasta || fScan <= liqFechaHasta);
         const inSettlementRange = fLiq && (!liqFechaDesde || fLiq >= liqFechaDesde) && (!liqFechaHasta || fLiq <= liqFechaHasta);
-        if (!inOperativeRange && !inSettlementRange) return false;
+        if (!inOperativeRange && !inScanRange && !inSettlementRange) return false;
       }
 
       if (liqCollectorFilter !== 'ALL' && item.cobrador_nombre !== liqCollectorFilter) return false;
@@ -1248,11 +1257,20 @@ export const CollectorsTab: React.FC = () => {
                         Cobrador: <strong className="text-slate-300">{p.cobrador_nombre || 'Asignado'}</strong> • Concepto: {p.concepto || 'Recaudación en efectivo de taquilla / entrega de caja'}
                       </div>
 
-                      {p.fecha_escaneo_cobrador && (
-                        <div className="text-[11px] text-sky-400 font-mono">
-                          Escaneado: {formatDate(p.fecha_escaneo_cobrador)}
-                        </div>
-                      )}
+                      <div className="flex flex-wrap items-center gap-3 text-[11px] font-mono mt-1">
+                        {p.fecha_escaneo_cobrador && (
+                          <div className="text-sky-400 flex items-center gap-1">
+                            <span>🛵 Escaneado:</span>
+                            <strong>{formatDate(p.fecha_escaneo_cobrador)}</strong>
+                          </div>
+                        )}
+                        {p.fecha_liquidacion_admin && (
+                          <div className="text-emerald-400 flex items-center gap-1 bg-emerald-500/10 px-2 py-0.5 rounded-lg border border-emerald-500/20">
+                            <span>🏛️ Fecha de Entrega:</span>
+                            <strong>{formatDate(p.fecha_liquidacion_admin)}</strong>
+                          </div>
+                        )}
+                      </div>
                     </div>
 
                     <div className="flex md:flex-col items-center md:items-end justify-between md:justify-center gap-2">
@@ -1488,11 +1506,20 @@ export const CollectorsTab: React.FC = () => {
                 </div>
               </div>
 
-              <div className="col-span-2 pt-1 border-t border-slate-800/60 space-y-0.5">
-                <span className="text-[10px] font-bold uppercase text-slate-500">Concepto</span>
-                <div className="text-slate-300 italic text-[11px]">
-                  {settlePaymentItem.concepto || 'Recaudación en efectivo de taquilla / entrega de caja'}
-                </div>
+              <div className="col-span-2 pt-2 border-t border-slate-800/60 space-y-1">
+                <label className="text-[10px] font-bold uppercase text-emerald-400 flex items-center gap-1.5">
+                  <Calendar className="w-3.5 h-3.5" />
+                  <span>Fecha de Entrega a Administración (Recepción en Caja Central)</span>
+                </label>
+                <input
+                  type="date"
+                  value={settleDeliveryDate}
+                  onChange={(e) => setSettleDeliveryDate(e.target.value)}
+                  className="w-full bg-[#071217] border border-emerald-500/40 focus:border-emerald-400 rounded-xl px-3 py-2 text-xs text-white font-mono"
+                />
+                <span className="text-[10px] text-slate-400">
+                  Fecha contable en la cual el dinero físico ingresa al arqueo central.
+                </span>
               </div>
             </div>
 

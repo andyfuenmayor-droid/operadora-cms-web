@@ -214,16 +214,24 @@ export const PreClosureAuditTab: React.FC = () => {
           const agExp = expenses.filter((g) => g.agencia === nom && normalizarMoneda(g.moneda) === mon && Boolean(g.confirmado));
           const gTot = agExp.reduce((sum, curr) => sum + Number(curr.monto || 0), 0);
 
-          // Segregación de Pagos por Canal restringidos estrictamente al ciclo operativo activo:
+          // Segregación de Pagos por Canal restringidos al ciclo operativo activo:
           // 1. Cobradores de Ruta (recaudaciones QR de cda_pagos_diarios)
           const agCobradorList = rawDailyPayments.filter((p) => {
             const matchAg = (p.agencia || p.nombre_agency || '').trim().toUpperCase() === nom;
             const matchMon = normalizarMoneda(p.moneda) === mon;
             const isCob = Boolean(p.qr_token) || String(p.tipo_pago || '').toUpperCase().includes('COBRADOR');
             const isConf = Boolean(p.confirmado) || Boolean(p.confirmado_supervisor) || Boolean(p.fecha_escaneo_cobrador);
-            const fStr = String(p.fecha || p.created_at || '').slice(0, 10);
-            const inCycle = !systemCycle?.desde || (fStr >= systemCycle.desde && fStr <= (systemCycle.hasta || fStr));
-            return matchAg && matchMon && isCob && isConf && inCycle && !p.rechazado;
+            if (!matchAg || !matchMon || !isCob || !isConf || p.rechazado) return false;
+
+            const fOperativa = String(p.fecha || '').slice(0, 10);
+            const fEscaneo = String(p.fecha_escaneo_cobrador || '').slice(0, 10);
+            const fLiquidacion = String(p.fecha_liquidacion_admin || '').slice(0, 10);
+
+            const inOperativa = fOperativa && (!systemCycle?.desde || fOperativa >= systemCycle.desde) && (!systemCycle?.hasta || fOperativa <= systemCycle.hasta);
+            const inEscaneo = fEscaneo && (!systemCycle?.desde || fEscaneo >= systemCycle.desde) && (!systemCycle?.hasta || fEscaneo <= systemCycle.hasta);
+            const inLiquidacion = fLiquidacion && (!systemCycle?.desde || fLiquidacion >= systemCycle.desde) && (!systemCycle?.hasta || fLiquidacion <= systemCycle.hasta);
+
+            return inOperativa || inEscaneo || inLiquidacion;
           });
           const cobradorRutaTot = agCobradorList.reduce((sum, curr) => sum + Number(curr.monto || 0), 0);
           const cobradorLiquidadoTot = agCobradorList.filter((p) => Boolean(p.liquidado_admin)).reduce((sum, curr) => sum + Number(curr.monto || 0), 0);
@@ -448,9 +456,17 @@ export const PreClosureAuditTab: React.FC = () => {
     return rawDailyPayments
       .filter((pd) => {
         const isCob = Boolean(pd.qr_token) || String(pd.tipo_pago || '').toUpperCase().includes('COBRADOR');
-        const fStr = String(pd.fecha || pd.created_at || '').slice(0, 10);
-        const inCycle = !systemCycle?.desde || (fStr >= systemCycle.desde && fStr <= (systemCycle.hasta || fStr));
-        return isCob && inCycle && !pd.rechazado;
+        if (!isCob || pd.rechazado) return false;
+
+        const fOperativa = String(pd.fecha || '').slice(0, 10);
+        const fEscaneo = String(pd.fecha_escaneo_cobrador || '').slice(0, 10);
+        const fLiquidacion = String(pd.fecha_liquidacion_admin || '').slice(0, 10);
+
+        const inOperativa = fOperativa && (!systemCycle?.desde || fOperativa >= systemCycle.desde) && (!systemCycle?.hasta || fOperativa <= systemCycle.hasta);
+        const inEscaneo = fEscaneo && (!systemCycle?.desde || fEscaneo >= systemCycle.desde) && (!systemCycle?.hasta || fEscaneo <= systemCycle.hasta);
+        const inLiquidacion = fLiquidacion && (!systemCycle?.desde || fLiquidacion >= systemCycle.desde) && (!systemCycle?.hasta || fLiquidacion <= systemCycle.hasta);
+
+        return inOperativa || inEscaneo || inLiquidacion;
       })
       .map((pd) => ({
         id: String(pd.id),
@@ -465,8 +481,9 @@ export const PreClosureAuditTab: React.FC = () => {
         liquidado_admin: Boolean(pd.liquidado_admin),
         confirmado_supervisor: Boolean(pd.confirmado_supervisor || pd.confirmado),
         fecha_escaneo_cobrador: pd.fecha_escaneo_cobrador,
+        fecha_liquidacion_admin: pd.fecha_liquidacion_admin,
       }))
-      .sort((a, b) => (b.fecha_escaneo_cobrador || b.fecha).localeCompare(a.fecha_escaneo_cobrador || a.fecha));
+      .sort((a, b) => (b.fecha_liquidacion_admin || b.fecha_escaneo_cobrador || b.fecha).localeCompare(a.fecha_liquidacion_admin || a.fecha_escaneo_cobrador || a.fecha));
   }, [rawDailyPayments, systemCycle]);
 
   // Movimientos bancarios detallados (Entradas: Cobros bancarios; Salidas: Reposición de premios y egresos bancarios)
@@ -556,11 +573,18 @@ export const PreClosureAuditTab: React.FC = () => {
       const isConf = Boolean(pd.confirmado) || Boolean(pd.confirmado_supervisor) || Boolean(pd.fecha_escaneo_cobrador);
       if (!isConf || isRech) return;
 
-      const fStr = String(pd.fecha || pd.created_at || '').slice(0, 10);
-      const inCycle = !systemCycle?.desde || (fStr >= systemCycle.desde && fStr <= (systemCycle.hasta || fStr));
+      const isCob = Boolean(pd.qr_token) || String(pd.tipo_pago || '').toUpperCase().includes('COBRADOR');
+      const fOperativa = String(pd.fecha || pd.created_at || '').slice(0, 10);
+      const fEscaneo = String(pd.fecha_escaneo_cobrador || '').slice(0, 10);
+      const fLiquidacion = String(pd.fecha_liquidacion_admin || '').slice(0, 10);
+
+      const inOperativa = fOperativa && (!systemCycle?.desde || fOperativa >= systemCycle.desde) && (!systemCycle?.hasta || fOperativa <= systemCycle.hasta);
+      const inEscaneo = fEscaneo && (!systemCycle?.desde || fEscaneo >= systemCycle.desde) && (!systemCycle?.hasta || fEscaneo <= systemCycle.hasta);
+      const inLiquidacion = fLiquidacion && (!systemCycle?.desde || fLiquidacion >= systemCycle.desde) && (!systemCycle?.hasta || fLiquidacion <= systemCycle.hasta);
+
+      const inCycle = isCob ? (inOperativa || inEscaneo || inLiquidacion) : inOperativa;
       if (!inCycle) return;
 
-      const isCob = Boolean(pd.qr_token) || String(pd.tipo_pago || '').toUpperCase().includes('COBRADOR');
       const agNom = (pd.agencia || pd.nombre_agency || 'Agencia').trim().toUpperCase();
 
       list.push({
@@ -670,11 +694,19 @@ export const PreClosureAuditTab: React.FC = () => {
         const matchAg = (p.agencia || p.nombre_agency || '').trim().toUpperCase() === entidad.trim().toUpperCase();
         const matchMon = normalizarMoneda(p.moneda) === moneda;
         const isCob = Boolean(p.qr_token) || String(p.tipo_pago || '').toUpperCase().includes('COBRADOR');
-        const fStr = String(p.fecha || p.created_at || '').slice(0, 10);
-        const inCycle = !systemCycle?.desde || (fStr >= systemCycle.desde && fStr <= (systemCycle.hasta || fStr));
-        return matchAg && matchMon && isCob && inCycle && !p.rechazado;
+        if (!matchAg || !matchMon || !isCob || p.rechazado) return false;
+
+        const fOperativa = String(p.fecha || '').slice(0, 10);
+        const fEscaneo = String(p.fecha_escaneo_cobrador || '').slice(0, 10);
+        const fLiquidacion = String(p.fecha_liquidacion_admin || '').slice(0, 10);
+
+        const inOperativa = fOperativa && (!systemCycle?.desde || fOperativa >= systemCycle.desde) && (!systemCycle?.hasta || fOperativa <= systemCycle.hasta);
+        const inEscaneo = fEscaneo && (!systemCycle?.desde || fEscaneo >= systemCycle.desde) && (!systemCycle?.hasta || fEscaneo <= systemCycle.hasta);
+        const inLiquidacion = fLiquidacion && (!systemCycle?.desde || fLiquidacion >= systemCycle.desde) && (!systemCycle?.hasta || fLiquidacion <= systemCycle.hasta);
+
+        return inOperativa || inEscaneo || inLiquidacion;
       })
-      .sort((a, b) => (b.fecha_escaneo_cobrador || b.fecha || '').localeCompare(a.fecha_escaneo_cobrador || a.fecha || ''));
+      .sort((a, b) => (b.fecha_liquidacion_admin || b.fecha_escaneo_cobrador || b.fecha || '').localeCompare(a.fecha_liquidacion_admin || a.fecha_escaneo_cobrador || a.fecha || ''));
   };
 
   const getAgencyConfirmationMovements = (entidad: string, moneda: string) => {
@@ -1429,7 +1461,8 @@ export const PreClosureAuditTab: React.FC = () => {
                                     <table className="w-full text-left text-xs border-collapse">
                                       <thead className="bg-[#050D11] text-slate-400 font-bold uppercase text-[10px]">
                                         <tr>
-                                          <th className="py-2 px-3">Fecha / Hora</th>
+                                          <th className="py-2 px-3">Fecha / Escaneo</th>
+                                          <th className="py-2 px-3">Fecha Entrega Admin</th>
                                           <th className="py-2 px-3">Cobrador</th>
                                           <th className="py-2 px-3">Token QR / Recibo</th>
                                           <th className="py-2 px-3 text-right">Monto Recaudado</th>
@@ -1443,7 +1476,21 @@ export const PreClosureAuditTab: React.FC = () => {
                                           const isLiq = Boolean(p.liquidado_admin);
                                           return (
                                             <tr key={p.id} className="hover:bg-slate-800/40 transition-colors">
-                                              <td className="py-2 px-3 text-slate-300 font-sans">{fStr || '-'}</td>
+                                              <td className="py-2 px-3 text-slate-300 font-sans">
+                                                <div>{fStr || '-'}</div>
+                                                {p.fecha && p.fecha_escaneo_cobrador && (
+                                                  <div className="text-[10px] text-slate-500 font-mono">Taq: {p.fecha}</div>
+                                                )}
+                                              </td>
+                                              <td className="py-2 px-3 font-sans">
+                                                {p.fecha_liquidacion_admin ? (
+                                                  <div className="text-emerald-400 font-bold text-[11px]">
+                                                    🏛️ {formatDate(p.fecha_liquidacion_admin)}
+                                                  </div>
+                                                ) : (
+                                                  <span className="text-amber-400/80 text-[10px]">🛵 En Ruta</span>
+                                                )}
+                                              </td>
                                               <td className="py-2 px-3 font-sans font-semibold text-white">
                                                 {p.cobrador_nombre || (p.cobrador_id ? `Cobrador #${p.cobrador_id}` : 'Cobrador de Ruta')}
                                               </td>

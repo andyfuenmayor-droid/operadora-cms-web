@@ -16,6 +16,7 @@ export interface CollectorDailyPaymentItem {
   liquidado_admin?: boolean;
   confirmado_supervisor?: boolean;
   fecha_escaneo_cobrador?: string;
+  fecha_liquidacion_admin?: string;
 }
 
 interface CollectorDeliveryActaModalProps {
@@ -148,7 +149,10 @@ export const CollectorDeliveryActaModal: React.FC<CollectorDeliveryActaModalProp
         (r, idx) => `
       <tr>
         <td style="text-align: center; color: #64748b;">${idx + 1}</td>
-        <td style="text-align: center;">${formatDate(r.fecha_escaneo_cobrador || r.fecha)}</td>
+        <td style="text-align: center;">
+          ${formatDate(r.fecha_escaneo_cobrador || r.fecha)}
+          ${r.fecha_liquidacion_admin ? `<br/><span style="font-size: 8px; color: #059669;">Ent: ${formatDate(r.fecha_liquidacion_admin)}</span>` : ''}
+        </td>
         <td style="text-align: left; font-weight: bold;">${r.agencia}</td>
         <td style="text-align: left; font-family: monospace; font-size: 8.5px;">${r.qr_token || r.referencia || '-'}</td>
         <td style="text-align: left; font-size: 9px;">${r.cobrador_nombre || 'Cobrador de Ruta'}</td>
@@ -162,7 +166,7 @@ export const CollectorDeliveryActaModal: React.FC<CollectorDeliveryActaModalProp
               ? 'background: #dcfce7; color: #15803d;'
               : 'background: #fef3c7; color: #b45309;'
           }">
-            ${r.liquidado_admin ? 'LIQUIDADO ADMIN' : 'EN RUTA (PENDIENTE)'}
+            ${r.liquidado_admin ? (r.fecha_liquidacion_admin ? `LIQUIDADO (${formatDate(r.fecha_liquidacion_admin)})` : 'LIQUIDADO ADMIN') : 'EN RUTA (PENDIENTE)'}
           </span>
         </td>
       </tr>
@@ -598,7 +602,12 @@ export const CollectorDeliveryActaModal: React.FC<CollectorDeliveryActaModalProp
                       <tr key={`${r.id}_${idx}`} className="hover:bg-slate-800/25">
                         <td className="py-1.5 px-2 text-center text-slate-500">{idx + 1}</td>
                         <td className="py-1.5 px-2 text-center text-slate-300">
-                          {formatDate(r.fecha_escaneo_cobrador || r.fecha)}
+                          <div>{formatDate(r.fecha_escaneo_cobrador || r.fecha)}</div>
+                          {r.fecha_liquidacion_admin && (
+                            <div className="text-[10px] text-emerald-400 font-mono">
+                              Ent: {formatDate(r.fecha_liquidacion_admin)}
+                            </div>
+                          )}
                         </td>
                         <td className="py-1.5 px-2 font-sans font-bold text-white truncate max-w-[140px]">
                           {r.agencia}
@@ -621,7 +630,11 @@ export const CollectorDeliveryActaModal: React.FC<CollectorDeliveryActaModalProp
                                 : 'bg-amber-500/20 text-amber-400 border border-amber-500/30'
                             }`}
                           >
-                            {r.liquidado_admin ? '🏛️ Liquidado Admin' : '🛵 En Ruta'}
+                            {r.liquidado_admin ? (
+                              r.fecha_liquidacion_admin ? `🏛️ Liq: ${formatDate(r.fecha_liquidacion_admin)}` : '🏛️ Liquidado Admin'
+                            ) : (
+                              '🛵 En Ruta'
+                            )}
                           </span>
                         </td>
                       </tr>
