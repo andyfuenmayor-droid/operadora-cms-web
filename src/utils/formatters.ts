@@ -114,7 +114,7 @@ export function formatCurrency(amount: number | string, currency = 'USD'): strin
   });
 
   if (cleanCurr === 'BS') return `${formatted} Bs.`;
-  if (cleanCurr === 'COP') return `$${formatted} COP`;
+  if (cleanCurr === 'COP') return `${formatted} COP`;
   return `$${formatted}`;
 }
 
