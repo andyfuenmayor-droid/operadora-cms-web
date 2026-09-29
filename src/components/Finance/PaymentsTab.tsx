@@ -800,7 +800,7 @@ export const PaymentsTab: React.FC = () => {
                   ⏳ {formatCurrency(currencyTotals.COP.transito, 'COP')}
                 </span>
               ) : (
-                <span className="text-[10px] font-mono text-slate-500 font-semibold">$0 COP</span>
+                <span className="text-[10px] font-mono text-slate-500 font-semibold">0.00 COP</span>
               )}
             </div>
           </div>
