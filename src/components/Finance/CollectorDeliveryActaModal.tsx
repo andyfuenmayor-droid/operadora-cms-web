@@ -520,7 +520,7 @@ export const CollectorDeliveryActaModal: React.FC<CollectorDeliveryActaModalProp
               ACTA OFICIAL DE ENTREGA Y RENDICIÓN - COBRADOR DE RUTA
             </div>
             <div className="text-xs font-mono font-bold text-slate-300">
-              {systemCycle.tipo === 'SEMANAL' ? `SEMANA ${systemCycle.semana}` : `CICLO ${systemCycle.semana}`} ({systemCycle.desde} AL ${systemCycle.hasta})
+              {systemCycle.tipo === 'SEMANAL' ? `SEMANA ${systemCycle.semana}` : `CICLO ${systemCycle.semana}`} ({systemCycle.desde} AL {systemCycle.hasta})
             </div>
             <div className="text-[11px] text-slate-400 flex justify-between pt-2">
               <span><strong>Suscriptor:</strong> {companyName}</span>

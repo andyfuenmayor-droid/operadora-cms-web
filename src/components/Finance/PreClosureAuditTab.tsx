@@ -589,7 +589,7 @@ export const PreClosureAuditTab: React.FC = () => {
 
       list.push({
         id: String(pd.id),
-        fecha: fStr,
+        fecha: fOperativa,
         agencia: agNom,
         modalidad: isCob ? 'COBRADOR_RUTA' : 'TAQUILLA',
         tipo: 'ENTRADA',
