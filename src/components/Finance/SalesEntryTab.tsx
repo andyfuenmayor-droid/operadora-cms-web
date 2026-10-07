@@ -236,8 +236,45 @@ export const SalesEntryTab: React.FC = () => {
     return assigned;
   }, [currentAgency, currencies]);
 
-  // Helper to extract system commission & participation config for current agency
-  const getSystemConfig = useCallback((sysName: string) => {
+  // Helper to extract active currencies for a given system in current agency
+  const getSystemCurrencies = useCallback((sysName: string): string[] => {
+    if (!currentAgency) return agencyCurrenciesList;
+
+    if (currentAgency.condiciones_sistemas) {
+      try {
+        const cond = typeof currentAgency.condiciones_sistemas === 'string'
+          ? JSON.parse(currentAgency.condiciones_sistemas)
+          : currentAgency.condiciones_sistemas;
+
+        if (cond && typeof cond === 'object') {
+          const sysUpper = String(sysName).trim().toUpperCase();
+          const matchedCurrencies = new Set<string>();
+
+          for (const [key, val] of Object.entries(cond) as [string, any][]) {
+            const keyUpper = key.toUpperCase();
+            if (keyUpper.startsWith(`${sysUpper}_`)) {
+              const mon = keyUpper.slice(sysUpper.length + 1).trim();
+              if (mon) matchedCurrencies.add(mon);
+            }
+            if (val && typeof val === 'object' && val.sistema && String(val.sistema).toUpperCase() === sysUpper && val.moneda) {
+              matchedCurrencies.add(String(val.moneda).toUpperCase().trim());
+            }
+          }
+
+          if (matchedCurrencies.size > 0) {
+            return Array.from(matchedCurrencies);
+          }
+        }
+      } catch (e) {
+        console.error('Error parsing condiciones_sistemas for currencies', e);
+      }
+    }
+
+    return agencyCurrenciesList;
+  }, [currentAgency, agencyCurrenciesList]);
+
+  // Helper to extract system commission & participation config for current agency (with currency override support)
+  const getSystemConfig = useCallback((sysName: string, monName?: string) => {
     let comPct = Number(currentAgency?.comision ?? 10);
     let partPct = Number(currentAgency?.participacion_ag ?? 50);
     let targetMoneda = '';
@@ -247,10 +284,18 @@ export const SalesEntryTab: React.FC = () => {
         const cond = typeof currentAgency.condiciones_sistemas === 'string'
           ? JSON.parse(currentAgency.condiciones_sistemas)
           : currentAgency.condiciones_sistemas;
-        if (cond && sysName && cond[sysName]) {
-          if (cond[sysName].comision !== undefined) comPct = Number(cond[sysName].comision);
-          if (cond[sysName].participacion !== undefined) partPct = Number(cond[sysName].participacion);
-          if (cond[sysName].moneda) targetMoneda = String(cond[sysName].moneda).toUpperCase();
+        if (cond && sysName) {
+          const comboKey = monName ? `${sysName}_${monName}` : undefined;
+          const entry = (comboKey && cond[comboKey]) ? cond[comboKey] : cond[sysName];
+          if (entry) {
+            if (entry.comision !== undefined && entry.comision !== null && entry.comision !== '') {
+              comPct = Number(entry.comision);
+            }
+            if (entry.participacion !== undefined && entry.participacion !== null && entry.participacion !== '') {
+              partPct = Number(entry.participacion);
+            }
+            if (entry.moneda) targetMoneda = String(entry.moneda).toUpperCase();
+          }
         }
       } catch (e) {
         console.error('Error parsing condiciones_sistemas', e);
@@ -268,7 +313,8 @@ export const SalesEntryTab: React.FC = () => {
     const newEntries: Record<string, { venta: string; comision: string; premios: string; comisionTouched: boolean; id?: number }> = {};
 
     agencySystemsList.forEach((sist) => {
-      agencyCurrenciesList.forEach((mon) => {
+      const activeCurrs = getSystemCurrencies(sist);
+      activeCurrs.forEach((mon) => {
         const key = `${sist}_${mon}`;
         const match = sales.find((s) => {
           const sAg = String(s.agencia || '').trim().toUpperCase();
@@ -298,13 +344,13 @@ export const SalesEntryTab: React.FC = () => {
     });
 
     setEntries(newEntries);
-  }, [formAgencia, formFecha, sales, agencySystemsList, agencyCurrenciesList]);
+  }, [formAgencia, formFecha, sales, agencySystemsList, agencyCurrenciesList, getSystemCurrencies]);
 
   // Handlers for manual entry inputs
   const handleVentaChange = (sist: string, mon: string, val: string) => {
     const key = `${sist}_${mon}`;
     const vNum = parseNum(val);
-    const { comPct } = getSystemConfig(sist);
+    const { comPct } = getSystemConfig(sist, mon);
     const current = entries[key] || { venta: '', comision: '', premios: '', comisionTouched: false };
 
     const newCom = current.comisionTouched
@@ -362,7 +408,7 @@ export const SalesEntryTab: React.FC = () => {
     }
 
     const neto = Math.round((v - c - p) * 100) / 100;
-    const { partPct } = getSystemConfig(sist);
+    const { partPct } = getSystemConfig(sist, mon);
     const utilAg = Math.round((neto * (partPct / 100)) * 100) / 100;
     const utilOp = Math.round((neto - utilAg) * 100) / 100;
 
@@ -408,7 +454,8 @@ export const SalesEntryTab: React.FC = () => {
     const updatePayloads: { id: number; data: any }[] = [];
 
     agencySystemsList.forEach((sist) => {
-      agencyCurrenciesList.forEach((mon) => {
+      const activeCurrs = getSystemCurrencies(sist);
+      activeCurrs.forEach((mon) => {
         const key = `${sist}_${mon}`;
         const row = entries[key];
         if (!row) return;
@@ -419,7 +466,7 @@ export const SalesEntryTab: React.FC = () => {
 
         if (v > 0 || p > 0 || c > 0 || row.venta !== '' || row.premios !== '') {
           const neto = Math.round((v - c - p) * 100) / 100;
-          const { partPct } = getSystemConfig(sist);
+          const { partPct } = getSystemConfig(sist, mon);
           const utilAg = Math.round((neto * (partPct / 100)) * 100) / 100;
           const utilOp = Math.round((neto - utilAg) * 100) / 100;
 
@@ -477,7 +524,8 @@ export const SalesEntryTab: React.FC = () => {
   const handleClearScreen = () => {
     const cleared: Record<string, { venta: string; comision: string; premios: string; comisionTouched: boolean; id?: number }> = {};
     agencySystemsList.forEach((sist) => {
-      agencyCurrenciesList.forEach((mon) => {
+      const activeCurrs = getSystemCurrencies(sist);
+      activeCurrs.forEach((mon) => {
         cleared[`${sist}_${mon}`] = {
           venta: '',
           comision: '',
@@ -792,7 +840,7 @@ export const SalesEntryTab: React.FC = () => {
           let matchedAg: Agency | undefined;
           let matchedSystem = sistDet;
 
-          const checkMatch = (cellVal: string): { agency?: Agency; system?: string } => {
+          const checkMatch = (cellVal: string): { agency?: Agency; system?: string; moneda?: string } => {
             const upCell = cellVal.toUpperCase();
             const clnCell = cleanAgencyName(cellVal);
             const pId = cellVal.match(/\(([^)]+)\)/)?.[1]?.trim().toUpperCase();
@@ -810,18 +858,21 @@ export const SalesEntryTab: React.FC = () => {
                     : a.condiciones_sistemas;
 
                   // 1. Check detected system first
-                  if (sistDet && cond?.[sistDet]?.codigo) {
-                    const codigos = String(cond[sistDet].codigo)
-                      .split(',')
-                      .map((c) => c.trim().toUpperCase());
-                    if (
-                      codigos.includes(upCell) ||
-                      (pId && codigos.includes(pId)) ||
-                      (clnCell && codigos.includes(clnCell)) ||
-                      (clnBase && codigos.includes(clnBase)) ||
-                      codigos.some((c) => upCell === c || (clnBase && c === clnBase) || upCell.includes(c))
-                    ) {
-                      return { agency: a, system: sistDet };
+                  if (sistDet) {
+                    const directEntry = cond?.[sistDet];
+                    if (directEntry?.codigo) {
+                      const codigos = String(directEntry.codigo)
+                        .split(',')
+                        .map((c) => c.trim().toUpperCase());
+                      if (
+                        codigos.includes(upCell) ||
+                        (pId && codigos.includes(pId)) ||
+                        (clnCell && codigos.includes(clnCell)) ||
+                        (clnBase && codigos.includes(clnBase)) ||
+                        codigos.some((c) => upCell === c || (clnBase && c === clnBase) || upCell.includes(c))
+                      ) {
+                        return { agency: a, system: sistDet, moneda: directEntry.moneda };
+                      }
                     }
                   }
 
@@ -838,7 +889,9 @@ export const SalesEntryTab: React.FC = () => {
                         (clnBase && codigos.includes(clnBase)) ||
                         codigos.some((c) => upCell === c || (clnBase && c === clnBase) || upCell.includes(c))
                       ) {
-                        return { agency: a, system: sysKey };
+                        const actualSys = conf?.sistema || sysKey.split('_')[0] || sysKey;
+                        const confMoneda = conf?.moneda || (sysKey.includes('_') ? sysKey.split('_')[1] : undefined);
+                        return { agency: a, system: actualSys, moneda: confMoneda };
                       }
                     }
                   }
@@ -889,16 +942,31 @@ export const SalesEntryTab: React.FC = () => {
               const cond = typeof matchedAg.condiciones_sistemas === 'string'
                 ? JSON.parse(matchedAg.condiciones_sistemas)
                 : matchedAg.condiciones_sistemas;
-              if (cond && matchedSystem && cond[matchedSystem]) {
-                if (cond[matchedSystem].comision !== undefined && cond[matchedSystem].comision !== null && cond[matchedSystem].comision !== '') {
-                  comPct = Number(cond[matchedSystem].comision);
+
+              const candKeys = [
+                matchResult.moneda ? `${matchedSystem}_${matchResult.moneda}` : null,
+                detectedMoneda ? `${matchedSystem}_${detectedMoneda}` : null,
+                matchedSystem,
+              ].filter(Boolean) as string[];
+
+              let chosenConf: any = null;
+              for (const k of candKeys) {
+                if (cond?.[k]) {
+                  chosenConf = cond[k];
+                  break;
+                }
+              }
+
+              if (chosenConf) {
+                if (chosenConf.comision !== undefined && chosenConf.comision !== null && chosenConf.comision !== '') {
+                  comPct = Number(chosenConf.comision);
                   hasSpecificSysComision = true;
                 }
-                if (cond[matchedSystem].participacion !== undefined && cond[matchedSystem].participacion !== null && cond[matchedSystem].participacion !== '') {
-                  partPct = Number(cond[matchedSystem].participacion);
+                if (chosenConf.participacion !== undefined && chosenConf.participacion !== null && chosenConf.participacion !== '') {
+                  partPct = Number(chosenConf.participacion);
                 }
-                if (cond[matchedSystem].moneda) {
-                  sysMoneda = normalizarMoneda(cond[matchedSystem].moneda);
+                if (chosenConf.moneda) {
+                  sysMoneda = normalizarMoneda(chosenConf.moneda);
                 }
               }
             } catch (e) {
@@ -920,9 +988,10 @@ export const SalesEntryTab: React.FC = () => {
 
           // Currency resolution prioritizing agency configuration:
           // 1. Explicit dropdown selection (bulkCurrency !== 'AUTO')
-          // 2. System-specific currency in agency condiciones_sistemas
-          // 3. Agency's configured monedas (if strictly 1, MUST use that; if multiple, use detected if in list, else primary)
-          // 4. Detected file currency, fallback to 'COP'
+          // 2. Specific matched currency from system condition
+          // 3. System-specific currency in agency condiciones_sistemas
+          // 4. Agency's configured monedas (if strictly 1, MUST use that; if multiple, use detected if in list, else primary)
+          // 5. Detected file currency, fallback to 'COP'
           const agencyCurrencies = (matchedAg.monedas || '')
             .split(',')
             .map((m: string) => normalizarMoneda(m.trim()))
@@ -932,6 +1001,8 @@ export const SalesEntryTab: React.FC = () => {
           let rowMoneda = 'COP';
           if (bulkCurrency !== 'AUTO') {
             rowMoneda = bulkCurrency;
+          } else if (matchResult.moneda) {
+            rowMoneda = normalizarMoneda(matchResult.moneda);
           } else if (sysMoneda) {
             rowMoneda = sysMoneda;
           } else if (agencyCurrencies.length === 1) {
@@ -944,6 +1015,25 @@ export const SalesEntryTab: React.FC = () => {
             }
           } else {
             rowMoneda = detectedMoneda || 'COP';
+          }
+
+          // Exact currency condition override if available for this system & rowMoneda
+          if (matchedAg.condiciones_sistemas && matchedSystem && rowMoneda) {
+            try {
+              const cond = typeof matchedAg.condiciones_sistemas === 'string'
+                ? JSON.parse(matchedAg.condiciones_sistemas)
+                : matchedAg.condiciones_sistemas;
+              const exactConf = cond?.[`${matchedSystem}_${rowMoneda}`];
+              if (exactConf) {
+                if (exactConf.comision !== undefined && exactConf.comision !== null && exactConf.comision !== '') {
+                  comPct = Number(exactConf.comision);
+                  hasSpecificSysComision = true;
+                }
+                if (exactConf.participacion !== undefined && exactConf.participacion !== null && exactConf.participacion !== '') {
+                  partPct = Number(exactConf.participacion);
+                }
+              }
+            } catch (_) {}
           }
 
           // Check if already loaded in carga_actual for this day/system/currency
@@ -1061,8 +1151,10 @@ export const SalesEntryTab: React.FC = () => {
             const cond = typeof ag.condiciones_sistemas === 'string'
               ? JSON.parse(ag.condiciones_sistemas)
               : ag.condiciones_sistemas;
-            if (cond && row.sistema && cond[row.sistema]?.participacion !== undefined && cond[row.sistema]?.participacion !== '') {
-              pPct = Number(cond[row.sistema].participacion);
+            const comboKey = `${row.sistema}_${row.moneda}`;
+            const sysEntry = cond?.[comboKey] || cond?.[row.sistema];
+            if (sysEntry && sysEntry.participacion !== undefined && sysEntry.participacion !== '') {
+              pPct = Number(sysEntry.participacion);
             }
           } catch (_) {}
         }
@@ -1508,6 +1600,7 @@ export const SalesEntryTab: React.FC = () => {
           ) : (
             agencySystemsList.map((sist) => {
               const { comPct } = getSystemConfig(sist);
+              const activeCurrs = getSystemCurrencies(sist);
 
               return (
                 <div
@@ -1519,13 +1612,19 @@ export const SalesEntryTab: React.FC = () => {
                       <span className="text-rose-500 text-base">📍</span>
                       Sistema: <span className="text-white font-extrabold tracking-wide">{sist}</span>
                     </h4>
-                    <span className="text-[11px] font-mono text-slate-400 bg-slate-800/80 px-2 py-0.5 rounded-lg border border-slate-700/60">
-                      Comisión base: <strong className="text-emerald-400">{comPct}%</strong>
-                    </span>
+                    <div className="flex items-center gap-2">
+                      <span className="text-[11px] font-mono text-slate-400 bg-slate-800/80 px-2 py-0.5 rounded-lg border border-slate-700/60">
+                        Comisión base: <strong className="text-emerald-400">{comPct}%</strong>
+                      </span>
+                      <span className="text-[11px] font-mono text-purple-300 bg-purple-950/40 px-2 py-0.5 rounded-lg border border-purple-800/50">
+                        {activeCurrs.join(', ')}
+                      </span>
+                    </div>
                   </div>
 
                   <div className="space-y-4">
-                    {agencyCurrenciesList.map((mon) => {
+                    {activeCurrs.map((mon) => {
+                      const { comPct: monComPct } = getSystemConfig(sist, mon);
                       const key = `${sist}_${mon}`;
                       const row = entries[key] || { venta: '', comision: '', premios: '', comisionTouched: false };
                       const v = parseNum(row.venta);
@@ -1541,7 +1640,10 @@ export const SalesEntryTab: React.FC = () => {
                         >
                           {/* Venta */}
                           <div className="space-y-1">
-                            <label className="text-xs font-bold text-slate-300">Venta {mon}</label>
+                            <label className="text-xs font-bold text-slate-300 flex items-center justify-between">
+                              <span>Venta {mon}</span>
+                              <span className="text-[10px] text-emerald-400 font-mono font-normal">({monComPct}%)</span>
+                            </label>
                             <input
                               type="number"
                               step="0.01"

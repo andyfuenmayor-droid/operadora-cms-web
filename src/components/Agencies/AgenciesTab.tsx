@@ -159,6 +159,56 @@ export const parseAccountDisplay = (
   };
 };
 
+export const parseAgencySystemCombos = (ag: Agency) => {
+  const combos: { sistema: string; moneda: string; codigo?: string; comision?: number; participacion?: number }[] = [];
+  let c: any = {};
+  try {
+    c = typeof ag.condiciones_sistemas === 'string' ? JSON.parse(ag.condiciones_sistemas) : (ag.condiciones_sistemas || {});
+  } catch (_) {
+    c = {};
+  }
+
+  if (c && typeof c === 'object') {
+    Object.entries(c).forEach(([k, val]: [string, any]) => {
+      if (val && typeof val === 'object') {
+        const sys = val.sistema || (k.includes('_') ? k.split('_')[0] : k);
+        const mon = val.moneda || (k.includes('_') ? k.split('_')[1] : '');
+        if (sys && mon) {
+          const monUpper = String(mon).trim().toUpperCase();
+          if (!combos.some((item) => item.sistema.toUpperCase() === sys.toUpperCase() && item.moneda.toUpperCase() === monUpper)) {
+            combos.push({
+              sistema: sys,
+              moneda: monUpper,
+              codigo: val.codigo,
+              comision: val.comision,
+              participacion: val.participacion,
+            });
+          }
+        }
+      }
+    });
+  }
+
+  if (combos.length === 0) {
+    const sisArr = ag.sistemas ? ag.sistemas.split(',').map((s) => s.trim()).filter(Boolean) : [];
+    const monArr = ag.monedas ? ag.monedas.split(',').map((m) => m.trim().toUpperCase()).filter(Boolean) : ['COP'];
+    sisArr.forEach((s) => {
+      monArr.forEach((m) => {
+        const legacy = c?.[s] || {};
+        combos.push({
+          sistema: s,
+          moneda: m,
+          codigo: legacy.codigo,
+          comision: legacy.comision,
+          participacion: legacy.participacion,
+        });
+      });
+    });
+  }
+
+  return combos;
+};
+
 export const AgenciesTab: React.FC = () => {
   const { effectiveUserId, profile } = useAuth();
 
@@ -193,9 +243,12 @@ export const AgenciesTab: React.FC = () => {
   const [formNombre, setFormNombre] = useState('');
   const [formSistemas, setFormSistemas] = useState<string[]>([]);
   const [formMonedas, setFormMonedas] = useState<string[]>([]);
+  const [formSistemaMonedas, setFormSistemaMonedas] = useState<Record<string, string[]>>({});
   const [formComision, setFormComision] = useState('10');
   const [formParticipacion, setFormParticipacion] = useState('50');
-  const [formCondicionesSistemas, setFormCondicionesSistemas] = useState<Record<string, { comision?: number | string; participacion?: number | string; codigo?: string }>>({});
+  const [formCondicionesSistemas, setFormCondicionesSistemas] = useState<
+    Record<string, { comision?: number | string; participacion?: number | string; codigo?: string; sistema?: string; moneda?: string }>
+  >({});
   const [formCuentasAsignadas, setFormCuentasAsignadas] = useState<string[]>([]);
   const [formUsuarioTaquilla, setFormUsuarioTaquilla] = useState('');
   const [formClaveTaquilla, setFormClaveTaquilla] = useState('1234');
@@ -290,6 +343,66 @@ export const AgenciesTab: React.FC = () => {
   const agencyLimit = profile?.limite_agencias || 5;
   const isLimitReached = agencies.length >= agencyLimit;
 
+  // Active combinations of (Sistema, Moneda)
+  const activeCombinations = useMemo(() => {
+    const list: { sistema: string; moneda: string; key: string }[] = [];
+    systems.forEach((s) => {
+      const sysName = s.nombre_sistema;
+      const mons = formSistemaMonedas[sysName] || [];
+      mons.forEach((m) => {
+        list.push({
+          sistema: sysName,
+          moneda: m,
+          key: `${sysName}_${m}`,
+        });
+      });
+    });
+    return list;
+  }, [systems, formSistemaMonedas]);
+
+  const toggleSystemCurrency = (sysName: string, monCode: string) => {
+    setFormSistemaMonedas((prev) => {
+      const currentMons = prev[sysName] || [];
+      const isPresent = currentMons.includes(monCode);
+      const updatedMons = isPresent
+        ? currentMons.filter((m) => m !== monCode)
+        : [...currentMons, monCode];
+
+      const nextMap = {
+        ...prev,
+        [sysName]: updatedMons,
+      };
+
+      const nextActiveSystems = Object.keys(nextMap).filter((s) => nextMap[s]?.length > 0);
+      const nextActiveCurrencies = Array.from(new Set(Object.values(nextMap).flat().filter(Boolean)));
+      setFormSistemas(nextActiveSystems);
+      setFormMonedas(nextActiveCurrencies);
+
+      return nextMap;
+    });
+  };
+
+  const toggleAllSystemsCurrency = (monCode: string, enable: boolean) => {
+    setFormSistemaMonedas((prev) => {
+      const nextMap: Record<string, string[]> = { ...prev };
+      systems.forEach((s) => {
+        const currentMons = nextMap[s.nombre_sistema] || [];
+        if (enable) {
+          if (!currentMons.includes(monCode)) {
+            nextMap[s.nombre_sistema] = [...currentMons, monCode];
+          }
+        } else {
+          nextMap[s.nombre_sistema] = currentMons.filter((m) => m !== monCode);
+        }
+      });
+      const nextActiveSystems = Object.keys(nextMap).filter((s) => nextMap[s]?.length > 0);
+      const nextActiveCurrencies = Array.from(new Set(Object.values(nextMap).flat().filter(Boolean)));
+      setFormSistemas(nextActiveSystems);
+      setFormMonedas(nextActiveCurrencies);
+      return nextMap;
+    });
+  };
+
   // Open New Agency Modal
   const handleOpenNew = () => {
     if (isLimitReached) {
@@ -300,9 +413,18 @@ export const AgenciesTab: React.FC = () => {
       return;
     }
 
+    const availableMonedas = currencies.map((m) => m.nombre_moneda).filter(Boolean);
+    const primaryMon = availableMonedas.includes('COP') ? 'COP' : (availableMonedas[0] || 'COP');
+
+    const initMap: Record<string, string[]> = {};
+    systems.forEach((s) => {
+      initMap[s.nombre_sistema] = [primaryMon];
+    });
+
     setFormNombre('');
+    setFormSistemaMonedas(initMap);
     setFormSistemas(systems.map((s) => s.nombre_sistema));
-    setFormMonedas(currencies.map((m) => m.nombre_moneda).filter(Boolean));
+    setFormMonedas([primaryMon]);
     setFormComision('10');
     setFormParticipacion('50');
     setFormCondicionesSistemas({});
@@ -317,19 +439,81 @@ export const AgenciesTab: React.FC = () => {
   const handleOpenEdit = (ag: Agency) => {
     setEditModalAgency(ag);
     setFormNombre(ag.nombre_agencia);
-    setFormSistemas(ag.sistemas ? ag.sistemas.split(',').map((s) => s.trim()).filter(Boolean) : []);
-    setFormMonedas(ag.monedas ? ag.monedas.split(',').map((m) => m.trim().toUpperCase()).filter(Boolean) : []);
+
+    const rawSistemas = ag.sistemas ? ag.sistemas.split(',').map((s) => s.trim()).filter(Boolean) : [];
+    const rawMonedas = ag.monedas ? ag.monedas.split(',').map((m) => m.trim().toUpperCase()).filter(Boolean) : [];
+
+    let cond: Record<string, any> = {};
+    try {
+      cond = typeof ag.condiciones_sistemas === 'string'
+        ? JSON.parse(ag.condiciones_sistemas)
+        : ((ag.condiciones_sistemas as any) || {});
+    } catch {
+      cond = {};
+    }
+
+    const newSistemaMonedas: Record<string, string[]> = {};
+    const newCondiciones: Record<string, any> = {};
+
+    // 1. Scan cond for entries with explicit system & currency
+    Object.entries(cond).forEach(([key, val]) => {
+      if (!val || typeof val !== 'object') return;
+      let sysPart = val.sistema;
+      let monPart = val.moneda;
+
+      if (!sysPart || !monPart) {
+        if (key.includes('_')) {
+          const parts = key.split('_');
+          const potentialMon = parts[parts.length - 1].toUpperCase();
+          if (currencies.some((c) => c.nombre_moneda === potentialMon) || ['COP', 'USD', 'BS'].includes(potentialMon)) {
+            sysPart = parts.slice(0, -1).join('_');
+            monPart = potentialMon;
+          }
+        }
+      }
+
+      if (sysPart && monPart) {
+        monPart = monPart.toUpperCase();
+        newSistemaMonedas[sysPart] = Array.from(new Set([...(newSistemaMonedas[sysPart] || []), monPart]));
+        const comboKey = `${sysPart}_${monPart}`;
+        newCondiciones[comboKey] = { ...val, sistema: sysPart, moneda: monPart };
+      }
+    });
+
+    // 2. Handle systems from rawSistemas that were not explicitly bound to currencies in cond
+    rawSistemas.forEach((s) => {
+      if (!newSistemaMonedas[s] || newSistemaMonedas[s].length === 0) {
+        const assignedMons = rawMonedas.length > 0 ? [...rawMonedas] : ['COP'];
+        newSistemaMonedas[s] = assignedMons;
+        assignedMons.forEach((m) => {
+          const comboKey = `${s}_${m}`;
+          const legacy = cond[s] || {};
+          newCondiciones[comboKey] = { ...legacy, sistema: s, moneda: m };
+        });
+      } else {
+        newSistemaMonedas[s].forEach((m) => {
+          const comboKey = `${s}_${m}`;
+          if (!newCondiciones[comboKey]) {
+            newCondiciones[comboKey] = { ...(cond[s] || {}), sistema: s, moneda: m };
+          }
+        });
+      }
+    });
+
+    // Also preserve legacy keys for fallback
+    Object.keys(newCondiciones).forEach((k) => {
+      const entry = newCondiciones[k];
+      if (entry && entry.sistema && !newCondiciones[entry.sistema]) {
+        newCondiciones[entry.sistema] = entry;
+      }
+    });
+
+    setFormSistemaMonedas(newSistemaMonedas);
+    setFormCondicionesSistemas(newCondiciones);
+    setFormSistemas(rawSistemas);
+    setFormMonedas(rawMonedas.length > 0 ? rawMonedas : ['COP']);
     setFormComision(String(ag.comision !== undefined && ag.comision !== null ? ag.comision : 10));
     setFormParticipacion(String(ag.participacion_ag !== undefined && ag.participacion_ag !== null ? ag.participacion_ag : 0));
-
-    try {
-      const cond = ag.condiciones_sistemas;
-      setFormCondicionesSistemas(
-        typeof cond === 'string' ? JSON.parse(cond) : ((cond as any) || {})
-      );
-    } catch {
-      setFormCondicionesSistemas({});
-    }
 
     setFormCuentasAsignadas(
       ag.cuentas_asignadas && ag.cuentas_asignadas !== 'NINGUNA'
@@ -451,8 +635,15 @@ export const AgenciesTab: React.FC = () => {
     e.preventDefault();
     if (!effectiveUserId) return;
 
-    if (!formNombre.trim() || formSistemas.length === 0 || formMonedas.length === 0) {
-      setMessage({ type: 'error', text: 'Debe ingresar el nombre, al menos un sistema y una moneda.' });
+    const activeSystems = Object.keys(formSistemaMonedas).filter(
+      (s) => formSistemaMonedas[s] && formSistemaMonedas[s].length > 0
+    );
+    const activeCurrencies = Array.from(
+      new Set(Object.values(formSistemaMonedas).flat().filter(Boolean))
+    );
+
+    if (!formNombre.trim() || activeSystems.length === 0 || activeCurrencies.length === 0) {
+      setMessage({ type: 'error', text: 'Debe ingresar el nombre y activar al menos un sistema con su moneda.' });
       return;
     }
 
@@ -463,16 +654,18 @@ export const AgenciesTab: React.FC = () => {
       const payload: any = {
         user_id: effectiveUserId,
         nombre_agencia: formNombre.trim().toUpperCase(),
-        sistemas: formSistemas.join(', '),
-        monedas: formMonedas.join(', '),
+        sistemas: activeSystems.join(', '),
+        monedas: activeCurrencies.join(', '),
         comision: Number(formComision),
         participacion_ag: Number(formParticipacion),
         condiciones_sistemas: (() => {
           const cleaned: Record<string, any> = {};
-          formSistemas.forEach((s) => {
-            const item = formCondicionesSistemas[s];
-            if (item) {
-              const entry: any = {};
+          activeSystems.forEach((sys) => {
+            const mons = formSistemaMonedas[sys] || [];
+            mons.forEach((mon) => {
+              const comboKey = `${sys}_${mon}`;
+              const item = formCondicionesSistemas[comboKey] || formCondicionesSistemas[sys] || {};
+              const entry: any = { sistema: sys, moneda: mon };
               if (item.codigo && String(item.codigo).trim()) entry.codigo = String(item.codigo).trim();
               if (item.comision !== undefined && item.comision !== null && item.comision !== '') {
                 entry.comision = Number(item.comision);
@@ -480,8 +673,11 @@ export const AgenciesTab: React.FC = () => {
               if (item.participacion !== undefined && item.participacion !== null && item.participacion !== '') {
                 entry.participacion = Number(item.participacion);
               }
-              if (Object.keys(entry).length > 0) cleaned[s] = entry;
-            }
+              cleaned[comboKey] = entry;
+              if (!cleaned[sys]) {
+                cleaned[sys] = entry;
+              }
+            });
           });
           return JSON.stringify(cleaned);
         })(),
@@ -859,17 +1055,12 @@ export const AgenciesTab: React.FC = () => {
                       {/* Comision / Participacion */}
                       <td className="py-3 px-4 text-center">
                         {(() => {
-                          let hasCustom = false;
-                          try {
-                            const c = typeof ag.condiciones_sistemas === 'string' ? JSON.parse(ag.condiciones_sistemas) : ag.condiciones_sistemas;
-                            if (c) {
-                              hasCustom = sisArr.some(
-                                (s) =>
-                                  (c[s]?.comision !== undefined && c[s]?.comision !== null && c[s]?.comision !== '') ||
-                                  (c[s]?.participacion !== undefined && c[s]?.participacion !== null && c[s]?.participacion !== '')
-                              );
-                            }
-                          } catch (_) {}
+                          const combos = parseAgencySystemCombos(ag);
+                          const hasCustom = combos.some(
+                            (cb) =>
+                              (cb.comision !== undefined && cb.comision !== null && (cb.comision as any) !== '') ||
+                              (cb.participacion !== undefined && cb.participacion !== null && (cb.participacion as any) !== '')
+                          );
 
                           if (!hasCustom) {
                             return (
@@ -887,34 +1078,24 @@ export const AgenciesTab: React.FC = () => {
 
                           return (
                             <div className="flex flex-col items-center gap-1 font-mono text-[10px]">
-                              {sisArr.map((s) => {
-                                let sysCom: number | null = null;
-                                let sysPart: number | null = null;
-                                try {
-                                  const c = typeof ag.condiciones_sistemas === 'string' ? JSON.parse(ag.condiciones_sistemas) : ag.condiciones_sistemas;
-                                  if (c?.[s]?.comision !== undefined && c?.[s]?.comision !== null && c?.[s]?.comision !== '') {
-                                    sysCom = Number(c[s].comision);
-                                  }
-                                  if (c?.[s]?.participacion !== undefined && c?.[s]?.participacion !== null && c?.[s]?.participacion !== '') {
-                                    sysPart = Number(c[s].participacion);
-                                  }
-                                } catch (_) {}
-
-                                const effCom = sysCom !== null ? sysCom : ag.comision;
-                                const effPart = sysPart !== null ? sysPart : ag.participacion_ag;
+                              {combos.map((combo) => {
+                                const effCom = combo.comision !== undefined && combo.comision !== null ? combo.comision : ag.comision;
+                                const effPart = combo.participacion !== undefined && combo.participacion !== null ? combo.participacion : ag.participacion_ag;
 
                                 return (
                                   <div
-                                    key={s}
+                                    key={`${combo.sistema}_${combo.moneda}`}
                                     className="inline-flex items-center gap-1 whitespace-nowrap bg-[#071217] px-1.5 py-0.5 rounded border border-slate-800"
-                                    title={`${s}: Comisión ${effCom}% / Participación ${effPart}%`}
+                                    title={`${combo.sistema} (${combo.moneda}): Comisión ${effCom}% / Participación ${effPart}%`}
                                   >
-                                    <span className="text-slate-400 font-sans font-semibold text-[10px]">{s}:</span>
-                                    <span className="text-emerald-400 font-bold" title={`Comisión en ${s}`}>
+                                    <span className="text-slate-400 font-sans font-semibold text-[10px]">
+                                      {combo.sistema} <span className="text-[9px] text-slate-500">({combo.moneda})</span>:
+                                    </span>
+                                    <span className="text-emerald-400 font-bold" title={`Comisión en ${combo.sistema} ${combo.moneda}`}>
                                       {effCom}%
                                     </span>
                                     <span className="text-slate-600">/</span>
-                                    <span className="text-cyan-400 font-bold" title={`Participación en ${s}`}>
+                                    <span className="text-cyan-400 font-bold" title={`Participación en ${combo.sistema} ${combo.moneda}`}>
                                       {effPart}%
                                     </span>
                                   </div>
@@ -928,23 +1109,28 @@ export const AgenciesTab: React.FC = () => {
                       {/* Sistemas */}
                       <td className="py-3 px-4 font-sans">
                         <div className="flex flex-wrap gap-1.5 items-center">
-                          {sisArr.map((s) => {
-                            let cod = '';
-                            try {
-                              const c = typeof ag.condiciones_sistemas === 'string' ? JSON.parse(ag.condiciones_sistemas) : ag.condiciones_sistemas;
-                              if (c?.[s]?.codigo) cod = String(c[s].codigo).trim();
-                            } catch (_) {}
+                          {parseAgencySystemCombos(ag).map((combo) => {
+                            const isUsd = combo.moneda.includes('USD') || combo.moneda.includes('$');
+                            const isCop = combo.moneda.includes('COP');
+                            const monBadge = isUsd
+                              ? 'bg-emerald-950/70 text-emerald-300 border-emerald-800/50'
+                              : isCop
+                              ? 'bg-sky-950/70 text-sky-300 border-sky-800/50'
+                              : 'bg-amber-950/70 text-amber-300 border-amber-800/50';
 
                             return (
                               <span
-                                key={s}
-                                title={cod ? `Equivalencia en ${s}: ${cod}` : `Sistema ${s}`}
+                                key={`${combo.sistema}_${combo.moneda}`}
+                                title={combo.codigo ? `Equivalencia en ${combo.sistema} (${combo.moneda}): ${combo.codigo}` : `Sistema ${combo.sistema} (${combo.moneda})`}
                                 className="px-2 py-1 rounded-md text-[10px] font-bold bg-[#071217] text-slate-300 border border-slate-800 whitespace-nowrap inline-flex items-center gap-1.5"
                               >
-                                <span className="text-emerald-400">🎰 {s}</span>
-                                {cod && (
+                                <span className="text-emerald-400">🎰 {combo.sistema}</span>
+                                <span className={`text-[9px] font-mono px-1 py-0.2 rounded border ${monBadge}`}>
+                                  {combo.moneda}
+                                </span>
+                                {combo.codigo && (
                                   <span className="text-[9px] font-mono text-cyan-300 bg-cyan-950/70 px-1.5 py-0.2 rounded border border-cyan-800/40">
-                                    {cod}
+                                    {combo.codigo}
                                   </span>
                                 )}
                               </span>
@@ -1099,44 +1285,28 @@ export const AgenciesTab: React.FC = () => {
 
                     <div className="text-xs text-slate-400 mt-1 flex flex-wrap items-center gap-2 font-mono">
                       {(() => {
-                        let hasCustom = false;
-                        try {
-                          const c = typeof ag.condiciones_sistemas === 'string' ? JSON.parse(ag.condiciones_sistemas) : ag.condiciones_sistemas;
-                          if (c) {
-                            hasCustom = sisArr.some(
-                              (s) =>
-                                (c[s]?.comision !== undefined && c[s]?.comision !== null && c[s]?.comision !== '') ||
-                                (c[s]?.participacion !== undefined && c[s]?.participacion !== null && c[s]?.participacion !== '')
-                            );
-                          }
-                        } catch (_) {}
+                        const combos = parseAgencySystemCombos(ag);
+                        const hasCustom = combos.some(
+                          (cb) =>
+                            (cb.comision !== undefined && cb.comision !== null && (cb.comision as any) !== '') ||
+                            (cb.participacion !== undefined && cb.participacion !== null && (cb.participacion as any) !== '')
+                        );
 
                         if (hasCustom) {
                           return (
                             <div className="flex flex-wrap items-center gap-1.5">
                               <span className="text-slate-400 font-sans text-xs">Condiciones:</span>
-                              {sisArr.map((s) => {
-                                let sysCom: number | null = null;
-                                let sysPart: number | null = null;
-                                try {
-                                  const c = typeof ag.condiciones_sistemas === 'string' ? JSON.parse(ag.condiciones_sistemas) : ag.condiciones_sistemas;
-                                  if (c?.[s]?.comision !== undefined && c?.[s]?.comision !== null && c?.[s]?.comision !== '') {
-                                    sysCom = Number(c[s].comision);
-                                  }
-                                  if (c?.[s]?.participacion !== undefined && c?.[s]?.participacion !== null && c?.[s]?.participacion !== '') {
-                                    sysPart = Number(c[s].participacion);
-                                  }
-                                } catch (_) {}
-                                const effCom = sysCom !== null ? sysCom : ag.comision;
-                                const effPart = sysPart !== null ? sysPart : ag.participacion_ag;
+                              {combos.map((combo) => {
+                                const effCom = combo.comision !== undefined && combo.comision !== null ? combo.comision : ag.comision;
+                                const effPart = combo.participacion !== undefined && combo.participacion !== null ? combo.participacion : ag.participacion_ag;
 
                                 return (
                                   <span
-                                    key={s}
+                                    key={`${combo.sistema}_${combo.moneda}`}
                                     className="inline-flex items-center gap-1 bg-[#071217] px-2 py-0.5 rounded border border-slate-800 text-[10px]"
-                                    title={`${s}: Comisión ${effCom}% / Participación ${effPart}%`}
+                                    title={`${combo.sistema} (${combo.moneda}): Comisión ${effCom}% / Participación ${effPart}%`}
                                   >
-                                    <strong className="text-slate-300 font-sans">{s}:</strong>
+                                    <strong className="text-slate-300 font-sans">{combo.sistema} <span className="text-[9px] text-slate-500">({combo.moneda})</span>:</strong>
                                     <span className="text-emerald-400 font-bold">{effCom}%</span>
                                     <span className="text-slate-600">/</span>
                                     <span className="text-cyan-400 font-bold">{effPart}%</span>
@@ -1179,43 +1349,36 @@ export const AgenciesTab: React.FC = () => {
                 {/* Systems & Currencies Chips */}
                 <div className="space-y-2 text-xs">
                   <div className="space-y-1.5">
-                    <span className="text-[11px] font-bold text-slate-400 block">Sistemas:</span>
+                    <span className="text-[11px] font-bold text-slate-400 block">Sistemas y Monedas:</span>
                     <div className="flex flex-wrap gap-1.5 items-center">
-                      {sisArr.map((s) => {
-                        let cod = '';
-                        try {
-                          const c = typeof ag.condiciones_sistemas === 'string' ? JSON.parse(ag.condiciones_sistemas) : ag.condiciones_sistemas;
-                          if (c?.[s]?.codigo) cod = String(c[s].codigo).trim();
-                        } catch (_) {}
+                      {parseAgencySystemCombos(ag).map((combo) => {
+                        const isUsd = combo.moneda.includes('USD') || combo.moneda.includes('$');
+                        const isCop = combo.moneda.includes('COP');
+                        const monBadge = isUsd
+                          ? 'bg-emerald-950/70 text-emerald-300 border-emerald-800/50'
+                          : isCop
+                          ? 'bg-sky-950/70 text-sky-300 border-sky-800/50'
+                          : 'bg-amber-950/70 text-amber-300 border-amber-800/50';
 
                         return (
                           <span
-                            key={s}
-                            title={cod ? `Equivalencia en ${s}: ${cod}` : `Sistema ${s}`}
+                            key={`${combo.sistema}_${combo.moneda}`}
+                            title={combo.codigo ? `Equivalencia en ${combo.sistema} (${combo.moneda}): ${combo.codigo}` : `Sistema ${combo.sistema} (${combo.moneda})`}
                             className="px-2 py-1 rounded-lg bg-[#071217] text-slate-300 text-[10px] font-semibold border border-slate-800 inline-flex items-center gap-1.5"
                           >
-                            <span className="text-emerald-400 font-bold">🎰 {s}</span>
-                            {cod && (
+                            <span className="text-emerald-400 font-bold">🎰 {combo.sistema}</span>
+                            <span className={`text-[9px] font-mono px-1 py-0.2 rounded border ${monBadge}`}>
+                              {combo.moneda}
+                            </span>
+                            {combo.codigo && (
                               <span className="text-[9px] font-mono text-cyan-300 bg-cyan-950/80 px-1.5 py-0.5 rounded border border-cyan-800/40">
-                                {cod}
+                                {combo.codigo}
                               </span>
                             )}
                           </span>
                         );
                       })}
                     </div>
-                  </div>
-
-                  <div className="flex flex-wrap items-center gap-1.5">
-                    <span className="text-[11px] font-bold text-slate-400">Monedas:</span>
-                    {monArr.map((m) => (
-                      <span
-                        key={m}
-                        className="px-2 py-0.5 rounded-md bg-amber-500/10 text-amber-400 text-[10px] font-semibold border border-amber-500/20"
-                      >
-                        🪙 {m}
-                      </span>
-                    ))}
                   </div>
                 </div>
 
@@ -1281,10 +1444,14 @@ export const AgenciesTab: React.FC = () => {
       {/* =========================================================================
           NEW & EDIT MODAL
       ========================================================================= */}
+      {/* =========================================================================
+          NEW & EDIT MODAL (REDISEÑADO CON TAMAÑO AMPLIADO Y ACTIVACIÓN POR MONEDA)
+      ========================================================================= */}
       {(isNewModalOpen || editModalAgency) && (
-        <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4 overflow-y-auto">
-          <div className="bg-[#0D1B22] border border-slate-800 rounded-3xl p-6 sm:p-8 max-w-2xl w-full space-y-6 shadow-2xl animate-fade-in my-8">
-            <div className="flex items-center justify-between pb-3 border-b border-slate-800">
+        <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-3 sm:p-4 overflow-hidden">
+          <div className="bg-[#0D1B22] border border-slate-800 rounded-3xl max-w-5xl w-full max-h-[92vh] flex flex-col shadow-2xl animate-fade-in my-auto overflow-hidden">
+            {/* Header Fijo */}
+            <div className="flex items-center justify-between px-6 py-4 border-b border-slate-800 bg-[#0D1B22] shrink-0">
               <h3 className="text-base font-bold text-white flex items-center gap-2">
                 <Building2 className="w-5 h-5 text-emerald-400" />
                 {editModalAgency ? `Editar Agencia: ${editModalAgency.nombre_agencia}` : 'Registrar Nueva Agencia'}
@@ -1294,342 +1461,451 @@ export const AgenciesTab: React.FC = () => {
                   setIsNewModalOpen(false);
                   setEditModalAgency(null);
                 }}
-                className="text-slate-400 hover:text-white text-xs font-bold"
+                className="text-slate-400 hover:text-white text-base font-bold p-1 rounded-lg hover:bg-slate-800/60 transition-colors cursor-pointer"
               >
                 ✕
               </button>
             </div>
 
-            <form onSubmit={handleSaveAgency} className="space-y-5">
-              {/* Name */}
-              <div className="space-y-1.5">
-                <label className="text-xs font-semibold text-slate-300">Nombre de la Agencia *</label>
-                <input
-                  type="text"
-                  required
-                  placeholder="Ej: AGENCIA CENTRO 01"
-                  value={formNombre}
-                  onChange={(e) => handleNameChange(e.target.value)}
-                  className="w-full bg-[#071217] border border-slate-700 rounded-xl px-4 py-2.5 text-xs text-white focus:outline-none focus:border-emerald-500"
-                />
-              </div>
+            {/* Formulario con Scroll Interno */}
+            <form onSubmit={handleSaveAgency} className="flex-1 flex flex-col min-h-0">
+              <div className="flex-1 overflow-y-auto px-6 py-5 space-y-6 custom-scrollbar">
+                {/* Nombre de la Agencia */}
+                <div className="space-y-1.5">
+                  <label className="text-xs font-semibold text-slate-300">Nombre de la Agencia *</label>
+                  <input
+                    type="text"
+                    required
+                    placeholder="Ej: AGENCIA CENTRO 01"
+                    value={formNombre}
+                    onChange={(e) => handleNameChange(e.target.value)}
+                    className="w-full bg-[#071217] border border-slate-700 rounded-xl px-4 py-2.5 text-xs text-white focus:outline-none focus:border-emerald-500 font-semibold"
+                  />
+                </div>
 
-              {/* Systems & Currencies Checkboxes */}
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                <div className="space-y-2">
-                  <label className="text-xs font-semibold text-slate-300">Sistemas Permitidos *</label>
-                  <div className="p-3 bg-[#071217] rounded-xl border border-slate-800 max-h-36 overflow-y-auto space-y-1.5">
-                    {systems.map((s) => (
-                      <label key={s.id} className="flex items-center gap-2 text-xs text-slate-300 cursor-pointer">
-                        <input
-                          type="checkbox"
-                          checked={formSistemas.includes(s.nombre_sistema)}
-                          onChange={(e) => {
-                            if (e.target.checked) setFormSistemas([...formSistemas, s.nombre_sistema]);
-                            else setFormSistemas(formSistemas.filter((item) => item !== s.nombre_sistema));
-                          }}
-                          className="rounded text-emerald-500 bg-slate-900 border-slate-700 focus:ring-0"
-                        />
-                        <span>{s.nombre_sistema}</span>
+                {/* Sistemas & Monedas Matrix Selector */}
+                <div className="space-y-3 p-4 bg-[#071217] rounded-2xl border border-slate-800">
+                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 pb-2 border-b border-slate-800/80">
+                    <div>
+                      <label className="text-xs font-bold text-white flex items-center gap-1.5">
+                        <span className="text-emerald-400">🎮</span>
+                        <span>Sistemas y Monedas Permitidos</span>
                       </label>
-                    ))}
-                  </div>
-                </div>
+                      <p className="text-[11px] text-slate-400">
+                        Activa los sistemas y selecciona en qué moneda(s) opera cada uno para esta agencia.
+                      </p>
+                    </div>
 
-                <div className="space-y-2">
-                  <label className="text-xs font-semibold text-slate-300">Monedas Permitidas *</label>
-                  <div className="p-3 bg-[#071217] rounded-xl border border-slate-800 max-h-36 overflow-y-auto space-y-1.5">
-                    {currencies.map((m) => {
-                      const monCode = (m.nombre_moneda || '').trim().toUpperCase();
-                      if (!monCode) return null;
-                      const isChecked = formMonedas.some((fm) => fm.trim().toUpperCase() === monCode);
-                      const displayLabel = m.simbolo && m.simbolo !== monCode ? `${monCode} (${m.simbolo})` : monCode;
+                    {/* Botones de acción rápida por moneda */}
+                    <div className="flex flex-wrap items-center gap-1.5">
+                      {currencies.map((m) => {
+                        const monCode = (m.nombre_moneda || '').trim().toUpperCase();
+                        if (!monCode) return null;
+                        const allActive =
+                          systems.length > 0 &&
+                          systems.every((s) => (formSistemaMonedas[s.nombre_sistema] || []).includes(monCode));
+
+                        return (
+                          <button
+                            key={monCode}
+                            type="button"
+                            onClick={() => toggleAllSystemsCurrency(monCode, !allActive)}
+                            className={`px-2.5 py-1 rounded-lg text-[10px] font-bold font-mono transition-all border cursor-pointer ${
+                              allActive
+                                ? 'bg-emerald-500/20 text-emerald-300 border-emerald-500/40'
+                                : 'bg-slate-900/80 text-slate-400 border-slate-700/80 hover:text-white hover:border-slate-600'
+                            }`}
+                            title={`Activar o desactivar ${monCode} en todos los sistemas`}
+                          >
+                            {allActive ? `✓ Todos en ${monCode}` : `+ ${monCode} a todos`}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-2.5 pt-1">
+                    {systems.map((s) => {
+                      const sysName = s.nombre_sistema;
+                      const activeMons = formSistemaMonedas[sysName] || [];
+                      const isSystemActive = activeMons.length > 0;
 
                       return (
-                        <label key={m.id || monCode} className="flex items-center gap-2 text-xs text-slate-300 cursor-pointer">
-                          <input
-                            type="checkbox"
-                            checked={isChecked}
-                            onChange={(e) => {
-                              if (e.target.checked) {
-                                setFormMonedas([...formMonedas.filter((item) => item.toUpperCase() !== monCode), monCode]);
-                              } else {
-                                setFormMonedas(formMonedas.filter((item) => item.toUpperCase() !== monCode));
-                              }
-                            }}
-                            className="rounded text-amber-500 bg-slate-900 border-slate-700 focus:ring-0"
-                          />
-                          <span className="font-semibold text-white">{displayLabel}</span>
-                        </label>
-                      );
-                    })}
-                  </div>
-                </div>
-              </div>
-
-              {/* Equivalencias por Sistema (Mapeo de Terminales y Proveedores) */}
-              {formSistemas.length > 0 && (
-                <div className="space-y-2.5 p-3.5 bg-[#071217] rounded-2xl border border-slate-800">
-                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-1">
-                    <label className="text-xs font-bold text-white flex items-center gap-1.5">
-                      <span className="text-cyan-400">🏷️</span>
-                      <span>Condiciones y Equivalencias por Sistema (Comisión y Mapeo)</span>
-                    </label>
-                    <span className="text-[10px] text-slate-400 font-normal">
-                      Configura el código/ID y comisión particular de cada proveedor
-                    </span>
-                  </div>
-                  <p className="text-[11px] text-slate-400 leading-relaxed">
-                    Personaliza la <strong>Comisión %</strong> y el <strong>código/ID</strong> para cada sistema. Si la comisión del sistema se deja vacía, se aplicará la <strong>Comisión % General</strong> ({formComision || 0}%).
-                  </p>
-
-                  <div className="space-y-2.5 pt-1">
-                    {formSistemas.map((sysName) => {
-                      const currentCodigo = formCondicionesSistemas[sysName]?.codigo || '';
-                      const currentComision = formCondicionesSistemas[sysName]?.comision !== undefined && formCondicionesSistemas[sysName]?.comision !== null
-                        ? String(formCondicionesSistemas[sysName]?.comision)
-                        : '';
-                      const currentParticipacion = formCondicionesSistemas[sysName]?.participacion !== undefined && formCondicionesSistemas[sysName]?.participacion !== null
-                        ? String(formCondicionesSistemas[sysName]?.participacion)
-                        : '';
-
-                      return (
-                        <div key={sysName} className="bg-[#0D1B22] p-3 rounded-xl border border-slate-800/80 space-y-2.5">
-                          <div className="flex items-center justify-between">
-                            <span className="font-bold text-emerald-400 text-xs flex items-center gap-1.5">
-                              <span>🎰 {sysName}</span>
-                            </span>
-                            <span className="text-[10px] text-slate-400 font-mono">
-                              Comisión efectiva: <strong className="text-amber-300">{currentComision !== '' ? `${currentComision}%` : `${formComision || 0}% (General)`}</strong>
-                            </span>
-                          </div>
-
-                          <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5">
-                            <div className="space-y-1 sm:col-span-1">
-                              <label className="text-[10px] font-semibold text-slate-400 block">
-                                ID / Usuario en Reporte
-                              </label>
-                              <input
-                                type="text"
-                                placeholder={
-                                  sysName.toUpperCase().includes('GATO')
-                                    ? 'Ej: chucho@banklot.net o 502'
-                                    : sysName.toUpperCase().includes('BET')
-                                    ? 'Ej: CHUCHO o 045'
-                                    : 'Ej: ID / Código en sistema'
+                        <div
+                          key={s.id}
+                          className={`p-3 rounded-xl border transition-all flex items-center justify-between gap-3 ${
+                            isSystemActive
+                              ? 'bg-[#0D1B22] border-slate-700/90 shadow-sm'
+                              : 'bg-[#071217] border-slate-800/50 opacity-60 hover:opacity-90'
+                          }`}
+                        >
+                          <label className="flex items-center gap-2 min-w-0 cursor-pointer select-none">
+                            <input
+                              type="checkbox"
+                              checked={isSystemActive}
+                              onChange={(e) => {
+                                if (e.target.checked) {
+                                  const defaultMons = formMonedas.length > 0 ? [...formMonedas] : ['COP'];
+                                  setFormSistemaMonedas((prev) => {
+                                    const next = { ...prev, [sysName]: defaultMons };
+                                    const nextActiveSystems = Object.keys(next).filter((k) => next[k]?.length > 0);
+                                    const nextActiveCurrencies = Array.from(new Set(Object.values(next).flat().filter(Boolean)));
+                                    setFormSistemas(nextActiveSystems);
+                                    setFormMonedas(nextActiveCurrencies);
+                                    return next;
+                                  });
+                                } else {
+                                  setFormSistemaMonedas((prev) => {
+                                    const next = { ...prev, [sysName]: [] };
+                                    const nextActiveSystems = Object.keys(next).filter((k) => next[k]?.length > 0);
+                                    const nextActiveCurrencies = Array.from(new Set(Object.values(next).flat().filter(Boolean)));
+                                    setFormSistemas(nextActiveSystems);
+                                    setFormMonedas(nextActiveCurrencies);
+                                    return next;
+                                  });
                                 }
-                                value={currentCodigo}
-                                onChange={(e) => {
-                                  const val = e.target.value;
-                                  setFormCondicionesSistemas((prev) => ({
-                                    ...prev,
-                                    [sysName]: {
-                                      ...(prev[sysName] || {}),
-                                      codigo: val,
-                                    },
-                                  }));
-                                }}
-                                className="w-full bg-[#071217] border border-slate-700/80 rounded-lg px-2.5 py-1.5 text-xs text-white font-mono placeholder:text-slate-600 focus:outline-none focus:border-cyan-500"
-                              />
-                            </div>
+                              }}
+                              className="rounded text-emerald-500 bg-slate-900 border-slate-700 focus:ring-0"
+                            />
+                            <span className="font-bold text-xs text-white truncate">
+                              🎰 {sysName}
+                            </span>
+                          </label>
 
-                            <div className="space-y-1">
-                              <label className="text-[10px] font-semibold text-slate-400 block">
-                                Comisión % para {sysName}
-                              </label>
-                              <input
-                                type="number"
-                                step="0.1"
-                                min="0"
-                                max="100"
-                                placeholder={`General (${formComision || 0}%)`}
-                                value={currentComision}
-                                onChange={(e) => {
-                                  const val = e.target.value;
-                                  setFormCondicionesSistemas((prev) => {
-                                    const next = { ...prev };
-                                    if (val === '') {
-                                      const { comision, ...rest } = next[sysName] || {};
-                                      next[sysName] = rest;
-                                    } else {
-                                      next[sysName] = {
-                                        ...(next[sysName] || {}),
-                                        comision: Number(val),
-                                      };
-                                    }
-                                    return next;
-                                  });
-                                }}
-                                className="w-full bg-[#071217] border border-slate-700/80 rounded-lg px-2.5 py-1.5 text-xs text-amber-300 font-mono placeholder:text-slate-600 focus:outline-none focus:border-amber-500"
-                              />
-                            </div>
+                          {/* Píldoras de monedas para este sistema */}
+                          <div className="flex items-center gap-1.5 shrink-0">
+                            {currencies.map((m) => {
+                              const monCode = (m.nombre_moneda || '').trim().toUpperCase();
+                              if (!monCode) return null;
+                              const isChecked = activeMons.includes(monCode);
 
-                            <div className="space-y-1">
-                              <label className="text-[10px] font-semibold text-slate-400 block">
-                                Participación Agencia %
-                              </label>
-                              <input
-                                type="number"
-                                step="0.1"
-                                min="0"
-                                max="100"
-                                placeholder={`General (${formParticipacion || 0}%)`}
-                                value={currentParticipacion}
-                                onChange={(e) => {
-                                  const val = e.target.value;
-                                  setFormCondicionesSistemas((prev) => {
-                                    const next = { ...prev };
-                                    if (val === '') {
-                                      const { participacion, ...rest } = next[sysName] || {};
-                                      next[sysName] = rest;
-                                    } else {
-                                      next[sysName] = {
-                                        ...(next[sysName] || {}),
-                                        participacion: Number(val),
-                                      };
-                                    }
-                                    return next;
-                                  });
-                                }}
-                                className="w-full bg-[#071217] border border-slate-700/80 rounded-lg px-2.5 py-1.5 text-xs text-cyan-300 font-mono placeholder:text-slate-600 focus:outline-none focus:border-cyan-500"
-                              />
-                            </div>
+                              const isUsd = monCode.includes('USD') || monCode.includes('$');
+                              const isCop = monCode.includes('COP');
+
+                              const activeStyle = isUsd
+                                ? 'bg-emerald-500/20 text-emerald-300 border-emerald-500/60 shadow-[0_0_8px_rgba(16,185,129,0.2)]'
+                                : isCop
+                                ? 'bg-sky-500/20 text-sky-300 border-sky-500/60 shadow-[0_0_8px_rgba(14,165,233,0.2)]'
+                                : 'bg-amber-500/20 text-amber-300 border-amber-500/60 shadow-[0_0_8px_rgba(245,158,11,0.2)]';
+
+                              return (
+                                <button
+                                  key={monCode}
+                                  type="button"
+                                  onClick={() => toggleSystemCurrency(sysName, monCode)}
+                                  className={`px-2.5 py-1 rounded-lg text-[10px] font-bold font-mono transition-all border cursor-pointer ${
+                                    isChecked
+                                      ? activeStyle
+                                      : 'bg-slate-900/60 text-slate-500 border-slate-800 hover:text-slate-300 hover:border-slate-700'
+                                  }`}
+                                  title={`Activar/desactivar ${sysName} en ${monCode}`}
+                                >
+                                  {isChecked ? `✓ ${monCode}` : monCode}
+                                </button>
+                              );
+                            })}
                           </div>
                         </div>
                       );
                     })}
                   </div>
                 </div>
-              )}
 
-              {/* Commission and Participation */}
-              <div className="grid grid-cols-2 gap-4">
-                <div className="space-y-1.5">
-                  <label className="text-xs font-semibold text-slate-300">Comisión % (General)</label>
-                  <input
-                    type="number"
-                    step="0.1"
-                    min="0"
-                    max="100"
-                    value={formComision}
-                    onChange={(e) => setFormComision(e.target.value)}
-                    className="w-full bg-[#071217] border border-slate-700 rounded-xl px-4 py-2.5 text-xs text-white font-mono focus:outline-none focus:border-emerald-500"
-                  />
+                {/* Equivalencias por Sistema y Moneda (Comisión y Mapeo) */}
+                {activeCombinations.length > 0 && (
+                  <div className="space-y-3 p-4 bg-[#071217] rounded-2xl border border-slate-800">
+                    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-1 pb-1 border-b border-slate-800/80">
+                      <label className="text-xs font-bold text-white flex items-center gap-1.5">
+                        <span className="text-cyan-400">🏷️</span>
+                        <span>Condiciones y Equivalencias por Sistema y Moneda ({activeCombinations.length})</span>
+                      </label>
+                      <span className="text-[10px] text-slate-400 font-normal">
+                        Configura el código/ID y comisión particular de cada proveedor en su moneda
+                      </span>
+                    </div>
+                    <p className="text-[11px] text-slate-400 leading-relaxed">
+                      Personaliza la <strong>Comisión %</strong> y el <strong>código/ID en reporte</strong> para cada sistema y moneda. Si la comisión se deja vacía, se aplicará la <strong>Comisión % General</strong> ({formComision || 0}%).
+                    </p>
+
+                    <div className="space-y-3 pt-1">
+                      {activeCombinations.map(({ sistema: sysName, moneda: monCode, key: comboKey }) => {
+                        const currentItem = formCondicionesSistemas[comboKey] || formCondicionesSistemas[sysName] || {};
+                        const currentCodigo = currentItem?.codigo || '';
+                        const currentComision =
+                          currentItem?.comision !== undefined && currentItem?.comision !== null
+                            ? String(currentItem.comision)
+                            : '';
+                        const currentParticipacion =
+                          currentItem?.participacion !== undefined && currentItem?.participacion !== null
+                            ? String(currentItem.participacion)
+                            : '';
+
+                        const isUsd = monCode.includes('USD') || monCode.includes('$');
+                        const isCop = monCode.includes('COP');
+
+                        const badgeColor = isUsd
+                          ? 'text-emerald-400 bg-emerald-950/70 border-emerald-700/50'
+                          : isCop
+                          ? 'text-sky-400 bg-sky-950/70 border-sky-700/50'
+                          : 'text-amber-400 bg-amber-950/70 border-amber-700/50';
+
+                        return (
+                          <div
+                            key={comboKey}
+                            className="bg-[#0D1B22] p-3.5 sm:p-4 rounded-xl border border-slate-800/80 space-y-3 shadow-md hover:border-slate-700 transition-all"
+                          >
+                            <div className="flex items-center justify-between flex-wrap gap-2">
+                              <div className="flex items-center gap-2">
+                                <span className="font-bold text-white text-xs sm:text-sm flex items-center gap-1.5">
+                                  <span>🎰 {sysName}</span>
+                                </span>
+                                <span className={`px-2 py-0.5 rounded-md text-[10px] font-mono font-bold border ${badgeColor}`}>
+                                  {monCode}
+                                </span>
+                              </div>
+                              <span className="text-[11px] text-slate-400 font-mono">
+                                Comisión efectiva: <strong className="text-amber-300">{currentComision !== '' ? `${currentComision}%` : `${formComision || 0}% (General)`}</strong>
+                              </span>
+                            </div>
+
+                            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                              <div className="space-y-1">
+                                <label className="text-[10px] font-semibold text-slate-400 block">
+                                  ID / Usuario en Reporte ({sysName} {monCode})
+                                </label>
+                                <input
+                                  type="text"
+                                  placeholder={
+                                    sysName.toUpperCase().includes('GATO')
+                                      ? 'Ej: chucho@banklot.net o 502'
+                                      : sysName.toUpperCase().includes('BET')
+                                      ? 'Ej: MAXIMA CDA 02 T2'
+                                      : sysName.toUpperCase().includes('KENO')
+                                      ? 'Ej: MAXIMA CDA 02 T2 (5024)'
+                                      : `Ej: ID / Código en ${monCode}`
+                                  }
+                                  value={currentCodigo}
+                                  onChange={(e) => {
+                                    const val = e.target.value;
+                                    setFormCondicionesSistemas((prev) => ({
+                                      ...prev,
+                                      [comboKey]: {
+                                        ...(prev[comboKey] || prev[sysName] || {}),
+                                        codigo: val,
+                                        sistema: sysName,
+                                        moneda: monCode,
+                                      },
+                                    }));
+                                  }}
+                                  className="w-full bg-[#071217] border border-slate-700/80 rounded-lg px-3 py-2 text-xs text-white font-mono placeholder:text-slate-600 focus:outline-none focus:border-cyan-500"
+                                />
+                              </div>
+
+                              <div className="space-y-1">
+                                <label className="text-[10px] font-semibold text-slate-400 block">
+                                  Comisión % para {sysName} {monCode}
+                                </label>
+                                <input
+                                  type="number"
+                                  step="0.1"
+                                  min="0"
+                                  max="100"
+                                  placeholder={`General (${formComision || 0}%)`}
+                                  value={currentComision}
+                                  onChange={(e) => {
+                                    const val = e.target.value;
+                                    setFormCondicionesSistemas((prev) => {
+                                      const next = { ...prev };
+                                      const currentEntry = next[comboKey] || next[sysName] || {};
+                                      if (val === '') {
+                                        const { comision, ...rest } = currentEntry;
+                                        next[comboKey] = { ...rest, sistema: sysName, moneda: monCode };
+                                      } else {
+                                        next[comboKey] = {
+                                          ...currentEntry,
+                                          comision: Number(val),
+                                          sistema: sysName,
+                                          moneda: monCode,
+                                        };
+                                      }
+                                      return next;
+                                    });
+                                  }}
+                                  className="w-full bg-[#071217] border border-slate-700/80 rounded-lg px-3 py-2 text-xs text-amber-300 font-mono placeholder:text-slate-600 focus:outline-none focus:border-amber-500"
+                                />
+                              </div>
+
+                              <div className="space-y-1">
+                                <label className="text-[10px] font-semibold text-slate-400 block">
+                                  Participación Agencia % ({sysName} {monCode})
+                                </label>
+                                <input
+                                  type="number"
+                                  step="0.1"
+                                  min="0"
+                                  max="100"
+                                  placeholder={`General (${formParticipacion || 0}%)`}
+                                  value={currentParticipacion}
+                                  onChange={(e) => {
+                                    const val = e.target.value;
+                                    setFormCondicionesSistemas((prev) => {
+                                      const next = { ...prev };
+                                      const currentEntry = next[comboKey] || next[sysName] || {};
+                                      if (val === '') {
+                                        const { participacion, ...rest } = currentEntry;
+                                        next[comboKey] = { ...rest, sistema: sysName, moneda: monCode };
+                                      } else {
+                                        next[comboKey] = {
+                                          ...currentEntry,
+                                          participacion: Number(val),
+                                          sistema: sysName,
+                                          moneda: monCode,
+                                        };
+                                      }
+                                      return next;
+                                    });
+                                  }}
+                                  className="w-full bg-[#071217] border border-slate-700/80 rounded-lg px-3 py-2 text-xs text-cyan-300 font-mono placeholder:text-slate-600 focus:outline-none focus:border-cyan-500"
+                                />
+                              </div>
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                )}
+
+                {/* Commission and Participation (General) */}
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  <div className="space-y-1.5">
+                    <label className="text-xs font-semibold text-slate-300">Comisión % (General)</label>
+                    <input
+                      type="number"
+                      step="0.1"
+                      min="0"
+                      max="100"
+                      value={formComision}
+                      onChange={(e) => setFormComision(e.target.value)}
+                      className="w-full bg-[#071217] border border-slate-700 rounded-xl px-4 py-2.5 text-xs text-white font-mono focus:outline-none focus:border-emerald-500"
+                    />
+                  </div>
+
+                  <div className="space-y-1.5">
+                    <label className="text-xs font-semibold text-slate-300">Participación Agencia %</label>
+                    <input
+                      type="number"
+                      step="0.1"
+                      min="0"
+                      max="100"
+                      value={formParticipacion}
+                      onChange={(e) => setFormParticipacion(e.target.value)}
+                      className="w-full bg-[#071217] border border-slate-700 rounded-xl px-4 py-2.5 text-xs text-white font-mono focus:outline-none focus:border-emerald-500"
+                    />
+                  </div>
                 </div>
 
-                <div className="space-y-1.5">
-                  <label className="text-xs font-semibold text-slate-300">Participación Agencia %</label>
-                  <input
-                    type="number"
-                    step="0.1"
-                    min="0"
-                    max="100"
-                    value={formParticipacion}
-                    onChange={(e) => setFormParticipacion(e.target.value)}
-                    className="w-full bg-[#071217] border border-slate-700 rounded-xl px-4 py-2.5 text-xs text-white font-mono focus:outline-none focus:border-emerald-500"
-                  />
-                </div>
-              </div>
+                {/* Accounts & Devices Assignment */}
+                <div className="space-y-2">
+                  <label className="text-xs font-semibold text-slate-300">
+                    Dispositivos de Cobro y Cuentas Bancarias Asignadas
+                  </label>
+                  <div className="p-3 bg-[#071217] rounded-xl border border-slate-800 max-h-48 overflow-y-auto space-y-1.5">
+                    {accountOptions.length === 0 ? (
+                      <span className="text-xs text-slate-500 italic">No hay cuentas ni dispositivos registrados.</span>
+                    ) : (
+                      accountOptions.map((opt) => {
+                        const parsed = parseAccountDisplay(opt, bankAccounts, devices);
+                        const optId = opt.match(/^(\d+)\s*-\s*/)?.[1];
+                        const isChecked = formCuentasAsignadas.some((item) => {
+                          const itemId = item.match(/^(\d+)\s*-\s*/)?.[1];
+                          return optId && itemId ? optId === itemId : item.trim() === opt.trim();
+                        });
 
-              {/* Accounts & Devices Assignment */}
-              <div className="space-y-2">
-                <label className="text-xs font-semibold text-slate-300">
-                  Dispositivos de Cobro y Cuentas Bancarias Asignadas
-                </label>
-                <div className="p-3 bg-[#071217] rounded-xl border border-slate-800 max-h-48 overflow-y-auto space-y-1.5">
-                  {accountOptions.length === 0 ? (
-                    <span className="text-xs text-slate-500 italic">No hay cuentas ni dispositivos registrados.</span>
-                  ) : (
-                    accountOptions.map((opt) => {
-                      const parsed = parseAccountDisplay(opt, bankAccounts, devices);
-                      const optId = opt.match(/^(\d+)\s*-\s*/)?.[1];
-                      const isChecked = formCuentasAsignadas.some((item) => {
-                        const itemId = item.match(/^(\d+)\s*-\s*/)?.[1];
-                        return optId && itemId ? optId === itemId : item.trim() === opt.trim();
-                      });
-
-                      return (
-                        <label
-                          key={opt}
-                          title={parsed?.tooltip || opt}
-                          className="flex items-center gap-2.5 text-xs text-slate-300 cursor-pointer p-1.5 rounded-lg hover:bg-slate-800/50 transition-colors"
-                        >
-                          <input
-                            type="checkbox"
-                            checked={isChecked}
-                            onChange={(e) => {
-                              if (e.target.checked) {
-                                const withoutSame = formCuentasAsignadas.filter((item) => {
-                                  const itemId = item.match(/^(\d+)\s*-\s*/)?.[1];
-                                  return optId && itemId ? optId !== itemId : item.trim() !== opt.trim();
-                                });
-                                setFormCuentasAsignadas([...withoutSame, opt]);
-                              } else {
-                                setFormCuentasAsignadas(
-                                  formCuentasAsignadas.filter((item) => {
+                        return (
+                          <label
+                            key={opt}
+                            title={parsed?.tooltip || opt}
+                            className="flex items-center gap-2.5 text-xs text-slate-300 cursor-pointer p-1.5 rounded-lg hover:bg-slate-800/50 transition-colors"
+                          >
+                            <input
+                              type="checkbox"
+                              checked={isChecked}
+                              onChange={(e) => {
+                                if (e.target.checked) {
+                                  const withoutSame = formCuentasAsignadas.filter((item) => {
                                     const itemId = item.match(/^(\d+)\s*-\s*/)?.[1];
                                     return optId && itemId ? optId !== itemId : item.trim() !== opt.trim();
-                                  })
-                                );
-                              }
-                            }}
-                            className="rounded text-cyan-500 bg-slate-900 border-slate-700 focus:ring-0"
-                          />
-                          <div className="flex items-center gap-1.5 flex-1 min-w-0">
-                            {parsed?.isPos ? (
-                              <Smartphone className="w-3.5 h-3.5 text-cyan-400 shrink-0" />
-                            ) : (
-                              <CreditCard className="w-3.5 h-3.5 text-cyan-400 shrink-0" />
-                            )}
-                            <span className="font-bold text-white text-xs">
-                              {parsed?.shortTitle || opt}
-                            </span>
-                            {parsed?.titular && (
-                              <span className="text-[11px] text-slate-400 truncate">
-                                — {parsed.titular}
+                                  });
+                                  setFormCuentasAsignadas([...withoutSame, opt]);
+                                } else {
+                                  setFormCuentasAsignadas(
+                                    formCuentasAsignadas.filter((item) => {
+                                      const itemId = item.match(/^(\d+)\s*-\s*/)?.[1];
+                                      return optId && itemId ? optId !== itemId : item.trim() !== opt.trim();
+                                    })
+                                  );
+                                }
+                              }}
+                              className="rounded text-cyan-500 bg-slate-900 border-slate-700 focus:ring-0"
+                            />
+                            <div className="flex items-center gap-1.5 flex-1 min-w-0">
+                              {parsed?.isPos ? (
+                                <Smartphone className="w-3.5 h-3.5 text-cyan-400 shrink-0" />
+                              ) : (
+                                <CreditCard className="w-3.5 h-3.5 text-cyan-400 shrink-0" />
+                              )}
+                              <span className="font-bold text-white text-xs">
+                                {parsed?.shortTitle || opt}
                               </span>
-                            )}
-                          </div>
-                        </label>
-                      );
-                    })
-                  )}
+                              {parsed?.titular && (
+                                <span className="text-[11px] text-slate-400 truncate">
+                                  — {parsed.titular}
+                                </span>
+                              )}
+                            </div>
+                          </label>
+                        );
+                      })
+                    )}
+                  </div>
+                </div>
+
+                {/* POS Credentials */}
+                <div className="pt-2 border-t border-slate-800 grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  <div className="space-y-1.5">
+                    <label className="text-xs font-semibold text-slate-300">Usuario Acceso Taquilla POS</label>
+                    <input
+                      type="text"
+                      required
+                      value={formUsuarioTaquilla}
+                      onChange={(e) => setFormUsuarioTaquilla(e.target.value)}
+                      className="w-full bg-[#071217] border border-slate-700 rounded-xl px-4 py-2.5 text-xs text-white font-mono focus:outline-none focus:border-emerald-500"
+                    />
+                  </div>
+
+                  <div className="space-y-1.5">
+                    <label className="text-xs font-semibold text-slate-300">Clave / PIN de Acceso</label>
+                    <input
+                      type="text"
+                      required
+                      value={formClaveTaquilla}
+                      onChange={(e) => setFormClaveTaquilla(e.target.value)}
+                      className="w-full bg-[#071217] border border-slate-700 rounded-xl px-4 py-2.5 text-xs text-white font-mono focus:outline-none focus:border-emerald-500"
+                    />
+                  </div>
                 </div>
               </div>
 
-              {/* POS Credentials */}
-              <div className="pt-2 border-t border-slate-800 grid grid-cols-1 sm:grid-cols-2 gap-4">
-                <div className="space-y-1.5">
-                  <label className="text-xs font-semibold text-slate-300">Usuario Acceso Taquilla POS</label>
-                  <input
-                    type="text"
-                    required
-                    value={formUsuarioTaquilla}
-                    onChange={(e) => setFormUsuarioTaquilla(e.target.value)}
-                    className="w-full bg-[#071217] border border-slate-700 rounded-xl px-4 py-2.5 text-xs text-white font-mono focus:outline-none focus:border-emerald-500"
-                  />
-                </div>
-
-                <div className="space-y-1.5">
-                  <label className="text-xs font-semibold text-slate-300">Clave / PIN de Acceso</label>
-                  <input
-                    type="text"
-                    required
-                    value={formClaveTaquilla}
-                    onChange={(e) => setFormClaveTaquilla(e.target.value)}
-                    className="w-full bg-[#071217] border border-slate-700 rounded-xl px-4 py-2.5 text-xs text-white font-mono focus:outline-none focus:border-emerald-500"
-                  />
-                </div>
-              </div>
-
-              <div className="flex items-center justify-end gap-3 pt-3 border-t border-slate-800">
+              {/* Footer Fijo con Botones */}
+              <div className="flex items-center justify-end gap-3 px-6 py-3.5 border-t border-slate-800 bg-[#071217] shrink-0">
                 <button
                   type="button"
                   onClick={() => {
                     setIsNewModalOpen(false);
                     setEditModalAgency(null);
                   }}
-                  className="px-4 py-2 rounded-xl text-xs font-semibold text-slate-400 hover:text-white"
+                  className="px-4 py-2 rounded-xl text-xs font-semibold text-slate-400 hover:text-white hover:bg-slate-800/60 transition-colors cursor-pointer"
                 >
                   Cancelar
                 </button>
