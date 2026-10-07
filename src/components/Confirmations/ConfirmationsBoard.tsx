@@ -27,8 +27,10 @@ import {
   TrendingUp,
   ShieldCheck,
   ChevronDown,
-  Bell
+  Bell,
+  Code2,
 } from 'lucide-react';
+import { ApiDocsModal } from '../Common/ApiDocsModal';
 import { notificationService } from '../../utils/notificationService';
 import { realtimeBroadcast } from '../../utils/realtimeBroadcast';
 import confetti from 'canvas-confetti';
@@ -85,6 +87,7 @@ export const ConfirmationsBoard: React.FC = () => {
   // Loaded data
   const [isLoading, setIsLoading] = useState(true);
   const [isProcessing, setIsProcessing] = useState(false);
+  const [showApiModal, setShowApiModal] = useState(false);
   const [transactions, setTransactions] = useState<ConfirmationTransaction[]>([]);
   const [agenciesList, setAgenciesList] = useState<string[]>([]);
   const [cashiersList, setCashiersList] = useState<string[]>([]);
@@ -195,7 +198,10 @@ export const ConfirmationsBoard: React.FC = () => {
         }
 
         const cid = String(r.cajero_id || r.user_id || '');
-        const c_nom = cashierMap[cid] || (cid ? `ID ${cid}` : 'Desconocido');
+        const c_nom =
+          cid.toUpperCase() === 'API' || cid.toUpperCase() === 'API_EXTERNA'
+            ? '⚡ API Externa (App / Web)'
+            : cashierMap[cid] || (cid ? `ID ${cid}` : 'Desconocido');
         const metodoRaw = String(r.metodo_pago || 'Bancario').trim().toUpperCase();
         const isConf = (Boolean(r.confirmado) || Boolean(r.confirmado_supervisor)) && !isRech;
 
@@ -451,12 +457,16 @@ export const ConfirmationsBoard: React.FC = () => {
       .on('postgres_changes', { event: '*', schema: 'public', table: 'cda_pagos_bancarios' }, (payload: any) => {
         if (payload.eventType === 'INSERT') {
           const row = payload.new;
-          notificationService.showNotification('🔔 Nuevo Pago Bancario de Taquilla', {
-            body: `Agencia ${row.agencia || 'General'}: ${formatCurrency(Number(row.monto || 0), row.moneda as any)} (Ref: ${row.referencia || 'N/A'})`,
-            soundType: 'new_payment',
-            toastType: 'payment',
-            tag: `pago_banco_${row.id || row.referencia}`,
-          });
+          const isFromApi = String(row.cajero_id || '').toUpperCase() === 'API';
+          notificationService.showNotification(
+            isFromApi ? '⚡ Nuevo Pago de API Externa (App / Web)' : '🔔 Nuevo Pago Bancario de Taquilla',
+            {
+              body: `Agencia ${row.agencia || 'General'}: ${formatCurrency(Number(row.monto || 0), row.moneda as any)} (Ref: ${row.referencia || 'N/A'})${isFromApi ? ' • Requiere confirmación' : ''}`,
+              soundType: 'new_payment',
+              toastType: 'payment',
+              tag: `pago_banco_${row.id || row.referencia}`,
+            }
+          );
         }
         loadData(true);
       })
@@ -1171,6 +1181,16 @@ export const ConfirmationsBoard: React.FC = () => {
             <span className="hidden sm:inline">Alertas Push</span>
           </button>
 
+          {/* External API / Connect Apps Button */}
+          <button
+            onClick={() => setShowApiModal(true)}
+            className="px-3.5 py-2 rounded-xl bg-purple-500/10 hover:bg-purple-500/20 text-purple-300 text-xs font-bold flex items-center gap-2 transition-all border border-purple-500/30 cursor-pointer shadow-sm"
+            title="Credenciales y webhook de API para conectar aplicaciones móviles o externas"
+          >
+            <Code2 className="w-3.5 h-3.5 text-purple-400" />
+            <span className="hidden sm:inline">Conectar Apps / API</span>
+          </button>
+
           {/* Manual Sync Button */}
           <button
             onClick={() => loadData(false)}
@@ -1512,7 +1532,13 @@ export const ConfirmationsBoard: React.FC = () => {
 
                         <span className="text-sm font-black text-white">{item.agencia}</span>
 
-                        <span className="text-xs text-slate-400">• Cajero: <strong className="text-slate-300">{item.cajero_nombre}</strong></span>
+                        {item.cajero_id === 'API' || item.cajero_nombre?.includes('API') ? (
+                          <span className="px-2 py-0.5 rounded-md bg-purple-500/20 text-purple-300 border border-purple-500/40 text-[10px] font-black flex items-center gap-1">
+                            ⚡ API EXTERNA (APP/WEB)
+                          </span>
+                        ) : (
+                          <span className="text-xs text-slate-400">• Cajero: <strong className="text-slate-300">{item.cajero_nombre}</strong></span>
+                        )}
 
                         <span className="text-xs text-slate-500">📅 {formatDate(item.fecha)}</span>
 
@@ -2177,6 +2203,8 @@ export const ConfirmationsBoard: React.FC = () => {
           </div>
         </div>
       )}
+      {/* API Documentation and Connection Modal */}
+      <ApiDocsModal isOpen={showApiModal} onClose={() => setShowApiModal(false)} />
     </div>
   );
 };

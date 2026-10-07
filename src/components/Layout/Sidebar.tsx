@@ -25,6 +25,7 @@ import {
   Lock,
   Settings,
   Users,
+  Code2,
   X,
   Building2,
   Crown,

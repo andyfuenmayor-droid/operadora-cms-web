@@ -21,11 +21,13 @@ import {
   Receipt,
   RotateCcw,
   Bell,
-  Sparkles
+  Sparkles,
+  Code2,
 } from 'lucide-react';
 import confetti from 'canvas-confetti';
 import { notificationService } from '../../utils/notificationService';
 import { realtimeBroadcast } from '../../utils/realtimeBroadcast';
+import { ApiDocsModal } from '../Common/ApiDocsModal';
 
 export const ConfirmationsQuick: React.FC = () => {
   const { effectiveUserId, user } = useAuth();
@@ -33,6 +35,9 @@ export const ConfirmationsQuick: React.FC = () => {
   // Filters state
   const [selAgencia, setSelAgencia] = useState('Todas');
   const [searchQuery, setSearchQuery] = useState('');
+
+  // API Modal state
+  const [showApiModal, setShowApiModal] = useState(false);
 
   // Data state
   const [isLoading, setIsLoading] = useState(true);
@@ -146,6 +151,9 @@ export const ConfirmationsQuick: React.FC = () => {
           return agNom ? `${agNom} (Taquilla)` : 'Taquilla';
         }
         const cidClean = String(cid).trim();
+        if (cidClean.toUpperCase() === 'API' || cidClean.toUpperCase() === 'API_EXTERNA') {
+          return '⚡ API Externa (App / Web)';
+        }
         if (cashierMap[cidClean]) return cashierMap[cidClean];
         if (cidClean.toLowerCase().startsWith('ag_')) {
           const rawAid = cidClean.slice(3);
@@ -447,12 +455,16 @@ export const ConfirmationsQuick: React.FC = () => {
         if (payload.eventType === 'INSERT') {
           const row = payload.new;
           if (row.id) markRecentlyArrived(`cda_pagos_bancarios_${row.id}`);
-          notificationService.showNotification('🔔 Nuevo Pago Bancario de Taquilla', {
-            body: `Agencia ${row.agencia || 'General'}: ${formatCurrency(Number(row.monto || 0), row.moneda as any)} (Ref: ${row.referencia || 'N/A'})`,
-            soundType: 'new_payment',
-            toastType: 'payment',
-            tag: `pago_banco_${row.id || row.referencia}`,
-          });
+          const isFromApi = String(row.cajero_id || '').toUpperCase() === 'API';
+          notificationService.showNotification(
+            isFromApi ? '⚡ Nuevo Pago de API Externa (App / Web)' : '🔔 Nuevo Pago Bancario de Taquilla',
+            {
+              body: `Agencia ${row.agencia || 'General'}: ${formatCurrency(Number(row.monto || 0), row.moneda as any)} (Ref: ${row.referencia || 'N/A'})${isFromApi ? ' • Requiere confirmación' : ''}`,
+              soundType: 'new_payment',
+              toastType: 'payment',
+              tag: `pago_banco_${row.id || row.referencia}`,
+            }
+          );
         }
         loadData(true);
       })
@@ -884,6 +896,16 @@ export const ConfirmationsQuick: React.FC = () => {
             {secondsAgo < 5 ? 'Actualizado ahora' : `Hace ${secondsAgo}s`}
           </span>
 
+          {/* External API / Connect Apps Button */}
+          <button
+            onClick={() => setShowApiModal(true)}
+            className="flex items-center gap-1.5 px-3 py-2 rounded-xl bg-purple-500/10 hover:bg-purple-500/20 text-purple-300 text-xs font-bold transition-all border border-purple-500/30 cursor-pointer shadow-sm"
+            title="Credenciales y webhook de API para conectar aplicaciones móviles o externas"
+          >
+            <Code2 className="w-3.5 h-3.5 text-purple-400" />
+            <span className="hidden sm:inline">Conectar Apps / API</span>
+          </button>
+
           {/* Manual Sync Button */}
           <button
             onClick={() => loadData(false)}
@@ -1070,6 +1092,13 @@ export const ConfirmationsQuick: React.FC = () => {
                         </span>
                       )}
 
+                      {(tx.cajero_id === 'API' || tx.cajero_nombre?.includes('API')) && (
+                        <span className="px-2 py-0.5 rounded-md text-[10px] font-black uppercase tracking-wider bg-purple-500/20 text-purple-300 border border-purple-500/40 shadow-sm flex items-center gap-1">
+                          <Code2 className="w-3 h-3 text-purple-400" />
+                          <span>API EXTERNA (APP/WEB)</span>
+                        </span>
+                      )}
+
                       <span
                         className={`px-2 py-0.5 rounded-md text-[10px] font-black uppercase tracking-wider ${
                           isGasto
@@ -1091,7 +1120,14 @@ export const ConfirmationsQuick: React.FC = () => {
                     </div>
 
                     {/* Metadata Grid */}
-                    <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 text-xs text-slate-300 pt-1">
+                    <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 text-xs text-slate-300 pt-1">
+                      <div>
+                        <span className="text-[10px] text-slate-500 uppercase block font-bold">Origen / Cajero</span>
+                        <span className={`font-semibold truncate block ${tx.cajero_id === 'API' || tx.cajero_nombre?.includes('API') ? 'text-purple-300 font-bold' : 'text-slate-200'}`}>
+                          {tx.cajero_nombre || 'Taquilla'}
+                        </span>
+                      </div>
+
                       <div>
                         <span className="text-[10px] text-slate-500 uppercase block font-bold">Método</span>
                         <span className="font-semibold text-slate-200">{tx.metodo}</span>
@@ -1231,6 +1267,9 @@ export const ConfirmationsQuick: React.FC = () => {
           </div>
         </div>
       )}
+
+      {/* API Documentation and Connection Modal */}
+      <ApiDocsModal isOpen={showApiModal} onClose={() => setShowApiModal(false)} />
     </div>
   );
 };

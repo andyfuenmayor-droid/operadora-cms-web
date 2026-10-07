@@ -26,9 +26,11 @@ import {
   Layers,
   Coins,
   TrendingUp,
-  AlertCircle
+  AlertCircle,
+  Code2,
 } from 'lucide-react';
 import confetti from 'canvas-confetti';
+import { ApiDocsModal } from '../Common/ApiDocsModal';
 
 interface PaymentItem {
   id: number;
@@ -87,6 +89,7 @@ export const PaymentsTab: React.FC = () => {
   const [formFecha, setFormFecha] = useState(systemCycle?.hasta || new Date().toISOString().split('T')[0]);
 
   const [message, setMessage] = useState<{ type: 'success' | 'error' | 'info'; text: string } | null>(null);
+  const [showApiModal, setShowApiModal] = useState(false);
 
   // Sync form date if system cycle updates
   useEffect(() => {
@@ -665,14 +668,26 @@ export const PaymentsTab: React.FC = () => {
           </p>
         </div>
 
-        <button
-          onClick={() => loadData()}
-          disabled={isLoading}
-          className="px-3.5 py-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-semibold flex items-center gap-1.5 transition-all border border-slate-700 cursor-pointer disabled:opacity-50"
-        >
-          <RefreshCw className={`w-3.5 h-3.5 ${isLoading ? 'animate-spin' : ''}`} />
-          Actualizar
-        </button>
+        <div className="flex items-center gap-2">
+          {/* Connect Apps / API Button */}
+          <button
+            onClick={() => setShowApiModal(true)}
+            className="px-3.5 py-2.5 rounded-xl bg-purple-500/10 hover:bg-purple-500/20 text-purple-300 text-xs font-semibold flex items-center gap-1.5 transition-all border border-purple-500/30 cursor-pointer shadow-sm"
+            title="Credenciales y webhook de API para conectar aplicaciones externas"
+          >
+            <Code2 className="w-3.5 h-3.5 text-purple-400" />
+            <span>Conectar Apps / API</span>
+          </button>
+
+          <button
+            onClick={() => loadData()}
+            disabled={isLoading}
+            className="px-3.5 py-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-semibold flex items-center gap-1.5 transition-all border border-slate-700 cursor-pointer disabled:opacity-50"
+          >
+            <RefreshCw className={`w-3.5 h-3.5 ${isLoading ? 'animate-spin' : ''}`} />
+            Actualizar
+          </button>
+        </div>
       </div>
 
       {message && (
@@ -1316,6 +1331,9 @@ export const PaymentsTab: React.FC = () => {
           </table>
         </div>
       </div>
+
+      {/* External Apps & API Connection Modal */}
+      <ApiDocsModal isOpen={showApiModal} onClose={() => setShowApiModal(false)} />
     </div>
   );
 };

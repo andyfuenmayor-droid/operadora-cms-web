@@ -1,0 +1,163 @@
+{
+  "info": {
+    "name": "Operadora CMS - API Pública de Pagos",
+    "description": "Colección completa de endpoints para recepción y verificación de pagos desde aplicaciones externas en Operadora CMS / Multibanca Express.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    {
+      "key": "base_url",
+      "value": "https://crm.multibancaexpress.com",
+      "type": "string"
+    },
+    {
+      "key": "api_key",
+      "value": "mbe_live_7f8a9b0c1d2e3f4a5b6c7d8e9f0a1b2c",
+      "type": "string"
+    }
+  ],
+  "item": [
+    {
+      "name": "1. Registrar Nuevo Pago (POST)",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          },
+          {
+            "key": "X-API-Key",
+            "value": "{{api_key}}"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"agencia\": \"AGENCIA CENTRAL 01\",\n  \"monto\": 150000.00,\n  \"moneda\": \"COP\",\n  \"referencia\": \"REF-482910\",\n  \"metodo\": \"TRANSFERENCIA\",\n  \"pagador\": \"CARLOS MENDEZ\",\n  \"concepto\": \"Recarga de saldo usuario #5044\",\n  \"confirmado\": false\n}"
+        },
+        "url": {
+          "raw": "{{base_url}}/api/v1/payments",
+          "host": [
+            "{{base_url}}"
+          ],
+          "path": [
+            "api",
+            "v1",
+            "payments"
+          ]
+        }
+      }
+    },
+    {
+      "name": "2. Carga Masiva de Pagos (Batch POST)",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          },
+          {
+            "key": "X-API-Key",
+            "value": "{{api_key}}"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"pagos\": [\n    {\n      \"agencia\": \"AGENCIA CENTRAL 01\",\n      \"monto\": 100000,\n      \"moneda\": \"COP\",\n      \"referencia\": \"BATCH-01\",\n      \"metodo\": \"PAGO MOVIL\"\n    },\n    {\n      \"agencia\": \"AGENCIA CENTRAL 01\",\n      \"monto\": 50.00,\n      \"moneda\": \"USD\",\n      \"referencia\": \"BATCH-02\",\n      \"metodo\": \"ZELLE\"\n    }\n  ]\n}"
+        },
+        "url": {
+          "raw": "{{base_url}}/api/v1/payments/batch",
+          "host": [
+            "{{base_url}}"
+          ],
+          "path": [
+            "api",
+            "v1",
+            "payments",
+            "batch"
+          ]
+        }
+      }
+    },
+    {
+      "name": "3. Verificar Estado de Pago por Referencia (GET)",
+      "request": {
+        "method": "GET",
+        "header": [
+          {
+            "key": "X-API-Key",
+            "value": "{{api_key}}"
+          }
+        ],
+        "url": {
+          "raw": "{{base_url}}/api/v1/payments/verify?referencia=REF-482910",
+          "host": [
+            "{{base_url}}"
+          ],
+          "path": [
+            "api",
+            "v1",
+            "payments",
+            "verify"
+          ],
+          "query": [
+            {
+              "key": "referencia",
+              "value": "REF-482910"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "name": "4. Probar en Modo Sandbox / Simulación (POST)",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          },
+          {
+            "key": "X-API-Key",
+            "value": "{{api_key}}"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"agencia\": \"AGENCIA CENTRAL 01\",\n  \"monto\": 50000,\n  \"moneda\": \"COP\",\n  \"referencia\": \"TEST-9988\",\n  \"metodo\": \"PAGO MOVIL\"\n}"
+        },
+        "url": {
+          "raw": "{{base_url}}/api/v1/payments/simulate",
+          "host": [
+            "{{base_url}}"
+          ],
+          "path": [
+            "api",
+            "v1",
+            "payments",
+            "simulate"
+          ]
+        }
+      }
+    },
+    {
+      "name": "5. Health Check (GET)",
+      "request": {
+        "method": "GET",
+        "url": {
+          "raw": "{{base_url}}/api/v1/health",
+          "host": [
+            "{{base_url}}"
+          ],
+          "path": [
+            "api",
+            "v1",
+            "health"
+          ]
+        }
+      }
+    }
+  ]
+}
