@@ -71,7 +71,8 @@ export const WeeklyClosureTab: React.FC = () => {
   const [operatorPayments, setOperatorPayments] = useState<OperatorPayment[]>([]);
   const [closureInspectionMode, setClosureInspectionMode] = useState<'agencias' | 'operadoras'>('agencias');
 
-  const [verifiedCheck, setVerifiedCheck] = useState(false);
+  const [verifiedCheckAgencias, setVerifiedCheckAgencias] = useState(false);
+  const [verifiedCheckOperadoras, setVerifiedCheckOperadoras] = useState(false);
   const [message, setMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
   const [isConfirmModalOpen, setIsConfirmModalOpen] = useState(false);
   const [hasRollbackBackup, setHasRollbackBackup] = useState(false);
@@ -291,22 +292,61 @@ export const WeeklyClosureTab: React.FC = () => {
     );
   }, [registeredSystems, systemConfigs, sales, operatorPayments]);
 
-  // CSV Export for Accountant Backup
+  // CSV Export Contextual (Agencias vs Operadoras)
   const handleDownloadBackupCSV = () => {
-    if (closureData.length === 0 && operatorClosureRows.length === 0) return;
+    if (closureInspectionMode === 'operadoras') {
+      if (operatorClosureRows.length === 0) return;
+      const headers = [
+        'Casa_Operadora',
+        'Moneda',
+        'Venta',
+        'Premios',
+        'GGR_Utilidad_Bruta',
+        'Dif_Com',
+        'Ganancia_Comercializador',
+        'Utilidad_Casa_60',
+        'Arrastre_Inicial',
+        'Pagos_Netos',
+        'Nuevo_Arrastre',
+      ];
+      const operatorExportRows = operatorClosureRows.map((op) => [
+        `"${op.sistema}"`,
+        op.moneda,
+        op.venta.toFixed(2),
+        op.premio.toFixed(2),
+        op.utilidadBruta.toFixed(2),
+        op.difCom.toFixed(2),
+        op.totalCom.toFixed(2),
+        op.netoOperadora.toFixed(2),
+        op.saldoInit.toFixed(2),
+        op.pagosNetos.toFixed(2),
+        op.balanceFinal.toFixed(2),
+      ]);
+      const csvContent = '\uFEFF' + [headers.join(','), ...operatorExportRows.map((r) => r.join(','))].join('\n');
+      const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      link.setAttribute('download', `Liquidacion_Operadoras_Semana_${systemCycle.semana}_${systemCycle.desde}_al_${systemCycle.hasta}.csv`);
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      URL.revokeObjectURL(url);
+      return;
+    }
+
+    if (closureData.length === 0) return;
     const headers = [
-      'Tipo_Entidad',
-      'Entidad',
+      'Agencia',
       'Moneda',
       'Arrastre_Inicial',
-      'Venta_Bruta',
+      'Venta_Neta',
       'Gastos',
       'Premios',
-      'Cobros_o_PagosNetos',
-      'Saldo_Final'
+      'Cobros',
+      'Saldo_Final',
     ];
     const agencyExportRows = closureData.map((d) => [
-      'AGENCIA',
       `"${d.entidad}"`,
       d.moneda,
       d.saldo_anterior.toFixed(2),
@@ -316,25 +356,12 @@ export const WeeklyClosureTab: React.FC = () => {
       d.cobros.toFixed(2),
       d.saldo_final.toFixed(2),
     ]);
-
-    const operatorExportRows = operatorClosureRows.map((op) => [
-      'OPERADORA',
-      `"${op.sistema}"`,
-      op.moneda,
-      op.saldoInit.toFixed(2),
-      op.venta.toFixed(2),
-      '0.00',
-      op.premio.toFixed(2),
-      op.pagosNetos.toFixed(2),
-      op.balanceFinal.toFixed(2),
-    ]);
-
-    const csvContent = '\uFEFF' + [headers.join(','), ...agencyExportRows.map((r) => r.join(',')), ...operatorExportRows.map((r) => r.join(','))].join('\n');
+    const csvContent = '\uFEFF' + [headers.join(','), ...agencyExportRows.map((r) => r.join(',')), ].join('\n');
     const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
     const url = URL.createObjectURL(blob);
     const link = document.createElement('a');
     link.href = url;
-    link.setAttribute('download', `Respaldo_Cierre_Semana_${systemCycle.semana}_${systemCycle.desde}_al_${systemCycle.hasta}.csv`);
+    link.setAttribute('download', `Respaldo_Agencias_Semana_${systemCycle.semana}_${systemCycle.desde}_al_${systemCycle.hasta}.csv`);
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
@@ -612,13 +639,18 @@ export const WeeklyClosureTab: React.FC = () => {
       await refreshSystemCycle();
 
       confetti({ particleCount: 90, spread: 100, origin: { y: 0.6 } });
+      const successMsg =
+        closureInspectionMode === 'operadoras'
+          ? `¡Liquidación de Casas Operadoras finalizada con éxito! Los nuevos saldos de arrastre han sido traspasados a los proveedores y el ciclo ha avanzado a la Semana ${nuevaSemana} (${nuevaDesdeStr} al ${nuevaHastaStr}). Se ha guardado un respaldo seguro.`
+          : `¡Cierre de Agencias finalizado con éxito! Los nuevos saldos de arrastre han sido asignados y el ciclo ha avanzado a la Semana ${nuevaSemana} (${nuevaDesdeStr} al ${nuevaHastaStr}). Se ha guardado un respaldo seguro.`;
       setMessage({
         type: 'success',
-        text: `¡Ciclo finalizado con éxito! El sistema ha avanzado a la Semana ${nuevaSemana} (${nuevaDesdeStr} al ${nuevaHastaStr}). Se ha guardado un respaldo seguro.`,
+        text: successMsg,
       });
 
       setIsConfirmModalOpen(false);
-      setVerifiedCheck(false);
+      setVerifiedCheckAgencias(false);
+      setVerifiedCheckOperadoras(false);
       await loadData();
     } catch (err: any) {
       console.error('Error in weekly closure:', err);
@@ -640,7 +672,7 @@ export const WeeklyClosureTab: React.FC = () => {
             Centro de Cierre y Registro Maestro
           </h2>
           <p className="text-xs sm:text-sm text-slate-400 mt-1">
-            Auditoría de balances finales de agencias, traspaso automático de saldos de arrastre y avance de ciclo operativo.
+            Auditoría de balances finales de agencias y liquidación de casas operadoras, traspaso de saldos y avance de ciclo.
           </p>
         </div>
 
@@ -659,12 +691,16 @@ export const WeeklyClosureTab: React.FC = () => {
 
           <button
             onClick={handleDownloadBackupCSV}
-            disabled={closureData.length === 0}
-            title="Descargar copia de respaldo de balances en formato CSV"
-            className="px-3.5 py-2.5 rounded-xl bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-400 text-xs font-semibold flex items-center gap-1.5 transition-all border border-emerald-500/30 cursor-pointer disabled:opacity-50"
+            disabled={closureInspectionMode === 'operadoras' ? operatorClosureRows.length === 0 : closureData.length === 0}
+            title={closureInspectionMode === 'operadoras' ? 'Descargar liquidación de operadoras en formato CSV' : 'Descargar copia de respaldo de agencias en formato CSV'}
+            className={`px-3.5 py-2.5 rounded-xl text-xs font-semibold flex items-center gap-1.5 transition-all border cursor-pointer disabled:opacity-50 ${
+              closureInspectionMode === 'operadoras'
+                ? 'bg-amber-500/10 hover:bg-amber-500/20 text-amber-400 border-amber-500/30'
+                : 'bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-400 border-emerald-500/30'
+            }`}
           >
             <Download className="w-3.5 h-3.5" />
-            Exportar Respaldo (CSV)
+            {closureInspectionMode === 'operadoras' ? 'Exportar Operadoras (CSV)' : 'Exportar Agencias (CSV)'}
           </button>
 
           <button
@@ -731,7 +767,7 @@ export const WeeklyClosureTab: React.FC = () => {
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 relative z-10">
           <div>
             <span className="text-[11px] font-bold uppercase tracking-wider text-amber-400 bg-amber-400/10 px-2.5 py-1 rounded-full border border-amber-400/20">
-              Ciclo Sujeto a Cierre
+              {closureInspectionMode === 'operadoras' ? 'Liquidación de Casas Operadoras (Proveedores)' : 'Cierre de Agencias (Puntos de Venta)'}
             </span>
             <h3 className="text-lg font-bold text-white mt-2">
               {systemCycle.tipo === 'SEMANAL' ? `Semana ${systemCycle.semana}` : `Operación Diaria ${systemCycle.semana}`}
@@ -743,14 +779,33 @@ export const WeeklyClosureTab: React.FC = () => {
           </div>
 
           <div className="flex items-center gap-4 text-right">
-            <div>
-              <span className="text-[11px] text-slate-400 block">Agencias:</span>
-              <span className="text-lg font-black text-white font-mono">{agencies.length}</span>
-            </div>
-            <div className="border-l border-slate-800 pl-4">
-              <span className="text-[11px] text-slate-400 block">Operadoras:</span>
-              <span className="text-lg font-black text-amber-400 font-mono">{operatorClosureRows.length}</span>
-            </div>
+            {closureInspectionMode === 'operadoras' ? (
+              <>
+                <div>
+                  <span className="text-[11px] text-slate-400 block">Casas Operadoras:</span>
+                  <span className="text-lg font-black text-amber-400 font-mono">{operatorClosureRows.length}</span>
+                </div>
+                <div className="border-l border-slate-800 pl-4">
+                  <span className="text-[11px] text-slate-400 block">Monedas Activas:</span>
+                  <span className="text-sm font-bold text-white font-mono">
+                    {['BS', 'USD', 'COP'].filter((m) => operatorClosureRows.some((r) => r.moneda === m)).join(' • ') || 'Sin datos'}
+                  </span>
+                </div>
+              </>
+            ) : (
+              <>
+                <div>
+                  <span className="text-[11px] text-slate-400 block">Agencias Activas:</span>
+                  <span className="text-lg font-black text-emerald-400 font-mono">{agencies.length}</span>
+                </div>
+                <div className="border-l border-slate-800 pl-4">
+                  <span className="text-[11px] text-slate-400 block">Monedas Activas:</span>
+                  <span className="text-sm font-bold text-white font-mono">
+                    {['BS', 'USD', 'COP'].filter((m) => closureData.some((r) => r.moneda === m)).join(' • ') || 'Sin datos'}
+                  </span>
+                </div>
+              </>
+            )}
           </div>
         </div>
       </div>
@@ -909,48 +964,85 @@ export const WeeklyClosureTab: React.FC = () => {
       )}
 
       {/* Confirmation & Finalize Box */}
-      <div className="bg-[#0D1B22] border border-slate-800 rounded-3xl p-6 sm:p-8 shadow-xl space-y-5">
-        <div className="flex items-start gap-3 p-4 bg-amber-500/10 border border-amber-500/20 rounded-2xl text-xs text-amber-300">
-          <ShieldAlert className="w-5 h-5 shrink-0 text-amber-400 mt-0.5" />
-          <div className="space-y-1">
-            <strong>ADVERTENCIA DE CIERRE DEFINITIVO DUAL (AGENCIAS Y OPERADORAS):</strong>
-            <p className="text-slate-300">
-              Al finalizar el ciclo, los balances finales calculados se registrarán como los nuevos saldos de arrastre iniciales de las <strong className="text-white">Agencias</strong> y de las <strong className="text-white">Casas Operadoras (Proveedores)</strong>. Los registros actuales del ciclo se archivarán en el registro histórico y las tablas activas quedarán listas para el nuevo período.
-            </p>
+      {closureInspectionMode === 'operadoras' ? (
+        <div className="bg-[#0D1B22] border border-amber-500/20 rounded-3xl p-6 sm:p-8 shadow-xl space-y-5">
+          <div className="flex items-start gap-3 p-4 bg-amber-500/10 border border-amber-500/20 rounded-2xl text-xs text-amber-300">
+            <Globe className="w-5 h-5 shrink-0 text-amber-400 mt-0.5" />
+            <div className="space-y-1">
+              <strong className="text-amber-300">ADVERTENCIA DE CIERRE Y LIQUIDACIÓN DE CASAS OPERADORAS (PROVEEDORES):</strong>
+              <p className="text-slate-300">
+                Al finalizar el ciclo de operadoras, los balances finales calculados (<strong className="text-white">Nuevo Arrastre</strong>) se registrarán automáticamente como los nuevos saldos de arrastre iniciales de cada <strong className="text-white">Casa Operadora (Proveedor)</strong> para el siguiente ciclo. Los resultados de comisiones, diferencial comercializador y utilidades de las operadoras se archivarán en el registro histórico y las cuentas quedarán preparadas para el nuevo período operativo.
+              </p>
+            </div>
+          </div>
+
+          <label className="flex items-center gap-3 cursor-pointer p-3 rounded-2xl border border-slate-800 hover:bg-slate-800/40 transition-colors">
+            <input
+              type="checkbox"
+              checked={verifiedCheckOperadoras}
+              onChange={(e) => setVerifiedCheckOperadoras(e.target.checked)}
+              className="w-5 h-5 rounded text-amber-500 bg-[#071217] border-slate-700 focus:ring-0 cursor-pointer"
+            />
+            <span className="text-xs font-bold text-white select-none">
+              He verificado la liquidación y montos de las Casas Operadoras (Venta, Premios, Ganancia Comercializador y Arrastre). Traspasar nuevos saldos de arrastre a los proveedores.
+            </span>
+          </label>
+
+          <div className="flex justify-end pt-2">
+            <button
+              onClick={() => setIsConfirmModalOpen(true)}
+              disabled={!verifiedCheckOperadoras || isProcessing}
+              className="px-8 py-3.5 rounded-2xl bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-400 hover:to-amber-500 text-slate-950 font-black text-xs uppercase tracking-wider shadow-xl shadow-amber-500/20 flex items-center gap-2 transition-all cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed"
+            >
+              <Globe className="w-4 h-4" />
+              {isProcessing ? 'Procesando Liquidación...' : 'Finalizar Liquidación de Casas Operadoras'}
+            </button>
           </div>
         </div>
+      ) : (
+        <div className="bg-[#0D1B22] border border-emerald-500/20 rounded-3xl p-6 sm:p-8 shadow-xl space-y-5">
+          <div className="flex items-start gap-3 p-4 bg-emerald-500/10 border border-emerald-500/20 rounded-2xl text-xs text-emerald-300">
+            <Building2 className="w-5 h-5 shrink-0 text-emerald-400 mt-0.5" />
+            <div className="space-y-1">
+              <strong className="text-emerald-300">ADVERTENCIA DE CIERRE DEFINITIVO DE AGENCIAS:</strong>
+              <p className="text-slate-300">
+                Al finalizar el ciclo de agencias, los balances finales calculados se registrarán como los nuevos saldos de arrastre iniciales de las <strong className="text-white">Agencias</strong>. Las ventas, gastos y cobros del ciclo se archivarán en el registro histórico y las cuentas quedarán preparadas para el nuevo período.
+              </p>
+            </div>
+          </div>
 
-        <label className="flex items-center gap-3 cursor-pointer p-3 rounded-2xl border border-slate-800 hover:bg-slate-800/40 transition-colors">
-          <input
-            type="checkbox"
-            checked={verifiedCheck}
-            onChange={(e) => setVerifiedCheck(e.target.checked)}
-            className="w-5 h-5 rounded text-amber-500 bg-[#071217] border-slate-700 focus:ring-0 cursor-pointer"
-          />
-          <span className="text-xs font-bold text-white select-none">
-            He verificado los montos de Agencias y Casas Operadoras. Traspasar saldos de arrastre y avanzar el ciclo operativo.
-          </span>
-        </label>
+          <label className="flex items-center gap-3 cursor-pointer p-3 rounded-2xl border border-slate-800 hover:bg-slate-800/40 transition-colors">
+            <input
+              type="checkbox"
+              checked={verifiedCheckAgencias}
+              onChange={(e) => setVerifiedCheckAgencias(e.target.checked)}
+              className="w-5 h-5 rounded text-emerald-500 bg-[#071217] border-slate-700 focus:ring-0 cursor-pointer"
+            />
+            <span className="text-xs font-bold text-white select-none">
+              He verificado los montos de las Agencias (Venta Neta, Gastos, Premios, Cobros y Saldo Final). Traspasar saldos de arrastre y avanzar el ciclo operativo.
+            </span>
+          </label>
 
-        <div className="flex justify-end pt-2">
-          <button
-            onClick={() => setIsConfirmModalOpen(true)}
-            disabled={!verifiedCheck || isProcessing}
-            className="px-8 py-3.5 rounded-2xl bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-400 hover:to-amber-500 text-slate-950 font-black text-xs uppercase tracking-wider shadow-xl shadow-amber-500/20 flex items-center gap-2 transition-all cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed"
-          >
-            <Lock className="w-4 h-4" />
-            {isProcessing ? 'Procesando Cierre...' : 'Finalizar Ciclo y Avanzar'}
-          </button>
+          <div className="flex justify-end pt-2">
+            <button
+              onClick={() => setIsConfirmModalOpen(true)}
+              disabled={!verifiedCheckAgencias || isProcessing}
+              className="px-8 py-3.5 rounded-2xl bg-gradient-to-r from-emerald-500 to-emerald-600 hover:from-emerald-400 hover:to-emerald-500 text-slate-950 font-black text-xs uppercase tracking-wider shadow-xl shadow-emerald-500/20 flex items-center gap-2 transition-all cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed"
+            >
+              <Building2 className="w-4 h-4" />
+              {isProcessing ? 'Procesando Cierre...' : 'Finalizar Cierre Maestro de Agencias'}
+            </button>
+          </div>
         </div>
-      </div>
+      )}
 
         </div>
       )}
 
-      {/* Modal de Confirmación Pre-Cierre */}
-      {isConfirmModalOpen && (
+      {/* Modal de Confirmación Pre-Cierre (CASAS OPERADORAS) */}
+      {isConfirmModalOpen && closureInspectionMode === 'operadoras' && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm animate-fade-in">
-          <div className="bg-[#0D1B22] border border-amber-500/30 rounded-3xl max-w-xl w-full p-6 sm:p-8 shadow-2xl space-y-6 relative">
+          <div className="bg-[#0D1B22] border border-amber-500/30 rounded-3xl max-w-2xl w-full p-6 sm:p-8 shadow-2xl space-y-6 relative max-h-[90vh] overflow-y-auto">
             <button
               onClick={() => !isProcessing && setIsConfirmModalOpen(false)}
               className="absolute top-4 right-4 text-slate-400 hover:text-white p-2 rounded-xl hover:bg-slate-800 transition-colors cursor-pointer"
@@ -960,10 +1052,153 @@ export const WeeklyClosureTab: React.FC = () => {
 
             <div className="flex items-center gap-3">
               <div className="p-3 rounded-2xl bg-amber-500/20 text-amber-400 border border-amber-500/30">
-                <Lock className="w-6 h-6" />
+                <Globe className="w-6 h-6" />
               </div>
               <div>
-                <h3 className="text-lg font-black text-white">Confirmación de Cierre Maestro Dual</h3>
+                <h3 className="text-lg font-black text-white">Confirmación de Liquidación de Casas Operadoras</h3>
+                <p className="text-xs text-slate-400">
+                  {systemCycle.tipo === 'SEMANAL' ? `Semana ${systemCycle.semana}` : `Operación Diaria ${systemCycle.semana}`} ({systemCycle.desde} al {systemCycle.hasta})
+                </p>
+              </div>
+            </div>
+
+            <div className="bg-slate-900/80 border border-slate-800 rounded-2xl p-4 space-y-3 text-xs">
+              <div className="flex justify-between items-center pb-2 border-b border-slate-800">
+                <span className="text-slate-400">Casas Operadoras auditadas:</span>
+                <span className="font-bold font-mono text-amber-400">{operatorClosureRows.length} operadoras</span>
+              </div>
+              <div className="flex justify-between items-center pb-2 border-b border-slate-800">
+                <span className="text-slate-400">Monedas operativas activas:</span>
+                <span className="font-bold font-mono text-white">
+                  {['BS', 'USD', 'COP'].filter((m) => operatorClosureRows.some((r) => r.moneda === m)).join(', ') || 'Ninguna'}
+                </span>
+              </div>
+
+              <div className="pt-1">
+                <span className="text-slate-400 block mb-2 font-semibold uppercase tracking-wider text-[10px]">
+                  Resumen de Liquidación y Nuevos Arrastres por Moneda:
+                </span>
+                <div className="grid grid-cols-1 gap-2.5">
+                  {['BS', 'USD', 'COP'].map((mon) => {
+                    const opT = operatorTotalsByCurrency[mon];
+                    if (!opT || (opT.count === 0 && opT.venta === 0 && Math.abs(opT.balanceFinal) < 0.01)) return null;
+                    return (
+                      <div key={`modal_op_${mon}`} className="p-3 rounded-xl bg-slate-950/70 border border-amber-500/20 space-y-1.5">
+                        <div className="flex items-center justify-between border-b border-slate-800/80 pb-1">
+                          <span className="text-xs font-bold text-amber-400 flex items-center gap-1.5">
+                            <span>🪙</span> {mon}
+                          </span>
+                          <span className="text-[10px] text-slate-400 font-mono">{opT.count} operadora{opT.count > 1 ? 's' : ''}</span>
+                        </div>
+                        <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 text-[11px] pt-1">
+                          <div>
+                            <span className="text-slate-400 block text-[10px]">Venta Total:</span>
+                            <span className="font-mono text-slate-200">{formatCurrency(opT.venta, mon as any)}</span>
+                          </div>
+                          <div>
+                            <span className="text-slate-400 block text-[10px]">Premios:</span>
+                            <span className="font-mono text-amber-400">
+                              {opT.premios > 0 ? `-${formatCurrency(opT.premios, mon as any)}` : formatCurrency(0, mon as any)}
+                            </span>
+                          </div>
+                          <div>
+                            <span className="text-slate-400 block text-[10px]">GGR (Bruto):</span>
+                            <span className={`font-mono font-bold ${opT.ggr >= 0 ? 'text-emerald-400' : 'text-rose-400'}`}>
+                              {formatCurrency(opT.ggr, mon as any)}
+                            </span>
+                          </div>
+                          <div>
+                            <span className="text-slate-400 block text-[10px]">Dif. Comisión:</span>
+                            <span className="font-mono text-cyan-400">{formatCurrency(opT.difCom, mon as any)}</span>
+                          </div>
+                          <div>
+                            <span className="text-slate-400 block text-[10px]">Ganancia Comercializador:</span>
+                            <span className="font-mono font-bold text-emerald-400">{formatCurrency(opT.totalComercializador, mon as any)}</span>
+                          </div>
+                          <div>
+                            <span className="text-slate-400 block text-[10px]">Utilidad Casa (60%):</span>
+                            <span className={`font-mono font-bold ${opT.netoOperadora >= 0 ? 'text-amber-400' : 'text-rose-400'}`}>
+                              {formatCurrency(opT.netoOperadora, mon as any)}
+                            </span>
+                          </div>
+                        </div>
+                        <div className="pt-2 border-t border-slate-800 flex justify-between items-center">
+                          <span className="text-[11px] text-slate-300 font-bold">Nuevo Arrastre a Traspasar:</span>
+                          <span className={`text-sm font-mono font-black ${opT.balanceFinal > 0.01 ? 'text-rose-400' : opT.balanceFinal < -0.01 ? 'text-emerald-400' : 'text-white'}`}>
+                            {formatCurrency(opT.balanceFinal, mon as any)}
+                          </span>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+
+              <div className="p-3 rounded-xl bg-amber-500/10 border border-amber-500/20 mt-3 text-amber-300">
+                <div className="flex items-center gap-2 font-bold mb-1">
+                  <ArrowRight className="w-4 h-4 text-amber-400" />
+                  Próximo Ciclo Operativo:
+                </div>
+                <p className="text-[11px] text-slate-300">
+                  El sistema registrará estos balances como el arrastre inicial de cada operadora (proveedor) y avanzará a la <strong className="text-white">Semana {nextCyclePreview.semana}</strong> con fechas <strong className="text-amber-300">{nextCyclePreview.desde}</strong> al <strong className="text-amber-300">{nextCyclePreview.hasta}</strong>.
+                </p>
+              </div>
+
+              <div className="text-[11px] text-emerald-400/90 flex items-center gap-1.5 pt-1">
+                <CheckCircle2 className="w-3.5 h-3.5 shrink-0" />
+                Se archivará la liquidación en el registro histórico y se guardará un respaldo de seguridad.
+              </div>
+            </div>
+
+            <div className="flex flex-col sm:flex-row gap-3 pt-2">
+              <button
+                type="button"
+                onClick={() => setIsConfirmModalOpen(false)}
+                disabled={isProcessing}
+                className="flex-1 py-3 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 font-bold text-xs uppercase tracking-wider transition-colors cursor-pointer disabled:opacity-50"
+              >
+                Cancelar
+              </button>
+              <button
+                type="button"
+                onClick={handleFinalizeWeek}
+                disabled={isProcessing}
+                className="flex-1 py-3 rounded-xl bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-400 hover:to-amber-500 text-slate-950 font-black text-xs uppercase tracking-wider shadow-lg shadow-amber-500/20 flex items-center justify-center gap-2 transition-all cursor-pointer disabled:opacity-50"
+              >
+                {isProcessing ? (
+                  <>
+                    <RefreshCw className="w-4 h-4 animate-spin" />
+                    Procesando Liquidación...
+                  </>
+                ) : (
+                  <>
+                    <Globe className="w-4 h-4" />
+                    Confirmar y Traspasar Arrastre de Operadoras
+                  </>
+                )}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Modal de Confirmación Pre-Cierre (AGENCIAS) */}
+      {isConfirmModalOpen && closureInspectionMode === 'agencias' && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm animate-fade-in">
+          <div className="bg-[#0D1B22] border border-emerald-500/30 rounded-3xl max-w-xl w-full p-6 sm:p-8 shadow-2xl space-y-6 relative max-h-[90vh] overflow-y-auto">
+            <button
+              onClick={() => !isProcessing && setIsConfirmModalOpen(false)}
+              className="absolute top-4 right-4 text-slate-400 hover:text-white p-2 rounded-xl hover:bg-slate-800 transition-colors cursor-pointer"
+            >
+              <X className="w-5 h-5" />
+            </button>
+
+            <div className="flex items-center gap-3">
+              <div className="p-3 rounded-2xl bg-emerald-500/20 text-emerald-400 border border-emerald-500/30">
+                <Building2 className="w-6 h-6" />
+              </div>
+              <div>
+                <h3 className="text-lg font-black text-white">Confirmación de Cierre Maestro de Agencias</h3>
                 <p className="text-xs text-slate-400">
                   {systemCycle.tipo === 'SEMANAL' ? `Semana ${systemCycle.semana}` : `Operación Diaria ${systemCycle.semana}`} ({systemCycle.desde} al {systemCycle.hasta})
                 </p>
@@ -974,10 +1209,6 @@ export const WeeklyClosureTab: React.FC = () => {
               <div className="flex justify-between items-center pb-2 border-b border-slate-800">
                 <span className="text-slate-400">Agencias auditadas:</span>
                 <span className="font-bold font-mono text-white">{agencies.length} agencias</span>
-              </div>
-              <div className="flex justify-between items-center pb-2 border-b border-slate-800">
-                <span className="text-slate-400">Casas Operadoras auditadas:</span>
-                <span className="font-bold font-mono text-amber-400">{operatorClosureRows.length} operadoras</span>
               </div>
               <div className="flex justify-between items-center pb-2 border-b border-slate-800">
                 <span className="text-slate-400">Registros de venta a archivar:</span>
@@ -1003,36 +1234,13 @@ export const WeeklyClosureTab: React.FC = () => {
                 </div>
               </div>
 
-              <div className="pt-1">
-                <span className="text-slate-400 block mb-2 font-semibold uppercase tracking-wider text-[10px]">
-                  Resumen de Balances a Traspasar a Arrastre (Operadoras):
-                </span>
-                <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
-                  {['BS', 'USD', 'COP'].map((mon) => {
-                    const opT = operatorTotalsByCurrency[mon];
-                    if (!opT || (opT.count === 0 && opT.venta === 0 && Math.abs(opT.balanceFinal) < 0.01)) return null;
-                    return (
-                      <div key={`modal_op_${mon}`} className="p-2.5 rounded-xl bg-slate-950/60 border border-amber-500/20">
-                        <span className="text-[10px] font-bold text-amber-400 block">{mon}</span>
-                        <span className="text-xs font-mono font-bold text-white block">
-                          {formatCurrency(opT.balanceFinal, mon as any)}
-                        </span>
-                        <span className="text-[10px] text-emerald-400 block">
-                          Ganancia: {formatCurrency(opT.totalComercializador, mon as any)}
-                        </span>
-                      </div>
-                    );
-                  })}
-                </div>
-              </div>
-
-              <div className="p-3 rounded-xl bg-amber-500/10 border border-amber-500/20 mt-3 text-amber-300">
+              <div className="p-3 rounded-xl bg-emerald-500/10 border border-emerald-500/20 mt-3 text-emerald-300">
                 <div className="flex items-center gap-2 font-bold mb-1">
-                  <ArrowRight className="w-4 h-4 text-amber-400" />
+                  <ArrowRight className="w-4 h-4 text-emerald-400" />
                   Próximo Ciclo Operativo:
                 </div>
                 <p className="text-[11px] text-slate-300">
-                  El sistema avanzará a la <strong className="text-white">Semana {nextCyclePreview.semana}</strong> con rango de fechas <strong className="text-amber-300">{nextCyclePreview.desde}</strong> al <strong className="text-amber-300">{nextCyclePreview.hasta}</strong>.
+                  El sistema registrará estos balances como el arrastre inicial de cada agencia y avanzará a la <strong className="text-white">Semana {nextCyclePreview.semana}</strong> con fechas <strong className="text-emerald-300">{nextCyclePreview.desde}</strong> al <strong className="text-emerald-300">{nextCyclePreview.hasta}</strong>.
                 </p>
               </div>
 
@@ -1055,7 +1263,7 @@ export const WeeklyClosureTab: React.FC = () => {
                 type="button"
                 onClick={handleFinalizeWeek}
                 disabled={isProcessing}
-                className="flex-1 py-3 rounded-xl bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-400 hover:to-amber-500 text-slate-950 font-black text-xs uppercase tracking-wider shadow-lg shadow-amber-500/20 flex items-center justify-center gap-2 transition-all cursor-pointer disabled:opacity-50"
+                className="flex-1 py-3 rounded-xl bg-gradient-to-r from-emerald-500 to-emerald-600 hover:from-emerald-400 hover:to-emerald-500 text-slate-950 font-black text-xs uppercase tracking-wider shadow-lg shadow-emerald-500/20 flex items-center justify-center gap-2 transition-all cursor-pointer disabled:opacity-50"
               >
                 {isProcessing ? (
                   <>
@@ -1064,8 +1272,8 @@ export const WeeklyClosureTab: React.FC = () => {
                   </>
                 ) : (
                   <>
-                    <Lock className="w-4 h-4" />
-                    Confirmar y Ejecutar Cierre
+                    <Building2 className="w-4 h-4" />
+                    Confirmar y Ejecutar Cierre de Agencias
                   </>
                 )}
               </button>
