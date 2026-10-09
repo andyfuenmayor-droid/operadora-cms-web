@@ -35,18 +35,29 @@ import {
   ChevronRight,
   ChevronUp,
   Eye,
-  ExternalLink
+  ExternalLink,
+  Globe,
+  Scale,
+  Copy,
+  Sparkles
 } from 'lucide-react';
 import { DeliveryReportModal, type PreClosureAgencyRow } from './DeliveryReportModal';
 import { ConfirmationOperatorActaModal, type ConfirmationAuditItem } from './ConfirmationOperatorActaModal';
 import { CollectorDeliveryActaModal, type CollectorDailyPaymentItem } from './CollectorDeliveryActaModal';
 import { BankIncomeActaModal, type BankTransactionAuditItem } from './BankIncomeActaModal';
 import { CashDeliveryActaModal, type CashDeliveryAuditItem } from './CashDeliveryActaModal';
+import {
+  calculateOperatorSettlements,
+  type OperatorPayment,
+  type OperatorSettlementRow,
+} from '../../utils/operatorSettlement';
+import { loadSystemKeywords, type SystemKeywordsMap } from '../../utils/systemKeywords';
 
 export const PreClosureAuditTab: React.FC = () => {
   const { effectiveUserId, systemCycle, user } = useAuth();
 
   const [isLoading, setIsLoading] = useState(true);
+  const [auditMode, setAuditMode] = useState<'agencias' | 'operadoras' | 'consolidado'>('agencias');
   const [agencies, setAgencies] = useState<Agency[]>([]);
   const [sales, setSales] = useState<any[]>([]);
   const [payments, setPayments] = useState<ConsolidatedPaymentItem[]>([]);
@@ -55,6 +66,13 @@ export const PreClosureAuditTab: React.FC = () => {
   const [collectors, setCollectors] = useState<{ id: string | number; nombre: string; usuario?: string }[]>([]);
   const [bankAccounts, setBankAccounts] = useState<any[]>([]);
   const [rawBankPayments, setRawBankPayments] = useState<any[]>([]);
+
+  // Operator Data
+  const [registeredSystems, setRegisteredSystems] = useState<string[]>([]);
+  const [systemConfigs, setSystemConfigs] = useState<SystemKeywordsMap>({});
+  const [operatorPayments, setOperatorPayments] = useState<OperatorPayment[]>([]);
+  const [operatorSearchQuery, setOperatorSearchQuery] = useState('');
+  const [operatorStatusFilter, setOperatorStatusFilter] = useState<'all' | 'pagar' | 'cobrar' | 'solvente'>('all');
 
   // Filters
   const [selectedCurrency, setSelectedCurrency] = useState<'ALL' | 'BS' | 'USD' | 'COP'>('ALL');
@@ -78,7 +96,7 @@ export const PreClosureAuditTab: React.FC = () => {
     setIsLoading(true);
 
     try {
-      const [agRes, sRes, pConsolidated, gConsolidated, pdRes, cobRes, cbRes, pbRes] = await Promise.all([
+      const [agRes, sRes, pConsolidated, gConsolidated, pdRes, cobRes, cbRes, pbRes, sysRes, confs, payRes] = await Promise.all([
         supabase.from('agencias').select('*').eq('user_id', effectiveUserId).order('id', { ascending: true }),
         supabase.from('carga_actual').select('*').eq('user_id', effectiveUserId),
         getConsolidatedPayments(effectiveUserId, { fechaDesde: systemCycle.desde, fechaHasta: systemCycle.hasta }),
@@ -87,6 +105,14 @@ export const PreClosureAuditTab: React.FC = () => {
         supabase.from('cda_cobradores').select('*').eq('user_id', effectiveUserId),
         supabase.from('cuentas_bancarias').select('*').eq('user_id', effectiveUserId),
         supabase.from('cda_pagos_bancarios').select('*').eq('user_id', effectiveUserId).eq('confirmado', true),
+        supabase.from('sistemas').select('nombre_sistema').eq('user_id', effectiveUserId).order('nombre_sistema', { ascending: true }),
+        loadSystemKeywords(effectiveUserId),
+        supabase
+          .from('pagos_semana')
+          .select('*')
+          .eq('user_id', effectiveUserId)
+          .or('tipo_pago.eq.PAGO_OPERADORA,tipo_pago.eq.ABONO_OPERADORA,agencia.ilike.OPERADORA:%')
+          .order('id', { ascending: false }),
       ]);
 
       const agList = agRes.data || [];
@@ -104,14 +130,43 @@ export const PreClosureAuditTab: React.FC = () => {
         }
       }
 
+      const salesData = sRes.data || [];
+      const sysList = Array.from(new Set([
+        ...(sysRes.data?.map((s) => s.nombre_sistema?.toUpperCase()) || []),
+        ...(salesData.map((s: any) => String(s.sistema || '').toUpperCase()).filter(Boolean))
+      ])).sort();
+
+      const rawOperatorPayments: OperatorPayment[] = (payRes.data || []).map((p: any) => {
+        let sysName = '';
+        if (p.agencia && p.agencia.toUpperCase().startsWith('OPERADORA:')) {
+          sysName = p.agencia.replace(/^OPERADORA:\s*/i, '').trim().toUpperCase();
+        } else {
+          sysName = String(p.sistema || p.agencia || '').trim().toUpperCase();
+        }
+        return {
+          id: p.id,
+          fecha: p.fecha || new Date().toISOString().slice(0, 10),
+          sistema: sysName,
+          moneda: String(p.moneda || 'BS').toUpperCase(),
+          monto: Number(p.monto || 0),
+          referencia: p.referencia || 'S/R',
+          tipo_pago: (p.tipo_pago === 'ABONO_OPERADORA' ? 'ABONO_OPERADORA' : 'PAGO_OPERADORA') as any,
+          banco: p.banco || p.metodo,
+          agencia: p.agencia,
+        };
+      });
+
       setAgencies(agList);
-      setSales(sRes.data || []);
+      setSales(salesData);
       setPayments(pConsolidated);
       setExpenses(gConsolidated);
       setRawDailyPayments(pdRes.data || []);
       setCollectors(cobRes.data || []);
       setBankAccounts(cbRes.data || []);
       setRawBankPayments(pbRes.data || []);
+      setRegisteredSystems(sysList);
+      setSystemConfigs(confs);
+      setOperatorPayments(rawOperatorPayments);
     } catch (err) {
       console.error('Error loading pre-closure audit data:', err);
     } finally {
@@ -376,6 +431,157 @@ export const PreClosureAuditTab: React.FC = () => {
       return true;
     });
   }, [auditRows, selectedCurrency, statusFilter, searchQuery]);
+
+  // Operator Settlements Calculation (Option B Dual Model)
+  const {
+    rows: operatorRows,
+    totalsByCurrency: operatorTotalsByCurrency,
+    activeCurrenciesWithData: operatorActiveCurrencies,
+  } = useMemo(() => {
+    return calculateOperatorSettlements(
+      registeredSystems,
+      systemConfigs,
+      sales,
+      operatorPayments,
+      selectedCurrency
+    );
+  }, [registeredSystems, systemConfigs, sales, operatorPayments, selectedCurrency]);
+
+  // Filtered Operator Rows for Table View
+  const filteredOperatorRows = useMemo(() => {
+    return operatorRows.filter((r) => {
+      if (selectedCurrency !== 'ALL' && r.moneda !== selectedCurrency) return false;
+      if (operatorSearchQuery.trim()) {
+        const q = operatorSearchQuery.toLowerCase();
+        if (!r.sistema.toLowerCase().includes(q)) return false;
+      }
+      if (operatorStatusFilter === 'pagar' && r.balanceFinal <= 0.01) return false;
+      if (operatorStatusFilter === 'cobrar' && r.balanceFinal >= -0.01) return false;
+      if (operatorStatusFilter === 'solvente' && Math.abs(r.balanceFinal) > 0.01) return false;
+      return true;
+    });
+  }, [operatorRows, selectedCurrency, operatorSearchQuery, operatorStatusFilter]);
+
+  // Handler: Copy WhatsApp Operator Acta
+  const handleCopyOperatorActaWhatsApp = () => {
+    if (operatorRows.length === 0) {
+      alert('No hay datos de casas operadoras en este ciclo para generar el acta.');
+      return;
+    }
+
+    const lines = [
+      `📋 *ACTA DE ARQUEO Y PRE-CIERRE • CASAS OPERADORAS*`,
+      `📅 *Ciclo:* ${systemCycle.tipo === 'SEMANAL' ? 'Semana' : 'Ciclo'} ${systemCycle.semana} (${formatDate(systemCycle.desde)} al ${formatDate(systemCycle.hasta)})`,
+      `🏢 *Administración / Comercializador:* ${user?.nombre || user?.email?.split('@')[0] || 'Administración'}`,
+      `🪙 *Filtro Moneda:* ${selectedCurrency === 'ALL' ? 'Multimoneda (BS / USD / COP)' : selectedCurrency}`,
+      `━━━━━━━━━━━━━━━━━━━━━━━━`,
+    ];
+
+    filteredOperatorRows.forEach((r) => {
+      lines.push(
+        `🌐 *OPERADORA: ${r.sistema} (${r.moneda})*`,
+        `• Venta Bruta: ${formatCurrency(r.venta, r.moneda as any)}`,
+        `• Premios Pagados: ${formatCurrency(r.premio, r.moneda as any)}`,
+        `• Utilidad Bruta (GGR): ${formatCurrency(r.utilidadBruta, r.moneda as any)}`,
+        `• Com. Proveedor (${r.comisionPct}%): ${formatCurrency(r.comCompletaProv, r.moneda as any)}`,
+        `• (-) Com. Pagada Agencias: ${formatCurrency(r.comAgencias, r.moneda as any)}`,
+        `• (=) Diferencial a Favor: ${formatCurrency(r.difCom, r.moneda as any)}`,
+        `• Base Neta (GGR - Com 16%): ${formatCurrency(r.baseUtil, r.moneda as any)}`,
+        `• Participación (${r.participacionPct}%): ${formatCurrency(r.partCom, r.moneda as any)}`,
+        `• 🏆 *Total Ganancia Comercializador:* ${formatCurrency(r.totalCom, r.moneda as any)}`,
+        `• 🏛️ *Utilidad Casa Operadora (60%):* ${formatCurrency(r.netoOperadora, r.moneda as any)}`,
+        `• Saldo Inicial Arrastre: ${formatCurrency(r.saldoInit, r.moneda as any)}`,
+        `• Pagos Netos Realizados: ${formatCurrency(r.pagosNetos, r.moneda as any)}`,
+        `• 👉 *BALANCE FINAL: ${formatCurrency(r.balanceFinal, r.moneda as any)}* ${
+          r.balanceFinal > 0.01
+            ? '🔴 (A PAGAR A OPERADORA)'
+            : r.balanceFinal < -0.01
+            ? '🟢 (A FAVOR COMERCIALIZADOR)'
+            : '⚪ (AL DÍA / SOLVENTE)'
+        }`,
+        `────────────────────────`
+      );
+    });
+
+    lines.push(`💼 *RESUMEN TOTALIZADO POR MONEDA:*`);
+    ['BS', 'USD', 'COP'].forEach((c) => {
+      const tot = operatorTotalsByCurrency[c];
+      if (tot && (tot.count > 0 || tot.venta > 0 || Math.abs(tot.balanceFinal) > 0.01)) {
+        lines.push(
+          `🪙 *TOTAL ${c}:*`,
+          `• Venta: ${formatCurrency(tot.venta, c as any)}`,
+          `• Premios: ${formatCurrency(tot.premios, c as any)}`,
+          `• GGR: ${formatCurrency(tot.ggr, c as any)}`,
+          `• Total Ganancia Comercializador: ${formatCurrency(tot.totalComercializador, c as any)}`,
+          `• Total Neto Operadoras (60%): ${formatCurrency(tot.netoOperadora, c as any)}`,
+          `• Balance Final Operadoras: ${formatCurrency(tot.balanceFinal, c as any)}`,
+          `────────────────────────`
+        );
+      }
+    });
+
+    lines.push(`━━━━━━━━━━━━━━━━━━━━━━━━`, `_Generado automáticamente desde Operadora CMS Web_`);
+
+    navigator.clipboard.writeText(lines.join('\n'));
+    alert('📋 ¡Acta de Arqueo de Operadoras copiada al portapapeles! Puedes pegarla directamente en WhatsApp.');
+  };
+
+  // Handler: Export CSV for Operators
+  const handleExportOperatorCSV = () => {
+    if (operatorRows.length === 0) return;
+    const headers = [
+      'Operadora',
+      'Moneda',
+      'Venta',
+      'Premios',
+      'GGR',
+      'Comision_Proveedor_Pct',
+      'Comision_Completa',
+      'Comision_Agencias',
+      'Diferencial_Comision',
+      'Base_Neta_Utilidad',
+      'Participacion_Pct',
+      'Participacion_Comercializador',
+      'Total_Ganancia_Comercializador',
+      'Utilidad_Casa_Operadora',
+      'Arrastre_Inicial',
+      'Pagos_Netos',
+      'Balance_Final',
+      'Estado',
+    ];
+
+    const rows = filteredOperatorRows.map((r) => [
+      `"${r.sistema}"`,
+      r.moneda,
+      r.venta.toFixed(2),
+      r.premio.toFixed(2),
+      r.utilidadBruta.toFixed(2),
+      r.comisionPct.toFixed(2),
+      r.comCompletaProv.toFixed(2),
+      r.comAgencias.toFixed(2),
+      r.difCom.toFixed(2),
+      r.baseUtil.toFixed(2),
+      r.participacionPct.toFixed(2),
+      r.partCom.toFixed(2),
+      r.totalCom.toFixed(2),
+      r.netoOperadora.toFixed(2),
+      r.saldoInit.toFixed(2),
+      r.pagosNetos.toFixed(2),
+      r.balanceFinal.toFixed(2),
+      r.balanceFinal > 0.01 ? 'A PAGAR' : r.balanceFinal < -0.01 ? 'A FAVOR' : 'AL DIA',
+    ]);
+
+    const csvContent = '\uFEFF' + [headers.join(','), ...rows.map((row) => row.join(','))].join('\n');
+    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.setAttribute('download', `PreCierre_Operadoras_Semana_${systemCycle.semana}_${systemCycle.desde}_al_${systemCycle.hasta}.csv`);
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(url);
+  };
 
   // Movimientos auditados para el Acta del Operador de Confirmaciones
   const confirmationAuditItems = useMemo<ConfirmationAuditItem[]>(() => {
@@ -766,65 +972,93 @@ export const PreClosureAuditTab: React.FC = () => {
         </div>
 
         <div className="flex flex-wrap items-center gap-2">
-          {/* 1. Acta General de Arqueo */}
-          <button
-            onClick={() => setIsActaModalOpen(true)}
-            className="px-3.5 py-2.5 rounded-xl bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-400 hover:to-amber-500 text-slate-950 font-black text-xs shadow-lg shadow-amber-500/20 flex items-center gap-1.5 transition-all cursor-pointer"
-            title="Acta General de Arqueo y Rendición de Puntos de Venta"
-          >
-            <FileText className="w-4 h-4" />
-            <span>📜 Acta General</span>
-          </button>
+          {auditMode === 'agencias' && (
+            <>
+              {/* 1. Acta General de Arqueo */}
+              <button
+                onClick={() => setIsActaModalOpen(true)}
+                className="px-3.5 py-2.5 rounded-xl bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-400 hover:to-amber-500 text-slate-950 font-black text-xs shadow-lg shadow-amber-500/20 flex items-center gap-1.5 transition-all cursor-pointer"
+                title="Acta General de Arqueo y Rendición de Puntos de Venta"
+              >
+                <FileText className="w-4 h-4" />
+                <span>📜 Acta General</span>
+              </button>
 
-          {/* 2. Acta Cuentas Bancarias (Entradas, Salidas y Total por Banco) */}
-          <button
-            onClick={() => setIsBankIncomeActaOpen(true)}
-            className="px-3.5 py-2.5 rounded-xl bg-gradient-to-r from-cyan-600 to-blue-600 hover:from-cyan-500 hover:to-blue-500 text-white font-black text-xs shadow-lg shadow-cyan-500/20 flex items-center gap-1.5 transition-all cursor-pointer"
-            title="Acta Oficial de Movimientos e Ingresos en Cuentas Bancarias (Entradas, Salidas y Total por Banco)"
-          >
-            <Landmark className="w-4 h-4" />
-            <span>🏛️ Acta Bancaria ({bankTransactionItems.length})</span>
-          </button>
+              {/* 2. Acta Cuentas Bancarias (Entradas, Salidas y Total por Banco) */}
+              <button
+                onClick={() => setIsBankIncomeActaOpen(true)}
+                className="px-3.5 py-2.5 rounded-xl bg-gradient-to-r from-cyan-600 to-blue-600 hover:from-cyan-500 hover:to-blue-500 text-white font-black text-xs shadow-lg shadow-cyan-500/20 flex items-center gap-1.5 transition-all cursor-pointer"
+                title="Acta Oficial de Movimientos e Ingresos en Cuentas Bancarias (Entradas, Salidas y Total por Banco)"
+              >
+                <Landmark className="w-4 h-4" />
+                <span>🏛️ Acta Bancaria ({bankTransactionItems.length})</span>
+              </button>
 
-          {/* 3. Acta Entrega de Efectivo */}
-          <button
-            onClick={() => setIsCashDeliveryActaOpen(true)}
-            className="px-3.5 py-2.5 rounded-xl bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-slate-950 font-black text-xs shadow-lg shadow-emerald-500/20 flex items-center gap-1.5 transition-all cursor-pointer"
-            title="Acta Oficial de Entrega y Rendición de Efectivo en Bóveda / Caja Central"
-          >
-            <Banknote className="w-4 h-4" />
-            <span>💵 Acta Efectivo ({cashDeliveryItems.length})</span>
-          </button>
+              {/* 3. Acta Entrega de Efectivo */}
+              <button
+                onClick={() => setIsCashDeliveryActaOpen(true)}
+                className="px-3.5 py-2.5 rounded-xl bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-slate-950 font-black text-xs shadow-lg shadow-emerald-500/20 flex items-center gap-1.5 transition-all cursor-pointer"
+                title="Acta Oficial de Entrega y Rendición de Efectivo en Bóveda / Caja Central"
+              >
+                <Banknote className="w-4 h-4" />
+                <span>💵 Acta Efectivo ({cashDeliveryItems.length})</span>
+              </button>
 
-          {/* 4. Acta Operador de Confirmaciones */}
-          <button
-            onClick={() => setIsConfirmationActaOpen(true)}
-            className="px-3.5 py-2.5 rounded-xl bg-gradient-to-r from-sky-500 to-teal-500 hover:from-sky-400 hover:to-teal-400 text-slate-950 font-black text-xs shadow-lg shadow-sky-500/20 flex items-center gap-1.5 transition-all cursor-pointer"
-            title="Acta Oficial del Operador de Confirmaciones"
-          >
-            <ShieldCheck className="w-4 h-4" />
-            <span>🛡️ Confirmaciones ({confirmationAuditItems.length})</span>
-          </button>
+              {/* 4. Acta Operador de Confirmaciones */}
+              <button
+                onClick={() => setIsConfirmationActaOpen(true)}
+                className="px-3.5 py-2.5 rounded-xl bg-gradient-to-r from-sky-500 to-teal-500 hover:from-sky-400 hover:to-teal-400 text-slate-950 font-black text-xs shadow-lg shadow-sky-500/20 flex items-center gap-1.5 transition-all cursor-pointer"
+                title="Acta Oficial del Operador de Confirmaciones"
+              >
+                <ShieldCheck className="w-4 h-4" />
+                <span>🛡️ Confirmaciones ({confirmationAuditItems.length})</span>
+              </button>
 
-          {/* 5. Acta Cobrador de Ruta */}
-          <button
-            onClick={() => setIsCollectorActaOpen(true)}
-            className="px-3.5 py-2.5 rounded-xl bg-gradient-to-r from-purple-500 to-indigo-500 hover:from-purple-400 hover:to-indigo-400 text-white font-black text-xs shadow-lg shadow-purple-500/20 flex items-center gap-1.5 transition-all cursor-pointer"
-            title="Acta Oficial y Desglose de Recaudaciones del Cobrador de Ruta"
-          >
-            <Bike className="w-4 h-4" />
-            <span>🛵 Cobrador ({collectorDailyPayments.length})</span>
-          </button>
+              {/* 5. Acta Cobrador de Ruta */}
+              <button
+                onClick={() => setIsCollectorActaOpen(true)}
+                className="px-3.5 py-2.5 rounded-xl bg-gradient-to-r from-purple-500 to-indigo-500 hover:from-purple-400 hover:to-indigo-400 text-white font-black text-xs shadow-lg shadow-purple-500/20 flex items-center gap-1.5 transition-all cursor-pointer"
+                title="Acta Oficial y Desglose de Recaudaciones del Cobrador de Ruta"
+              >
+                <Bike className="w-4 h-4" />
+                <span>🛵 Cobrador ({collectorDailyPayments.length})</span>
+              </button>
 
-          <button
-            onClick={handleExportCSV}
-            disabled={auditRows.length === 0}
-            className="px-3 py-2.5 rounded-xl bg-slate-800/80 hover:bg-slate-700 text-slate-300 text-xs font-bold flex items-center gap-1.5 transition-all border border-slate-700 cursor-pointer disabled:opacity-50"
-            title="Exportar archivo CSV"
-          >
-            <Download className="w-3.5 h-3.5" />
-            <span>CSV</span>
-          </button>
+              <button
+                onClick={handleExportCSV}
+                disabled={auditRows.length === 0}
+                className="px-3 py-2.5 rounded-xl bg-slate-800/80 hover:bg-slate-700 text-slate-300 text-xs font-bold flex items-center gap-1.5 transition-all border border-slate-700 cursor-pointer disabled:opacity-50"
+                title="Exportar archivo CSV de Agencias"
+              >
+                <Download className="w-3.5 h-3.5" />
+                <span>CSV</span>
+              </button>
+            </>
+          )}
+
+          {auditMode === 'operadoras' && (
+            <>
+              <button
+                onClick={handleCopyOperatorActaWhatsApp}
+                disabled={operatorRows.length === 0}
+                className="px-3.5 py-2.5 rounded-xl bg-gradient-to-r from-emerald-500 to-teal-500 hover:from-emerald-400 hover:to-teal-400 text-slate-950 font-black text-xs shadow-lg shadow-emerald-500/20 flex items-center gap-1.5 transition-all cursor-pointer disabled:opacity-50"
+                title="Copiar Acta Oficial de Casas Operadoras para WhatsApp"
+              >
+                <Copy className="w-4 h-4" />
+                <span>📋 Acta WhatsApp Operadoras</span>
+              </button>
+
+              <button
+                onClick={handleExportOperatorCSV}
+                disabled={operatorRows.length === 0}
+                className="px-3 py-2.5 rounded-xl bg-slate-800/80 hover:bg-slate-700 text-slate-300 text-xs font-bold flex items-center gap-1.5 transition-all border border-slate-700 cursor-pointer disabled:opacity-50"
+                title="Exportar archivo CSV de Casas Operadoras"
+              >
+                <Download className="w-3.5 h-3.5" />
+                <span>CSV Operadoras</span>
+              </button>
+            </>
+          )}
 
           <button
             onClick={loadData}
@@ -837,7 +1071,54 @@ export const PreClosureAuditTab: React.FC = () => {
         </div>
       </div>
 
-      {/* KPI Cards Multi-Moneda */}
+      {/* Sub-View Switcher: Agencias vs Operadoras vs Consolidado */}
+      <div className="flex flex-wrap items-center gap-2 border-b border-slate-800 pb-3">
+        <button
+          onClick={() => setAuditMode('agencias')}
+          className={`px-4 py-2.5 rounded-2xl text-xs sm:text-sm font-bold flex items-center gap-2 transition-all cursor-pointer ${
+            auditMode === 'agencias'
+              ? 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/40 shadow-lg shadow-emerald-500/10'
+              : 'text-slate-400 hover:text-white hover:bg-slate-800/60'
+          }`}
+        >
+          <Building2 className="w-4 h-4" />
+          <span>🏢 Arqueo Agencias (Taquillas)</span>
+          <span className="text-[10px] px-2 py-0.5 rounded-full bg-slate-800 text-slate-300 font-mono">
+            {auditRows.length}
+          </span>
+        </button>
+
+        <button
+          onClick={() => setAuditMode('operadoras')}
+          className={`px-4 py-2.5 rounded-2xl text-xs sm:text-sm font-bold flex items-center gap-2 transition-all cursor-pointer ${
+            auditMode === 'operadoras'
+              ? 'bg-amber-500/20 text-amber-400 border border-amber-500/40 shadow-lg shadow-amber-500/10'
+              : 'text-slate-400 hover:text-white hover:bg-slate-800/60'
+          }`}
+        >
+          <Globe className="w-4 h-4" />
+          <span>🌐 Arqueo Casas Operadoras</span>
+          <span className="text-[10px] px-2 py-0.5 rounded-full bg-amber-500/20 text-amber-300 font-mono">
+            {operatorRows.length}
+          </span>
+        </button>
+
+        <button
+          onClick={() => setAuditMode('consolidado')}
+          className={`px-4 py-2.5 rounded-2xl text-xs sm:text-sm font-bold flex items-center gap-2 transition-all cursor-pointer ${
+            auditMode === 'consolidado'
+              ? 'bg-sky-500/20 text-sky-400 border border-sky-500/40 shadow-lg shadow-sky-500/10'
+              : 'text-slate-400 hover:text-white hover:bg-slate-800/60'
+          }`}
+        >
+          <Scale className="w-4 h-4" />
+          <span>⚖️ Balance Consolidado Global</span>
+        </button>
+      </div>
+
+      {auditMode === 'agencias' && (
+        <>
+          {/* KPI Cards Multi-Moneda */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-5">
         {['BS', 'USD', 'COP'].map((mon) => {
           const tot = totalsByCurrency[mon];
@@ -1740,6 +2021,503 @@ export const PreClosureAuditTab: React.FC = () => {
           </table>
         </div>
       </div>
+    </>
+  )}
+
+  {auditMode === 'operadoras' && (
+    <div className="space-y-6">
+      {/* Operator Multi-Currency KPI Cards */}
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-5">
+        {['BS', 'USD', 'COP'].map((mon) => {
+          const tot = operatorTotalsByCurrency[mon];
+          if (!tot) return null;
+
+          const isSelected = selectedCurrency === mon;
+          const flag = mon === 'BS' ? '🇻🇪' : mon === 'USD' ? '🇺🇸' : '🇨🇴';
+          const currencyName = mon === 'BS' ? 'Bolívares (BS)' : mon === 'USD' ? 'Dólares (USD)' : 'Pesos (COP)';
+
+          return (
+            <div
+              key={mon}
+              onClick={() => setSelectedCurrency(mon as any)}
+              className={`p-5 rounded-3xl border transition-all cursor-pointer flex flex-col justify-between relative overflow-hidden ${
+                isSelected
+                  ? 'bg-gradient-to-b from-[#1C180A] to-[#0A1A23] border-amber-500/50 shadow-2xl shadow-amber-500/15 ring-2 ring-amber-500/30'
+                  : 'bg-[#0D1B22] border-slate-800 hover:border-slate-700 hover:bg-[#0f1f28]'
+              }`}
+            >
+              {/* Card Header */}
+              <div className="flex items-center justify-between pb-3 border-b border-slate-800/80 mb-3.5">
+                <div className="flex items-center gap-2.5">
+                  <span className="text-xl">{flag}</span>
+                  <div>
+                    <h4 className="text-xs font-black uppercase text-amber-400 font-mono tracking-wider">
+                      Casas Operadoras {currencyName}
+                    </h4>
+                    <span className="text-[11px] text-slate-400">
+                      {tot.count} {tot.count === 1 ? 'operadora' : 'operadoras con actividad'}
+                    </span>
+                  </div>
+                </div>
+
+                <span
+                  className={`text-[10px] font-extrabold uppercase px-2.5 py-1 rounded-full border transition-all ${
+                    isSelected
+                      ? 'bg-amber-500/20 text-amber-400 border-amber-500/40 shadow-sm shadow-amber-500/20'
+                      : 'bg-slate-800/80 text-slate-400 border-slate-700'
+                  }`}
+                >
+                  {isSelected ? '● Filtrado' : 'Filtrar'}
+                </span>
+              </div>
+
+              {/* Big Hero: Balance Final Casas Operadoras */}
+              <div className="bg-[#071318] border border-slate-800/90 rounded-2xl p-3.5 mb-3.5 text-center shadow-inner">
+                <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block mb-1">
+                  Balance Final a Casas Operadoras
+                </span>
+                <div
+                  className={`text-2xl sm:text-3xl font-black font-mono tracking-tight ${
+                    tot.balanceFinal > 0.01
+                      ? 'text-rose-400'
+                      : tot.balanceFinal < -0.01
+                      ? 'text-emerald-400'
+                      : 'text-slate-300'
+                  }`}
+                >
+                  {formatCurrency(tot.balanceFinal, mon as any)}
+                </div>
+                <span className="text-[10px] text-slate-400 mt-1 block">
+                  {tot.balanceFinal > 0.01
+                    ? 'Deuda neta a pagar a casas matrices'
+                    : tot.balanceFinal < -0.01
+                    ? 'Saldo a favor del comercializador'
+                    : 'Cuentas cuadradas al día'}
+                </span>
+              </div>
+
+              {/* Three Clean Sections: Operativo + Comercializador + Posición Operadora */}
+              <div className="space-y-3 font-mono text-xs">
+                {/* 1. Movimiento Operativo */}
+                <div className="bg-[#08151D] border border-slate-800/70 rounded-2xl p-3 space-y-2">
+                  <div className="text-[10px] font-black text-slate-400 uppercase tracking-wider border-b border-slate-800/80 pb-1.5 flex items-center justify-between">
+                    <span>📊 Movimiento Operativo</span>
+                    <span className="text-[9px] text-slate-500 font-sans font-normal">Semana {systemCycle.semana}</span>
+                  </div>
+                  <div className="space-y-1.5 text-[11px]">
+                    <div className="flex justify-between items-center">
+                      <span className="text-slate-400">Venta Bruta:</span>
+                      <span className="font-semibold text-slate-200">{formatCurrency(tot.venta, mon as any)}</span>
+                    </div>
+                    <div className="flex justify-between items-center">
+                      <span className="text-slate-400">Premios Pagados:</span>
+                      <span className="font-semibold text-amber-400">-{formatCurrency(tot.premios, mon as any)}</span>
+                    </div>
+                    <div className="flex justify-between items-center pt-1 border-t border-slate-800/60">
+                      <span className="text-slate-300 font-bold">Utilidad Bruta (GGR):</span>
+                      <span className={`font-bold ${tot.ggr >= 0 ? 'text-emerald-400' : 'text-rose-400'}`}>
+                        {formatCurrency(tot.ggr, mon as any)}
+                      </span>
+                    </div>
+                  </div>
+                </div>
+
+                {/* 2. Ganancia Comercializador (Modelo Opción B) */}
+                <div className="bg-[#08151D] border border-emerald-500/20 rounded-2xl p-3 space-y-2">
+                  <div className="text-[10px] font-black text-emerald-400 uppercase tracking-wider border-b border-slate-800/80 pb-1.5 flex items-center justify-between">
+                    <span>🏆 Ganancia Comercializador</span>
+                    <span className="text-[9px] text-emerald-400/80 font-sans font-bold">Opción B</span>
+                  </div>
+                  <div className="space-y-1.5 text-[11px]">
+                    <div className="flex justify-between items-center">
+                      <span className="text-slate-400">Diferencial Comisión:</span>
+                      <span className="font-semibold text-cyan-400">+{formatCurrency(tot.difCom, mon as any)}</span>
+                    </div>
+                    <div className="flex justify-between items-center">
+                      <span className="text-slate-400">Participación (40% s/ Base):</span>
+                      <span className={`font-semibold ${tot.partCom >= 0 ? 'text-emerald-400' : 'text-rose-400'}`}>
+                        {formatCurrency(tot.partCom, mon as any)}
+                      </span>
+                    </div>
+                    <div className="flex justify-between items-center pt-1 border-t border-slate-800/60">
+                      <span className="text-emerald-300 font-bold">Total Ganancia Comercializador:</span>
+                      <span className="font-black text-emerald-400 bg-emerald-500/10 px-1.5 py-0.5 rounded border border-emerald-500/20">
+                        {formatCurrency(tot.totalComercializador, mon as any)}
+                      </span>
+                    </div>
+                  </div>
+                </div>
+
+                {/* 3. Posición Casa Operadora */}
+                <div className="bg-[#08151D] border border-slate-800/70 rounded-2xl p-3 space-y-2">
+                  <div className="text-[10px] font-black text-slate-400 uppercase tracking-wider border-b border-slate-800/80 pb-1.5 flex items-center justify-between">
+                    <span>🏛️ Posición Casa Matriz (60%)</span>
+                    <span className="text-[9px] text-slate-500 font-sans font-normal">Arqueo Real</span>
+                  </div>
+                  <div className="space-y-1.5 text-[11px]">
+                    <div className="flex justify-between items-center">
+                      <span className="text-slate-400">Arrastre Inicial:</span>
+                      <span className="font-semibold text-slate-300">{formatCurrency(tot.saldoInit, mon as any)}</span>
+                    </div>
+                    <div className="flex justify-between items-center">
+                      <span className="text-slate-400">Utilidad Casa (60%):</span>
+                      <span className={`font-semibold ${tot.netoOperadora >= 0 ? 'text-amber-400' : 'text-rose-400'}`}>
+                        {formatCurrency(tot.netoOperadora, mon as any)}
+                      </span>
+                    </div>
+                    <div className="flex justify-between items-center">
+                      <span className="text-slate-400">Pagos Netos Realizados:</span>
+                      <span className="font-semibold text-cyan-400">-{formatCurrency(tot.pagosNetos, mon as any)}</span>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          );
+        })}
+      </div>
+
+      {/* Operator Filter and Search Bar */}
+      <div className="flex flex-col sm:flex-row items-center justify-between gap-4 bg-[#0D1B22] border border-slate-800 rounded-2xl p-4">
+        {/* Currency Switcher Tabs */}
+        <div className="flex items-center gap-1.5 overflow-x-auto w-full sm:w-auto">
+          <button
+            onClick={() => setSelectedCurrency('ALL')}
+            className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer ${
+              selectedCurrency === 'ALL'
+                ? 'bg-amber-500 text-slate-950 font-black'
+                : 'text-slate-400 hover:text-white bg-slate-800/60'
+            }`}
+          >
+            Todas ({operatorRows.length})
+          </button>
+          {['BS', 'USD', 'COP'].map((mon) => (
+            <button
+              key={mon}
+              onClick={() => setSelectedCurrency(mon as any)}
+              className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer ${
+                selectedCurrency === mon
+                  ? 'bg-amber-500 text-slate-950 font-black'
+                  : 'text-slate-400 hover:text-white bg-slate-800/60'
+              }`}
+            >
+              {mon} ({operatorRows.filter((r) => r.moneda === mon).length})
+            </button>
+          ))}
+        </div>
+
+        {/* Search & Status Filter */}
+        <div className="flex items-center gap-2 w-full sm:w-auto">
+          <div className="relative flex-1 sm:w-64">
+            <Search className="w-3.5 h-3.5 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+            <input
+              type="text"
+              placeholder="Buscar operadora o sistema..."
+              value={operatorSearchQuery}
+              onChange={(e) => setOperatorSearchQuery(e.target.value)}
+              className="w-full bg-[#071217] border border-slate-700 rounded-xl pl-8 pr-3 py-1.5 text-xs text-white focus:outline-none focus:border-amber-500"
+            />
+          </div>
+
+          <select
+            value={operatorStatusFilter}
+            onChange={(e) => setOperatorStatusFilter(e.target.value as any)}
+            className="bg-[#071217] border border-slate-700 rounded-xl px-3 py-1.5 text-xs text-white focus:outline-none focus:border-amber-500 cursor-pointer"
+          >
+            <option value="all">Todos los Estados</option>
+            <option value="pagar">🔴 Deuda a Pagar</option>
+            <option value="cobrar">🟢 Saldo a Favor</option>
+            <option value="solvente">⚪ Al Día / Solvente</option>
+          </select>
+        </div>
+      </div>
+
+      {/* Operator Main Table */}
+      <div className="bg-[#0D1B22] border border-slate-800 rounded-3xl overflow-hidden shadow-xl">
+        <div className="p-4 sm:p-5 border-b border-slate-800 flex items-center justify-between">
+          <div>
+            <h4 className="text-xs font-bold text-white uppercase tracking-wider flex items-center gap-2">
+              <Globe className="w-4 h-4 text-amber-400" />
+              Matriz de Arqueo y Pre-Cierre de Casas Operadoras ({filteredOperatorRows.length})
+            </h4>
+            <p className="text-[11px] text-slate-400 mt-0.5">
+              Modelo Opción B: Diferencial Comisión + Participación (40%) = Comercializador • Base Neta restante (60%) = Casa Operadora
+            </p>
+          </div>
+        </div>
+
+        <div className="overflow-x-auto">
+          <table className="w-full text-left text-xs border-collapse">
+            <thead className="bg-[#071217] text-slate-400 border-b border-slate-800 font-bold uppercase tracking-wider text-[11px]">
+              <tr className="whitespace-nowrap">
+                <th className="py-3 px-3.5">Casa Operadora</th>
+                <th className="py-3 px-2 text-center">Moneda</th>
+                <th className="py-3 px-3 text-right">Venta</th>
+                <th className="py-3 px-3 text-right">Premios</th>
+                <th className="py-3 px-3 text-right">GGR</th>
+                <th className="py-3 px-3 text-right">Com. Prov</th>
+                <th className="py-3 px-3 text-right">Dif. Com</th>
+                <th className="py-3 px-3 text-right">Base Neta</th>
+                <th className="py-3 px-3 text-right">Part. 40%</th>
+                <th className="py-3 px-3 text-right text-emerald-400">Total Comercializador</th>
+                <th className="py-3 px-3 text-right">Util. Operadora (60%)</th>
+                <th className="py-3 px-3 text-right">Arrastre</th>
+                <th className="py-3 px-3 text-right">Pagos Netos</th>
+                <th className="py-3 px-3.5 text-right font-black">Balance Final</th>
+                <th className="py-3 px-3 text-center">Estado</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-slate-800/80 font-mono text-slate-300">
+              {filteredOperatorRows.length === 0 ? (
+                <tr>
+                  <td colSpan={15} className="py-12 text-center text-slate-500">
+                    <Globe className="w-8 h-8 mx-auto mb-2 opacity-40 text-slate-400" />
+                    No se encontraron casas operadoras con los filtros seleccionados.
+                  </td>
+                </tr>
+              ) : (
+                filteredOperatorRows.map((r) => {
+                  const isDeuda = r.balanceFinal > 0.01;
+                  const isFavor = r.balanceFinal < -0.01;
+
+                  return (
+                    <tr key={`${r.sistema}_${r.moneda}`} className="hover:bg-slate-800/30 transition-colors">
+                      <td className="py-3 px-3.5 font-sans font-bold text-white whitespace-nowrap">
+                        <div className="flex items-center gap-2">
+                          <span className="p-1 rounded bg-amber-500/10 text-amber-400">🌐</span>
+                          <span>{r.sistema}</span>
+                        </div>
+                      </td>
+                      <td className="py-3 px-2 text-center">
+                        <span className={`px-2 py-0.5 rounded text-[10px] font-bold ${
+                          r.moneda === 'BS'
+                            ? 'bg-amber-500/10 text-amber-400 border border-amber-500/20'
+                            : r.moneda === 'USD'
+                            ? 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20'
+                            : 'bg-sky-500/10 text-sky-400 border border-sky-500/20'
+                        }`}>
+                          {r.moneda}
+                        </span>
+                      </td>
+                      <td className="py-3 px-3 text-right font-semibold text-slate-200">
+                        {formatCurrency(r.venta, r.moneda as any)}
+                      </td>
+                      <td className="py-3 px-3 text-right text-amber-400">
+                        {r.premio > 0 ? `-${formatCurrency(r.premio, r.moneda as any)}` : formatCurrency(0, r.moneda as any)}
+                      </td>
+                      <td className={`py-3 px-3 text-right font-bold ${r.utilidadBruta >= 0 ? 'text-emerald-400' : 'text-rose-400'}`}>
+                        {formatCurrency(r.utilidadBruta, r.moneda as any)}
+                      </td>
+                      <td className="py-3 px-3 text-right text-slate-400">
+                        <div className="text-[11px] font-bold text-slate-300">{formatCurrency(r.comCompletaProv, r.moneda as any)}</div>
+                        <div className="text-[9px] text-slate-500">{r.comisionPct}% Otorgado</div>
+                      </td>
+                      <td className="py-3 px-3 text-right font-semibold text-cyan-400">
+                        {formatCurrency(r.difCom, r.moneda as any)}
+                      </td>
+                      <td className="py-3 px-3 text-right text-slate-300">
+                        {formatCurrency(r.baseUtil, r.moneda as any)}
+                      </td>
+                      <td className="py-3 px-3 text-right text-slate-400">
+                        <div className={`text-[11px] font-bold ${r.partCom >= 0 ? 'text-emerald-400' : 'text-rose-400'}`}>
+                          {formatCurrency(r.partCom, r.moneda as any)}
+                        </div>
+                        <div className="text-[9px] text-slate-500">{r.participacionPct}% Part.</div>
+                      </td>
+                      <td className="py-3 px-3 text-right font-black text-emerald-400 bg-emerald-500/5">
+                        {formatCurrency(r.totalCom, r.moneda as any)}
+                      </td>
+                      <td className={`py-3 px-3 text-right font-bold ${r.netoOperadora >= 0 ? 'text-amber-400' : 'text-rose-400'}`}>
+                        {formatCurrency(r.netoOperadora, r.moneda as any)}
+                      </td>
+                      <td className="py-3 px-3 text-right text-slate-400">
+                        {formatCurrency(r.saldoInit, r.moneda as any)}
+                      </td>
+                      <td className="py-3 px-3 text-right text-cyan-400 font-semibold">
+                        {r.pagosNetos !== 0 ? `-${formatCurrency(r.pagosNetos, r.moneda as any)}` : formatCurrency(0, r.moneda as any)}
+                      </td>
+                      <td className={`py-3 px-3.5 text-right font-black text-sm ${
+                        isDeuda ? 'text-rose-400' : isFavor ? 'text-emerald-400' : 'text-slate-300'
+                      }`}>
+                        {formatCurrency(r.balanceFinal, r.moneda as any)}
+                      </td>
+                      <td className="py-3 px-3 text-center">
+                        <span className={`px-2 py-0.5 rounded-full text-[10px] font-extrabold uppercase ${
+                          isDeuda
+                            ? 'bg-rose-500/20 text-rose-400 border border-rose-500/30'
+                            : isFavor
+                            ? 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/30'
+                            : 'bg-slate-800 text-slate-400 border border-slate-700'
+                        }`}>
+                          {isDeuda ? 'A Pagar' : isFavor ? 'A Favor' : 'Solvente'}
+                        </span>
+                      </td>
+                    </tr>
+                  );
+                })
+              )}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  )}
+
+  {auditMode === 'consolidado' && (
+    <div className="space-y-6">
+      <div className="bg-[#0D1B22] border border-slate-800 rounded-3xl p-5 sm:p-6 shadow-xl">
+        <h4 className="text-sm font-black text-white uppercase tracking-wider flex items-center gap-2 mb-2">
+          <Scale className="w-5 h-5 text-sky-400" />
+          Conciliación Integral del Negocio: Taquillas vs Comercializador vs Operadoras
+        </h4>
+        <p className="text-xs text-slate-400">
+          Compara en tiempo real la cartera por cobrar a las taquillas, la ganancia líquida del comercializador y los compromisos a liquidar con las casas matrices para cada moneda.
+        </p>
+      </div>
+
+      <div className="grid grid-cols-1 gap-6">
+        {['BS', 'USD', 'COP'].map((mon) => {
+          const agTot = totalsByCurrency[mon];
+          const opTot = operatorTotalsByCurrency[mon];
+          if (!agTot && !opTot) return null;
+          if ((!agTot || agTot.count === 0) && (!opTot || (opTot.venta === 0 && Math.abs(opTot.balanceFinal) < 0.01))) return null;
+
+          const flag = mon === 'BS' ? '🇻🇪' : mon === 'USD' ? '🇺🇸' : '🇨🇴';
+          const currencyName = mon === 'BS' ? 'Bolívares (BS)' : mon === 'USD' ? 'Dólares (USD)' : 'Pesos (COP)';
+
+          const gananciaComercializador = opTot?.totalComercializador || 0;
+          const posicionNetaCartera = (agTot?.saldoFinal || 0) - (opTot?.balanceFinal || 0);
+
+          return (
+            <div key={mon} className="bg-[#0D1B22] border border-slate-800 rounded-3xl p-5 sm:p-6 shadow-xl space-y-5">
+              <div className="flex items-center justify-between pb-3 border-b border-slate-800">
+                <div className="flex items-center gap-3">
+                  <span className="text-2xl">{flag}</span>
+                  <div>
+                    <h4 className="text-sm font-black text-white uppercase font-mono tracking-wider">
+                      Balance Maestro de Ciclo {currencyName}
+                    </h4>
+                    <span className="text-xs text-slate-400">
+                      {agTot?.count || 0} agencias auditadas • {opTot?.count || 0} sistemas operadoras
+                    </span>
+                  </div>
+                </div>
+                <span className="text-xs font-mono font-bold bg-slate-800 px-3 py-1 rounded-xl text-amber-400 border border-slate-700">
+                  Semana {systemCycle.semana}
+                </span>
+              </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                {/* Columna 1: Cartera Taquillas */}
+                <div className="bg-[#071318] border border-slate-800 rounded-2xl p-4 space-y-3 font-mono">
+                  <div className="flex items-center justify-between border-b border-slate-800 pb-2">
+                    <span className="text-xs font-bold text-emerald-400 flex items-center gap-1.5">
+                      <Building2 className="w-4 h-4" /> 1. Cartera Taquillas
+                    </span>
+                    <span className="text-[10px] text-slate-500 font-sans">Cobranza</span>
+                  </div>
+                  <div className="space-y-1.5 text-xs">
+                    <div className="flex justify-between">
+                      <span className="text-slate-400">Arrastre Inicial:</span>
+                      <span className="text-slate-200">{formatCurrency(agTot?.saldoAnterior || 0, mon as any)}</span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-slate-400">Venta Neta Taquillas:</span>
+                      <span className="text-emerald-400">+{formatCurrency(agTot?.ventaNeta || 0, mon as any)}</span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-slate-400">Gastos Confirmados:</span>
+                      <span className="text-rose-400">-{formatCurrency(agTot?.gastos || 0, mon as any)}</span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-slate-400">Cobros (Efectivo/Bancos):</span>
+                      <span className="text-cyan-400">-{formatCurrency((agTot?.efectivoTaquilla || 0) + (agTot?.bancos || 0), mon as any)}</span>
+                    </div>
+                  </div>
+                  <div className="pt-2 border-t border-slate-800 text-center">
+                    <span className="text-[10px] text-slate-400 uppercase block">Saldo Cartera Agencias</span>
+                    <span className={`text-lg font-black ${
+                      (agTot?.saldoFinal || 0) > 0 ? 'text-amber-400' : (agTot?.saldoFinal || 0) < 0 ? 'text-rose-400' : 'text-emerald-400'
+                    }`}>
+                      {formatCurrency(agTot?.saldoFinal || 0, mon as any)}
+                    </span>
+                  </div>
+                </div>
+
+                {/* Columna 2: Cartera Casas Operadoras */}
+                <div className="bg-[#071318] border border-slate-800 rounded-2xl p-4 space-y-3 font-mono">
+                  <div className="flex items-center justify-between border-b border-slate-800 pb-2">
+                    <span className="text-xs font-bold text-amber-400 flex items-center gap-1.5">
+                      <Globe className="w-4 h-4" /> 2. Casas Operadoras
+                    </span>
+                    <span className="text-[10px] text-slate-500 font-sans">Liquidación</span>
+                  </div>
+                  <div className="space-y-1.5 text-xs">
+                    <div className="flex justify-between">
+                      <span className="text-slate-400">Arrastre Inicial:</span>
+                      <span className="text-slate-200">{formatCurrency(opTot?.saldoInit || 0, mon as any)}</span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-slate-400">Utilidad Casa (60%):</span>
+                      <span className="text-amber-400">+{formatCurrency(opTot?.netoOperadora || 0, mon as any)}</span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-slate-400">Pagos Netos Realizados:</span>
+                      <span className="text-cyan-400">-{formatCurrency(opTot?.pagosNetos || 0, mon as any)}</span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-slate-400">Venta Bruta Global:</span>
+                      <span className="text-slate-400">{formatCurrency(opTot?.venta || 0, mon as any)}</span>
+                    </div>
+                  </div>
+                  <div className="pt-2 border-t border-slate-800 text-center">
+                    <span className="text-[10px] text-slate-400 uppercase block">Balance Casas Operadoras</span>
+                    <span className={`text-lg font-black ${
+                      (opTot?.balanceFinal || 0) > 0.01 ? 'text-rose-400' : (opTot?.balanceFinal || 0) < -0.01 ? 'text-emerald-400' : 'text-slate-300'
+                    }`}>
+                      {formatCurrency(opTot?.balanceFinal || 0, mon as any)}
+                    </span>
+                  </div>
+                </div>
+
+                {/* Columna 3: Resultado Comercializador */}
+                <div className="bg-[#071318] border border-emerald-500/30 rounded-2xl p-4 space-y-3 font-mono">
+                  <div className="flex items-center justify-between border-b border-slate-800 pb-2">
+                    <span className="text-xs font-bold text-emerald-400 flex items-center gap-1.5">
+                      <Sparkles className="w-4 h-4" /> 3. Ganancia Comercializador
+                    </span>
+                    <span className="text-[10px] text-emerald-400/80 font-sans font-bold">Semanal</span>
+                  </div>
+                  <div className="space-y-1.5 text-xs">
+                    <div className="flex justify-between">
+                      <span className="text-slate-400">Diferencial Comisión:</span>
+                      <span className="text-cyan-400">+{formatCurrency(opTot?.difCom || 0, mon as any)}</span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-slate-400">Participación (40%):</span>
+                      <span className="text-emerald-400">+{formatCurrency(opTot?.partCom || 0, mon as any)}</span>
+                    </div>
+                    <div className="flex justify-between pt-1 border-t border-slate-800">
+                      <span className="text-slate-300 font-bold">Ganancia Total:</span>
+                      <span className="text-emerald-400 font-black">{formatCurrency(gananciaComercializador, mon as any)}</span>
+                    </div>
+                  </div>
+                  <div className="pt-2 border-t border-slate-800 text-center bg-emerald-950/20 rounded-xl p-2 border border-emerald-500/20">
+                    <span className="text-[10px] text-emerald-300 uppercase block font-bold">Posición Neta (Agencias - Operadoras)</span>
+                    <span className={`text-lg font-black ${
+                      posicionNetaCartera >= 0 ? 'text-emerald-400' : 'text-rose-400'
+                    }`}>
+                      {formatCurrency(posicionNetaCartera, mon as any)}
+                    </span>
+                  </div>
+                </div>
+              </div>
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  )}
 
       {/* Modal 1: Acta Oficial de Entrega General */}
       {isActaModalOpen && (

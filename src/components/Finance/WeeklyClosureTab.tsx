@@ -24,9 +24,22 @@ import {
   Undo2,
   FileSpreadsheet,
   X,
-  FileText
+  FileText,
+  Globe,
+  Scale,
+  Sparkles
 } from 'lucide-react';
 import confetti from 'canvas-confetti';
+import {
+  calculateOperatorSettlements,
+  type OperatorPayment,
+  type OperatorSettlementRow,
+} from '../../utils/operatorSettlement';
+import {
+  loadSystemKeywords,
+  saveSystemKeywords,
+  type SystemKeywordsMap,
+} from '../../utils/systemKeywords';
 
 interface CierreAgencyData {
   ag_id: number;
@@ -52,6 +65,12 @@ export const WeeklyClosureTab: React.FC = () => {
   const [payments, setPayments] = useState<ConsolidatedPaymentItem[]>([]);
   const [expenses, setExpenses] = useState<ConsolidatedExpenseItem[]>([]);
 
+  // Operator Closure States
+  const [registeredSystems, setRegisteredSystems] = useState<string[]>([]);
+  const [systemConfigs, setSystemConfigs] = useState<SystemKeywordsMap>({});
+  const [operatorPayments, setOperatorPayments] = useState<OperatorPayment[]>([]);
+  const [closureInspectionMode, setClosureInspectionMode] = useState<'agencias' | 'operadoras'>('agencias');
+
   const [verifiedCheck, setVerifiedCheck] = useState(false);
   const [message, setMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
   const [isConfirmModalOpen, setIsConfirmModalOpen] = useState(false);
@@ -64,11 +83,19 @@ export const WeeklyClosureTab: React.FC = () => {
     setMessage(null);
 
     try {
-      const [agRes, sRes, pConsolidated, gConsolidated] = await Promise.all([
+      const [agRes, sRes, pConsolidated, gConsolidated, sysRes, confs, payRes] = await Promise.all([
         supabase.from('agencias').select('*').eq('user_id', effectiveUserId).order('id', { ascending: true }),
         supabase.from('carga_actual').select('*').eq('user_id', effectiveUserId),
         getConsolidatedPayments(effectiveUserId, { fechaDesde: systemCycle.desde, fechaHasta: systemCycle.hasta }),
         getConsolidatedExpenses(effectiveUserId, { fechaDesde: systemCycle.desde, fechaHasta: systemCycle.hasta }),
+        supabase.from('sistemas').select('nombre_sistema').eq('user_id', effectiveUserId).order('nombre_sistema', { ascending: true }),
+        loadSystemKeywords(effectiveUserId),
+        supabase
+          .from('pagos_semana')
+          .select('*')
+          .eq('user_id', effectiveUserId)
+          .or('tipo_pago.eq.PAGO_OPERADORA,tipo_pago.eq.ABONO_OPERADORA,agencia.ilike.OPERADORA:%')
+          .order('id', { ascending: false }),
       ]);
 
       const agList = agRes.data || [];
@@ -86,10 +113,39 @@ export const WeeklyClosureTab: React.FC = () => {
         }
       }
 
+      const salesData = sRes.data || [];
+      const sysList = Array.from(new Set([
+        ...(sysRes.data?.map((s) => s.nombre_sistema?.toUpperCase()) || []),
+        ...(salesData.map((s: any) => String(s.sistema || '').toUpperCase()).filter(Boolean))
+      ])).sort();
+
+      const rawOperatorPayments: OperatorPayment[] = (payRes.data || []).map((p: any) => {
+        let sysName = '';
+        if (p.agencia && p.agencia.toUpperCase().startsWith('OPERADORA:')) {
+          sysName = p.agencia.replace(/^OPERADORA:\s*/i, '').trim().toUpperCase();
+        } else {
+          sysName = String(p.sistema || p.agencia || '').trim().toUpperCase();
+        }
+        return {
+          id: p.id,
+          fecha: p.fecha || new Date().toISOString().slice(0, 10),
+          sistema: sysName,
+          moneda: String(p.moneda || 'BS').toUpperCase(),
+          monto: Number(p.monto || 0),
+          referencia: p.referencia || 'S/R',
+          tipo_pago: (p.tipo_pago === 'ABONO_OPERADORA' ? 'ABONO_OPERADORA' : 'PAGO_OPERADORA') as any,
+          banco: p.banco || p.metodo,
+          agencia: p.agencia,
+        };
+      });
+
       setAgencies(agList);
-      setSales(sRes.data || []);
+      setSales(salesData);
       setPayments(pConsolidated);
       setExpenses(gConsolidated);
+      setRegisteredSystems(sysList);
+      setSystemConfigs(confs);
+      setOperatorPayments(rawOperatorPayments);
 
       // Check for rollback availability
       const hasLocalBackup = Boolean(localStorage.getItem('cms_last_closure_backup'));
@@ -220,20 +276,37 @@ export const WeeklyClosureTab: React.FC = () => {
     return res;
   }, [closureData]);
 
+  // Compute Operator Closure Data (Option B Dual Model)
+  const {
+    rows: operatorClosureRows,
+    totalsByCurrency: operatorTotalsByCurrency,
+    activeCurrenciesWithData: operatorActiveCurrencies,
+  } = useMemo(() => {
+    return calculateOperatorSettlements(
+      registeredSystems,
+      systemConfigs,
+      sales,
+      operatorPayments,
+      'ALL'
+    );
+  }, [registeredSystems, systemConfigs, sales, operatorPayments]);
+
   // CSV Export for Accountant Backup
   const handleDownloadBackupCSV = () => {
-    if (closureData.length === 0) return;
+    if (closureData.length === 0 && operatorClosureRows.length === 0) return;
     const headers = [
-      'Agencia',
+      'Tipo_Entidad',
+      'Entidad',
       'Moneda',
-      'Arrastre',
-      'Venta Neta',
+      'Arrastre_Inicial',
+      'Venta_Bruta',
       'Gastos',
       'Premios',
-      'Cobros',
-      'Saldo Final'
+      'Cobros_o_PagosNetos',
+      'Saldo_Final'
     ];
-    const rows = closureData.map((d) => [
+    const agencyExportRows = closureData.map((d) => [
+      'AGENCIA',
       `"${d.entidad}"`,
       d.moneda,
       d.saldo_anterior.toFixed(2),
@@ -244,7 +317,19 @@ export const WeeklyClosureTab: React.FC = () => {
       d.saldo_final.toFixed(2),
     ]);
 
-    const csvContent = '\uFEFF' + [headers.join(','), ...rows.map((r) => r.join(','))].join('\n');
+    const operatorExportRows = operatorClosureRows.map((op) => [
+      'OPERADORA',
+      `"${op.sistema}"`,
+      op.moneda,
+      op.saldoInit.toFixed(2),
+      op.venta.toFixed(2),
+      '0.00',
+      op.premio.toFixed(2),
+      op.pagosNetos.toFixed(2),
+      op.balanceFinal.toFixed(2),
+    ]);
+
+    const csvContent = '\uFEFF' + [headers.join(','), ...agencyExportRows.map((r) => r.join(',')), ...operatorExportRows.map((r) => r.join(','))].join('\n');
     const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
     const url = URL.createObjectURL(blob);
     const link = document.createElement('a');
@@ -268,7 +353,7 @@ export const WeeklyClosureTab: React.FC = () => {
     const targetPeriodo = backupData?.periodo || lastClosurePeriodo;
     const targetSemana = backupData?.semana_no || 'anterior';
 
-    if (!window.confirm(`⚠️ ¿Está seguro de DESHACER EL ÚLTIMO CIERRE (${targetPeriodo})?\n\nEsta acción:\n1. Restaurará los saldos de arrastre previos de las agencias.\n2. Devolverá el ciclo a la Semana ${targetSemana}.\n3. Restaurará las tablas de ventas activas del período.`)) {
+    if (!window.confirm(`⚠️ ¿Está seguro de DESHACER EL ÚLTIMO CIERRE (${targetPeriodo})?\n\nEsta acción:\n1. Restaurará los saldos de arrastre previos de agencias y operadoras.\n2. Devolverá el ciclo a la Semana ${targetSemana}.\n3. Restaurará las tablas de ventas activas del período.`)) {
       return;
     }
 
@@ -289,6 +374,11 @@ export const WeeklyClosureTab: React.FC = () => {
             .eq('id', agSnap.id)
             .eq('user_id', effectiveUserId);
         }
+      }
+
+      // 1b. Restaurar saldos iniciales de casas operadoras (proveedores)
+      if (backupData?.providersSnapshot) {
+        await saveSystemKeywords(effectiveUserId, backupData.providersSnapshot);
       }
 
       // 2. Restaurar ventas en carga_actual si existen en backup
@@ -327,7 +417,7 @@ export const WeeklyClosureTab: React.FC = () => {
         }
       }
 
-      // 5. Eliminar el registro en cierres_semanales
+      // 5. Eliminar el registro en cierres_semanales (Agencias y Operadoras)
       if (targetPeriodo) {
         await supabase
           .from('cierres_semanales')
@@ -365,7 +455,7 @@ export const WeeklyClosureTab: React.FC = () => {
       const periodoActual = `${systemCycle.desde} al ${systemCycle.hasta}`;
       const nowIso = new Date().toISOString();
 
-      // 0. AUTO-BACKUP PRE-CIERRE
+      // 0. AUTO-BACKUP PRE-CIERRE (Incluyendo Agencias y Casas Operadoras)
       const preClosureBackup = {
         timestamp: nowIso,
         periodo: periodoActual,
@@ -374,6 +464,8 @@ export const WeeklyClosureTab: React.FC = () => {
         desde: systemCycle.desde,
         hasta: systemCycle.hasta,
         closureData,
+        operatorClosureRows,
+        providersSnapshot: systemConfigs,
         agenciesSnapshot: agencies.map((ag) => ({
           id: ag.id,
           nombre_agencia: ag.nombre_agencia,
@@ -393,8 +485,8 @@ export const WeeklyClosureTab: React.FC = () => {
         console.warn('Could not save localStorage backup:', e);
       }
 
-      // 1. Insert snapshot into cierres_semanales
-      const snapshot = closureData.map((d) => ({
+      // 1. Insert snapshot into cierres_semanales (Agencias)
+      const agencySnapshot = closureData.map((d) => ({
         user_id: effectiveUserId,
         entidad: d.entidad,
         moneda: d.moneda,
@@ -408,12 +500,48 @@ export const WeeklyClosureTab: React.FC = () => {
         fecha_cierre: nowIso,
       }));
 
-      if (snapshot.length > 0) {
-        const { error: snapErr } = await supabase.from('cierres_semanales').insert(snapshot);
+      // 1b. Insert snapshot into cierres_semanales (Casas Operadoras)
+      const operatorSnapshot = operatorClosureRows.map((op) => ({
+        user_id: effectiveUserId,
+        entidad: `OPERADORA: ${op.sistema}`,
+        moneda: op.moneda,
+        saldo_anterior: op.saldoInit,
+        utilidad_semana: op.netoOperadora,
+        gastos: 0,
+        movimientos: op.pagosNetos,
+        saldo_final: op.balanceFinal,
+        periodo: periodoActual,
+        tipo_entidad: 'OPERADORA',
+        fecha_cierre: nowIso,
+      }));
+
+      const fullSnapshot = [...agencySnapshot, ...operatorSnapshot];
+      if (fullSnapshot.length > 0) {
+        const { error: snapErr } = await supabase.from('cierres_semanales').insert(fullSnapshot);
         if (snapErr) throw snapErr;
       }
 
-      // 2. Update initial balances in agencias
+      // 1c. Insert snapshots into resultados_operadora (Histórico de liquidación de operadora)
+      const operatorHistoricalResults = operatorClosureRows.map((op) => ({
+        user_id: effectiveUserId,
+        fecha: systemCycle.hasta || nowIso.slice(0, 10),
+        sistema: op.sistema,
+        moneda: op.moneda,
+        venta_bruta: op.venta,
+        premios: op.premio,
+        comision_manual: op.difCom,
+        participacion_manual: op.partCom,
+        utilidad_final_casa: op.netoOperadora,
+      }));
+      if (operatorHistoricalResults.length > 0) {
+        try {
+          await supabase.from('resultados_operadora').insert(operatorHistoricalResults);
+        } catch (opErr) {
+          console.warn('Could not insert into resultados_operadora:', opErr);
+        }
+      }
+
+      // 2. Traspaso automático de saldos de arrastre de Agencias
       for (const d of closureData) {
         const colUpdate = d.moneda === 'BS' ? 'saldo_inicial_bs' : d.moneda === 'USD' ? 'saldo_inicial_usd' : 'saldo_inicial_cop';
         await supabase
@@ -422,6 +550,27 @@ export const WeeklyClosureTab: React.FC = () => {
           .eq('id', d.ag_id)
           .eq('user_id', effectiveUserId);
       }
+
+      // 2b. Traspaso automático de saldos de arrastre de Casas Operadoras (Proveedores)
+      const updatedKeywords: SystemKeywordsMap = { ...systemConfigs };
+      for (const op of operatorClosureRows) {
+        const sysUpper = op.sistema.toUpperCase();
+        if (!updatedKeywords[sysUpper]) {
+          updatedKeywords[sysUpper] = {
+            venta: 'Venta',
+            premio: 'Premio',
+            comision_comercializador: op.comisionPct,
+            participacion_comercializador: op.participacionPct,
+            saldo_inicial_bs: 0,
+            saldo_inicial_usd: 0,
+            saldo_inicial_cop: 0,
+          };
+        }
+        if (op.moneda === 'BS') updatedKeywords[sysUpper].saldo_inicial_bs = op.balanceFinal;
+        else if (op.moneda === 'USD') updatedKeywords[sysUpper].saldo_inicial_usd = op.balanceFinal;
+        else if (op.moneda === 'COP') updatedKeywords[sysUpper].saldo_inicial_cop = op.balanceFinal;
+      }
+      await saveSystemKeywords(effectiveUserId, updatedKeywords);
 
       // 3. Clean active tables
       await Promise.all([
@@ -593,75 +742,180 @@ export const WeeklyClosureTab: React.FC = () => {
             </p>
           </div>
 
-          <div className="text-right">
-            <span className="text-xs text-slate-400 block">Agencias a consolidar:</span>
-            <span className="text-xl font-black text-white font-mono">{agencies.length}</span>
+          <div className="flex items-center gap-4 text-right">
+            <div>
+              <span className="text-[11px] text-slate-400 block">Agencias:</span>
+              <span className="text-lg font-black text-white font-mono">{agencies.length}</span>
+            </div>
+            <div className="border-l border-slate-800 pl-4">
+              <span className="text-[11px] text-slate-400 block">Operadoras:</span>
+              <span className="text-lg font-black text-amber-400 font-mono">{operatorClosureRows.length}</span>
+            </div>
           </div>
         </div>
       </div>
 
-      {/* Verified Balances Breakdown Tables */}
-      {['BS', 'USD', 'COP'].map((mon) => {
-        const monRows = closureData.filter((d) => d.moneda === mon);
-        if (monRows.length === 0) return null;
+      {/* Inspection Mode Tabs: Agencias vs Casas Operadoras */}
+      <div className="flex items-center gap-2 border-b border-slate-800 pb-3">
+        <button
+          onClick={() => setClosureInspectionMode('agencias')}
+          className={`px-4 py-2.5 rounded-2xl text-xs sm:text-sm font-bold flex items-center gap-2 transition-all cursor-pointer ${
+            closureInspectionMode === 'agencias'
+              ? 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/40 shadow-lg shadow-emerald-500/10'
+              : 'text-slate-400 hover:text-white hover:bg-slate-800/60'
+          }`}
+        >
+          <Building2 className="w-4 h-4" />
+          <span>🏢 Balances de Agencias ({closureData.length})</span>
+        </button>
 
-        return (
-          <div key={mon} className="bg-[#0D1B22] border border-slate-800 rounded-3xl overflow-hidden shadow-xl">
-            <div className="p-4 sm:p-5 border-b border-slate-800 flex items-center justify-between">
-              <h4 className="text-xs font-bold text-white uppercase tracking-wider flex items-center gap-2">
-                <span>💰 Balance Verificado {mon}</span>
-              </h4>
-              <span className="text-[10px] text-slate-400 font-mono">{monRows.length} agencias</span>
-            </div>
+        <button
+          onClick={() => setClosureInspectionMode('operadoras')}
+          className={`px-4 py-2.5 rounded-2xl text-xs sm:text-sm font-bold flex items-center gap-2 transition-all cursor-pointer ${
+            closureInspectionMode === 'operadoras'
+              ? 'bg-amber-500/20 text-amber-400 border border-amber-500/40 shadow-lg shadow-amber-500/10'
+              : 'text-slate-400 hover:text-white hover:bg-slate-800/60'
+          }`}
+        >
+          <Globe className="w-4 h-4" />
+          <span>🌐 Balances de Casas Operadoras ({operatorClosureRows.length})</span>
+        </button>
+      </div>
 
-            <div className="overflow-x-auto">
-              <table className="w-full text-left text-xs">
-                <thead className="bg-[#071217] text-slate-400 border-b border-slate-800 font-bold uppercase tracking-wider">
-                  <tr>
-                    <th className="py-3 px-4">Agencia</th>
-                    <th className="py-3 px-4 text-right">Arrastre</th>
-                    <th className="py-3 px-4 text-right">Venta Neta</th>
-                    <th className="py-3 px-4 text-right">Gastos</th>
-                    <th className="py-3 px-4 text-right">Premios</th>
-                    <th className="py-3 px-4 text-right">Cobros</th>
-                    <th className="py-3 px-4 text-right">Saldo Final</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-slate-800/80 font-mono">
-                  {monRows.map((row) => (
-                    <tr key={`${row.entidad}_${mon}`} className="hover:bg-slate-800/30 transition-colors">
-                      <td className="py-3 px-4 font-sans font-bold text-white">{row.entidad}</td>
-                      <td className="py-3 px-4 text-right text-slate-400">{formatCurrency(row.saldo_anterior, mon as any)}</td>
-                      <td className={`py-3 px-4 text-right font-semibold ${row.venta_bruta >= 0 ? 'text-emerald-400' : 'text-rose-400'}`}>
-                        {formatCurrency(row.venta_bruta, mon as any)}
-                      </td>
-                      <td className="py-3 px-4 text-right text-rose-400">{formatCurrency(row.gastos, mon as any)}</td>
-                      <td className="py-3 px-4 text-right text-amber-400">{formatCurrency(row.premios, mon as any)}</td>
-                      <td className="py-3 px-4 text-right text-cyan-400">{formatCurrency(row.cobros, mon as any)}</td>
-                      <td
-                        className={`py-3 px-4 text-right font-black ${
-                          row.saldo_final > 0 ? 'text-rose-400' : row.saldo_final < 0 ? 'text-cyan-400' : 'text-emerald-400'
-                        }`}
-                      >
-                        {formatCurrency(row.saldo_final, mon as any)}
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          </div>
-        );
-      })}
+      {/* 1. AGENCIA VERIFIED TABLES */}
+      {closureInspectionMode === 'agencias' && (
+        <div className="space-y-6">
+          {['BS', 'USD', 'COP'].map((mon) => {
+            const monRows = closureData.filter((d) => d.moneda === mon);
+            if (monRows.length === 0) return null;
+
+            return (
+              <div key={mon} className="bg-[#0D1B22] border border-slate-800 rounded-3xl overflow-hidden shadow-xl">
+                <div className="p-4 sm:p-5 border-b border-slate-800 flex items-center justify-between">
+                  <h4 className="text-xs font-bold text-white uppercase tracking-wider flex items-center gap-2">
+                    <span>💰 Balance Verificado Agencias {mon}</span>
+                  </h4>
+                  <span className="text-[10px] text-slate-400 font-mono">{monRows.length} agencias</span>
+                </div>
+
+                <div className="overflow-x-auto">
+                  <table className="w-full text-left text-xs">
+                    <thead className="bg-[#071217] text-slate-400 border-b border-slate-800 font-bold uppercase tracking-wider">
+                      <tr>
+                        <th className="py-3 px-4">Agencia</th>
+                        <th className="py-3 px-4 text-right">Arrastre</th>
+                        <th className="py-3 px-4 text-right">Venta Neta</th>
+                        <th className="py-3 px-4 text-right">Gastos</th>
+                        <th className="py-3 px-4 text-right">Premios</th>
+                        <th className="py-3 px-4 text-right">Cobros</th>
+                        <th className="py-3 px-4 text-right">Saldo Final</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-slate-800/80 font-mono">
+                      {monRows.map((row) => (
+                        <tr key={`${row.entidad}_${mon}`} className="hover:bg-slate-800/30 transition-colors">
+                          <td className="py-3 px-4 font-sans font-bold text-white">{row.entidad}</td>
+                          <td className="py-3 px-4 text-right text-slate-400">{formatCurrency(row.saldo_anterior, mon as any)}</td>
+                          <td className={`py-3 px-4 text-right font-semibold ${row.venta_bruta >= 0 ? 'text-emerald-400' : 'text-rose-400'}`}>
+                            {formatCurrency(row.venta_bruta, mon as any)}
+                          </td>
+                          <td className="py-3 px-4 text-right text-rose-400">{formatCurrency(row.gastos, mon as any)}</td>
+                          <td className="py-3 px-4 text-right text-amber-400">{formatCurrency(row.premios, mon as any)}</td>
+                          <td className="py-3 px-4 text-right text-cyan-400">{formatCurrency(row.cobros, mon as any)}</td>
+                          <td
+                            className={`py-3 px-4 text-right font-black ${
+                              row.saldo_final > 0 ? 'text-rose-400' : row.saldo_final < 0 ? 'text-cyan-400' : 'text-emerald-400'
+                            }`}
+                          >
+                            {formatCurrency(row.saldo_final, mon as any)}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      )}
+
+      {/* 2. OPERADORA VERIFIED TABLES */}
+      {closureInspectionMode === 'operadoras' && (
+        <div className="space-y-6">
+          {['BS', 'USD', 'COP'].map((mon) => {
+            const monRows = operatorClosureRows.filter((d) => d.moneda === mon);
+            if (monRows.length === 0) return null;
+
+            return (
+              <div key={`op_${mon}`} className="bg-[#0D1B22] border border-slate-800 rounded-3xl overflow-hidden shadow-xl">
+                <div className="p-4 sm:p-5 border-b border-slate-800 flex items-center justify-between">
+                  <h4 className="text-xs font-bold text-white uppercase tracking-wider flex items-center gap-2">
+                    <Globe className="w-4 h-4 text-amber-400" />
+                    <span>Balance Verificado Casas Operadoras {mon}</span>
+                  </h4>
+                  <span className="text-[10px] text-slate-400 font-mono">{monRows.length} operadoras</span>
+                </div>
+
+                <div className="overflow-x-auto">
+                  <table className="w-full text-left text-xs">
+                    <thead className="bg-[#071217] text-slate-400 border-b border-slate-800 font-bold uppercase tracking-wider text-[11px]">
+                      <tr>
+                        <th className="py-3 px-4">Casa Operadora</th>
+                        <th className="py-3 px-4 text-right">Venta</th>
+                        <th className="py-3 px-4 text-right">Premios</th>
+                        <th className="py-3 px-4 text-right">GGR</th>
+                        <th className="py-3 px-4 text-right text-cyan-400">Dif. Com</th>
+                        <th className="py-3 px-4 text-right text-emerald-400">Ganancia Comercializador</th>
+                        <th className="py-3 px-4 text-right text-amber-400">Utilidad Casa (60%)</th>
+                        <th className="py-3 px-4 text-right">Arrastre</th>
+                        <th className="py-3 px-4 text-right">Pagos Netos</th>
+                        <th className="py-3 px-4 text-right font-black">Nuevo Arrastre</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-slate-800/80 font-mono text-slate-300">
+                      {monRows.map((row) => (
+                        <tr key={`${row.sistema}_${mon}`} className="hover:bg-slate-800/30 transition-colors">
+                          <td className="py-3 px-4 font-sans font-bold text-white flex items-center gap-2">
+                            <span className="p-1 rounded bg-amber-500/10 text-amber-400">🌐</span>
+                            <span>{row.sistema}</span>
+                          </td>
+                          <td className="py-3 px-4 text-right font-semibold text-slate-200">{formatCurrency(row.venta, mon as any)}</td>
+                          <td className="py-3 px-4 text-right text-amber-400">{row.premio > 0 ? `-${formatCurrency(row.premio, mon as any)}` : formatCurrency(0, mon as any)}</td>
+                          <td className={`py-3 px-4 text-right font-bold ${row.utilidadBruta >= 0 ? 'text-emerald-400' : 'text-rose-400'}`}>
+                            {formatCurrency(row.utilidadBruta, mon as any)}
+                          </td>
+                          <td className="py-3 px-4 text-right text-cyan-400 font-semibold">{formatCurrency(row.difCom, mon as any)}</td>
+                          <td className="py-3 px-4 text-right font-black text-emerald-400 bg-emerald-500/5">{formatCurrency(row.totalCom, mon as any)}</td>
+                          <td className={`py-3 px-4 text-right font-bold ${row.netoOperadora >= 0 ? 'text-amber-400' : 'text-rose-400'}`}>{formatCurrency(row.netoOperadora, mon as any)}</td>
+                          <td className="py-3 px-4 text-right text-slate-400">{formatCurrency(row.saldoInit, mon as any)}</td>
+                          <td className="py-3 px-4 text-right text-cyan-400 font-semibold">{row.pagosNetos !== 0 ? `-${formatCurrency(row.pagosNetos, mon as any)}` : formatCurrency(0, mon as any)}</td>
+                          <td
+                            className={`py-3 px-4 text-right font-black text-sm ${
+                              row.balanceFinal > 0.01 ? 'text-rose-400' : row.balanceFinal < -0.01 ? 'text-emerald-400' : 'text-slate-300'
+                            }`}
+                          >
+                            {formatCurrency(row.balanceFinal, mon as any)}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      )}
 
       {/* Confirmation & Finalize Box */}
       <div className="bg-[#0D1B22] border border-slate-800 rounded-3xl p-6 sm:p-8 shadow-xl space-y-5">
         <div className="flex items-start gap-3 p-4 bg-amber-500/10 border border-amber-500/20 rounded-2xl text-xs text-amber-300">
           <ShieldAlert className="w-5 h-5 shrink-0 text-amber-400 mt-0.5" />
           <div className="space-y-1">
-            <strong>ADVERTENCIA DE CIERRE DEFINITIVO:</strong>
+            <strong>ADVERTENCIA DE CIERRE DEFINITIVO DUAL (AGENCIAS Y OPERADORAS):</strong>
             <p className="text-slate-300">
-              Al finalizar el ciclo, los balances finales calculados se registrarán como los nuevos saldos de arrastre iniciales de las agencias. Los registros actuales de ventas, pagos y gastos del ciclo se archivarán en el registro histórico y las tablas activas quedarán listas para el nuevo período.
+              Al finalizar el ciclo, los balances finales calculados se registrarán como los nuevos saldos de arrastre iniciales de las <strong className="text-white">Agencias</strong> y de las <strong className="text-white">Casas Operadoras (Proveedores)</strong>. Los registros actuales del ciclo se archivarán en el registro histórico y las tablas activas quedarán listas para el nuevo período.
             </p>
           </div>
         </div>
@@ -674,7 +928,7 @@ export const WeeklyClosureTab: React.FC = () => {
             className="w-5 h-5 rounded text-amber-500 bg-[#071217] border-slate-700 focus:ring-0 cursor-pointer"
           />
           <span className="text-xs font-bold text-white select-none">
-            He verificado los montos. Traspasar saldos de arrastre y avanzar el ciclo operativo.
+            He verificado los montos de Agencias y Casas Operadoras. Traspasar saldos de arrastre y avanzar el ciclo operativo.
           </span>
         </label>
 
@@ -709,7 +963,7 @@ export const WeeklyClosureTab: React.FC = () => {
                 <Lock className="w-6 h-6" />
               </div>
               <div>
-                <h3 className="text-lg font-black text-white">Confirmación de Cierre Maestro</h3>
+                <h3 className="text-lg font-black text-white">Confirmación de Cierre Maestro Dual</h3>
                 <p className="text-xs text-slate-400">
                   {systemCycle.tipo === 'SEMANAL' ? `Semana ${systemCycle.semana}` : `Operación Diaria ${systemCycle.semana}`} ({systemCycle.desde} al {systemCycle.hasta})
                 </p>
@@ -722,18 +976,22 @@ export const WeeklyClosureTab: React.FC = () => {
                 <span className="font-bold font-mono text-white">{agencies.length} agencias</span>
               </div>
               <div className="flex justify-between items-center pb-2 border-b border-slate-800">
+                <span className="text-slate-400">Casas Operadoras auditadas:</span>
+                <span className="font-bold font-mono text-amber-400">{operatorClosureRows.length} operadoras</span>
+              </div>
+              <div className="flex justify-between items-center pb-2 border-b border-slate-800">
                 <span className="text-slate-400">Registros de venta a archivar:</span>
                 <span className="font-bold font-mono text-white">{sales.length} registros</span>
               </div>
 
               <div className="pt-1">
                 <span className="text-slate-400 block mb-2 font-semibold uppercase tracking-wider text-[10px]">
-                  Resumen de Balances a Traspasar a Arrastre:
+                  Resumen de Balances a Traspasar a Arrastre (Agencias):
                 </span>
                 <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
                   {Object.entries(totalsByCurrency).map(([mon, data]) => (
                     <div key={mon} className="p-2.5 rounded-xl bg-slate-950/60 border border-slate-800">
-                      <span className="text-[10px] font-bold text-amber-400 block">{mon}</span>
+                      <span className="text-[10px] font-bold text-emerald-400 block">{mon}</span>
                       <span className="text-xs font-mono font-bold text-white block">
                         {formatCurrency(data.totalSaldoFinal, mon as any)}
                       </span>
@@ -742,6 +1000,29 @@ export const WeeklyClosureTab: React.FC = () => {
                       </span>
                     </div>
                   ))}
+                </div>
+              </div>
+
+              <div className="pt-1">
+                <span className="text-slate-400 block mb-2 font-semibold uppercase tracking-wider text-[10px]">
+                  Resumen de Balances a Traspasar a Arrastre (Operadoras):
+                </span>
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+                  {['BS', 'USD', 'COP'].map((mon) => {
+                    const opT = operatorTotalsByCurrency[mon];
+                    if (!opT || (opT.count === 0 && opT.venta === 0 && Math.abs(opT.balanceFinal) < 0.01)) return null;
+                    return (
+                      <div key={`modal_op_${mon}`} className="p-2.5 rounded-xl bg-slate-950/60 border border-amber-500/20">
+                        <span className="text-[10px] font-bold text-amber-400 block">{mon}</span>
+                        <span className="text-xs font-mono font-bold text-white block">
+                          {formatCurrency(opT.balanceFinal, mon as any)}
+                        </span>
+                        <span className="text-[10px] text-emerald-400 block">
+                          Ganancia: {formatCurrency(opT.totalComercializador, mon as any)}
+                        </span>
+                      </div>
+                    );
+                  })}
                 </div>
               </div>
 
