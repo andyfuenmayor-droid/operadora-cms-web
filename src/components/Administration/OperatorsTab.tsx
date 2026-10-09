@@ -368,20 +368,58 @@ export const OperatorsTab: React.FC<OperatorsTabProps> = ({ initialSubTab = 'ven
     return rows;
   }, [availableSystems, systemConfigs, sales, operatorPayments, reportCurrencyFilter]);
 
-  // Report Totals
-  const reportTotals = useMemo(() => {
-    return reportRows.reduce(
-      (acc, r) => ({
-        venta: acc.venta + r.venta,
-        premios: acc.premios + r.premio,
-        difCom: acc.difCom + r.difCom,
-        totalComercializador: acc.totalComercializador + r.totalCom,
-        netoOperadora: acc.netoOperadora + r.netoOperadora,
-        balanceFinal: acc.balanceFinal + r.balanceFinal,
-      }),
-      { venta: 0, premios: 0, difCom: 0, totalComercializador: 0, netoOperadora: 0, balanceFinal: 0 }
-    );
+  // Totals grouped strictly by currency (never mixed)
+  const totalsByCurrency = useMemo(() => {
+    const currs: ('BS' | 'USD' | 'COP')[] = ['BS', 'USD', 'COP'];
+    const result: Record<string, {
+      venta: number;
+      premios: number;
+      ggr: number;
+      comCompletaProv: number;
+      comAgencias: number;
+      difCom: number;
+      baseUtil: number;
+      partCom: number;
+      totalCom: number;
+      totalComercializador: number;
+      netoOperadora: number;
+      saldoInit: number;
+      pagosNetos: number;
+      balanceFinal: number;
+      count: number;
+    }> = {};
+
+    currs.forEach((c) => {
+      const rows = reportRows.filter((r) => r.moneda === c);
+      result[c] = {
+        venta: Math.round(rows.reduce((sum, r) => sum + Number(r.venta || 0), 0) * 100) / 100,
+        premios: Math.round(rows.reduce((sum, r) => sum + Number(r.premio || 0), 0) * 100) / 100,
+        ggr: Math.round(rows.reduce((sum, r) => sum + Number(r.utilidadBruta || 0), 0) * 100) / 100,
+        comCompletaProv: Math.round(rows.reduce((sum, r) => sum + Number(r.comCompletaProv || 0), 0) * 100) / 100,
+        comAgencias: Math.round(rows.reduce((sum, r) => sum + Number(r.comAgencias || 0), 0) * 100) / 100,
+        difCom: Math.round(rows.reduce((sum, r) => sum + Number(r.difCom || 0), 0) * 100) / 100,
+        baseUtil: Math.round(rows.reduce((sum, r) => sum + Number(r.baseUtil || 0), 0) * 100) / 100,
+        partCom: Math.round(rows.reduce((sum, r) => sum + Number(r.partCom || 0), 0) * 100) / 100,
+        totalCom: Math.round(rows.reduce((sum, r) => sum + Number(r.totalCom || 0), 0) * 100) / 100,
+        totalComercializador: Math.round(rows.reduce((sum, r) => sum + Number(r.totalCom || 0), 0) * 100) / 100,
+        netoOperadora: Math.round(rows.reduce((sum, r) => sum + Number(r.netoOperadora || 0), 0) * 100) / 100,
+        saldoInit: Math.round(rows.reduce((sum, r) => sum + Number(r.saldoInit || 0), 0) * 100) / 100,
+        pagosNetos: Math.round(rows.reduce((sum, r) => sum + Number(r.pagosNetos || 0), 0) * 100) / 100,
+        balanceFinal: Math.round(rows.reduce((sum, r) => sum + Number(r.balanceFinal || 0), 0) * 100) / 100,
+        count: rows.length,
+      };
+    });
+
+    return result;
   }, [reportRows]);
+
+  const activeCurrenciesWithData = useMemo(() => {
+    return (['BS', 'USD', 'COP'] as const).filter((c) => {
+      if (reportCurrencyFilter !== 'ALL' && reportCurrencyFilter !== c) return false;
+      const t = totalsByCurrency[c];
+      return t && (t.count > 0 || t.venta > 0 || t.premios > 0 || t.balanceFinal !== 0);
+    });
+  }, [totalsByCurrency, reportCurrencyFilter]);
 
   // Save Settlement with Commercializer
   const handleSaveSettlement = async (e: React.FormEvent) => {
@@ -508,16 +546,42 @@ export const OperatorsTab: React.FC<OperatorsTabProps> = ({ initialSubTab = 'ven
       );
     });
 
-    lines.push(
-      `💼 *RESUMEN TOTALIZADO:*`,
-      `• Venta Global: ${formatCurrency(reportTotals.venta, 'BS')}`,
-      `• Premios Globales: ${formatCurrency(reportTotals.premios, 'BS')}`,
-      `• Total Diferencial Comisión: ${formatCurrency(reportTotals.difCom, 'BS')}`,
-      `• Total Comercializador: ${formatCurrency(reportTotals.totalComercializador, 'BS')}`,
-      `• Total Neto Operadoras: ${formatCurrency(reportTotals.netoOperadora, 'BS')}`,
-      `━━━━━━━━━━━━━━━━━━━━━━━━`,
-      `_Generado por Operadora CMS_`
-    );
+    if (reportCurrencyFilter !== 'ALL') {
+      const tot = totalsByCurrency[reportCurrencyFilter];
+      lines.push(
+        `💼 *RESUMEN TOTALIZADO (${reportCurrencyFilter}):*`,
+        `• Venta Total: ${formatCurrency(tot.venta, reportCurrencyFilter as any)}`,
+        `• Premios Totales: ${formatCurrency(tot.premios, reportCurrencyFilter as any)}`,
+        `• Utilidad Bruta (GGR): ${formatCurrency(tot.ggr, reportCurrencyFilter as any)}`,
+        `• Total Diferencial Comisión: ${formatCurrency(tot.difCom, reportCurrencyFilter as any)}`,
+        `• Total Comercializador: ${formatCurrency(tot.totalComercializador, reportCurrencyFilter as any)}`,
+        `• Total Neto Operadoras: ${formatCurrency(tot.netoOperadora, reportCurrencyFilter as any)}`,
+        `• Balance Final: ${formatCurrency(tot.balanceFinal, reportCurrencyFilter as any)}`,
+        `━━━━━━━━━━━━━━━━━━━━━━━━`,
+        `_Generado por Operadora CMS_`
+      );
+    } else {
+      lines.push(
+        `💼 *RESUMEN TOTALIZADO POR MONEDA:*`
+      );
+      activeCurrenciesWithData.forEach((curr) => {
+        const tot = totalsByCurrency[curr];
+        lines.push(
+          `🪙 *TOTALES EN ${curr}:*`,
+          `• Venta: ${formatCurrency(tot.venta, curr as any)}`,
+          `• Premios: ${formatCurrency(tot.premios, curr as any)}`,
+          `• Diferencial Comisión: ${formatCurrency(tot.difCom, curr as any)}`,
+          `• Total Comercializador: ${formatCurrency(tot.totalComercializador, curr as any)}`,
+          `• Neto Operadoras: ${formatCurrency(tot.netoOperadora, curr as any)}`,
+          `• Balance Final: ${formatCurrency(tot.balanceFinal, curr as any)}`,
+          `────────────────────────`
+        );
+      });
+      lines.push(
+        `━━━━━━━━━━━━━━━━━━━━━━━━`,
+        `_Generado por Operadora CMS_`
+      );
+    }
 
     const fullText = lines.join('\n');
     navigator.clipboard.writeText(fullText);
@@ -991,33 +1055,113 @@ export const OperatorsTab: React.FC<OperatorsTabProps> = ({ initialSubTab = 'ven
             </button>
           </div>
 
-          {/* KPI Cards */}
-          <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
-            <div className="bg-[#0D1B22] border border-slate-800 p-4 rounded-2xl text-center">
-              <span className="text-[11px] font-bold uppercase text-slate-400 block">Venta Global</span>
-              <span className="text-xl font-black font-mono text-white mt-1 block">
-                {formatCurrency(reportTotals.venta, 'BS')}
-              </span>
+          {/* KPI Cards: Separated by currency, never mixed */}
+          {reportCurrencyFilter !== 'ALL' ? (
+            /* Single Currency KPI Cards */
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
+              <div className="bg-[#0D1B22] border border-slate-800 p-4 rounded-2xl text-center">
+                <span className="text-[11px] font-bold uppercase text-slate-400 block">Venta Total ({reportCurrencyFilter})</span>
+                <span className="text-xl sm:text-2xl font-black font-mono text-white mt-1 block">
+                  {formatCurrency(totalsByCurrency[reportCurrencyFilter]?.venta || 0, reportCurrencyFilter)}
+                </span>
+              </div>
+              <div className="bg-[#0D1B22] border border-slate-800 p-4 rounded-2xl text-center">
+                <span className="text-[11px] font-bold uppercase text-rose-400 block">Premios Pagados ({reportCurrencyFilter})</span>
+                <span className="text-xl sm:text-2xl font-black font-mono text-rose-400 mt-1 block">
+                  {formatCurrency(totalsByCurrency[reportCurrencyFilter]?.premios || 0, reportCurrencyFilter)}
+                </span>
+              </div>
+              <div className="bg-[#0D1B22] border border-amber-500/30 p-4 rounded-2xl text-center bg-amber-500/5">
+                <span className="text-[11px] font-bold uppercase text-amber-400 block">Total Comercializador ({reportCurrencyFilter})</span>
+                <span className="text-xl sm:text-2xl font-black font-mono text-amber-300 mt-1 block">
+                  {formatCurrency(totalsByCurrency[reportCurrencyFilter]?.totalComercializador || 0, reportCurrencyFilter)}
+                </span>
+              </div>
+              <div className="bg-[#0D1B22] border border-emerald-500/30 p-4 rounded-2xl text-center bg-emerald-500/5">
+                <span className="text-[11px] font-bold uppercase text-emerald-400 block">Neto Operadoras ({reportCurrencyFilter})</span>
+                <span className={`text-xl sm:text-2xl font-black font-mono mt-1 block ${(totalsByCurrency[reportCurrencyFilter]?.netoOperadora || 0) >= 0 ? 'text-emerald-300' : 'text-rose-400'}`}>
+                  {formatCurrency(totalsByCurrency[reportCurrencyFilter]?.netoOperadora || 0, reportCurrencyFilter)}
+                </span>
+              </div>
             </div>
-            <div className="bg-[#0D1B22] border border-slate-800 p-4 rounded-2xl text-center">
-              <span className="text-[11px] font-bold uppercase text-rose-400 block">Premios Pagados</span>
-              <span className="text-xl font-black font-mono text-rose-400 mt-1 block">
-                {formatCurrency(reportTotals.premios, 'BS')}
-              </span>
+          ) : (
+            /* Multi-Currency KPI Cards (Separated per Currency, Never Mixed) */
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+              {/* Venta Global por Moneda */}
+              <div className="bg-[#0D1B22] border border-slate-800 p-4 rounded-2xl space-y-2">
+                <div className="flex items-center justify-between border-b border-slate-800 pb-2">
+                  <span className="text-[11px] font-bold uppercase tracking-wider text-slate-400">Venta Global</span>
+                  <span className="text-[10px] text-slate-500 font-mono">Por Moneda</span>
+                </div>
+                <div className="space-y-1.5 font-mono text-xs">
+                  {activeCurrenciesWithData.map((c) => (
+                    <div key={c} className="flex justify-between items-center py-0.5">
+                      <span className="text-slate-400 font-sans text-[11px] font-bold">
+                        {c === 'BS' ? '🇻🇪 BS' : c === 'USD' ? '💵 USD' : '🇨🇴 COP'}:
+                      </span>
+                      <span className="font-bold text-white text-sm">{formatCurrency(totalsByCurrency[c].venta, c)}</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              {/* Premios Pagados por Moneda */}
+              <div className="bg-[#0D1B22] border border-slate-800 p-4 rounded-2xl space-y-2">
+                <div className="flex items-center justify-between border-b border-slate-800 pb-2">
+                  <span className="text-[11px] font-bold uppercase tracking-wider text-rose-400">Premios Pagados</span>
+                  <span className="text-[10px] text-slate-500 font-mono">Por Moneda</span>
+                </div>
+                <div className="space-y-1.5 font-mono text-xs">
+                  {activeCurrenciesWithData.map((c) => (
+                    <div key={c} className="flex justify-between items-center py-0.5">
+                      <span className="text-slate-400 font-sans text-[11px] font-bold">
+                        {c === 'BS' ? '🇻🇪 BS' : c === 'USD' ? '💵 USD' : '🇨🇴 COP'}:
+                      </span>
+                      <span className="font-bold text-rose-400 text-sm">{formatCurrency(totalsByCurrency[c].premios, c)}</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              {/* Total Comercializador por Moneda */}
+              <div className="bg-[#0D1B22] border border-amber-500/30 p-4 rounded-2xl space-y-2 bg-amber-500/5">
+                <div className="flex items-center justify-between border-b border-amber-500/20 pb-2">
+                  <span className="text-[11px] font-bold uppercase tracking-wider text-amber-400">Total Comercializador</span>
+                  <span className="text-[10px] text-amber-400/70 font-mono">Por Moneda</span>
+                </div>
+                <div className="space-y-1.5 font-mono text-xs">
+                  {activeCurrenciesWithData.map((c) => (
+                    <div key={c} className="flex justify-between items-center py-0.5">
+                      <span className="text-slate-400 font-sans text-[11px] font-bold">
+                        {c === 'BS' ? '🇻🇪 BS' : c === 'USD' ? '💵 USD' : '🇨🇴 COP'}:
+                      </span>
+                      <span className="font-bold text-amber-300 text-sm">{formatCurrency(totalsByCurrency[c].totalComercializador, c)}</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              {/* Neto Operadoras por Moneda */}
+              <div className="bg-[#0D1B22] border border-emerald-500/30 p-4 rounded-2xl space-y-2 bg-emerald-500/5">
+                <div className="flex items-center justify-between border-b border-emerald-500/20 pb-2">
+                  <span className="text-[11px] font-bold uppercase tracking-wider text-emerald-400">Neto Operadoras</span>
+                  <span className="text-[10px] text-emerald-400/70 font-mono">Por Moneda</span>
+                </div>
+                <div className="space-y-1.5 font-mono text-xs">
+                  {activeCurrenciesWithData.map((c) => (
+                    <div key={c} className="flex justify-between items-center py-0.5">
+                      <span className="text-slate-400 font-sans text-[11px] font-bold">
+                        {c === 'BS' ? '🇻🇪 BS' : c === 'USD' ? '💵 USD' : '🇨🇴 COP'}:
+                      </span>
+                      <span className={`font-bold text-sm ${totalsByCurrency[c].netoOperadora >= 0 ? 'text-emerald-300' : 'text-rose-400'}`}>
+                        {formatCurrency(totalsByCurrency[c].netoOperadora, c)}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              </div>
             </div>
-            <div className="bg-[#0D1B22] border border-amber-500/30 p-4 rounded-2xl text-center bg-amber-500/5">
-              <span className="text-[11px] font-bold uppercase text-amber-400 block">Total Comercializador</span>
-              <span className="text-xl font-black font-mono text-amber-300 mt-1 block">
-                {formatCurrency(reportTotals.totalComercializador, 'BS')}
-              </span>
-            </div>
-            <div className="bg-[#0D1B22] border border-emerald-500/30 p-4 rounded-2xl text-center bg-emerald-500/5">
-              <span className="text-[11px] font-bold uppercase text-emerald-400 block">Neto Operadoras</span>
-              <span className="text-xl font-black font-mono text-emerald-300 mt-1 block">
-                {formatCurrency(reportTotals.netoOperadora, 'BS')}
-              </span>
-            </div>
-          </div>
+          )}
 
           {/* Consolidate Table */}
           <div className="bg-[#0D1B22] border border-slate-800 rounded-3xl overflow-hidden shadow-xl">
@@ -1094,6 +1238,38 @@ export const OperatorsTab: React.FC<OperatorsTabProps> = ({ initialSubTab = 'ven
                     ))
                   )}
                 </tbody>
+                {reportRows.length > 0 && (
+                  <tfoot className="border-t-2 border-slate-700 bg-[#071217] font-mono text-[11px] font-bold">
+                    {activeCurrenciesWithData.map((c) => {
+                      const tot = totalsByCurrency[c];
+                      return (
+                        <tr key={`tot-${c}`} className="border-b border-slate-800/80 hover:bg-slate-800/20">
+                          <td className="py-2.5 px-3 font-sans text-amber-400 uppercase tracking-wider whitespace-nowrap">
+                            TOTAL {c === 'BS' ? '🇻🇪 BS' : c === 'USD' ? '💵 USD' : '🇨🇴 COP'}
+                          </td>
+                          <td className="py-2.5 px-2 text-slate-300 whitespace-nowrap">{c}</td>
+                          <td className="py-2.5 px-3 text-white font-black whitespace-nowrap">{formatCurrency(tot.venta, c)}</td>
+                          <td className="py-2.5 px-3 text-rose-400 whitespace-nowrap">{formatCurrency(tot.premios, c)}</td>
+                          <td className="py-2.5 px-3 text-slate-300 whitespace-nowrap">{formatCurrency(tot.ggr, c)}</td>
+                          <td className="py-2.5 px-3 text-slate-400 whitespace-nowrap">{formatCurrency(tot.comCompletaProv, c)}</td>
+                          <td className="py-2.5 px-3 text-rose-400 whitespace-nowrap">-{formatCurrency(tot.comAgencias, c)}</td>
+                          <td className="py-2.5 px-3 text-amber-300 font-bold whitespace-nowrap">{formatCurrency(tot.difCom, c)}</td>
+                          <td className={`py-2.5 px-3 whitespace-nowrap ${tot.baseUtil >= 0 ? 'text-slate-300' : 'text-rose-400'}`}>{formatCurrency(tot.baseUtil, c)}</td>
+                          <td className={`py-2.5 px-3 whitespace-nowrap ${tot.partCom >= 0 ? 'text-indigo-300' : 'text-rose-400'}`}>{formatCurrency(tot.partCom, c)}</td>
+                          <td className="py-2.5 px-3 text-amber-300 font-black whitespace-nowrap">{formatCurrency(tot.totalCom, c)}</td>
+                          <td className={`py-2.5 px-3 whitespace-nowrap ${tot.netoOperadora >= 0 ? 'text-emerald-400' : 'text-rose-400'}`}>{formatCurrency(tot.netoOperadora, c)}</td>
+                          <td className="py-2.5 px-3 text-slate-400 whitespace-nowrap">{formatCurrency(tot.saldoInit, c)}</td>
+                          <td className="py-2.5 px-3 text-rose-300 whitespace-nowrap">{formatCurrency(tot.pagosNetos, c)}</td>
+                          <td className="py-2.5 px-3 text-right whitespace-nowrap">
+                            <span className={`font-black text-xs ${tot.balanceFinal > 0 ? 'text-rose-400' : tot.balanceFinal < 0 ? 'text-cyan-400' : 'text-emerald-400'}`}>
+                              {formatCurrency(tot.balanceFinal, c)}
+                            </span>
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tfoot>
+                )}
               </table>
             </div>
           </div>
