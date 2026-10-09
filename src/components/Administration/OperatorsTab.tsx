@@ -692,12 +692,15 @@ export const OperatorsTab: React.FC<OperatorsTabProps> = ({ initialSubTab = 'ven
 
               {/* Commercializer Conditions Form */}
               <form onSubmit={handleSaveSettlement} className="space-y-6 pt-2 border-t border-slate-800">
-                <div className="flex items-center justify-between">
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
                   <h4 className="text-xs font-bold uppercase tracking-wider text-amber-400 flex items-center gap-1.5">
                     <TrendingUp className="w-4 h-4" />
-                    <span>Condiciones del Comercializador (Precargadas de Config. Proveedores)</span>
+                    <span>Condiciones del Comercializador (Configuración de Proveedores)</span>
                   </h4>
-                  <span className="text-[11px] text-slate-400">Puedes ajustar los valores si hubo un acuerdo especial esta semana.</span>
+                  <span className="text-[11px] text-slate-400 flex items-center gap-1.5 bg-[#071217] px-3 py-1 rounded-xl border border-slate-800">
+                    <Lock className="w-3.5 h-3.5 text-amber-400 shrink-0" />
+                    <span>Valores protegidos • Solo se modifican en <strong>Catálogos &gt; Config. Proveedores</strong></span>
+                  </span>
                 </div>
 
                 <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
@@ -706,21 +709,25 @@ export const OperatorsTab: React.FC<OperatorsTabProps> = ({ initialSubTab = 'ven
                     <div className="flex items-center justify-between">
                       <label className="text-xs font-bold text-amber-300 flex items-center gap-1">
                         <Percent className="w-3.5 h-3.5" />
-                        <span>% Comisión Proveedor</span>
+                        <span>Comisión Proveedor</span>
                       </label>
-                      <span className="text-[10px] px-2 py-0.5 rounded bg-amber-500/10 text-amber-400 border border-amber-500/20 font-mono font-bold">
+                      <span className="text-[10px] px-2 py-0.5 rounded bg-amber-500/10 text-amber-400 border border-amber-500/20 font-mono font-bold flex items-center gap-1">
+                        <Lock className="w-2.5 h-2.5" />
+                        Bloqueada ({comisionPct}%)
+                      </span>
+                    </div>
+                    <div className="relative">
+                      <input
+                        type="text"
+                        readOnly
+                        disabled
+                        value={`${comisionPct}%`}
+                        className="w-full bg-[#0D1B22]/90 border border-amber-500/30 rounded-xl px-3.5 py-2 text-xs text-amber-200 font-mono font-black cursor-not-allowed select-none"
+                      />
+                      <span className="absolute right-3 top-1/2 -translate-y-1/2 text-[10px] text-slate-500 font-mono">
                         {financialData.comisionAgenciasPct}% a Agencias
                       </span>
                     </div>
-                    <input
-                      type="number"
-                      step="0.01"
-                      min="0"
-                      max="100"
-                      value={comisionPct}
-                      onChange={(e) => setComisionPct(e.target.value)}
-                      className="w-full bg-[#0D1B22] border border-amber-500/40 rounded-xl px-3.5 py-2 text-xs text-amber-200 font-mono font-black focus:outline-none focus:border-amber-400"
-                    />
                     <div className="text-[10px] text-slate-400 space-y-0.5 pt-1.5 border-t border-slate-800">
                       <div className="flex justify-between">
                         <span>• Otorgada ({comisionPct}%):</span>
@@ -742,21 +749,25 @@ export const OperatorsTab: React.FC<OperatorsTabProps> = ({ initialSubTab = 'ven
                     <div className="flex items-center justify-between">
                       <label className="text-xs font-bold text-indigo-300 flex items-center gap-1">
                         <Percent className="w-3.5 h-3.5" />
-                        <span>% Participación Comercializador</span>
+                        <span>Participación Comercializador</span>
                       </label>
-                      <span className="text-[10px] px-2 py-0.5 rounded bg-indigo-500/10 text-indigo-300 border border-indigo-500/20 font-mono font-bold">
+                      <span className="text-[10px] px-2 py-0.5 rounded bg-indigo-500/10 text-indigo-300 border border-indigo-500/20 font-mono font-bold flex items-center gap-1">
+                        <Lock className="w-2.5 h-2.5" />
+                        Bloqueada ({participacionPct}%)
+                      </span>
+                    </div>
+                    <div className="relative">
+                      <input
+                        type="text"
+                        readOnly
+                        disabled
+                        value={`${participacionPct}%`}
+                        className="w-full bg-[#0D1B22]/90 border border-indigo-500/30 rounded-xl px-3.5 py-2 text-xs text-indigo-200 font-mono font-black cursor-not-allowed select-none"
+                      />
+                      <span className="absolute right-3 top-1/2 -translate-y-1/2 text-[10px] text-slate-500 font-mono">
                         Casa {financialData.operadoraPartPct}%
                       </span>
                     </div>
-                    <input
-                      type="number"
-                      step="0.01"
-                      min="0"
-                      max="100"
-                      value={participacionPct}
-                      onChange={(e) => setParticipacionPct(e.target.value)}
-                      className="w-full bg-[#0D1B22] border border-indigo-500/40 rounded-xl px-3.5 py-2 text-xs text-indigo-200 font-mono font-black focus:outline-none focus:border-indigo-400"
-                    />
                     <div className="text-[10px] text-slate-400 space-y-0.5 pt-1.5 border-t border-slate-800">
                       <div className="flex justify-between">
                         <span>• Base Neta (GGR - Com {comisionPct}%):</span>
@@ -784,19 +795,22 @@ export const OperatorsTab: React.FC<OperatorsTabProps> = ({ initialSubTab = 'ven
                         <Wallet className="w-3.5 h-3.5 text-emerald-400" />
                         <span>Saldo Inicial (Arrastre)</span>
                       </label>
-                      <span className="text-[10px] px-2 py-0.5 rounded bg-slate-800 text-slate-400 font-mono font-bold">
+                      <span className="text-[10px] px-2 py-0.5 rounded bg-slate-800 text-slate-400 font-mono font-bold flex items-center gap-1">
+                        <Lock className="w-2.5 h-2.5" />
                         {selectedMoneda}
                       </span>
                     </div>
-                    <input
-                      type="number"
-                      step="0.01"
-                      value={saldoInicialManual}
-                      onChange={(e) => setSaldoInicialManual(e.target.value)}
-                      className="w-full bg-[#0D1B22] border border-slate-700 rounded-xl px-3.5 py-2 text-xs text-white font-mono font-bold focus:outline-none focus:border-emerald-500"
-                    />
+                    <div className="relative">
+                      <input
+                        type="text"
+                        readOnly
+                        disabled
+                        value={formatCurrency(Number(saldoInicialManual) || 0, selectedMoneda as any)}
+                        className="w-full bg-[#0D1B22]/90 border border-slate-700 rounded-xl px-3.5 py-2 text-xs text-emerald-300 font-mono font-bold cursor-not-allowed select-none"
+                      />
+                    </div>
                     <div className="text-[10px] text-slate-400 space-y-0.5 pt-1.5 border-t border-slate-800">
-                      <div>Saldo pendiente de semanas previas en Proveedores.</div>
+                      <div>Arrastre fijado en Config. Proveedores.</div>
                     </div>
                   </div>
                 </div>
