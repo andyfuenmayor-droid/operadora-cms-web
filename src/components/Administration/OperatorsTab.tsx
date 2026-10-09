@@ -227,27 +227,37 @@ export const OperatorsTab: React.FC<OperatorsTabProps> = ({ initialSubTab = 'ven
 
     const ventaBruta = Math.round(matching.reduce((sum, curr) => sum + Number(curr.venta || 0), 0) * 100) / 100;
     const premios = Math.round(matching.reduce((sum, curr) => sum + Number(curr.premios || 0), 0) * 100) / 100;
-    const utilidadBruta = Math.round((ventaBruta - premios) * 100) / 100;
+    const utilidadBruta = Math.round((ventaBruta - premios) * 100) / 100; // GGR
 
-    const cPct = Number(comisionPct) || 0;
-    const pPct = Number(participacionPct) || 0;
+    // Comisión pagada a las agencias en taquillas (de carga_actual)
+    const comisionAgencias = Math.round(matching.reduce((sum, curr) => sum + Number(curr.comision || 0), 0) * 100) / 100;
+    const comisionAgenciasPct = ventaBruta > 0 ? Math.round((comisionAgencias / ventaBruta) * 10000) / 100 : 0;
 
-    // 1. Comisión Comercializador = Venta Bruta * (Comisión % / 100)
-    const comisionComercializador = Math.round(ventaBruta * (cPct / 100) * 100) / 100;
+    const cPct = Number(comisionPct) || 0; // % Comisión otorgada por proveedor (ej: 16%)
+    const pPct = Number(participacionPct) || 0; // % Participación comercializador (ej: 40%)
 
-    // 2. Base de reparto = Utilidad Bruta - Comisión Comercializador
-    const baseReparto = Math.round((utilidadBruta - comisionComercializador) * 100) / 100;
+    // 1. Comisión Completa Otorgada por Proveedor
+    const comisionCompletaProveedor = Math.round(ventaBruta * (cPct / 100) * 100) / 100;
 
-    // 3. Participación Comercializador = Base de Reparto * (Participación % / 100)
-    const participacionComercializador = Math.round(baseReparto * (pPct / 100) * 100) / 100;
+    // 2. Diferencial de Comisión del Comercializador = Comisión Proveedor - Comisión Agencias
+    const diferencialComision = Math.round((comisionCompletaProveedor - comisionAgencias) * 100) / 100;
+    const diferencialPct = Math.round((cPct - comisionAgenciasPct) * 100) / 100;
 
-    // 4. Ganancia Total del Comercializador = Comisión + Participación
-    const gananciaTotalComercializador = Math.round((comisionComercializador + participacionComercializador) * 100) / 100;
+    // 3. Base de Utilidad (Opción B: GGR - Comisión Completa 16%)
+    const baseUtilidad = Math.round((utilidadBruta - comisionCompletaProveedor) * 100) / 100;
 
-    // 5. Utilidad Neta para la Casa Operadora = Base de Reparto - Participación Comercializador
-    const utilidadNetaOperadora = Math.round((baseReparto - participacionComercializador) * 100) / 100;
+    // 4. Participación Comercializador = Base de Utilidad * (pPct / 100)
+    // (40% de la base neta; suma si la base es positiva, resta si es negativa)
+    const participacionComercializador = Math.round(baseUtilidad * (pPct / 100) * 100) / 100;
 
-    // 6. Pagos a la operadora de esta semana en este sistema y moneda
+    // 5. Total Ganancia Comercializador = Diferencial de Comisión + Participación Comercializador
+    const gananciaTotalComercializador = Math.round((diferencialComision + participacionComercializador) * 100) / 100;
+
+    // 6. Participación Neta Casa Operadora (60% restante de la base de utilidad)
+    const operadoraPartPct = 100 - pPct;
+    const utilidadNetaOperadora = Math.round(baseUtilidad * (operadoraPartPct / 100) * 100) / 100;
+
+    // 7. Pagos a la operadora de esta semana en este sistema y moneda
     const sysPayments = operatorPayments.filter(
       (p) =>
         p.sistema === selectedSistema &&
@@ -257,7 +267,7 @@ export const OperatorsTab: React.FC<OperatorsTabProps> = ({ initialSubTab = 'ven
     const abonosRecibidos = Math.round(sysPayments.filter((p) => p.tipo_pago === 'ABONO_OPERADORA').reduce((sum, p) => sum + p.monto, 0) * 100) / 100;
     const pagosNetos = Math.round((pagosRealizados - abonosRecibidos) * 100) / 100;
 
-    // 7. Cuenta Corriente: Saldo Inicial + Utilidad Operadora - Pagos Netos
+    // 8. Cuenta Corriente: Saldo Inicial + Utilidad Operadora - Pagos Netos
     const saldoInicial = Number(saldoInicialManual) || 0;
     const balanceFinal = Math.round((saldoInicial + utilidadNetaOperadora - pagosNetos) * 100) / 100;
 
@@ -265,10 +275,15 @@ export const OperatorsTab: React.FC<OperatorsTabProps> = ({ initialSubTab = 'ven
       ventaBruta,
       premios,
       utilidadBruta,
-      comisionComercializador,
-      baseReparto,
+      comisionAgencias,
+      comisionAgenciasPct,
+      comisionCompletaProveedor,
+      diferencialComision,
+      diferencialPct,
+      baseUtilidad,
       participacionComercializador,
       gananciaTotalComercializador,
+      operadoraPartPct,
       utilidadNetaOperadora,
       saldoInicial,
       pagosRealizados,
@@ -315,14 +330,16 @@ export const OperatorsTab: React.FC<OperatorsTabProps> = ({ initialSubTab = 'ven
         // Include row if there is activity, initial balance or payments
         if (venta > 0 || premio > 0 || saldoInit !== 0 || pagosNetos !== 0) {
           const uBruta = venta - premio;
+          const comAgencias = Math.round(matching.reduce((sum, currItem) => sum + Number(currItem.comision || 0), 0) * 100) / 100;
           const cPct = Number(conf.comision_comercializador || 0);
           const pPct = Number(conf.participacion_comercializador || 0);
 
-          const comisionCom = Math.round(venta * (cPct / 100) * 100) / 100;
-          const base = uBruta - comisionCom;
-          const partCom = Math.round(base * (pPct / 100) * 100) / 100;
-          const totalCom = comisionCom + partCom;
-          const netoOperadora = Math.round((base - partCom) * 100) / 100;
+          const comCompletaProv = Math.round(venta * (cPct / 100) * 100) / 100;
+          const difCom = Math.round((comCompletaProv - comAgencias) * 100) / 100;
+          const baseUtil = Math.round((uBruta - comCompletaProv) * 100) / 100;
+          const partCom = Math.round(baseUtil * (pPct / 100) * 100) / 100;
+          const totalCom = Math.round((difCom + partCom) * 100) / 100;
+          const netoOperadora = Math.round(baseUtil * ((100 - pPct) / 100) * 100) / 100;
           const balanceFinal = Math.round((saldoInit + netoOperadora - pagosNetos) * 100) / 100;
 
           rows.push({
@@ -332,7 +349,10 @@ export const OperatorsTab: React.FC<OperatorsTabProps> = ({ initialSubTab = 'ven
             premio,
             utilidadBruta: uBruta,
             comisionPct: cPct,
-            comisionCom,
+            comCompletaProv,
+            comAgencias,
+            difCom,
+            baseUtil,
             participacionPct: pPct,
             partCom,
             totalCom,
@@ -354,11 +374,12 @@ export const OperatorsTab: React.FC<OperatorsTabProps> = ({ initialSubTab = 'ven
       (acc, r) => ({
         venta: acc.venta + r.venta,
         premios: acc.premios + r.premio,
+        difCom: acc.difCom + r.difCom,
         totalComercializador: acc.totalComercializador + r.totalCom,
         netoOperadora: acc.netoOperadora + r.netoOperadora,
         balanceFinal: acc.balanceFinal + r.balanceFinal,
       }),
-      { venta: 0, premios: 0, totalComercializador: 0, netoOperadora: 0, balanceFinal: 0 }
+      { venta: 0, premios: 0, difCom: 0, totalComercializador: 0, netoOperadora: 0, balanceFinal: 0 }
     );
   }, [reportRows]);
 
@@ -377,7 +398,7 @@ export const OperatorsTab: React.FC<OperatorsTabProps> = ({ initialSubTab = 'ven
         moneda: selectedMoneda,
         venta_bruta: financialData.ventaBruta,
         premios: financialData.premios,
-        comision_manual: financialData.comisionComercializador,
+        comision_manual: financialData.diferencialComision,
         participacion_manual: financialData.participacionComercializador,
         utilidad_final_casa: financialData.utilidadNetaOperadora,
       };
@@ -388,7 +409,7 @@ export const OperatorsTab: React.FC<OperatorsTabProps> = ({ initialSubTab = 'ven
       confetti({ particleCount: 50, spread: 60 });
       setMessage({
         type: 'success',
-        text: `¡Liquidación de ${selectedSistema} (${selectedMoneda}) guardada exitosamente! Balance Operadora: ${formatCurrency(financialData.balanceFinal, selectedMoneda as any)}`
+        text: `¡Liquidación de ${selectedSistema} (${selectedMoneda}) guardada! Comercializador: ${formatCurrency(financialData.gananciaTotalComercializador, selectedMoneda as any)} | Balance Operadora: ${formatCurrency(financialData.balanceFinal, selectedMoneda as any)}`
       });
 
       await loadData();
@@ -472,11 +493,14 @@ export const OperatorsTab: React.FC<OperatorsTabProps> = ({ initialSubTab = 'ven
         `🎰 *SISTEMA: ${r.sistema} (${r.moneda})*`,
         `• Venta Bruta: ${formatCurrency(r.venta, r.moneda)}`,
         `• Premios: ${formatCurrency(r.premio, r.moneda)}`,
-        `• Utilidad Bruta: ${formatCurrency(r.utilidadBruta, r.moneda)}`,
-        `• Com. Comercializador (${r.comisionPct}%): ${formatCurrency(r.comisionCom, r.moneda)}`,
-        `• Part. Comercializador (${r.participacionPct}%): ${formatCurrency(r.partCom, r.moneda)}`,
-        `• *Total Ganancia Comercializador:* ${formatCurrency(r.totalCom, r.moneda)}`,
-        `• *Utilidad Neta Operadora:* ${formatCurrency(r.netoOperadora, r.moneda)}`,
+        `• Utilidad Bruta (GGR): ${formatCurrency(r.utilidadBruta, r.moneda)}`,
+        `• Com. Proveedor (${r.comisionPct}%): ${formatCurrency(r.comCompletaProv, r.moneda)}`,
+        `• (-) Com. Pagada Agencias: ${formatCurrency(r.comAgencias, r.moneda)}`,
+        `• (=) Diferencial a tu favor: ${formatCurrency(r.difCom, r.moneda)}`,
+        `• Base Utilidad Neta (GGR - Com 16%): ${formatCurrency(r.baseUtil, r.moneda)}`,
+        `• Participación Comercializador (${r.participacionPct}%): ${formatCurrency(r.partCom, r.moneda)}`,
+        `• 🏆 *Total Ganancia Comercializador:* ${formatCurrency(r.totalCom, r.moneda)}`,
+        `• 🏛️ *Utilidad Neta Operadora:* ${formatCurrency(r.netoOperadora, r.moneda)}`,
         `• Saldo Inicial Arrastre: ${formatCurrency(r.saldoInit, r.moneda)}`,
         `• Pagos Realizados: ${formatCurrency(r.pagosNetos, r.moneda)}`,
         `• 👉 *BALANCE FINAL: ${formatCurrency(r.balanceFinal, r.moneda)}* ${r.balanceFinal > 0 ? '(Debe a Operadora)' : r.balanceFinal < 0 ? '(A Favor Comercializador)' : '(Al Día)'}`,
@@ -487,6 +511,8 @@ export const OperatorsTab: React.FC<OperatorsTabProps> = ({ initialSubTab = 'ven
     lines.push(
       `💼 *RESUMEN TOTALIZADO:*`,
       `• Venta Global: ${formatCurrency(reportTotals.venta, 'BS')}`,
+      `• Premios Globales: ${formatCurrency(reportTotals.premios, 'BS')}`,
+      `• Total Diferencial Comisión: ${formatCurrency(reportTotals.difCom, 'BS')}`,
       `• Total Comercializador: ${formatCurrency(reportTotals.totalComercializador, 'BS')}`,
       `• Total Neto Operadoras: ${formatCurrency(reportTotals.netoOperadora, 'BS')}`,
       `━━━━━━━━━━━━━━━━━━━━━━━━`,
@@ -675,11 +701,17 @@ export const OperatorsTab: React.FC<OperatorsTabProps> = ({ initialSubTab = 'ven
                 </div>
 
                 <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-                  <div className="space-y-1.5">
-                    <label className="text-xs font-semibold text-amber-300 flex items-center gap-1">
-                      <Percent className="w-3.5 h-3.5" />
-                      <span>% Comisión Comercializador</span>
-                    </label>
+                  {/* Comisión Comercializador (Proveedor) */}
+                  <div className="space-y-1.5 bg-[#071217] p-3.5 rounded-2xl border border-amber-500/30">
+                    <div className="flex items-center justify-between">
+                      <label className="text-xs font-bold text-amber-300 flex items-center gap-1">
+                        <Percent className="w-3.5 h-3.5" />
+                        <span>% Comisión Proveedor</span>
+                      </label>
+                      <span className="text-[10px] px-2 py-0.5 rounded bg-amber-500/10 text-amber-400 border border-amber-500/20 font-mono font-bold">
+                        {financialData.comisionAgenciasPct}% a Agencias
+                      </span>
+                    </div>
                     <input
                       type="number"
                       step="0.01"
@@ -687,18 +719,35 @@ export const OperatorsTab: React.FC<OperatorsTabProps> = ({ initialSubTab = 'ven
                       max="100"
                       value={comisionPct}
                       onChange={(e) => setComisionPct(e.target.value)}
-                      className="w-full bg-[#071217] border border-amber-500/30 rounded-xl px-4 py-2.5 text-xs text-amber-200 font-mono font-bold focus:outline-none focus:border-amber-400"
+                      className="w-full bg-[#0D1B22] border border-amber-500/40 rounded-xl px-3.5 py-2 text-xs text-amber-200 font-mono font-black focus:outline-none focus:border-amber-400"
                     />
-                    <span className="text-[10px] text-slate-400 block">
-                      Monto: <strong className="text-amber-300">{formatCurrency(financialData.comisionComercializador, selectedMoneda as any)}</strong>
-                    </span>
+                    <div className="text-[10px] text-slate-400 space-y-0.5 pt-1.5 border-t border-slate-800">
+                      <div className="flex justify-between">
+                        <span>• Otorgada ({comisionPct}%):</span>
+                        <strong className="text-slate-300 font-mono">{formatCurrency(financialData.comisionCompletaProveedor, selectedMoneda as any)}</strong>
+                      </div>
+                      <div className="flex justify-between">
+                        <span>• (-) Agencias ({financialData.comisionAgenciasPct}%):</span>
+                        <strong className="text-rose-400 font-mono">-{formatCurrency(financialData.comisionAgencias, selectedMoneda as any)}</strong>
+                      </div>
+                      <div className="flex justify-between font-bold text-amber-300 pt-1 border-t border-slate-800/80">
+                        <span>(=) Diferencial ({financialData.diferencialPct}%):</span>
+                        <strong className="font-mono">{formatCurrency(financialData.diferencialComision, selectedMoneda as any)}</strong>
+                      </div>
+                    </div>
                   </div>
 
-                  <div className="space-y-1.5">
-                    <label className="text-xs font-semibold text-indigo-300 flex items-center gap-1">
-                      <Percent className="w-3.5 h-3.5" />
-                      <span>% Participación Comercializador</span>
-                    </label>
+                  {/* Participación Comercializador */}
+                  <div className="space-y-1.5 bg-[#071217] p-3.5 rounded-2xl border border-indigo-500/30">
+                    <div className="flex items-center justify-between">
+                      <label className="text-xs font-bold text-indigo-300 flex items-center gap-1">
+                        <Percent className="w-3.5 h-3.5" />
+                        <span>% Participación Comercializador</span>
+                      </label>
+                      <span className="text-[10px] px-2 py-0.5 rounded bg-indigo-500/10 text-indigo-300 border border-indigo-500/20 font-mono font-bold">
+                        Casa {financialData.operadoraPartPct}%
+                      </span>
+                    </div>
                     <input
                       type="number"
                       step="0.01"
@@ -706,95 +755,173 @@ export const OperatorsTab: React.FC<OperatorsTabProps> = ({ initialSubTab = 'ven
                       max="100"
                       value={participacionPct}
                       onChange={(e) => setParticipacionPct(e.target.value)}
-                      className="w-full bg-[#071217] border border-indigo-500/30 rounded-xl px-4 py-2.5 text-xs text-indigo-200 font-mono font-bold focus:outline-none focus:border-indigo-400"
+                      className="w-full bg-[#0D1B22] border border-indigo-500/40 rounded-xl px-3.5 py-2 text-xs text-indigo-200 font-mono font-black focus:outline-none focus:border-indigo-400"
                     />
-                    <span className="text-[10px] text-slate-400 block">
-                      Monto: <strong className="text-indigo-300">{formatCurrency(financialData.participacionComercializador, selectedMoneda as any)}</strong>
-                    </span>
+                    <div className="text-[10px] text-slate-400 space-y-0.5 pt-1.5 border-t border-slate-800">
+                      <div className="flex justify-between">
+                        <span>• Base Neta (GGR - Com {comisionPct}%):</span>
+                        <strong className={`font-mono ${financialData.baseUtilidad >= 0 ? 'text-slate-300' : 'text-rose-400'}`}>
+                          {formatCurrency(financialData.baseUtilidad, selectedMoneda as any)}
+                        </strong>
+                      </div>
+                      <div className="flex justify-between font-bold text-indigo-300 pt-1 border-t border-slate-800/80">
+                        <span>(±) Tu {participacionPct}%:</span>
+                        <strong className={`font-mono ${financialData.participacionComercializador >= 0 ? 'text-indigo-300' : 'text-rose-400'}`}>
+                          {formatCurrency(financialData.participacionComercializador, selectedMoneda as any)}
+                        </strong>
+                      </div>
+                      <div className="flex justify-between text-slate-400">
+                        <span>• Operadora ({financialData.operadoraPartPct}%):</span>
+                        <strong className="text-emerald-400 font-mono">{formatCurrency(financialData.utilidadNetaOperadora, selectedMoneda as any)}</strong>
+                      </div>
+                    </div>
                   </div>
 
-                  <div className="space-y-1.5">
-                    <label className="text-xs font-semibold text-slate-300 flex items-center gap-1">
-                      <Wallet className="w-3.5 h-3.5 text-emerald-400" />
-                      <span>Saldo Inicial Proveedor (Arrastre)</span>
-                    </label>
+                  {/* Saldo Inicial Proveedor */}
+                  <div className="space-y-1.5 bg-[#071217] p-3.5 rounded-2xl border border-slate-700">
+                    <div className="flex items-center justify-between">
+                      <label className="text-xs font-bold text-slate-300 flex items-center gap-1">
+                        <Wallet className="w-3.5 h-3.5 text-emerald-400" />
+                        <span>Saldo Inicial (Arrastre)</span>
+                      </label>
+                      <span className="text-[10px] px-2 py-0.5 rounded bg-slate-800 text-slate-400 font-mono font-bold">
+                        {selectedMoneda}
+                      </span>
+                    </div>
                     <input
                       type="number"
                       step="0.01"
                       value={saldoInicialManual}
                       onChange={(e) => setSaldoInicialManual(e.target.value)}
-                      className="w-full bg-[#071217] border border-slate-700 rounded-xl px-4 py-2.5 text-xs text-white font-mono focus:outline-none focus:border-emerald-500"
+                      className="w-full bg-[#0D1B22] border border-slate-700 rounded-xl px-3.5 py-2 text-xs text-white font-mono font-bold focus:outline-none focus:border-emerald-500"
                     />
-                    <span className="text-[10px] text-slate-400 block">
-                      Arrastre de semanas anteriores.
-                    </span>
+                    <div className="text-[10px] text-slate-400 space-y-0.5 pt-1.5 border-t border-slate-800">
+                      <div>Saldo pendiente de semanas previas en Proveedores.</div>
+                    </div>
                   </div>
                 </div>
 
                 {/* Net Breakdown Cards */}
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                   {/* Ganancia Comercializador */}
-                  <div className="p-4 rounded-2xl bg-gradient-to-br from-amber-500/10 via-[#071217] to-amber-500/5 border border-amber-500/30">
-                    <div className="text-[11px] font-bold uppercase tracking-wider text-amber-400">
-                      Total Ganancia Comercializador
+                  <div className="p-5 rounded-2xl bg-gradient-to-br from-amber-500/10 via-[#071217] to-amber-500/5 border border-amber-500/40 space-y-3">
+                    <div className="flex items-center justify-between">
+                      <div className="text-xs font-black uppercase tracking-wider text-amber-400 flex items-center gap-1.5">
+                        <Trophy className="w-4 h-4" />
+                        <span>Total Ganancia Comercializador</span>
+                      </div>
+                      <span className="text-[10px] font-bold px-2 py-0.5 rounded bg-amber-500/20 text-amber-300 border border-amber-500/30">
+                        Tu Utilidad
+                      </span>
                     </div>
-                    <div className="text-2xl font-black font-mono text-amber-300 mt-1">
+
+                    <div className="text-2xl sm:text-3xl font-black font-mono text-amber-300">
                       {formatCurrency(financialData.gananciaTotalComercializador, selectedMoneda as any)}
                     </div>
-                    <div className="text-[11px] text-slate-400 mt-2 space-y-0.5">
-                      <div>• Comisión ({comisionPct}%): {formatCurrency(financialData.comisionComercializador, selectedMoneda as any)}</div>
-                      <div>• Participación ({participacionPct}%): {formatCurrency(financialData.participacionComercializador, selectedMoneda as any)}</div>
+
+                    <div className="bg-[#0D1B22] p-3 rounded-xl border border-amber-500/20 space-y-1 text-xs font-mono">
+                      <div className="flex justify-between text-slate-300">
+                        <span>(+) Diferencial de Comisión:</span>
+                        <strong className="text-amber-300 font-bold">{formatCurrency(financialData.diferencialComision, selectedMoneda as any)}</strong>
+                      </div>
+                      <div className="text-[10px] text-slate-500 pl-2">
+                        ({comisionPct}% Proveedor - {financialData.comisionAgenciasPct}% Agencias = +{financialData.diferencialPct}%)
+                      </div>
+                      <div className="flex justify-between text-slate-300 pt-1 border-t border-slate-800">
+                        <span>(±) Participación Comercializador ({participacionPct}%):</span>
+                        <strong className={financialData.participacionComercializador >= 0 ? 'text-indigo-300 font-bold' : 'text-rose-400 font-bold'}>
+                          {formatCurrency(financialData.participacionComercializador, selectedMoneda as any)}
+                        </strong>
+                      </div>
+                      <div className="text-[10px] text-slate-500 pl-2">
+                        (Sobre Base Neta de Utilidad: {formatCurrency(financialData.baseUtilidad, selectedMoneda as any)})
+                      </div>
+                      <div className="flex justify-between text-white font-bold pt-1.5 border-t border-amber-500/30 text-sm">
+                        <span>(=) Ganancia Total Final:</span>
+                        <span className="text-amber-300">{formatCurrency(financialData.gananciaTotalComercializador, selectedMoneda as any)}</span>
+                      </div>
                     </div>
                   </div>
 
                   {/* Utilidad Operadora */}
-                  <div className="p-4 rounded-2xl bg-gradient-to-br from-emerald-500/10 via-[#071217] to-emerald-500/5 border border-emerald-500/30">
-                    <div className="text-[11px] font-bold uppercase tracking-wider text-emerald-400">
-                      Utilidad Neta Casa Operadora
+                  <div className="p-5 rounded-2xl bg-gradient-to-br from-emerald-500/10 via-[#071217] to-emerald-500/5 border border-emerald-500/40 space-y-3">
+                    <div className="flex items-center justify-between">
+                      <div className="text-xs font-black uppercase tracking-wider text-emerald-400 flex items-center gap-1.5">
+                        <Layers className="w-4 h-4" />
+                        <span>Liquidación Casa Operadora (Proveedor)</span>
+                      </div>
+                      <span className="text-[10px] font-bold px-2 py-0.5 rounded bg-emerald-500/20 text-emerald-300 border border-emerald-500/30">
+                        Casa Matriz ({financialData.operadoraPartPct}%)
+                      </span>
                     </div>
-                    <div className="text-2xl font-black font-mono text-emerald-300 mt-1">
+
+                    <div className={`text-2xl sm:text-3xl font-black font-mono ${financialData.utilidadNetaOperadora >= 0 ? 'text-emerald-300' : 'text-rose-400'}`}>
                       {formatCurrency(financialData.utilidadNetaOperadora, selectedMoneda as any)}
                     </div>
-                    <div className="text-[11px] text-slate-400 mt-2">
-                      Lo que le corresponde a la Casa después de liquidar comisiones y participaciones.
+
+                    <div className="bg-[#0D1B22] p-3 rounded-xl border border-emerald-500/20 space-y-1 text-xs font-mono">
+                      <div className="flex justify-between text-slate-300">
+                        <span>Venta Bruta:</span>
+                        <strong className="text-white font-bold">{formatCurrency(financialData.ventaBruta, selectedMoneda as any)}</strong>
+                      </div>
+                      <div className="flex justify-between text-slate-300">
+                        <span>(-) Premios Pagados:</span>
+                        <strong className="text-rose-400 font-bold">-{formatCurrency(financialData.premios, selectedMoneda as any)}</strong>
+                      </div>
+                      <div className="flex justify-between text-slate-300">
+                        <span>(-) Comisión Completa Proveedor ({comisionPct}%):</span>
+                        <strong className="text-amber-400 font-bold">-{formatCurrency(financialData.comisionCompletaProveedor, selectedMoneda as any)}</strong>
+                      </div>
+                      <div className="flex justify-between text-emerald-400 font-bold pt-1.5 border-t border-emerald-500/30 text-sm">
+                        <span>(=) Utilidad Neta Casa ({financialData.operadoraPartPct}%):</span>
+                        <span className={financialData.utilidadNetaOperadora >= 0 ? 'text-emerald-300' : 'text-rose-400'}>
+                          {formatCurrency(financialData.utilidadNetaOperadora, selectedMoneda as any)}
+                        </span>
+                      </div>
                     </div>
                   </div>
                 </div>
 
                 {/* Estado de Cuenta & Cuadre con Pagos */}
-                <div className="p-5 rounded-2xl bg-[#071217] border border-slate-800 space-y-3">
+                <div className="p-5 rounded-2xl bg-[#071217] border border-cyan-500/30 space-y-4">
                   <div className="text-xs font-bold uppercase tracking-wider text-cyan-400 flex items-center justify-between">
                     <span className="flex items-center gap-1.5">
                       <CreditCard className="w-4 h-4" />
-                      Cuenta Corriente con el Proveedor (Cuadre de Pagos)
+                      Cuenta Corriente con el Proveedor (Conciliación de Cartera)
                     </span>
                     <button
                       type="button"
                       onClick={() => setActiveSubTab('pagos')}
-                      className="text-[11px] text-cyan-400 hover:underline cursor-pointer"
+                      className="text-[11px] text-cyan-400 hover:underline cursor-pointer flex items-center gap-1"
                     >
-                      + Registrar Pago a Operador
+                      <Plus className="w-3 h-3" />
+                      Registrar Pago a Operador
                     </button>
                   </div>
 
                   <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 text-xs font-mono">
-                    <div className="p-2.5 rounded-xl bg-[#0D1B22] border border-slate-800">
-                      <div className="text-[10px] text-slate-400">Saldo Inicial</div>
-                      <div className="font-bold text-white mt-0.5">{formatCurrency(financialData.saldoInicial, selectedMoneda as any)}</div>
+                    <div className="p-3 rounded-xl bg-[#0D1B22] border border-slate-800">
+                      <div className="text-[10px] text-slate-400">Saldo Inicial (Arrastre)</div>
+                      <div className="font-bold text-white text-sm mt-1">{formatCurrency(financialData.saldoInicial, selectedMoneda as any)}</div>
                     </div>
-                    <div className="p-2.5 rounded-xl bg-[#0D1B22] border border-slate-800">
-                      <div className="text-[10px] text-slate-400">(+) Utilidad Operadora</div>
-                      <div className="font-bold text-emerald-400 mt-0.5">{formatCurrency(financialData.utilidadNetaOperadora, selectedMoneda as any)}</div>
+                    <div className="p-3 rounded-xl bg-[#0D1B22] border border-slate-800">
+                      <div className="text-[10px] text-slate-400">(±) Utilidad Neta Operadora</div>
+                      <div className={`font-bold text-sm mt-1 ${financialData.utilidadNetaOperadora >= 0 ? 'text-emerald-400' : 'text-rose-400'}`}>
+                        {formatCurrency(financialData.utilidadNetaOperadora, selectedMoneda as any)}
+                      </div>
                     </div>
-                    <div className="p-2.5 rounded-xl bg-[#0D1B22] border border-slate-800">
+                    <div className="p-3 rounded-xl bg-[#0D1B22] border border-slate-800">
                       <div className="text-[10px] text-slate-400">(-) Pagos Realizados</div>
-                      <div className="font-bold text-rose-400 mt-0.5">{formatCurrency(financialData.pagosNetos, selectedMoneda as any)}</div>
+                      <div className="font-bold text-rose-400 text-sm mt-1">{formatCurrency(financialData.pagosNetos, selectedMoneda as any)}</div>
                     </div>
-                    <div className="p-2.5 rounded-xl bg-[#0D1B22] border border-cyan-500/30">
+                    <div className="p-3 rounded-xl bg-[#0D1B22] border border-cyan-500/40">
                       <div className="text-[10px] text-cyan-400 font-bold">(=) Balance Final</div>
-                      <div className={`font-black text-sm mt-0.5 ${financialData.balanceFinal > 0 ? 'text-rose-400' : financialData.balanceFinal < 0 ? 'text-cyan-400' : 'text-emerald-400'}`}>
+                      <div className={`font-black text-base mt-1 ${financialData.balanceFinal > 0 ? 'text-rose-400' : financialData.balanceFinal < 0 ? 'text-cyan-400' : 'text-emerald-400'}`}>
                         {formatCurrency(financialData.balanceFinal, selectedMoneda as any)}
                       </div>
+                      <span className="text-[9px] font-sans text-slate-400 block mt-0.5">
+                        {financialData.balanceFinal > 0 ? '🔴 Por Pagar a Operadora' : financialData.balanceFinal < 0 ? '🟢 A Favor Comercializador' : '✅ Cuenta al Día'}
+                      </span>
                     </div>
                   </div>
                 </div>
@@ -880,57 +1007,72 @@ export const OperatorsTab: React.FC<OperatorsTabProps> = ({ initialSubTab = 'ven
 
           {/* Consolidate Table */}
           <div className="bg-[#0D1B22] border border-slate-800 rounded-3xl overflow-hidden shadow-xl">
-            <div className="p-4 border-b border-slate-800 flex items-center justify-between">
+            <div className="p-4 border-b border-slate-800 flex flex-col sm:flex-row sm:items-center justify-between gap-2">
               <h4 className="text-xs font-black uppercase tracking-wider text-slate-300">
-                Liquidación General por Proveedor y Moneda ({reportRows.length})
+                Liquidación General Dual por Proveedor y Moneda ({reportRows.length})
               </h4>
+              <span className="text-[11px] text-slate-400">Modelo Opción B: Participación sobre utilidad después de comisión completa 16%</span>
             </div>
 
             <div className="overflow-x-auto">
               <table className="w-full text-left border-collapse text-xs">
                 <thead>
-                  <tr className="border-b border-slate-800 bg-[#071217] text-slate-400 font-bold uppercase text-[11px]">
-                    <th className="py-3 px-3">Sistema</th>
-                    <th className="py-3 px-3">Moneda</th>
-                    <th className="py-3 px-3">Venta</th>
-                    <th className="py-3 px-3">Premios</th>
-                    <th className="py-3 px-3">Com. Comerc.</th>
-                    <th className="py-3 px-3">Part. Comerc.</th>
-                    <th className="py-3 px-3">Neto Operadora</th>
-                    <th className="py-3 px-3">Saldo Inicial</th>
-                    <th className="py-3 px-3">Pagos Realizados</th>
-                    <th className="py-3 px-3 text-right">Balance Final</th>
+                  <tr className="border-b border-slate-800 bg-[#071217] text-slate-400 font-bold uppercase text-[10px]">
+                    <th className="py-3 px-3 whitespace-nowrap">Sistema</th>
+                    <th className="py-3 px-2 whitespace-nowrap">Moneda</th>
+                    <th className="py-3 px-3 whitespace-nowrap">Venta Bruta</th>
+                    <th className="py-3 px-3 whitespace-nowrap">Premios</th>
+                    <th className="py-3 px-3 whitespace-nowrap">GGR</th>
+                    <th className="py-3 px-3 whitespace-nowrap">Com. Prov.</th>
+                    <th className="py-3 px-3 whitespace-nowrap">Com. Agencias</th>
+                    <th className="py-3 px-3 whitespace-nowrap text-amber-300">Dif. Com.</th>
+                    <th className="py-3 px-3 whitespace-nowrap">Base Neta</th>
+                    <th className="py-3 px-3 whitespace-nowrap text-indigo-300">Part. Comerc.</th>
+                    <th className="py-3 px-3 whitespace-nowrap text-amber-400 font-black">Total Comerc.</th>
+                    <th className="py-3 px-3 whitespace-nowrap text-emerald-400">Neto Casa</th>
+                    <th className="py-3 px-3 whitespace-nowrap">Saldo Inicial</th>
+                    <th className="py-3 px-3 whitespace-nowrap">Pagos</th>
+                    <th className="py-3 px-3 text-right whitespace-nowrap">Balance Final</th>
                   </tr>
                 </thead>
-                <tbody className="divide-y divide-slate-800/60 font-mono">
+                <tbody className="divide-y divide-slate-800/60 font-mono text-[11px]">
                   {reportRows.length === 0 ? (
                     <tr>
-                      <td colSpan={10} className="py-8 text-center text-slate-500 font-sans">
+                      <td colSpan={15} className="py-8 text-center text-slate-500 font-sans">
                         No hay registros de ventas o proveedores para este filtro.
                       </td>
                     </tr>
                   ) : (
                     reportRows.map((r, idx) => (
                       <tr key={idx} className="hover:bg-slate-800/30 transition-colors">
-                        <td className="py-3 px-3 font-sans font-bold text-white">🎰 {r.sistema}</td>
-                        <td className="py-3 px-3">
-                          <span className="px-2 py-0.5 rounded bg-slate-800 text-slate-300 font-bold text-[10px]">
+                        <td className="py-3 px-3 font-sans font-bold text-white whitespace-nowrap">🎰 {r.sistema}</td>
+                        <td className="py-3 px-2 whitespace-nowrap">
+                          <span className="px-1.5 py-0.5 rounded bg-slate-800 text-slate-300 font-bold text-[10px]">
                             {r.moneda}
                           </span>
                         </td>
-                        <td className="py-3 px-3 text-white font-bold">{formatCurrency(r.venta, r.moneda)}</td>
-                        <td className="py-3 px-3 text-rose-400">{formatCurrency(r.premio, r.moneda)}</td>
-                        <td className="py-3 px-3 text-amber-300">
-                          {formatCurrency(r.comisionCom, r.moneda)} <span className="text-[10px] text-slate-500">({r.comisionPct}%)</span>
+                        <td className="py-3 px-3 text-white font-bold whitespace-nowrap">{formatCurrency(r.venta, r.moneda)}</td>
+                        <td className="py-3 px-3 text-rose-400 whitespace-nowrap">{formatCurrency(r.premio, r.moneda)}</td>
+                        <td className="py-3 px-3 text-slate-300 whitespace-nowrap">{formatCurrency(r.utilidadBruta, r.moneda)}</td>
+                        <td className="py-3 px-3 text-slate-400 whitespace-nowrap">
+                          {formatCurrency(r.comCompletaProv, r.moneda)} <span className="text-[9px] text-slate-500">({r.comisionPct}%)</span>
                         </td>
-                        <td className="py-3 px-3 text-indigo-300">
-                          {formatCurrency(r.partCom, r.moneda)} <span className="text-[10px] text-slate-500">({r.participacionPct}%)</span>
+                        <td className="py-3 px-3 text-rose-400 whitespace-nowrap">-{formatCurrency(r.comAgencias, r.moneda)}</td>
+                        <td className="py-3 px-3 text-amber-300 font-bold whitespace-nowrap">{formatCurrency(r.difCom, r.moneda)}</td>
+                        <td className={`py-3 px-3 whitespace-nowrap ${r.baseUtil >= 0 ? 'text-slate-300' : 'text-rose-400'}`}>
+                          {formatCurrency(r.baseUtil, r.moneda)}
                         </td>
-                        <td className="py-3 px-3 text-emerald-400 font-bold">{formatCurrency(r.netoOperadora, r.moneda)}</td>
-                        <td className="py-3 px-3 text-slate-400">{formatCurrency(r.saldoInit, r.moneda)}</td>
-                        <td className="py-3 px-3 text-rose-300">{formatCurrency(r.pagosNetos, r.moneda)}</td>
-                        <td className="py-3 px-3 text-right">
-                          <span className={`font-black text-sm ${r.balanceFinal > 0 ? 'text-rose-400' : r.balanceFinal < 0 ? 'text-cyan-400' : 'text-emerald-400'}`}>
+                        <td className={`py-3 px-3 whitespace-nowrap ${r.partCom >= 0 ? 'text-indigo-300' : 'text-rose-400'}`}>
+                          {formatCurrency(r.partCom, r.moneda)} <span className="text-[9px] text-slate-500">({r.participacionPct}%)</span>
+                        </td>
+                        <td className="py-3 px-3 text-amber-300 font-black whitespace-nowrap">{formatCurrency(r.totalCom, r.moneda)}</td>
+                        <td className={`py-3 px-3 font-bold whitespace-nowrap ${r.netoOperadora >= 0 ? 'text-emerald-400' : 'text-rose-400'}`}>
+                          {formatCurrency(r.netoOperadora, r.moneda)}
+                        </td>
+                        <td className="py-3 px-3 text-slate-400 whitespace-nowrap">{formatCurrency(r.saldoInit, r.moneda)}</td>
+                        <td className="py-3 px-3 text-rose-300 whitespace-nowrap">{formatCurrency(r.pagosNetos, r.moneda)}</td>
+                        <td className="py-3 px-3 text-right whitespace-nowrap">
+                          <span className={`font-black text-xs ${r.balanceFinal > 0 ? 'text-rose-400' : r.balanceFinal < 0 ? 'text-cyan-400' : 'text-emerald-400'}`}>
                             {formatCurrency(r.balanceFinal, r.moneda)}
                           </span>
                         </td>
