@@ -76,6 +76,11 @@ export interface TaquillaUser {
 export interface BetSystem {
   id: number;
   nombre_sistema: string;
+  comision_comercializador?: number;
+  participacion_comercializador?: number;
+  saldo_inicial_bs?: number;
+  saldo_inicial_usd?: number;
+  saldo_inicial_cop?: number;
   user_id?: string;
   created_at?: string;
 }

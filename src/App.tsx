@@ -86,8 +86,10 @@ const AppContent: React.FC = () => {
         return <RealSalesTab />;
 
       case 'Pagos Agencias':
-      case 'Pagos a Operador':
         return <PaymentsTab />;
+
+      case 'Pagos a Operador':
+        return <OperatorsTab initialSubTab="pagos" />;
 
       case 'Gastos por Agencia':
       case 'Gastos Agencias':
@@ -101,9 +103,13 @@ const AppContent: React.FC = () => {
         return <WeeklyClosureTab />;
 
       case 'Venta Operadora':
+        return <OperatorsTab initialSubTab="venta" />;
+
       case 'Reporte Operadora':
+        return <OperatorsTab initialSubTab="reporte" />;
+
       case 'Cierre Operadora':
-        return <OperatorsTab />;
+        return <OperatorsTab initialSubTab="cierres" />;
 
       case 'Ajustes':
         return <CycleSettingsTab />;
