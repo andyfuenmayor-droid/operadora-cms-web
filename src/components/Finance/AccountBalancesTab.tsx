@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { supabase } from '../../lib/supabase';
 import { useAuth } from '../../context/AuthContext';
+import { useTheme } from '../../context/ThemeContext';
 import { formatCurrency, formatDate, normalizarMoneda } from '../../utils/formatters';
 import {
   getConsolidatedPayments,
@@ -50,6 +51,7 @@ interface BalanceRow {
 
 export const AccountBalancesTab: React.FC = () => {
   const { effectiveUserId, systemCycle } = useAuth();
+  const { isLight } = useTheme();
 
   const [activeMainSubTab, setActiveMainSubTab] = useState<'activo' | 'historico'>('activo');
   const [isLoading, setIsLoading] = useState(true);
@@ -474,17 +476,62 @@ ${textoSistemas}
         </div>
 
         {/* Cartera Total Metric */}
-        <div className="text-center md:text-right bg-[#071217]/60 md:bg-transparent p-3 md:p-0 rounded-2xl border border-slate-800/60 md:border-0">
-          <span className="text-[10px] sm:text-[11px] font-bold uppercase tracking-wider text-slate-400 block">
-            Cartera Total Pendiente ({activeCurrency})
-          </span>
-          <span
-            className={`text-xl sm:text-2xl md:text-3xl font-black font-mono mt-0.5 block ${
-              activeBalances.totalDebt > 0
-                ? 'text-rose-400'
+        <div
+          className={`text-center md:text-right p-3 sm:p-3.5 md:px-5 md:py-2.5 rounded-2xl border transition-all shadow-sm ${
+            isLight
+              ? activeBalances.totalDebt > 0
+                ? 'bg-gradient-to-r from-rose-50/90 via-red-50/60 to-rose-50/90 border-rose-200/90'
                 : activeBalances.totalDebt < 0
-                ? 'text-cyan-400'
-                : 'text-emerald-400'
+                ? 'bg-gradient-to-r from-cyan-50/90 via-sky-50/60 to-cyan-50/90 border-cyan-200/90'
+                : 'bg-gradient-to-r from-emerald-50/90 via-teal-50/60 to-emerald-50/90 border-emerald-200/90'
+              : activeBalances.totalDebt > 0
+              ? 'bg-gradient-to-r from-rose-950/30 via-[#071217] to-rose-950/30 border-rose-500/30 shadow-rose-950/20'
+              : activeBalances.totalDebt < 0
+              ? 'bg-gradient-to-r from-cyan-950/30 via-[#071217] to-cyan-950/30 border-cyan-500/30 shadow-cyan-950/20'
+              : 'bg-gradient-to-r from-emerald-950/30 via-[#071217] to-emerald-950/30 border-emerald-500/30 shadow-emerald-950/20'
+          }`}
+        >
+          <div className="flex items-center justify-center md:justify-end gap-1.5">
+            <span
+              className={`w-2 h-2 rounded-full shrink-0 ${
+                activeBalances.totalDebt > 0
+                  ? isLight ? 'bg-rose-500 animate-pulse' : 'bg-rose-400 animate-pulse'
+                  : activeBalances.totalDebt < 0
+                  ? isLight ? 'bg-cyan-500 animate-pulse' : 'bg-cyan-400 animate-pulse'
+                  : isLight ? 'bg-emerald-500' : 'bg-emerald-400'
+              }`}
+            />
+            <span
+              className={`text-[10px] sm:text-[11px] font-bold uppercase tracking-wider block ${
+                isLight
+                  ? activeBalances.totalDebt > 0
+                    ? 'text-rose-700'
+                    : activeBalances.totalDebt < 0
+                    ? 'text-cyan-700'
+                    : 'text-emerald-700'
+                  : activeBalances.totalDebt > 0
+                  ? 'text-rose-300'
+                  : activeBalances.totalDebt < 0
+                  ? 'text-cyan-300'
+                  : 'text-emerald-300'
+              }`}
+            >
+              Cartera Total Pendiente ({activeCurrency})
+            </span>
+          </div>
+          <span
+            className={`text-2xl sm:text-3xl font-black font-mono mt-1 block tracking-tight ${
+              isLight
+                ? activeBalances.totalDebt > 0
+                  ? 'text-rose-600'
+                  : activeBalances.totalDebt < 0
+                  ? 'text-cyan-600'
+                  : 'text-emerald-600'
+                : activeBalances.totalDebt > 0
+                ? 'text-rose-400 drop-shadow-[0_0_12px_rgba(244,63,94,0.35)]'
+                : activeBalances.totalDebt < 0
+                ? 'text-cyan-400 drop-shadow-[0_0_12px_rgba(6,182,212,0.35)]'
+                : 'text-emerald-400 drop-shadow-[0_0_12px_rgba(16,185,129,0.35)]'
             }`}
           >
             {formatCurrency(activeBalances.totalDebt, activeCurrency)}

@@ -102,6 +102,12 @@ html.light .bg-black\/60 {
 
 /* Sub-tarjetas, contenedores internos y pozos (wells) */
 html.light .bg-\[\#071217\],
+html.light .bg-\[\#071217\]\/90,
+html.light .bg-\[\#071217\]\/80,
+html.light .bg-\[\#071217\]\/70,
+html.light .bg-\[\#071217\]\/60,
+html.light .bg-\[\#071217\]\/50,
+html.light .bg-\[\#071217\]\/40,
 html.light .bg-\[\#0a1820\],
 html.light .bg-\[\#0B161B\],
 html.light .bg-\[\#0c1e1c\],
@@ -349,13 +355,22 @@ html.light .from-\[\#0F172A\] {
 }
 
 /* Cajas de Aviso internas en Tarjetas de Deuda y A Favor */
-html.light .bg-rose-500\/10.border-rose-500\/20 {
+html.light .bg-rose-500\/10.border-rose-500\/20,
+html.light .bg-rose-500\/10.border-rose-500\/30 {
   background-color: #fff1f2 !important;
   border-color: #fecdd3 !important;
   color: #9f1239 !important;
 }
 
-html.light .bg-emerald-500\/10.border-emerald-500\/20 {
+html.light .bg-cyan-500\/10.border-cyan-500\/20,
+html.light .bg-cyan-500\/10.border-cyan-500\/30 {
+  background-color: #ecfeff !important;
+  border-color: #a5f3fc !important;
+  color: #0e7490 !important;
+}
+
+html.light .bg-emerald-500\/10.border-emerald-500\/20,
+html.light .bg-emerald-500\/10.border-emerald-500\/30 {
   background-color: #f0fdf4 !important;
   border-color: #a7f3d0 !important;
   color: #065f46 !important;
@@ -363,8 +378,12 @@ html.light .bg-emerald-500\/10.border-emerald-500\/20 {
 
 /* Bordes en general */
 html.light .border-slate-800,
+html.light .border-slate-800\/90,
 html.light .border-slate-800\/80,
+html.light .border-slate-800\/70,
+html.light .border-slate-800\/60,
 html.light .border-slate-800\/50,
+html.light .border-slate-800\/40,
 html.light .border-slate-700,
 html.light .border-slate-700\/80,
 html.light .border-slate-700\/60,
