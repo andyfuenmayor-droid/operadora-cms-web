@@ -5,21 +5,40 @@ if (typeof window !== 'undefined' && !pdfjsLib.GlobalWorkerOptions.workerSrc) {
   pdfjsLib.GlobalWorkerOptions.workerSrc = `https://cdnjs.cloudflare.com/ajax/libs/pdf.js/${pdfjsLib.version}/pdf.worker.min.mjs`;
 }
 
+export interface PdfExtractResult {
+  rows: string[][];
+  isImageOnly: boolean;
+  pageCount: number;
+  hasText: boolean;
+}
+
 /**
  * Extracts line-by-line text tokens from a PDF file buffer.
  * Reconstructs tabular rows by grouping text items sharing the same vertical Y-coordinate.
+ * Detects if the PDF is an image-only scan with no selectable digital text.
  */
-export async function extractTextFromPdf(buffer: ArrayBuffer): Promise<string[][]> {
+export async function extractTextFromPdf(buffer: ArrayBuffer): Promise<PdfExtractResult> {
   const loadingTask = pdfjsLib.getDocument({
     data: new Uint8Array(buffer),
     useSystemFonts: true,
   });
   const pdf = await loadingTask.promise;
   const allRows: string[][] = [];
+  let totalTextItems = 0;
+  let pageHasImages = false;
 
   for (let pageNum = 1; pageNum <= pdf.numPages; pageNum++) {
     const page = await pdf.getPage(pageNum);
     const textContent = await page.getTextContent();
+    totalTextItems += textContent.items?.length || 0;
+
+    try {
+      const operatorList = await page.getOperatorList();
+      const ops = (pdfjsLib as any).OPS;
+      if (ops && operatorList?.fnArray?.some((fn: number) => fn === ops.paintImageXObject || fn === ops.paintInlineImageXObject)) {
+        pageHasImages = true;
+      }
+    } catch (_) {}
 
     // Group items by vertical line (tolerance +/- 4px)
     const lineBuckets: { y: number; items: { x: number; text: string }[] }[] = [];
@@ -51,5 +70,12 @@ export async function extractTextFromPdf(buffer: ArrayBuffer): Promise<string[][
     }
   }
 
-  return allRows;
+  const isImageOnly = allRows.length === 0 && (pageHasImages || totalTextItems === 0);
+
+  return {
+    rows: allRows,
+    isImageOnly,
+    pageCount: pdf.numPages,
+    hasText: allRows.length > 0,
+  };
 }
