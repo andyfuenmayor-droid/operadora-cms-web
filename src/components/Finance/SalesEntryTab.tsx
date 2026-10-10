@@ -18,13 +18,11 @@ import {
   Upload,
   Coins,
   Edit2,
-  Receipt,
-  AlertCircle,
-  FileText
+  AlertCircle
 } from 'lucide-react';
 import confetti from 'canvas-confetti';
 import { extractTextFromPdf } from '../../utils/pdfReader';
-import { detectAndParseThermalTicket, parseRawTicketText } from '../../utils/thermalTicketParser';
+import { detectAndParseThermalTicket } from '../../utils/thermalTicketParser';
 import {
   loadSystemKeywords,
   DEFAULT_SYSTEM_KEYWORDS,
@@ -165,76 +163,6 @@ export const SalesEntryTab: React.FC = () => {
   }, [currencies]);
 
   const [message, setMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
-
-  // Thermal Ticket Assistant States
-  const [isTicketAssistantOpen, setIsTicketAssistantOpen] = useState(false);
-  const [ticketRawText, setTicketRawText] = useState('');
-  const [ticketAgencyInput, setTicketAgencyInput] = useState('');
-  const [ticketSystemInput, setTicketSystemInput] = useState('GATO PESOS');
-  const [ticketCurrencyInput, setTicketCurrencyInput] = useState<'COP' | 'BS' | 'USD'>('COP');
-  const [ticketDateInput, setTicketDateInput] = useState(systemCycle?.hasta || new Date().toISOString().split('T')[0]);
-  const [ticketVentaInput, setTicketVentaInput] = useState('');
-  const [ticketPremioInput, setTicketPremioInput] = useState('');
-  const [ticketComisionInput, setTicketComisionInput] = useState('0');
-
-  const handleTicketRawTextChange = (text: string) => {
-    setTicketRawText(text);
-    if (!text.trim()) return;
-    const parsed = parseRawTicketText(text, agencies, availableSystemsList);
-    if (parsed.isThermalTicket) {
-      if (parsed.agencyName) setTicketAgencyInput(parsed.agencyName);
-      if (parsed.systemName) setTicketSystemInput(parsed.systemName);
-      if (parsed.currency) setTicketCurrencyInput(parsed.currency);
-      if (parsed.date) setTicketDateInput(parsed.date);
-      if (parsed.venta) setTicketVentaInput(String(parsed.venta));
-      if (parsed.premio) setTicketPremioInput(String(parsed.premio));
-      if (parsed.comision !== undefined) setTicketComisionInput(String(parsed.comision));
-    }
-  };
-
-  const handleAddTicketToBulk = () => {
-    const v = parseNum(ticketVentaInput);
-    const p = parseNum(ticketPremioInput);
-    const c = parseNum(ticketComisionInput);
-    const agName = ticketAgencyInput.trim() || (agencies[0]?.nombre_agencia || 'MAXIMA CDA 02 T2');
-    const sysName = ticketSystemInput.trim() || availableSystemsList[0] || 'GATO PESOS';
-    const curr = ticketCurrencyInput || 'COP';
-    const neto = Math.round((v - c - p) * 100) / 100;
-
-    const matchedAg = agencies.find(
-      (a) => cleanAgencyName(a.nombre_agencia) === cleanAgencyName(agName)
-    );
-
-    let partPct = 0;
-    if (matchedAg?.participacion_ag !== undefined && matchedAg.participacion_ag !== null) {
-      partPct = Number(matchedAg.participacion_ag) || 0;
-    }
-    const uAg = Math.round(neto * (partPct / 100) * 100) / 100;
-    const uOp = Math.round((neto - uAg) * 100) / 100;
-
-    const newRow = {
-      user_id: effectiveUserId,
-      agencia: matchedAg ? matchedAg.nombre_agencia : agName,
-      sistema: sysName,
-      moneda: curr,
-      venta: v,
-      premios: p,
-      comision: c,
-      neto,
-      util_op: uOp,
-      util_ag: uAg,
-      fecha: ticketDateInput || bulkFileDate,
-    };
-
-    setBulkRows((prev) => [...prev, newRow]);
-    setIsTicketAssistantOpen(false);
-    setIsBulkOpen(true);
-    setBulkError(null);
-    setMessage({
-      type: 'success',
-      text: `✓ Comprobante de ${newRow.agencia} (${newRow.sistema} - ${newRow.moneda}) agregado a la lista de importación.`,
-    });
-  };
 
   const loadData = useCallback(async () => {
     if (!effectiveUserId) return;
@@ -715,19 +643,8 @@ export const SalesEntryTab: React.FC = () => {
 
           if (pdfRes.isImageOnly || rows.length === 0) {
             setBulkError(
-              `El archivo PDF "${file.name}" es una imagen/foto escaneada sin texto digital seleccionable. Para tickets en foto o papel, utiliza el botón "🧾 Asistente de Ticket Térmico" o el formulario manual.`
+              `El archivo PDF "${file.name}" es una foto o escaneo sin texto digital seleccionable. Al tratarse de un comprobante físico individual, puedes registrarlo directamente en el formulario de "Registro Manual" que se encuentra más abajo.`
             );
-            // Pre-fill assistant defaults from file name
-            const fUp = file.name.toUpperCase();
-            if (fUp.includes('GATO') || fUp.includes('PESO')) {
-              const matchedSys = systems.find(
-                (s) => s.nombre_sistema.replace(/\s+/g, '').toUpperCase() === 'GATOPESOS'
-              );
-              setTicketSystemInput(matchedSys ? matchedSys.nombre_sistema : 'GATO PESOS');
-              setTicketCurrencyInput('COP');
-              const maxAg = agencies.find((a) => a.nombre_agencia.toUpperCase().includes('MAXIMA'));
-              if (maxAg) setTicketAgencyInput(maxAg.nombre_agencia);
-            }
             return;
           }
         } else {
@@ -1369,15 +1286,6 @@ export const SalesEntryTab: React.FC = () => {
             <FileSpreadsheet className="w-4 h-4" />
             Carga Masiva (Excel/CSV/PDF)
           </button>
-
-          <button
-            onClick={() => setIsTicketAssistantOpen(true)}
-            className="px-3.5 py-2.5 rounded-xl bg-purple-500/10 hover:bg-purple-500/20 text-purple-400 border border-purple-500/30 font-bold text-xs flex items-center gap-2 transition-all cursor-pointer"
-            title="Asistente para tickets térmicos escaneados o copiados (Gatopesos / Banklot)"
-          >
-            <Receipt className="w-4 h-4 text-purple-400" />
-            Asistente de Ticket
-          </button>
         </div>
       </div>
 
@@ -1406,22 +1314,12 @@ export const SalesEntryTab: React.FC = () => {
               <Upload className="w-4 h-4 text-cyan-400" />
               Importar Reporte de Sistema (Excel / CSV / PDF)
             </h3>
-            <div className="flex items-center gap-2">
-              <button
-                type="button"
-                onClick={() => setIsTicketAssistantOpen(true)}
-                className="px-3 py-1.5 rounded-xl bg-purple-500/20 hover:bg-purple-500/30 text-purple-300 border border-purple-500/30 font-semibold text-xs flex items-center gap-1.5 transition-all cursor-pointer"
-              >
-                <Receipt className="w-3.5 h-3.5" />
-                Asistente de Ticket
-              </button>
-              <button
-                onClick={() => setIsBulkOpen(false)}
-                className="text-slate-400 hover:text-white text-xs font-bold px-2 py-1"
-              >
-                ✕
-              </button>
-            </div>
+            <button
+              onClick={() => setIsBulkOpen(false)}
+              className="text-slate-400 hover:text-white text-xs font-bold px-2 py-1"
+            >
+              ✕
+            </button>
           </div>
 
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
@@ -1504,19 +1402,9 @@ export const SalesEntryTab: React.FC = () => {
           )}
 
           {bulkError && (
-            <div className="p-3 bg-rose-500/10 border border-rose-500/20 rounded-xl text-xs text-rose-300 flex flex-col sm:flex-row sm:items-center justify-between gap-3 animate-fade-in">
-              <div className="flex items-start gap-2">
-                <AlertCircle className="w-4 h-4 shrink-0 text-rose-400 mt-0.5" />
-                <span>{bulkError}</span>
-              </div>
-              <button
-                type="button"
-                onClick={() => setIsTicketAssistantOpen(true)}
-                className="shrink-0 px-3 py-1.5 rounded-lg bg-purple-600 hover:bg-purple-500 text-white font-bold text-xs shadow-md shadow-purple-600/30 flex items-center justify-center gap-1.5 transition-all cursor-pointer"
-              >
-                <Receipt className="w-3.5 h-3.5" />
-                Abrir Asistente de Ticket
-              </button>
+            <div className="p-3 bg-rose-500/10 border border-rose-500/20 rounded-xl text-xs text-rose-300 flex items-start gap-2 animate-fade-in">
+              <AlertCircle className="w-4 h-4 shrink-0 text-rose-400 mt-0.5" />
+              <span>{bulkError}</span>
             </div>
           )}
 
@@ -2091,264 +1979,6 @@ export const SalesEntryTab: React.FC = () => {
           })
         )}
       </div>
-
-      {/* Thermal Ticket Assistant Modal */}
-      {isTicketAssistantOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm animate-fade-in">
-          <div className="bg-[#0B1519] border border-purple-500/30 rounded-3xl w-full max-w-2xl shadow-2xl overflow-hidden flex flex-col max-h-[90vh]">
-            {/* Header */}
-            <div className="px-6 py-4 bg-gradient-to-r from-purple-950/40 via-purple-900/20 to-transparent border-b border-purple-500/20 flex items-center justify-between">
-              <div className="flex items-center gap-2.5">
-                <div className="p-2 rounded-xl bg-purple-500/20 border border-purple-500/30 text-purple-400">
-                  <Receipt className="w-5 h-5" />
-                </div>
-                <div>
-                  <h3 className="text-base font-bold text-white flex items-center gap-2">
-                    Asistente de Ticket Térmico
-                    <span className="text-[10px] uppercase font-bold tracking-wider px-2 py-0.5 rounded-full bg-purple-500/20 text-purple-300 border border-purple-500/30">
-                      Gatopesos / POS
-                    </span>
-                  </h3>
-                  <p className="text-xs text-slate-400">
-                    Carga comprobantes verticales escaneados o pega su texto directamente.
-                  </p>
-                </div>
-              </div>
-              <button
-                type="button"
-                onClick={() => setIsTicketAssistantOpen(false)}
-                className="text-slate-400 hover:text-white p-1 rounded-lg hover:bg-slate-800 transition-colors cursor-pointer text-sm font-bold"
-              >
-                ✕
-              </button>
-            </div>
-
-            {/* Body */}
-            <div className="p-6 space-y-4 overflow-y-auto">
-              {/* Quick Paste Area */}
-              <div className="space-y-1.5">
-                <div className="flex items-center justify-between">
-                  <label className="text-xs font-semibold text-purple-300 flex items-center gap-1.5">
-                    <FileText className="w-3.5 h-3.5" />
-                    Pegar texto del ticket (Autocompletar inteligente):
-                  </label>
-                  <span className="text-[11px] text-slate-500">
-                    Opcional si copiaste de WhatsApp / escáner
-                  </span>
-                </div>
-                <textarea
-                  rows={3}
-                  value={ticketRawText}
-                  onChange={(e) => handleTicketRawTextChange(e.target.value)}
-                  placeholder="Pega aquí el texto del ticket... Ej:&#10;MAXIMA CDA 02 T2&#10;TOTAL VENTA + $ 880000&#10;TOTAL PREMIO - $ 1500000&#10;SALDO + $ -620000"
-                  className="w-full bg-[#071217] border border-purple-500/30 rounded-xl px-3 py-2 text-xs text-slate-200 font-mono focus:outline-none focus:border-purple-400 placeholder:text-slate-600 resize-none"
-                />
-              </div>
-
-              {/* Form Fields Grid */}
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5 bg-slate-900/40 p-4 rounded-2xl border border-slate-800">
-                <div className="space-y-1 sm:col-span-2">
-                  <label className="text-xs font-semibold text-slate-300 flex items-center gap-1.5">
-                    <Building2 className="w-3.5 h-3.5 text-cyan-400" />
-                    Agencia:
-                  </label>
-                  <div className="flex gap-2">
-                    <select
-                      value={ticketAgencyInput}
-                      onChange={(e) => setTicketAgencyInput(e.target.value)}
-                      className="flex-1 bg-[#071217] border border-slate-700 rounded-xl px-3 py-2 text-xs text-white focus:outline-none focus:border-cyan-500 cursor-pointer"
-                    >
-                      <option value="">-- Seleccionar Agencia Registrada --</option>
-                      {agencies.map((a) => (
-                        <option key={a.id} value={a.nombre_agencia}>
-                          🏢 {a.nombre_agencia} {a.usuario_taquilla ? `(${a.usuario_taquilla})` : ''}
-                        </option>
-                      ))}
-                    </select>
-                    <input
-                      type="text"
-                      placeholder="O escribir agencia..."
-                      value={ticketAgencyInput}
-                      onChange={(e) => setTicketAgencyInput(e.target.value)}
-                      className="w-44 bg-[#071217] border border-slate-700 rounded-xl px-3 py-2 text-xs text-white focus:outline-none focus:border-cyan-500"
-                    />
-                  </div>
-                </div>
-
-                <div className="space-y-1">
-                  <label className="text-xs font-semibold text-slate-300">Sistema / Proveedor:</label>
-                  <select
-                    value={ticketSystemInput}
-                    onChange={(e) => setTicketSystemInput(e.target.value)}
-                    className="w-full bg-[#071217] border border-slate-700 rounded-xl px-3 py-2 text-xs text-white focus:outline-none focus:border-cyan-500 cursor-pointer"
-                  >
-                    {availableSystemsList.map((sName) => (
-                      <option key={sName} value={sName}>
-                        🎰 {sName}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-
-                <div className="space-y-1">
-                  <label className="text-xs font-semibold text-slate-300">Moneda:</label>
-                  <select
-                    value={ticketCurrencyInput}
-                    onChange={(e) => setTicketCurrencyInput(e.target.value as any)}
-                    className="w-full bg-[#071217] border border-slate-700 rounded-xl px-3 py-2 text-xs text-amber-300 font-bold focus:outline-none focus:border-cyan-500 cursor-pointer"
-                  >
-                    {availableCurrenciesList.map((m) => (
-                      <option key={m.code} value={m.code}>
-                        {m.label}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-
-                <div className="space-y-1">
-                  <label className="text-xs font-semibold text-slate-300 flex items-center gap-1.5">
-                    <Calendar className="w-3.5 h-3.5 text-cyan-400" />
-                    Fecha del Comprobante:
-                  </label>
-                  <input
-                    type="date"
-                    value={ticketDateInput}
-                    onChange={(e) => setTicketDateInput(e.target.value)}
-                    className="w-full bg-[#071217] border border-slate-700 rounded-xl px-3 py-2 text-xs text-white focus:outline-none focus:border-cyan-500"
-                  />
-                </div>
-
-                <div className="space-y-1">
-                  <label className="text-xs font-semibold text-slate-300">Venta Bruta Total (+):</label>
-                  <div className="relative">
-                    <input
-                      type="text"
-                      placeholder="0.00"
-                      value={ticketVentaInput}
-                      onChange={(e) => setTicketVentaInput(e.target.value)}
-                      className="w-full bg-[#071217] border border-slate-700 rounded-xl px-3 py-2 text-xs text-white font-mono focus:outline-none focus:border-cyan-500"
-                    />
-                    <span className="absolute right-3 top-2 text-xs text-slate-500 font-mono">
-                      {ticketCurrencyInput}
-                    </span>
-                  </div>
-                </div>
-
-                <div className="space-y-1">
-                  <label className="text-xs font-semibold text-slate-300">Premios Pagados (-):</label>
-                  <div className="relative">
-                    <input
-                      type="text"
-                      placeholder="0.00"
-                      value={ticketPremioInput}
-                      onChange={(e) => setTicketPremioInput(e.target.value)}
-                      className="w-full bg-[#071217] border border-slate-700 rounded-xl px-3 py-2 text-xs text-rose-400 font-mono focus:outline-none focus:border-cyan-500"
-                    />
-                    <span className="absolute right-3 top-2 text-xs text-slate-500 font-mono">
-                      {ticketCurrencyInput}
-                    </span>
-                  </div>
-                </div>
-
-                <div className="space-y-1">
-                  <label className="text-xs font-semibold text-slate-300">Comisión Taquilla (-):</label>
-                  <div className="relative">
-                    <input
-                      type="text"
-                      placeholder="0.00"
-                      value={ticketComisionInput}
-                      onChange={(e) => setTicketComisionInput(e.target.value)}
-                      className="w-full bg-[#071217] border border-slate-700 rounded-xl px-3 py-2 text-xs text-emerald-400 font-mono focus:outline-none focus:border-cyan-500"
-                    />
-                    <span className="absolute right-3 top-2 text-xs text-slate-500 font-mono">
-                      {ticketCurrencyInput}
-                    </span>
-                  </div>
-                </div>
-              </div>
-
-              {/* Calculated Summary Banner */}
-              {(() => {
-                const v = parseNum(ticketVentaInput);
-                const p = parseNum(ticketPremioInput);
-                const c = parseNum(ticketComisionInput);
-                const neto = Math.round((v - c - p) * 100) / 100;
-                const matchedAg = agencies.find(
-                  (a) => cleanAgencyName(a.nombre_agencia) === cleanAgencyName(ticketAgencyInput)
-                );
-                let partPct = 0;
-                if (matchedAg?.participacion_ag !== undefined && matchedAg.participacion_ag !== null) {
-                  partPct = Number(matchedAg.participacion_ag) || 0;
-                }
-                const uAg = Math.round(neto * (partPct / 100) * 100) / 100;
-                const uOp = Math.round((neto - uAg) * 100) / 100;
-
-                return (
-                  <div className="p-4 rounded-2xl bg-gradient-to-r from-purple-950/30 to-cyan-950/30 border border-purple-500/20 space-y-2">
-                    <div className="flex items-center justify-between text-xs">
-                      <span className="text-slate-400">Resumen Calculado en Vivo:</span>
-                      <span className="text-slate-400 font-mono">
-                        Participación Agencia: <strong className="text-amber-400">{partPct}%</strong>
-                      </span>
-                    </div>
-                    <div className="grid grid-cols-3 gap-2 text-center pt-1 border-t border-slate-800">
-                      <div className="bg-[#071217]/70 p-2 rounded-xl">
-                        <div className="text-[10px] text-slate-400 uppercase font-mono">Saldo Neto</div>
-                        <div
-                          className={`text-sm font-black font-mono ${
-                            neto >= 0 ? 'text-white' : 'text-rose-400'
-                          }`}
-                        >
-                          {formatCurrency(neto, ticketCurrencyInput)}
-                        </div>
-                      </div>
-                      <div className="bg-[#071217]/70 p-2 rounded-xl">
-                        <div className="text-[10px] text-slate-400 uppercase font-mono">Operadora (100 - {partPct}%)</div>
-                        <div
-                          className={`text-sm font-black font-mono ${
-                            uOp >= 0 ? 'text-cyan-400' : 'text-rose-400'
-                          }`}
-                        >
-                          {formatCurrency(uOp, ticketCurrencyInput)}
-                        </div>
-                      </div>
-                      <div className="bg-[#071217]/70 p-2 rounded-xl">
-                        <div className="text-[10px] text-slate-400 uppercase font-mono">Agencia ({partPct}%)</div>
-                        <div
-                          className={`text-sm font-black font-mono ${
-                            uAg >= 0 ? 'text-amber-400' : 'text-rose-400'
-                          }`}
-                        >
-                          {formatCurrency(uAg, ticketCurrencyInput)}
-                        </div>
-                      </div>
-                    </div>
-                  </div>
-                );
-              })()}
-            </div>
-
-            {/* Footer */}
-            <div className="px-6 py-4 bg-[#071217] border-t border-slate-800 flex items-center justify-end gap-2">
-              <button
-                type="button"
-                onClick={() => setIsTicketAssistantOpen(false)}
-                className="px-4 py-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 font-semibold text-xs transition-all cursor-pointer"
-              >
-                Cancelar
-              </button>
-              <button
-                type="button"
-                onClick={handleAddTicketToBulk}
-                className="px-5 py-2.5 rounded-xl bg-purple-600 hover:bg-purple-500 text-white font-bold text-xs shadow-lg shadow-purple-600/30 flex items-center gap-2 transition-all cursor-pointer"
-              >
-                <Plus className="w-4 h-4" />
-                Agregar a Carga Masiva
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
     </div>
   );
 };
