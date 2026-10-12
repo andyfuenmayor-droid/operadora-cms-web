@@ -44,7 +44,8 @@ interface BalanceRow {
   utilidad_semana: number;
   gastos: number;
   pagos: number;
-  reposicion_premios?: number;
+  reposicion_premios: number;
+  pagos_netos?: number;
   balance_final: number;
   status: 'pagado' | 'pendiente' | 'favor';
 }
@@ -163,8 +164,9 @@ export const AccountBalancesTab: React.FC = () => {
         saldo_arrastre: Math.round(sAnt * 100) / 100,
         utilidad_semana: Math.round(uOp * 100) / 100,
         gastos: Math.round(gTot * 100) / 100,
-        pagos: Math.round(pTot * 100) / 100,
+        pagos: Math.round(pCobros * 100) / 100,
         reposicion_premios: Math.round(pPremios * 100) / 100,
+        pagos_netos: Math.round(pTot * 100) / 100,
         balance_final: balanceFinal,
         status,
       });
@@ -380,7 +382,7 @@ ${textoSistemas}
             Estado de Cuenta por Agencia
           </h2>
           <p className="text-xs sm:text-sm text-slate-400 mt-1">
-            Fórmula: (Saldo Arrastre + Utilidad Semanal) - Gastos - Pagos = Balance Final.
+            Fórmula: (Saldo Arrastre + Utilidad Semanal) - Gastos - Pagos + Premios = Balance Final.
           </p>
         </div>
 
@@ -713,8 +715,8 @@ ${textoSistemas}
                   </div>
                 </div>
 
-                {/* 4 Financial Items Grid */}
-                <div className="grid grid-cols-2 gap-2 text-xs font-mono">
+                {/* 5 Financial Items Grid */}
+                <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 text-xs font-mono">
                   <div className="bg-[#071217] p-2 rounded-xl border border-slate-800/80">
                     <span className="text-[10px] font-sans text-slate-400 block">Saldo Arrastre</span>
                     <span className="text-slate-200 font-semibold text-xs truncate block">
@@ -741,11 +743,13 @@ ${textoSistemas}
                     <span className="text-cyan-400 font-semibold text-xs truncate block">
                       {formatCurrency(r.pagos, activeCurrency)}
                     </span>
-                    {Boolean(r.reposicion_premios && r.reposicion_premios > 0) && (
-                      <span className="text-[9px] text-amber-400/90 font-sans block truncate mt-0.5">
-                        (incl. {formatCurrency(r.reposicion_premios || 0, activeCurrency)} prem.)
-                      </span>
-                    )}
+                  </div>
+
+                  <div className="bg-[#071217] p-2 rounded-xl border border-slate-800/80 col-span-2 sm:col-span-1">
+                    <span className="text-[10px] font-sans text-slate-400 block">Premios (+)</span>
+                    <span className="text-amber-400 font-semibold text-xs truncate block">
+                      {r.reposicion_premios > 0 ? `+${formatCurrency(r.reposicion_premios, activeCurrency)}` : '-'}
+                    </span>
                   </div>
                 </div>
               </div>
@@ -783,6 +787,7 @@ ${textoSistemas}
                   <th className="py-3.5 px-4 text-right">Semana (Utilidad)</th>
                   <th className="py-3.5 px-4 text-right">Gastos (-)</th>
                   <th className="py-3.5 px-4 text-right">Pagos (-)</th>
+                  <th className="py-3.5 px-4 text-right">Premios (+)</th>
                   <th className="py-3.5 px-4 text-right">Balance Final</th>
                   <th className="py-3.5 px-4 text-center">Estatus</th>
                   <th className="py-3.5 px-4 text-center">Acciones</th>
@@ -801,13 +806,11 @@ ${textoSistemas}
                     <td className="py-3.5 px-4 text-right text-slate-400">{formatCurrency(r.saldo_arrastre, activeCurrency)}</td>
                     <td className="py-3.5 px-4 text-right text-emerald-400 font-semibold">{formatCurrency(r.utilidad_semana, activeCurrency)}</td>
                     <td className="py-3.5 px-4 text-right text-rose-400">{formatCurrency(r.gastos, activeCurrency)}</td>
-                    <td className="py-3.5 px-4 text-right text-cyan-400">
-                      <div>{formatCurrency(r.pagos, activeCurrency)}</div>
-                      {Boolean(r.reposicion_premios && r.reposicion_premios > 0) && (
-                        <span className="text-[10px] text-amber-400/90 font-sans block">
-                          (incl. {formatCurrency(r.reposicion_premios || 0, activeCurrency)} premios)
-                        </span>
-                      )}
+                    <td className="py-3.5 px-4 text-right text-cyan-400 font-semibold">
+                      {formatCurrency(r.pagos, activeCurrency)}
+                    </td>
+                    <td className="py-3.5 px-4 text-right text-amber-400 font-semibold">
+                      {r.reposicion_premios > 0 ? `+${formatCurrency(r.reposicion_premios, activeCurrency)}` : '-'}
                     </td>
                     <td
                       className={`py-3.5 px-4 text-right font-black text-sm ${
@@ -947,7 +950,7 @@ ${textoSistemas}
                     </div>
                   </div>
 
-                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 font-mono text-xs">
+                  <div className="grid grid-cols-2 sm:grid-cols-5 gap-2 font-mono text-xs">
                     <div className="bg-[#0D1B22] p-2.5 rounded-xl border border-slate-800/80">
                       <span className="text-[10px] font-sans text-slate-400 block">Saldo Arrastre</span>
                       <span className="text-slate-200 font-semibold truncate block">
@@ -971,11 +974,14 @@ ${textoSistemas}
                       <span className="text-cyan-400 font-semibold truncate block">
                         {formatCurrency(selectedAgencyRow.pagos, activeCurrency)}
                       </span>
-                      {Boolean(selectedAgencyRow.reposicion_premios && selectedAgencyRow.reposicion_premios > 0) && (
-                        <span className="text-[9px] text-amber-400/90 font-sans block truncate mt-0.5">
-                          (incl. {formatCurrency(selectedAgencyRow.reposicion_premios || 0, activeCurrency)} prem.)
-                        </span>
-                      )}
+                    </div>
+                    <div className="bg-[#0D1B22] p-2.5 rounded-xl border border-slate-800/80 col-span-2 sm:col-span-1">
+                      <span className="text-[10px] font-sans text-slate-400 block">Premios (+)</span>
+                      <span className="text-amber-400 font-semibold truncate block">
+                        {selectedAgencyRow.reposicion_premios && selectedAgencyRow.reposicion_premios > 0
+                          ? `+${formatCurrency(selectedAgencyRow.reposicion_premios, activeCurrency)}`
+                          : '-'}
+                      </span>
                     </div>
                   </div>
 
