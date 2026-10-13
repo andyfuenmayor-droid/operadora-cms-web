@@ -910,22 +910,17 @@ export const WeeklyClosureTab: React.FC = () => {
                   </table>
                 </div>
               </div>
-            );
-          })}
-        </div>
-      )}
-
-      {/* 2. OPERADORA VERIFIED TABLES (Grouped by Operadora with currencies stacked) */}
+       {/* 2. OPERADORA VERIFIED TABLES (Grouped by Operadora with currencies stacked) */}
       {closureInspectionMode === 'operadoras' && (
         <div className="space-y-6">
           {/* Resumen Global de Tesorería por Moneda */}
-          <div className="bg-[#0D1B22] border border-slate-800 rounded-3xl p-5 shadow-xl">
-            <div className="flex items-center justify-between pb-3 border-b border-slate-800 mb-3.5">
-              <h4 className="text-xs font-black uppercase text-amber-400 font-mono tracking-wider flex items-center gap-2">
-                <Scale className="w-4 h-4 text-amber-400" />
+          <div className="bg-white dark:bg-[#0D1B22] border border-slate-200 dark:border-slate-800 rounded-3xl p-5 shadow-sm dark:shadow-xl">
+            <div className="flex items-center justify-between pb-3 border-b border-slate-100 dark:border-slate-800 mb-3.5">
+              <h4 className="text-xs font-black uppercase text-amber-600 dark:text-amber-400 font-mono tracking-wider flex items-center gap-2">
+                <Scale className="w-4 h-4 text-amber-500 dark:text-amber-400" />
                 <span>Posición Global Consolidada a Liquidar con Proveedores</span>
               </h4>
-              <span className="text-xs text-slate-400 font-mono">Semana {systemCycle.semana}</span>
+              <span className="text-xs text-slate-500 dark:text-slate-400 font-mono">Semana {systemCycle.semana}</span>
             </div>
 
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
@@ -937,17 +932,17 @@ export const WeeklyClosureTab: React.FC = () => {
                 const isFavor = tot.balanceFinal < -0.01;
 
                 return (
-                  <div key={`tot_summary_${mon}`} className="bg-[#071318] border border-slate-800/80 rounded-2xl p-3.5">
+                  <div key={`tot_summary_${mon}`} className="bg-slate-50/90 dark:bg-[#071318] border border-slate-200 dark:border-slate-800/80 rounded-2xl p-3.5">
                     <div className="flex justify-between items-center mb-1.5">
-                      <span className="text-xs font-bold text-slate-300 font-mono">
-                        {flag} Total {mon}
+                      <span className="text-xs font-bold text-slate-800 dark:text-slate-300 font-mono">
+                        <span className="font-sans">{flag}</span> Total {mon}
                       </span>
-                      <span className="text-[10px] text-slate-500 font-mono">{tot.count} operadoras</span>
+                      <span className="text-[10px] text-slate-500 dark:text-slate-400 font-mono">{tot.count} operadoras</span>
                     </div>
-                    <div className={`text-lg font-black font-mono ${isDeuda ? 'text-rose-400' : isFavor ? 'text-emerald-400' : 'text-slate-300'}`}>
+                    <div className={`text-lg font-black font-mono ${isDeuda ? 'text-rose-600 dark:text-rose-400' : isFavor ? 'text-emerald-600 dark:text-emerald-400' : 'text-slate-800 dark:text-slate-300'}`}>
                       {formatCurrency(tot.balanceFinal, mon as any)}
                     </div>
-                    <span className="text-[10px] text-slate-400 block font-sans mt-0.5">
+                    <span className="text-[10px] text-slate-500 dark:text-slate-400 block font-sans mt-0.5">
                       {isDeuda ? '🔴 Deuda neta a pagar' : isFavor ? '🟢 Saldo a favor' : '⚪ Solvente'}
                     </span>
                   </div>
@@ -958,24 +953,24 @@ export const WeeklyClosureTab: React.FC = () => {
 
           {/* Tablas por Casa Operadora con sus monedas una debajo de la otra */}
           {operatorClosureGroups.length === 0 ? (
-            <div className="bg-[#0D1B22] border border-slate-800 rounded-3xl p-8 text-center text-slate-500 font-sans">
+            <div className="bg-white dark:bg-[#0D1B22] border border-slate-200 dark:border-slate-800 rounded-3xl p-8 text-center text-slate-500 font-sans">
               <Globe className="w-8 h-8 mx-auto mb-2 opacity-40 text-slate-400" />
               No hay casas operadoras con actividad en este ciclo.
             </div>
           ) : (
             operatorClosureGroups.map((group) => {
               return (
-                <div key={`op_group_${group.sistema}`} className="bg-[#0D1B22] border border-slate-800 rounded-3xl overflow-hidden shadow-xl">
-                  <div className="p-4 sm:p-5 border-b border-slate-800 flex items-center justify-between">
+                <div key={`op_group_${group.sistema}`} className="bg-white dark:bg-[#0D1B22] border border-slate-200 dark:border-slate-800 rounded-3xl overflow-hidden shadow-sm dark:shadow-xl">
+                  <div className="p-4 sm:p-5 border-b border-slate-100 dark:border-slate-800 flex items-center justify-between">
                     <div className="flex items-center gap-2.5">
-                      <div className="p-1.5 rounded-xl bg-amber-500/10 text-amber-400 border border-amber-500/20">
+                      <div className="p-1.5 rounded-xl bg-amber-500/10 text-amber-500 dark:text-amber-400 border border-amber-500/20">
                         <Globe className="w-4 h-4" />
                       </div>
                       <div>
-                        <h4 className="text-sm font-black text-white uppercase tracking-wider font-mono">
+                        <h4 className="text-sm font-black text-slate-900 dark:text-white uppercase tracking-wider font-mono">
                           {group.sistema}
                         </h4>
-                        <span className="text-[10px] text-slate-400 font-mono">
+                        <span className="text-[10px] text-slate-500 dark:text-slate-400 font-mono">
                           {group.rows.length} {group.rows.length === 1 ? 'moneda activa' : 'monedas activas'}
                         </span>
                       </div>
@@ -983,10 +978,10 @@ export const WeeklyClosureTab: React.FC = () => {
                     <span
                       className={`text-[10px] font-extrabold uppercase px-2.5 py-1 rounded-full border ${
                         group.hasDeuda
-                          ? 'bg-rose-500/20 text-rose-400 border-rose-500/30'
+                          ? 'bg-rose-50 dark:bg-rose-500/20 text-rose-700 dark:text-rose-400 border border-rose-200 dark:border-rose-500/30'
                           : group.hasFavor
-                          ? 'bg-emerald-500/20 text-emerald-400 border-emerald-500/30'
-                          : 'bg-slate-800 text-slate-400 border border-slate-700'
+                          ? 'bg-emerald-50 dark:bg-emerald-500/20 text-emerald-700 dark:text-emerald-400 border border-emerald-200 dark:border-emerald-500/30'
+                          : 'bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400 border border-slate-200 dark:border-slate-700'
                       }`}
                     >
                       {group.hasDeuda ? '🔴 Con Deuda Pendiente' : group.hasFavor ? '🟢 Saldo a Favor' : '⚪ Solvente'}
@@ -995,60 +990,60 @@ export const WeeklyClosureTab: React.FC = () => {
 
                   <div className="overflow-x-auto">
                     <table className="w-full text-left text-xs">
-                      <thead className="bg-[#071217] text-slate-400 border-b border-slate-800 font-bold uppercase tracking-wider text-[11px]">
+                      <thead className="bg-slate-50 dark:bg-[#071217] text-slate-600 dark:text-slate-400 border-b border-slate-200 dark:border-slate-800 font-bold uppercase tracking-wider text-[11px]">
                         <tr>
                           <th className="py-3 px-4">Moneda</th>
                           <th className="py-3 px-4 text-right">Venta</th>
                           <th className="py-3 px-4 text-right">Premios</th>
                           <th className="py-3 px-4 text-right">GGR</th>
-                          <th className="py-3 px-4 text-right text-cyan-400">Dif. Com</th>
-                          <th className="py-3 px-4 text-right text-emerald-400">Ganancia Comercializador</th>
-                          <th className="py-3 px-4 text-right text-amber-400">Utilidad Casa (60%)</th>
+                          <th className="py-3 px-4 text-right text-cyan-700 dark:text-cyan-400">Dif. Com</th>
+                          <th className="py-3 px-4 text-right text-emerald-700 dark:text-emerald-400">Ganancia Comercializador</th>
+                          <th className="py-3 px-4 text-right text-amber-700 dark:text-amber-400">Utilidad Casa (60%)</th>
                           <th className="py-3 px-4 text-right">Arrastre</th>
                           <th className="py-3 px-4 text-right">Pagos Netos</th>
                           <th className="py-3 px-4 text-right font-black">Nuevo Arrastre</th>
                           <th className="py-3 px-4 text-center">Estado</th>
                         </tr>
                       </thead>
-                      <tbody className="divide-y divide-slate-800/80 font-mono text-slate-300">
+                      <tbody className="divide-y divide-slate-100 dark:divide-slate-800/80 font-mono text-slate-700 dark:text-slate-300">
                         {group.rows.map((row) => {
                           const flag = row.moneda === 'BS' ? '🇻🇪' : row.moneda === 'USD' ? '🇺🇸' : '🇨🇴';
                           const isDeuda = row.balanceFinal > 0.01;
                           const isFavor = row.balanceFinal < -0.01;
 
                           return (
-                            <tr key={`${group.sistema}_${row.moneda}`} className="hover:bg-slate-800/30 transition-colors">
-                              <td className="py-3 px-4 font-sans font-bold text-white flex items-center gap-2">
+                            <tr key={`${group.sistema}_${row.moneda}`} className="hover:bg-slate-50 dark:hover:bg-slate-800/30 transition-colors">
+                              <td className="py-3 px-4 font-sans font-bold text-slate-900 dark:text-white flex items-center gap-2">
                                 <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-bold ${
                                   row.moneda === 'BS'
-                                    ? 'bg-amber-500/10 text-amber-400 border border-amber-500/20'
+                                    ? 'bg-amber-50 dark:bg-amber-500/10 text-amber-700 dark:text-amber-400 border border-amber-200 dark:border-amber-500/20'
                                     : row.moneda === 'USD'
-                                    ? 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20'
-                                    : 'bg-sky-500/10 text-sky-400 border border-sky-500/20'
+                                    ? 'bg-emerald-50 dark:bg-emerald-500/10 text-emerald-700 dark:text-emerald-400 border border-emerald-200 dark:border-emerald-500/20'
+                                    : 'bg-sky-50 dark:bg-sky-500/10 text-sky-700 dark:text-sky-400 border border-sky-200 dark:border-sky-500/20'
                                 }`}>
-                                  <span>{flag}</span>
+                                  <span className="font-sans">{flag}</span>
                                   <span>{row.moneda}</span>
                                 </span>
                               </td>
-                              <td className="py-3 px-4 text-right font-semibold text-slate-200">{formatCurrency(row.venta, row.moneda as any)}</td>
-                              <td className="py-3 px-4 text-right text-amber-400">
+                              <td className="py-3 px-4 text-right font-semibold text-slate-900 dark:text-slate-200">{formatCurrency(row.venta, row.moneda as any)}</td>
+                              <td className="py-3 px-4 text-right text-amber-700 dark:text-amber-400">
                                 {row.premio > 0 ? `-${formatCurrency(row.premio, row.moneda as any)}` : formatCurrency(0, row.moneda as any)}
                               </td>
-                              <td className={`py-3 px-4 text-right font-bold ${row.utilidadBruta >= 0 ? 'text-emerald-400' : 'text-rose-400'}`}>
+                              <td className={`py-3 px-4 text-right font-bold ${row.utilidadBruta >= 0 ? 'text-emerald-700 dark:text-emerald-400' : 'text-rose-600 dark:text-rose-400'}`}>
                                 {formatCurrency(row.utilidadBruta, row.moneda as any)}
                               </td>
-                              <td className="py-3 px-4 text-right text-cyan-400 font-semibold">{formatCurrency(row.difCom, row.moneda as any)}</td>
-                              <td className="py-3 px-4 text-right font-black text-emerald-400 bg-emerald-500/5">{formatCurrency(row.totalCom, row.moneda as any)}</td>
-                              <td className={`py-3 px-4 text-right font-bold ${row.netoOperadora >= 0 ? 'text-amber-400' : 'text-rose-400'}`}>
+                              <td className="py-3 px-4 text-right text-cyan-700 dark:text-cyan-400 font-semibold">{formatCurrency(row.difCom, row.moneda as any)}</td>
+                              <td className="py-3 px-4 text-right font-black text-emerald-700 dark:text-emerald-400 bg-emerald-50/60 dark:bg-emerald-500/5">{formatCurrency(row.totalCom, row.moneda as any)}</td>
+                              <td className={`py-3 px-4 text-right font-bold ${row.netoOperadora >= 0 ? 'text-amber-700 dark:text-amber-400' : 'text-rose-600 dark:text-rose-400'}`}>
                                 {formatCurrency(row.netoOperadora, row.moneda as any)}
                               </td>
-                              <td className="py-3 px-4 text-right text-slate-400">{formatCurrency(row.saldoInit, row.moneda as any)}</td>
-                              <td className="py-3 px-4 text-right text-cyan-400 font-semibold">
+                              <td className="py-3 px-4 text-right text-slate-600 dark:text-slate-400">{formatCurrency(row.saldoInit, row.moneda as any)}</td>
+                              <td className="py-3 px-4 text-right text-cyan-700 dark:text-cyan-400 font-semibold">
                                 {row.pagosNetos !== 0 ? `-${formatCurrency(row.pagosNetos, row.moneda as any)}` : formatCurrency(0, row.moneda as any)}
                               </td>
                               <td
                                 className={`py-3 px-4 text-right font-black text-sm ${
-                                  isDeuda ? 'text-rose-400' : isFavor ? 'text-emerald-400' : 'text-slate-300'
+                                  isDeuda ? 'text-rose-600 dark:text-rose-400' : isFavor ? 'text-emerald-600 dark:text-emerald-400' : 'text-slate-800 dark:text-slate-300'
                                 }`}
                               >
                                 {formatCurrency(row.balanceFinal, row.moneda as any)}
@@ -1057,10 +1052,10 @@ export const WeeklyClosureTab: React.FC = () => {
                                 <span
                                   className={`px-2 py-0.5 rounded-full text-[10px] font-extrabold uppercase ${
                                     isDeuda
-                                      ? 'bg-rose-500/20 text-rose-400 border border-rose-500/30'
+                                      ? 'bg-rose-50 dark:bg-rose-500/20 text-rose-700 dark:text-rose-400 border border-rose-200 dark:border-rose-500/30'
                                       : isFavor
-                                      ? 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/30'
-                                      : 'bg-slate-800 text-slate-400 border border-slate-700'
+                                      ? 'bg-emerald-50 dark:bg-emerald-500/20 text-emerald-700 dark:text-emerald-400 border border-emerald-200 dark:border-emerald-500/30'
+                                      : 'bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400 border border-slate-200 dark:border-slate-700'
                                   }`}
                                 >
                                   {isDeuda ? 'A Pagar' : isFavor ? 'A Favor' : 'Solvente'}

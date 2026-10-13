@@ -39,9 +39,11 @@ import {
   Globe,
   Scale,
   Copy,
-  Sparkles
+  Sparkles,
+  Printer
 } from 'lucide-react';
 import { DeliveryReportModal, type PreClosureAgencyRow } from './DeliveryReportModal';
+import { OperatorDeliveryReportModal } from './OperatorDeliveryReportModal';
 import { ConfirmationOperatorActaModal, type ConfirmationAuditItem } from './ConfirmationOperatorActaModal';
 import { CollectorDeliveryActaModal, type CollectorDailyPaymentItem } from './CollectorDeliveryActaModal';
 import { BankIncomeActaModal, type BankTransactionAuditItem } from './BankIncomeActaModal';
@@ -85,6 +87,7 @@ export const PreClosureAuditTab: React.FC = () => {
 
   // Modals for Actas de Entrega
   const [isActaModalOpen, setIsActaModalOpen] = useState(false);
+  const [isOperatorActaModalOpen, setIsOperatorActaModalOpen] = useState(false);
   const [isConfirmationActaOpen, setIsConfirmationActaOpen] = useState(false);
   const [isCollectorActaOpen, setIsCollectorActaOpen] = useState(false);
   const [isBankIncomeActaOpen, setIsBankIncomeActaOpen] = useState(false);
@@ -1059,7 +1062,7 @@ export const PreClosureAuditTab: React.FC = () => {
               <button
                 onClick={handleExportCSV}
                 disabled={auditRows.length === 0}
-                className="px-3 py-2.5 rounded-xl bg-slate-800/80 hover:bg-slate-700 text-slate-300 text-xs font-bold flex items-center gap-1.5 transition-all border border-slate-700 cursor-pointer disabled:opacity-50"
+                className="px-3 py-2.5 rounded-xl bg-white dark:bg-slate-800/80 hover:bg-slate-100 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-300 text-xs font-bold flex items-center gap-1.5 transition-all border border-slate-200 dark:border-slate-700 cursor-pointer disabled:opacity-50"
                 title="Exportar archivo CSV de Agencias"
               >
                 <Download className="w-3.5 h-3.5" />
@@ -1081,9 +1084,19 @@ export const PreClosureAuditTab: React.FC = () => {
               </button>
 
               <button
+                onClick={() => setIsOperatorActaModalOpen(true)}
+                disabled={operatorRows.length === 0}
+                className="px-3.5 py-2.5 rounded-xl bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-400 hover:to-amber-500 text-slate-950 font-black text-xs shadow-lg shadow-amber-500/20 flex items-center gap-1.5 transition-all cursor-pointer disabled:opacity-50"
+                title="Acta Oficial Imprimible en PDF de Casas Operadoras"
+              >
+                <Printer className="w-4 h-4" />
+                <span>🖨️ Acta PDF Operadoras</span>
+              </button>
+
+              <button
                 onClick={handleExportOperatorCSV}
                 disabled={operatorRows.length === 0}
-                className="px-3 py-2.5 rounded-xl bg-slate-800/80 hover:bg-slate-700 text-slate-300 text-xs font-bold flex items-center gap-1.5 transition-all border border-slate-700 cursor-pointer disabled:opacity-50"
+                className="px-3 py-2.5 rounded-xl bg-white dark:bg-slate-800/80 hover:bg-slate-100 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-300 text-xs font-bold flex items-center gap-1.5 transition-all border border-slate-200 dark:border-slate-700 cursor-pointer disabled:opacity-50"
                 title="Exportar archivo CSV de Casas Operadoras"
               >
                 <Download className="w-3.5 h-3.5" />
@@ -1095,7 +1108,7 @@ export const PreClosureAuditTab: React.FC = () => {
           <button
             onClick={loadData}
             disabled={isLoading}
-            className="p-2.5 rounded-xl bg-slate-800/80 hover:bg-slate-700 text-slate-300 transition-all border border-slate-700 cursor-pointer disabled:opacity-50"
+            className="p-2.5 rounded-xl bg-white dark:bg-slate-800/80 hover:bg-slate-100 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-300 transition-all border border-slate-200 dark:border-slate-700 cursor-pointer disabled:opacity-50"
             title="Recalcular arqueo"
           >
             <RefreshCw className={`w-4 h-4 ${isLoading ? 'animate-spin' : ''}`} />
@@ -1104,18 +1117,18 @@ export const PreClosureAuditTab: React.FC = () => {
       </div>
 
       {/* Sub-View Switcher: Agencias vs Operadoras vs Consolidado */}
-      <div className="flex flex-wrap items-center gap-2 border-b border-slate-800 pb-3">
+      <div className="flex flex-wrap items-center gap-2 border-b border-slate-200 dark:border-slate-800 pb-3">
         <button
           onClick={() => setAuditMode('agencias')}
           className={`px-4 py-2.5 rounded-2xl text-xs sm:text-sm font-bold flex items-center gap-2 transition-all cursor-pointer ${
             auditMode === 'agencias'
-              ? 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/40 shadow-lg shadow-emerald-500/10'
-              : 'text-slate-400 hover:text-white hover:bg-slate-800/60'
+              ? 'bg-emerald-500/15 dark:bg-emerald-500/20 text-emerald-800 dark:text-emerald-400 border border-emerald-500/30 dark:border-emerald-500/40 shadow-sm dark:shadow-lg dark:shadow-emerald-500/10'
+              : 'text-slate-600 hover:text-slate-900 hover:bg-slate-100 dark:text-slate-400 dark:hover:text-white dark:hover:bg-slate-800/60'
           }`}
         >
           <Building2 className="w-4 h-4" />
           <span>🏢 Arqueo Agencias (Taquillas)</span>
-          <span className="text-[10px] px-2 py-0.5 rounded-full bg-slate-800 text-slate-300 font-mono">
+          <span className="text-[10px] px-2 py-0.5 rounded-full bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 font-mono">
             {auditRows.length}
           </span>
         </button>
@@ -1124,13 +1137,13 @@ export const PreClosureAuditTab: React.FC = () => {
           onClick={() => setAuditMode('operadoras')}
           className={`px-4 py-2.5 rounded-2xl text-xs sm:text-sm font-bold flex items-center gap-2 transition-all cursor-pointer ${
             auditMode === 'operadoras'
-              ? 'bg-amber-500/20 text-amber-400 border border-amber-500/40 shadow-lg shadow-amber-500/10'
-              : 'text-slate-400 hover:text-white hover:bg-slate-800/60'
+              ? 'bg-amber-500/15 dark:bg-amber-500/20 text-amber-800 dark:text-amber-400 border border-amber-500/30 dark:border-amber-500/40 shadow-sm dark:shadow-lg dark:shadow-amber-500/10'
+              : 'text-slate-600 hover:text-slate-900 hover:bg-slate-100 dark:text-slate-400 dark:hover:text-white dark:hover:bg-slate-800/60'
           }`}
         >
           <Globe className="w-4 h-4" />
           <span>🌐 Arqueo Casas Operadoras</span>
-          <span className="text-[10px] px-2 py-0.5 rounded-full bg-amber-500/20 text-amber-300 font-mono">
+          <span className="text-[10px] px-2 py-0.5 rounded-full bg-amber-500/15 dark:bg-amber-500/20 text-amber-800 dark:text-amber-300 font-mono">
             {operatorRows.length}
           </span>
         </button>
@@ -1139,8 +1152,8 @@ export const PreClosureAuditTab: React.FC = () => {
           onClick={() => setAuditMode('consolidado')}
           className={`px-4 py-2.5 rounded-2xl text-xs sm:text-sm font-bold flex items-center gap-2 transition-all cursor-pointer ${
             auditMode === 'consolidado'
-              ? 'bg-sky-500/20 text-sky-400 border border-sky-500/40 shadow-lg shadow-sky-500/10'
-              : 'text-slate-400 hover:text-white hover:bg-slate-800/60'
+              ? 'bg-sky-500/15 dark:bg-sky-500/20 text-sky-800 dark:text-sky-400 border border-sky-500/30 dark:border-sky-500/40 shadow-sm dark:shadow-lg dark:shadow-sky-500/10'
+              : 'text-slate-600 hover:text-slate-900 hover:bg-slate-100 dark:text-slate-400 dark:hover:text-white dark:hover:bg-slate-800/60'
           }`}
         >
           <Scale className="w-4 h-4" />
@@ -2059,18 +2072,18 @@ export const PreClosureAuditTab: React.FC = () => {
   {auditMode === 'operadoras' && (
     <div className="space-y-6">
       {/* 1. Macro Resumen de Tesorería Global por Moneda */}
-      <div className="bg-[#0D1B22] border border-slate-800 rounded-3xl p-5 shadow-xl">
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between pb-3.5 border-b border-slate-800 gap-2 mb-4">
+      <div className="bg-white dark:bg-[#0D1B22] border border-slate-200 dark:border-slate-800 rounded-3xl p-5 shadow-sm dark:shadow-xl">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between pb-3.5 border-b border-slate-100 dark:border-slate-800 gap-2 mb-4">
           <div>
-            <span className="text-[10px] font-black uppercase tracking-wider text-amber-400 font-mono">
+            <span className="text-[10px] font-black uppercase tracking-wider text-amber-600 dark:text-amber-400 font-mono">
               Posición Financiera Consolidada
             </span>
-            <h3 className="text-base font-black text-white flex items-center gap-2">
-              <Scale className="w-4 h-4 text-amber-400" />
+            <h3 className="text-base font-black text-slate-900 dark:text-white flex items-center gap-2">
+              <Scale className="w-4 h-4 text-amber-500 dark:text-amber-400" />
               Resumen Global de Liquidación a Casas Operadoras
             </h3>
           </div>
-          <span className="text-xs font-mono font-bold text-slate-400 bg-[#071217] px-3 py-1 rounded-xl border border-slate-800 w-fit">
+          <span className="text-xs font-mono font-bold text-slate-600 dark:text-slate-400 bg-slate-100 dark:bg-[#071217] px-3 py-1 rounded-xl border border-slate-200 dark:border-slate-800 w-fit">
             Semana {systemCycle.semana}
           </span>
         </div>
@@ -2087,39 +2100,39 @@ export const PreClosureAuditTab: React.FC = () => {
             return (
               <div
                 key={`macro_${mon}`}
-                className="bg-[#071318] border border-slate-800/80 rounded-2xl p-4 flex flex-col justify-between"
+                className="bg-slate-50/90 dark:bg-[#071318] border border-slate-200 dark:border-slate-800/80 rounded-2xl p-4 flex flex-col justify-between"
               >
-                <div className="flex items-center justify-between border-b border-slate-800/60 pb-2 mb-2.5">
-                  <span className="text-xs font-bold text-slate-300 flex items-center gap-1.5 font-mono">
-                    <span>{flag}</span> {currencyName}
+                <div className="flex items-center justify-between border-b border-slate-200/80 dark:border-slate-800/60 pb-2 mb-2.5">
+                  <span className="text-xs font-bold text-slate-800 dark:text-slate-300 flex items-center gap-1.5 font-mono">
+                    <span className="font-sans">{flag}</span> {currencyName}
                   </span>
-                  <span className="text-[10px] text-slate-400 font-mono">
+                  <span className="text-[10px] text-slate-500 dark:text-slate-400 font-mono">
                     {tot.count} {tot.count === 1 ? 'operadora' : 'operadoras'}
                   </span>
                 </div>
 
                 <div className="space-y-1 mb-3 font-mono">
-                  <span className="text-[10px] uppercase text-slate-400 block font-sans">Balance Final a Proveedores:</span>
-                  <div className={`text-xl sm:text-2xl font-black ${isDeuda ? 'text-rose-400' : isFavor ? 'text-emerald-400' : 'text-slate-300'}`}>
+                  <span className="text-[10px] uppercase text-slate-500 dark:text-slate-400 block font-sans font-medium">Balance Final a Proveedores:</span>
+                  <div className={`text-xl sm:text-2xl font-black ${isDeuda ? 'text-rose-600 dark:text-rose-400' : isFavor ? 'text-emerald-600 dark:text-emerald-400' : 'text-slate-800 dark:text-slate-300'}`}>
                     {formatCurrency(tot.balanceFinal, mon as any)}
                   </div>
-                  <span className="text-[10px] text-slate-400 block font-sans">
+                  <span className="text-[10px] text-slate-500 dark:text-slate-400 block font-sans">
                     {isDeuda ? '🔴 Deuda neta a pagar' : isFavor ? '🟢 Saldo a favor comercializador' : '⚪ Al día'}
                   </span>
                 </div>
 
-                <div className="pt-2 border-t border-slate-800/60 text-[11px] font-mono space-y-1 text-slate-400">
+                <div className="pt-2 border-t border-slate-200/80 dark:border-slate-800/60 text-[11px] font-mono space-y-1 text-slate-600 dark:text-slate-400">
                   <div className="flex justify-between">
                     <span>Venta Bruta:</span>
-                    <span className="text-slate-200 font-semibold">{formatCurrency(tot.venta, mon as any)}</span>
+                    <span className="text-slate-900 dark:text-slate-200 font-semibold">{formatCurrency(tot.venta, mon as any)}</span>
                   </div>
                   <div className="flex justify-between">
                     <span>Ganancia Comercializador:</span>
-                    <span className="text-emerald-400 font-semibold">+{formatCurrency(tot.totalComercializador, mon as any)}</span>
+                    <span className="text-emerald-600 dark:text-emerald-400 font-semibold">+{formatCurrency(tot.totalComercializador, mon as any)}</span>
                   </div>
                   <div className="flex justify-between">
                     <span>Utilidad Casa (60%):</span>
-                    <span className={`font-semibold ${tot.netoOperadora >= 0 ? 'text-amber-400' : 'text-rose-400'}`}>
+                    <span className={`font-semibold ${tot.netoOperadora >= 0 ? 'text-amber-600 dark:text-amber-400' : 'text-rose-600 dark:text-rose-400'}`}>
                       {formatCurrency(tot.netoOperadora, mon as any)}
                     </span>
                   </div>
@@ -2134,41 +2147,41 @@ export const PreClosureAuditTab: React.FC = () => {
       <div className="space-y-4">
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-1">
           <div className="flex items-center gap-2">
-            <Globe className="w-4 h-4 text-amber-400" />
-            <h4 className="text-xs font-black uppercase tracking-wider text-white">
+            <Globe className="w-4 h-4 text-amber-500 dark:text-amber-400" />
+            <h4 className="text-xs font-black uppercase tracking-wider text-slate-900 dark:text-white">
               Balances por Casa Operadora ({operatorGroups.length})
             </h4>
           </div>
-          <span className="text-[11px] text-slate-400">
+          <span className="text-[11px] text-slate-500 dark:text-slate-400">
             Monedas activas apiladas por cada proveedor
           </span>
         </div>
 
         {operatorGroups.length === 0 ? (
-          <div className="bg-[#0D1B22] border border-slate-800 rounded-3xl p-8 text-center text-slate-500 font-sans">
+          <div className="bg-white dark:bg-[#0D1B22] border border-slate-200 dark:border-slate-800 rounded-3xl p-8 text-center text-slate-500 font-sans">
             <Globe className="w-8 h-8 mx-auto mb-2 opacity-40 text-slate-400" />
             No se encontraron casas operadoras con los filtros seleccionados.
           </div>
         ) : (
-          <div className="grid grid-cols-1 xl:grid-cols-2 gap-5">
+          <div className="grid grid-cols-1 xl:grid-cols-2 gap-5 items-start">
             {operatorGroups.map((group) => {
               return (
                 <div
                   key={`card_group_${group.sistema}`}
-                  className="bg-[#0D1B22] border border-slate-800 rounded-3xl p-5 shadow-xl flex flex-col justify-between hover:border-slate-700 transition-all"
+                  className="bg-white dark:bg-[#0D1B22] border border-slate-200 dark:border-slate-800 rounded-3xl p-5 shadow-sm dark:shadow-xl flex flex-col space-y-4 hover:border-slate-300 dark:hover:border-slate-700 transition-all"
                 >
                   {/* Header de la Casa Operadora */}
-                  <div className="flex items-center justify-between pb-3.5 border-b border-slate-800 mb-4">
+                  <div className="flex items-center justify-between pb-3.5 border-b border-slate-100 dark:border-slate-800">
                     <div className="flex items-center gap-3">
-                      <div className="w-10 h-10 rounded-2xl bg-amber-500/10 border border-amber-500/20 flex items-center justify-center text-amber-400 text-lg font-black">
+                      <div className="w-10 h-10 rounded-2xl bg-amber-500/10 border border-amber-500/20 flex items-center justify-center text-amber-500 dark:text-amber-400 text-lg font-black">
                         🌐
                       </div>
                       <div>
-                        <h4 className="text-base font-black text-white font-mono tracking-tight flex items-center gap-2">
+                        <h4 className="text-base font-black text-slate-900 dark:text-white font-mono tracking-tight flex items-center gap-2">
                           {group.sistema}
                         </h4>
                         <div className="flex items-center gap-2 mt-0.5">
-                          <span className="text-[10px] text-slate-400 font-mono">
+                          <span className="text-[10px] text-slate-500 dark:text-slate-400 font-mono">
                             {group.rows.length} {group.rows.length === 1 ? 'Moneda activa' : 'Monedas activas'}:
                           </span>
                           <div className="flex items-center gap-1">
@@ -2177,10 +2190,10 @@ export const PreClosureAuditTab: React.FC = () => {
                                 key={`badge_${r.sistema}_${r.moneda}`}
                                 className={`text-[9px] font-bold px-1.5 py-0.5 rounded ${
                                   r.moneda === 'BS'
-                                    ? 'bg-amber-500/10 text-amber-400 border border-amber-500/20'
+                                    ? 'bg-amber-50 dark:bg-amber-500/10 text-amber-700 dark:text-amber-400 border border-amber-200 dark:border-amber-500/20'
                                     : r.moneda === 'USD'
-                                    ? 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20'
-                                    : 'bg-sky-500/10 text-sky-400 border border-sky-500/20'
+                                    ? 'bg-emerald-50 dark:bg-emerald-500/10 text-emerald-700 dark:text-emerald-400 border border-emerald-200 dark:border-emerald-500/20'
+                                    : 'bg-sky-50 dark:bg-sky-500/10 text-sky-700 dark:text-sky-400 border border-sky-200 dark:border-sky-500/20'
                                 }`}
                               >
                                 {r.moneda}
@@ -2196,10 +2209,10 @@ export const PreClosureAuditTab: React.FC = () => {
                       <span
                         className={`text-[10px] font-extrabold uppercase px-2.5 py-1 rounded-full border ${
                           group.hasDeuda
-                            ? 'bg-rose-500/20 text-rose-400 border-rose-500/30'
+                            ? 'bg-rose-50 dark:bg-rose-500/20 text-rose-700 dark:text-rose-400 border border-rose-200 dark:border-rose-500/30'
                             : group.hasFavor
-                            ? 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/30'
-                            : 'bg-slate-800 text-slate-400 border border-slate-700'
+                            ? 'bg-emerald-50 dark:bg-emerald-500/20 text-emerald-700 dark:text-emerald-400 border border-emerald-200 dark:border-emerald-500/30'
+                            : 'bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400 border border-slate-200 dark:border-slate-700'
                         }`}
                       >
                         {group.hasDeuda ? '🔴 Con Deuda Pendiente' : group.hasFavor ? '🟢 Saldo a Favor' : '⚪ Solvente'}
@@ -2218,13 +2231,13 @@ export const PreClosureAuditTab: React.FC = () => {
                       return (
                         <div
                           key={`row_curr_${group.sistema}_${r.moneda}`}
-                          className="bg-[#071318] border border-slate-800/80 rounded-2xl p-3.5 space-y-2.5 hover:border-slate-700/80 transition-colors"
+                          className="bg-slate-50/80 dark:bg-[#071318] border border-slate-200 dark:border-slate-800/80 rounded-2xl p-3.5 space-y-2.5 hover:border-slate-300 dark:hover:border-slate-700/80 transition-colors"
                         >
                           {/* Fila Cabecera de la Moneda: Moneda + Balance Final */}
-                          <div className="flex flex-col sm:flex-row sm:items-center justify-between pb-2 border-b border-slate-800/60 gap-2">
+                          <div className="flex flex-col sm:flex-row sm:items-center justify-between pb-2 border-b border-slate-200/80 dark:border-slate-800/60 gap-2">
                             <div className="flex items-center gap-2">
-                              <span className="text-base">{flag}</span>
-                              <span className="text-xs font-bold text-slate-200 font-mono">
+                              <span className="text-base select-none font-sans leading-none">{flag}</span>
+                              <span className="text-xs font-bold text-slate-800 dark:text-slate-200 font-mono">
                                 {monLabel}
                               </span>
                               <span className="text-[10px] text-slate-500 font-mono">
@@ -2233,14 +2246,14 @@ export const PreClosureAuditTab: React.FC = () => {
                             </div>
 
                             <div className="flex items-center gap-2 font-mono">
-                              <span className="text-[10px] text-slate-400 font-sans uppercase">Balance Final:</span>
+                              <span className="text-[10px] text-slate-500 dark:text-slate-400 font-sans uppercase font-medium">Balance Final:</span>
                               <span
                                 className={`text-sm font-black px-2 py-0.5 rounded-lg border ${
                                   isDeuda
-                                    ? 'bg-rose-500/10 text-rose-400 border-rose-500/20'
+                                    ? 'bg-rose-50 dark:bg-rose-500/10 text-rose-700 dark:text-rose-400 border-rose-200 dark:border-rose-500/20'
                                     : isFavor
-                                    ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20'
-                                    : 'bg-slate-800/60 text-slate-300 border-slate-700'
+                                    ? 'bg-emerald-50 dark:bg-emerald-500/10 text-emerald-700 dark:text-emerald-400 border-emerald-200 dark:border-emerald-500/20'
+                                    : 'bg-slate-100 dark:bg-slate-800/60 text-slate-700 dark:text-slate-300 border-slate-200 dark:border-slate-700'
                                 }`}
                               >
                                 {formatCurrency(r.balanceFinal, r.moneda as any)}
@@ -2248,10 +2261,10 @@ export const PreClosureAuditTab: React.FC = () => {
                               <span
                                 className={`text-[9px] font-black uppercase px-2 py-0.5 rounded-full ${
                                   isDeuda
-                                    ? 'bg-rose-500/20 text-rose-400'
+                                    ? 'bg-rose-100 dark:bg-rose-500/20 text-rose-700 dark:text-rose-400'
                                     : isFavor
-                                    ? 'bg-emerald-500/20 text-emerald-400'
-                                    : 'bg-slate-800 text-slate-400'
+                                    ? 'bg-emerald-100 dark:bg-emerald-500/20 text-emerald-700 dark:text-emerald-400'
+                                    : 'bg-slate-200 dark:bg-slate-800 text-slate-600 dark:text-slate-400'
                                 }`}
                               >
                                 {isDeuda ? 'A Pagar' : isFavor ? 'A Favor' : 'Al Día'}
@@ -2262,67 +2275,67 @@ export const PreClosureAuditTab: React.FC = () => {
                           {/* Desglose de 3 columnas para esta moneda: Operativo | Comercializador | Posición Casa */}
                           <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 text-[10.5px] font-mono">
                             {/* Columna A: Movimiento Operativo */}
-                            <div className="bg-[#050D11] rounded-xl p-2.5 border border-slate-800/50 space-y-1">
-                              <span className="text-[9px] font-bold text-slate-400 uppercase tracking-wider block border-b border-slate-800/50 pb-0.5 font-sans">
+                            <div className="bg-white dark:bg-[#050D11] rounded-xl p-2.5 border border-slate-200/80 dark:border-slate-800/50 shadow-xs space-y-1">
+                              <span className="text-[9px] font-bold text-slate-600 dark:text-slate-400 uppercase tracking-wider block border-b border-slate-100 dark:border-slate-800/50 pb-0.5 font-sans">
                                 📊 Movimiento
                               </span>
                               <div className="flex justify-between">
-                                <span className="text-slate-400">Venta:</span>
-                                <span className="text-slate-200 font-semibold">{formatCurrency(r.venta, r.moneda as any)}</span>
+                                <span className="text-slate-500 dark:text-slate-400">Venta:</span>
+                                <span className="text-slate-900 dark:text-slate-200 font-semibold">{formatCurrency(r.venta, r.moneda as any)}</span>
                               </div>
                               <div className="flex justify-between">
-                                <span className="text-slate-400">Premios:</span>
-                                <span className="text-amber-400 font-semibold">
+                                <span className="text-slate-500 dark:text-slate-400">Premios:</span>
+                                <span className="text-amber-700 dark:text-amber-400 font-semibold">
                                   {r.premio > 0 ? `-${formatCurrency(r.premio, r.moneda as any)}` : formatCurrency(0, r.moneda as any)}
                                 </span>
                               </div>
-                              <div className="flex justify-between pt-0.5 border-t border-slate-800/40">
-                                <span className="text-slate-300 font-bold">GGR:</span>
-                                <span className={`font-bold ${r.utilidadBruta >= 0 ? 'text-emerald-400' : 'text-rose-400'}`}>
+                              <div className="flex justify-between pt-0.5 border-t border-slate-100 dark:border-slate-800/40">
+                                <span className="text-slate-700 dark:text-slate-300 font-bold">GGR:</span>
+                                <span className={`font-bold ${r.utilidadBruta >= 0 ? 'text-emerald-700 dark:text-emerald-400' : 'text-rose-600 dark:text-rose-400'}`}>
                                   {formatCurrency(r.utilidadBruta, r.moneda as any)}
                                 </span>
                               </div>
                             </div>
 
                             {/* Columna B: Comercializador */}
-                            <div className="bg-[#050D11] rounded-xl p-2.5 border border-emerald-500/15 space-y-1">
-                              <span className="text-[9px] font-bold text-emerald-400 uppercase tracking-wider block border-b border-slate-800/50 pb-0.5 font-sans">
+                            <div className="bg-white dark:bg-[#050D11] rounded-xl p-2.5 border border-emerald-200/80 dark:border-emerald-500/15 shadow-xs space-y-1">
+                              <span className="text-[9px] font-bold text-emerald-700 dark:text-emerald-400 uppercase tracking-wider block border-b border-emerald-50 dark:border-slate-800/50 pb-0.5 font-sans">
                                 🏆 Comercializador
                               </span>
                               <div className="flex justify-between">
-                                <span className="text-slate-400">Dif. Com:</span>
-                                <span className="text-cyan-400 font-semibold">{formatCurrency(r.difCom, r.moneda as any)}</span>
+                                <span className="text-slate-500 dark:text-slate-400">Dif. Com:</span>
+                                <span className="text-cyan-700 dark:text-cyan-400 font-semibold">{formatCurrency(r.difCom, r.moneda as any)}</span>
                               </div>
                               <div className="flex justify-between">
-                                <span className="text-slate-400">Part. ({r.participacionPct}%):</span>
-                                <span className={`font-semibold ${r.partCom >= 0 ? 'text-emerald-400' : 'text-rose-400'}`}>
+                                <span className="text-slate-500 dark:text-slate-400">Part. ({r.participacionPct}%):</span>
+                                <span className={`font-semibold ${r.partCom >= 0 ? 'text-emerald-700 dark:text-emerald-400' : 'text-rose-600 dark:text-rose-400'}`}>
                                   {formatCurrency(r.partCom, r.moneda as any)}
                                 </span>
                               </div>
-                              <div className="flex justify-between pt-0.5 border-t border-slate-800/40">
-                                <span className="text-emerald-300 font-bold">Ganancia Total:</span>
-                                <span className="text-emerald-400 font-black">{formatCurrency(r.totalCom, r.moneda as any)}</span>
+                              <div className="flex justify-between pt-0.5 border-t border-emerald-100/60 dark:border-slate-800/40">
+                                <span className="text-emerald-800 dark:text-emerald-300 font-bold">Ganancia Total:</span>
+                                <span className="text-emerald-700 dark:text-emerald-400 font-black">{formatCurrency(r.totalCom, r.moneda as any)}</span>
                               </div>
                             </div>
 
                             {/* Columna C: Posición Casa Matriz */}
-                            <div className="bg-[#050D11] rounded-xl p-2.5 border border-slate-800/50 space-y-1">
-                              <span className="text-[9px] font-bold text-slate-400 uppercase tracking-wider block border-b border-slate-800/50 pb-0.5 font-sans">
+                            <div className="bg-white dark:bg-[#050D11] rounded-xl p-2.5 border border-slate-200/80 dark:border-slate-800/50 shadow-xs space-y-1">
+                              <span className="text-[9px] font-bold text-slate-600 dark:text-slate-400 uppercase tracking-wider block border-b border-slate-100 dark:border-slate-800/50 pb-0.5 font-sans">
                                 🏛️ Casa Matriz (60%)
                               </span>
                               <div className="flex justify-between">
-                                <span className="text-slate-400">Arrastre:</span>
-                                <span className="text-slate-300 font-semibold">{formatCurrency(r.saldoInit, r.moneda as any)}</span>
+                                <span className="text-slate-500 dark:text-slate-400">Arrastre:</span>
+                                <span className="text-slate-800 dark:text-slate-300 font-semibold">{formatCurrency(r.saldoInit, r.moneda as any)}</span>
                               </div>
                               <div className="flex justify-between">
-                                <span className="text-slate-400">Utilidad Casa:</span>
-                                <span className={`font-semibold ${r.netoOperadora >= 0 ? 'text-amber-400' : 'text-rose-400'}`}>
+                                <span className="text-slate-500 dark:text-slate-400">Utilidad Casa:</span>
+                                <span className={`font-semibold ${r.netoOperadora >= 0 ? 'text-amber-700 dark:text-amber-400' : 'text-rose-600 dark:text-rose-400'}`}>
                                   {formatCurrency(r.netoOperadora, r.moneda as any)}
                                 </span>
                               </div>
-                              <div className="flex justify-between pt-0.5 border-t border-slate-800/40">
-                                <span className="text-slate-400">Pagos Netos:</span>
-                                <span className="text-cyan-400 font-semibold">
+                              <div className="flex justify-between pt-0.5 border-t border-slate-100 dark:border-slate-800/40">
+                                <span className="text-slate-500 dark:text-slate-400">Pagos Netos:</span>
+                                <span className="text-cyan-700 dark:text-cyan-400 font-semibold">
                                   {r.pagosNetos !== 0 ? `-${formatCurrency(r.pagosNetos, r.moneda as any)}` : formatCurrency(0, r.moneda as any)}
                                 </span>
                               </div>
@@ -2340,15 +2353,15 @@ export const PreClosureAuditTab: React.FC = () => {
       </div>
 
       {/* 3. Barra de Filtros y Búsqueda */}
-      <div className="flex flex-col sm:flex-row items-center justify-between gap-4 bg-[#0D1B22] border border-slate-800 rounded-2xl p-4">
+      <div className="flex flex-col sm:flex-row items-center justify-between gap-4 bg-white dark:bg-[#0D1B22] border border-slate-200 dark:border-slate-800 rounded-2xl p-4 shadow-sm">
         {/* Currency Switcher Tabs */}
         <div className="flex items-center gap-1.5 overflow-x-auto w-full sm:w-auto">
           <button
             onClick={() => setSelectedCurrency('ALL')}
             className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer ${
               selectedCurrency === 'ALL'
-                ? 'bg-amber-500 text-slate-950 font-black'
-                : 'text-slate-400 hover:text-white bg-slate-800/60'
+                ? 'bg-amber-500 text-slate-950 font-black shadow-sm'
+                : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white bg-slate-100 dark:bg-slate-800/60'
             }`}
           >
             Todas ({operatorRows.length})
@@ -2359,8 +2372,8 @@ export const PreClosureAuditTab: React.FC = () => {
               onClick={() => setSelectedCurrency(mon as any)}
               className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer ${
                 selectedCurrency === mon
-                  ? 'bg-amber-500 text-slate-950 font-black'
-                  : 'text-slate-400 hover:text-white bg-slate-800/60'
+                  ? 'bg-amber-500 text-slate-950 font-black shadow-sm'
+                  : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white bg-slate-100 dark:bg-slate-800/60'
               }`}
             >
               {mon} ({operatorRows.filter((r) => r.moneda === mon).length})
@@ -2377,14 +2390,14 @@ export const PreClosureAuditTab: React.FC = () => {
               placeholder="Buscar operadora o sistema..."
               value={operatorSearchQuery}
               onChange={(e) => setOperatorSearchQuery(e.target.value)}
-              className="w-full bg-[#071217] border border-slate-700 rounded-xl pl-8 pr-3 py-1.5 text-xs text-white focus:outline-none focus:border-amber-500"
+              className="w-full bg-slate-50 dark:bg-[#071217] border border-slate-200 dark:border-slate-700 rounded-xl pl-8 pr-3 py-1.5 text-xs text-slate-900 dark:text-white focus:outline-none focus:border-amber-500"
             />
           </div>
 
           <select
             value={operatorStatusFilter}
             onChange={(e) => setOperatorStatusFilter(e.target.value as any)}
-            className="bg-[#071217] border border-slate-700 rounded-xl px-3 py-1.5 text-xs text-white focus:outline-none focus:border-amber-500 cursor-pointer"
+            className="bg-slate-50 dark:bg-[#071217] border border-slate-200 dark:border-slate-700 rounded-xl px-3 py-1.5 text-xs text-slate-900 dark:text-white focus:outline-none focus:border-amber-500 cursor-pointer"
           >
             <option value="all">Todos los Estados</option>
             <option value="pagar">🔴 Deuda a Pagar</option>
@@ -2395,14 +2408,14 @@ export const PreClosureAuditTab: React.FC = () => {
       </div>
 
       {/* 4. Matriz / Tabla Detallada agrupada por Casa Operadora con Monedas una debajo de la otra */}
-      <div className="bg-[#0D1B22] border border-slate-800 rounded-3xl overflow-hidden shadow-xl">
-        <div className="p-4 sm:p-5 border-b border-slate-800 flex items-center justify-between">
+      <div className="bg-white dark:bg-[#0D1B22] border border-slate-200 dark:border-slate-800 rounded-3xl overflow-hidden shadow-sm dark:shadow-xl">
+        <div className="p-4 sm:p-5 border-b border-slate-200 dark:border-slate-800 flex items-center justify-between">
           <div>
-            <h4 className="text-xs font-bold text-white uppercase tracking-wider flex items-center gap-2">
-              <Globe className="w-4 h-4 text-amber-400" />
+            <h4 className="text-xs font-bold text-slate-900 dark:text-white uppercase tracking-wider flex items-center gap-2">
+              <Globe className="w-4 h-4 text-amber-500 dark:text-amber-400" />
               Matriz de Arqueo y Pre-Cierre de Casas Operadoras ({filteredOperatorRows.length} registros en {operatorGroups.length} operadoras)
             </h4>
-            <p className="text-[11px] text-slate-400 mt-0.5">
+            <p className="text-[11px] text-slate-500 dark:text-slate-400 mt-0.5">
               Modelo Opción B: Diferencial Comisión + Participación (40%) = Comercializador • Base Neta restante (60%) = Casa Operadora
             </p>
           </div>
@@ -2410,7 +2423,7 @@ export const PreClosureAuditTab: React.FC = () => {
 
         <div className="overflow-x-auto">
           <table className="w-full text-left text-xs border-collapse">
-            <thead className="bg-[#071217] text-slate-400 border-b border-slate-800 font-bold uppercase tracking-wider text-[11px]">
+            <thead className="bg-slate-50 dark:bg-[#071217] text-slate-600 dark:text-slate-400 border-b border-slate-200 dark:border-slate-800 font-bold uppercase tracking-wider text-[11px]">
               <tr className="whitespace-nowrap">
                 <th className="py-3 px-3.5">Casa Operadora</th>
                 <th className="py-3 px-2 text-center">Moneda</th>
@@ -2421,7 +2434,7 @@ export const PreClosureAuditTab: React.FC = () => {
                 <th className="py-3 px-3 text-right">Dif. Com</th>
                 <th className="py-3 px-3 text-right">Base Neta</th>
                 <th className="py-3 px-3 text-right">Part. 40%</th>
-                <th className="py-3 px-3 text-right text-emerald-400">Total Comercializador</th>
+                <th className="py-3 px-3 text-right text-emerald-700 dark:text-emerald-400">Total Comercializador</th>
                 <th className="py-3 px-3 text-right">Util. Operadora (60%)</th>
                 <th className="py-3 px-3 text-right">Arrastre</th>
                 <th className="py-3 px-3 text-right">Pagos Netos</th>
@@ -2429,10 +2442,10 @@ export const PreClosureAuditTab: React.FC = () => {
                 <th className="py-3 px-3 text-center">Estado</th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-slate-800/80 font-mono text-slate-300">
+            <tbody className="divide-y divide-slate-100 dark:divide-slate-800/80 font-mono text-slate-700 dark:text-slate-300">
               {operatorGroups.length === 0 ? (
                 <tr>
-                  <td colSpan={15} className="py-12 text-center text-slate-500">
+                  <td colSpan={15} className="py-12 text-center text-slate-500 font-sans">
                     <Globe className="w-8 h-8 mx-auto mb-2 opacity-40 text-slate-400" />
                     No se encontraron casas operadoras con los filtros seleccionados.
                   </td>
@@ -2442,25 +2455,25 @@ export const PreClosureAuditTab: React.FC = () => {
                   return (
                     <React.Fragment key={`table_group_${group.sistema}`}>
                       {/* Fila Encabezado de la Casa Operadora */}
-                      <tr className="bg-[#050E13] border-t-2 border-slate-700/80">
+                      <tr className="bg-slate-100/90 dark:bg-[#050E13] border-t-2 border-slate-300 dark:border-slate-700/80">
                         <td colSpan={15} className="py-2.5 px-3.5">
                           <div className="flex items-center justify-between">
                             <div className="flex items-center gap-2">
-                              <span className="p-1 rounded bg-amber-500/15 text-amber-400 text-xs">🌐</span>
-                              <span className="font-sans font-black text-white text-sm tracking-wide">
+                              <span className="p-1 rounded bg-amber-500/15 text-amber-500 dark:text-amber-400 text-xs">🌐</span>
+                              <span className="font-sans font-black text-slate-900 dark:text-white text-sm tracking-wide">
                                 {group.sistema}
                               </span>
-                              <span className="text-[10px] text-slate-400 font-mono bg-slate-800/80 px-2 py-0.5 rounded-full border border-slate-700">
+                              <span className="text-[10px] text-slate-600 dark:text-slate-400 font-mono bg-white dark:bg-slate-800/80 px-2 py-0.5 rounded-full border border-slate-200 dark:border-slate-700">
                                 {group.rows.length} {group.rows.length === 1 ? 'Moneda' : 'Monedas'}
                               </span>
                             </div>
                             <span
                               className={`text-[10px] font-extrabold uppercase px-2.5 py-0.5 rounded-full ${
                                 group.hasDeuda
-                                  ? 'bg-rose-500/20 text-rose-400 border border-rose-500/30'
+                                  ? 'bg-rose-50 dark:bg-rose-500/20 text-rose-700 dark:text-rose-400 border border-rose-200 dark:border-rose-500/30'
                                   : group.hasFavor
-                                  ? 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/30'
-                                  : 'bg-slate-800 text-slate-400 border border-slate-700'
+                                  ? 'bg-emerald-50 dark:bg-emerald-500/20 text-emerald-700 dark:text-emerald-400 border border-emerald-200 dark:border-emerald-500/30'
+                                  : 'bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400 border border-slate-200 dark:border-slate-700'
                               }`}
                             >
                               {group.hasDeuda ? '🔴 Deuda Pendiente' : group.hasFavor ? '🟢 Saldo a Favor' : '⚪ Solvente'}
@@ -2476,67 +2489,67 @@ export const PreClosureAuditTab: React.FC = () => {
                         const flag = r.moneda === 'BS' ? '🇻🇪' : r.moneda === 'USD' ? '🇺🇸' : '🇨🇴';
 
                         return (
-                          <tr key={`${r.sistema}_${r.moneda}`} className="hover:bg-slate-800/30 transition-colors">
-                            <td className="py-3 px-3.5 font-sans font-medium text-slate-300 pl-8 whitespace-nowrap">
+                          <tr key={`${r.sistema}_${r.moneda}`} className="hover:bg-slate-50 dark:hover:bg-slate-800/30 transition-colors">
+                            <td className="py-3 px-3.5 font-sans font-medium text-slate-700 dark:text-slate-300 pl-8 whitespace-nowrap">
                               <div className="flex items-center gap-2">
-                                <span className="text-slate-500">↳</span>
-                                <span className="text-xs font-semibold text-slate-200">{r.sistema}</span>
+                                <span className="text-slate-400 dark:text-slate-500">↳</span>
+                                <span className="text-xs font-semibold text-slate-900 dark:text-slate-200">{r.sistema}</span>
                               </div>
                             </td>
                             <td className="py-3 px-2 text-center">
                               <span
                                 className={`inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-bold ${
                                   r.moneda === 'BS'
-                                    ? 'bg-amber-500/10 text-amber-400 border border-amber-500/20'
+                                    ? 'bg-amber-50 dark:bg-amber-500/10 text-amber-700 dark:text-amber-400 border border-amber-200 dark:border-amber-500/20'
                                     : r.moneda === 'USD'
-                                    ? 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20'
-                                    : 'bg-sky-500/10 text-sky-400 border border-sky-500/20'
+                                    ? 'bg-emerald-50 dark:bg-emerald-500/10 text-emerald-700 dark:text-emerald-400 border border-emerald-200 dark:border-emerald-500/20'
+                                    : 'bg-sky-50 dark:bg-sky-500/10 text-sky-700 dark:text-sky-400 border border-sky-200 dark:border-sky-500/20'
                                 }`}
                               >
-                                <span>{flag}</span>
+                                <span className="font-sans">{flag}</span>
                                 <span>{r.moneda}</span>
                               </span>
                             </td>
-                            <td className="py-3 px-3 text-right font-semibold text-slate-200">
+                            <td className="py-3 px-3 text-right font-semibold text-slate-900 dark:text-slate-200">
                               {formatCurrency(r.venta, r.moneda as any)}
                             </td>
-                            <td className="py-3 px-3 text-right text-amber-400">
+                            <td className="py-3 px-3 text-right text-amber-700 dark:text-amber-400">
                               {r.premio > 0 ? `-${formatCurrency(r.premio, r.moneda as any)}` : formatCurrency(0, r.moneda as any)}
                             </td>
-                            <td className={`py-3 px-3 text-right font-bold ${r.utilidadBruta >= 0 ? 'text-emerald-400' : 'text-rose-400'}`}>
+                            <td className={`py-3 px-3 text-right font-bold ${r.utilidadBruta >= 0 ? 'text-emerald-700 dark:text-emerald-400' : 'text-rose-600 dark:text-rose-400'}`}>
                               {formatCurrency(r.utilidadBruta, r.moneda as any)}
                             </td>
-                            <td className="py-3 px-3 text-right text-slate-400">
-                              <div className="text-[11px] font-bold text-slate-300">{formatCurrency(r.comCompletaProv, r.moneda as any)}</div>
+                            <td className="py-3 px-3 text-right text-slate-600 dark:text-slate-400">
+                              <div className="text-[11px] font-bold text-slate-800 dark:text-slate-300">{formatCurrency(r.comCompletaProv, r.moneda as any)}</div>
                               <div className="text-[9px] text-slate-500">{r.comisionPct}% Otorgado</div>
                             </td>
-                            <td className="py-3 px-3 text-right font-semibold text-cyan-400">
+                            <td className="py-3 px-3 text-right font-semibold text-cyan-700 dark:text-cyan-400">
                               {formatCurrency(r.difCom, r.moneda as any)}
                             </td>
-                            <td className="py-3 px-3 text-right text-slate-300">
+                            <td className="py-3 px-3 text-right text-slate-800 dark:text-slate-300">
                               {formatCurrency(r.baseUtil, r.moneda as any)}
                             </td>
-                            <td className="py-3 px-3 text-right text-slate-400">
-                              <div className={`text-[11px] font-bold ${r.partCom >= 0 ? 'text-emerald-400' : 'text-rose-400'}`}>
+                            <td className="py-3 px-3 text-right text-slate-600 dark:text-slate-400">
+                              <div className={`text-[11px] font-bold ${r.partCom >= 0 ? 'text-emerald-700 dark:text-emerald-400' : 'text-rose-600 dark:text-rose-400'}`}>
                                 {formatCurrency(r.partCom, r.moneda as any)}
                               </div>
                               <div className="text-[9px] text-slate-500">{r.participacionPct}% Part.</div>
                             </td>
-                            <td className="py-3 px-3 text-right font-black text-emerald-400 bg-emerald-500/5">
+                            <td className="py-3 px-3 text-right font-black text-emerald-700 dark:text-emerald-400 bg-emerald-50/60 dark:bg-emerald-500/5">
                               {formatCurrency(r.totalCom, r.moneda as any)}
                             </td>
-                            <td className={`py-3 px-3 text-right font-bold ${r.netoOperadora >= 0 ? 'text-amber-400' : 'text-rose-400'}`}>
+                            <td className={`py-3 px-3 text-right font-bold ${r.netoOperadora >= 0 ? 'text-amber-700 dark:text-amber-400' : 'text-rose-600 dark:text-rose-400'}`}>
                               {formatCurrency(r.netoOperadora, r.moneda as any)}
                             </td>
-                            <td className="py-3 px-3 text-right text-slate-400">
+                            <td className="py-3 px-3 text-right text-slate-600 dark:text-slate-400">
                               {formatCurrency(r.saldoInit, r.moneda as any)}
                             </td>
-                            <td className="py-3 px-3 text-right text-cyan-400 font-semibold">
+                            <td className="py-3 px-3 text-right text-cyan-700 dark:text-cyan-400 font-semibold">
                               {r.pagosNetos !== 0 ? `-${formatCurrency(r.pagosNetos, r.moneda as any)}` : formatCurrency(0, r.moneda as any)}
                             </td>
                             <td
                               className={`py-3 px-3.5 text-right font-black text-sm ${
-                                isDeuda ? 'text-rose-400' : isFavor ? 'text-emerald-400' : 'text-slate-300'
+                                isDeuda ? 'text-rose-600 dark:text-rose-400' : isFavor ? 'text-emerald-600 dark:text-emerald-400' : 'text-slate-800 dark:text-slate-300'
                               }`}
                             >
                               {formatCurrency(r.balanceFinal, r.moneda as any)}
@@ -2545,10 +2558,10 @@ export const PreClosureAuditTab: React.FC = () => {
                               <span
                                 className={`px-2 py-0.5 rounded-full text-[10px] font-extrabold uppercase ${
                                   isDeuda
-                                    ? 'bg-rose-500/20 text-rose-400 border border-rose-500/30'
+                                    ? 'bg-rose-50 dark:bg-rose-500/20 text-rose-700 dark:text-rose-400 border border-rose-200 dark:border-rose-500/30'
                                     : isFavor
-                                    ? 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/30'
-                                    : 'bg-slate-800 text-slate-400 border border-slate-700'
+                                    ? 'bg-emerald-50 dark:bg-emerald-500/20 text-emerald-700 dark:text-emerald-400 border border-emerald-200 dark:border-emerald-500/30'
+                                    : 'bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400 border border-slate-200 dark:border-slate-700'
                                 }`}
                               >
                                 {isDeuda ? 'A Pagar' : isFavor ? 'A Favor' : 'Solvente'}
@@ -2570,12 +2583,12 @@ export const PreClosureAuditTab: React.FC = () => {
 
   {auditMode === 'consolidado' && (
     <div className="space-y-6">
-      <div className="bg-[#0D1B22] border border-slate-800 rounded-3xl p-5 sm:p-6 shadow-xl">
-        <h4 className="text-sm font-black text-white uppercase tracking-wider flex items-center gap-2 mb-2">
-          <Scale className="w-5 h-5 text-sky-400" />
+      <div className="bg-white dark:bg-[#0D1B22] border border-slate-200 dark:border-slate-800 rounded-3xl p-5 sm:p-6 shadow-sm dark:shadow-xl">
+        <h4 className="text-sm font-black text-slate-900 dark:text-white uppercase tracking-wider flex items-center gap-2 mb-2">
+          <Scale className="w-5 h-5 text-sky-500 dark:text-sky-400" />
           Conciliación Integral del Negocio: Taquillas vs Comercializador vs Operadoras
         </h4>
-        <p className="text-xs text-slate-400">
+        <p className="text-xs text-slate-600 dark:text-slate-400">
           Compara en tiempo real la cartera por cobrar a las taquillas, la ganancia líquida del comercializador y los compromisos a liquidar con las casas matrices para cada moneda.
         </p>
       </div>
@@ -2594,55 +2607,55 @@ export const PreClosureAuditTab: React.FC = () => {
           const posicionNetaCartera = (agTot?.saldoFinal || 0) - (opTot?.balanceFinal || 0);
 
           return (
-            <div key={mon} className="bg-[#0D1B22] border border-slate-800 rounded-3xl p-5 sm:p-6 shadow-xl space-y-5">
-              <div className="flex items-center justify-between pb-3 border-b border-slate-800">
+            <div key={mon} className="bg-white dark:bg-[#0D1B22] border border-slate-200 dark:border-slate-800 rounded-3xl p-5 sm:p-6 shadow-sm dark:shadow-xl space-y-5">
+              <div className="flex items-center justify-between pb-3 border-b border-slate-100 dark:border-slate-800">
                 <div className="flex items-center gap-3">
-                  <span className="text-2xl">{flag}</span>
+                  <span className="text-2xl font-sans select-none">{flag}</span>
                   <div>
-                    <h4 className="text-sm font-black text-white uppercase font-mono tracking-wider">
+                    <h4 className="text-sm font-black text-slate-900 dark:text-white uppercase font-mono tracking-wider">
                       Balance Maestro de Ciclo {currencyName}
                     </h4>
-                    <span className="text-xs text-slate-400">
+                    <span className="text-xs text-slate-500 dark:text-slate-400">
                       {agTot?.count || 0} agencias auditadas • {opTot?.count || 0} sistemas operadoras
                     </span>
                   </div>
                 </div>
-                <span className="text-xs font-mono font-bold bg-slate-800 px-3 py-1 rounded-xl text-amber-400 border border-slate-700">
+                <span className="text-xs font-mono font-bold bg-slate-100 dark:bg-slate-800 px-3 py-1 rounded-xl text-amber-700 dark:text-amber-400 border border-slate-200 dark:border-slate-700">
                   Semana {systemCycle.semana}
                 </span>
               </div>
 
               <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                 {/* Columna 1: Cartera Taquillas */}
-                <div className="bg-[#071318] border border-slate-800 rounded-2xl p-4 space-y-3 font-mono">
-                  <div className="flex items-center justify-between border-b border-slate-800 pb-2">
-                    <span className="text-xs font-bold text-emerald-400 flex items-center gap-1.5">
+                <div className="bg-slate-50/90 dark:bg-[#071318] border border-slate-200 dark:border-slate-800 rounded-2xl p-4 space-y-3 font-mono">
+                  <div className="flex items-center justify-between border-b border-slate-200/80 dark:border-slate-800 pb-2">
+                    <span className="text-xs font-bold text-emerald-700 dark:text-emerald-400 flex items-center gap-1.5">
                       <Building2 className="w-4 h-4" /> 1. Cartera Taquillas
                     </span>
-                    <span className="text-[10px] text-slate-500 font-sans">Cobranza</span>
+                    <span className="text-[10px] text-slate-500 font-sans font-medium">Cobranza</span>
                   </div>
                   <div className="space-y-1.5 text-xs">
                     <div className="flex justify-between">
-                      <span className="text-slate-400">Arrastre Inicial:</span>
-                      <span className="text-slate-200">{formatCurrency(agTot?.saldoAnterior || 0, mon as any)}</span>
+                      <span className="text-slate-500 dark:text-slate-400">Arrastre Inicial:</span>
+                      <span className="text-slate-900 dark:text-slate-200 font-semibold">{formatCurrency(agTot?.saldoAnterior || 0, mon as any)}</span>
                     </div>
                     <div className="flex justify-between">
-                      <span className="text-slate-400">Venta Neta Taquillas:</span>
-                      <span className="text-emerald-400">+{formatCurrency(agTot?.ventaNeta || 0, mon as any)}</span>
+                      <span className="text-slate-500 dark:text-slate-400">Venta Neta Taquillas:</span>
+                      <span className="text-emerald-700 dark:text-emerald-400 font-semibold">+{formatCurrency(agTot?.ventaNeta || 0, mon as any)}</span>
                     </div>
                     <div className="flex justify-between">
-                      <span className="text-slate-400">Gastos Confirmados:</span>
-                      <span className="text-rose-400">-{formatCurrency(agTot?.gastos || 0, mon as any)}</span>
+                      <span className="text-slate-500 dark:text-slate-400">Gastos Confirmados:</span>
+                      <span className="text-rose-600 dark:text-rose-400 font-semibold">-{formatCurrency(agTot?.gastos || 0, mon as any)}</span>
                     </div>
                     <div className="flex justify-between">
-                      <span className="text-slate-400">Cobros (Efectivo/Bancos):</span>
-                      <span className="text-cyan-400">-{formatCurrency((agTot?.efectivoTaquilla || 0) + (agTot?.bancos || 0), mon as any)}</span>
+                      <span className="text-slate-500 dark:text-slate-400">Cobros (Efectivo/Bancos):</span>
+                      <span className="text-cyan-700 dark:text-cyan-400 font-semibold">-{formatCurrency((agTot?.efectivoTaquilla || 0) + (agTot?.bancos || 0), mon as any)}</span>
                     </div>
                   </div>
-                  <div className="pt-2 border-t border-slate-800 text-center">
-                    <span className="text-[10px] text-slate-400 uppercase block">Saldo Cartera Agencias</span>
+                  <div className="pt-2 border-t border-slate-200/80 dark:border-slate-800 text-center">
+                    <span className="text-[10px] text-slate-500 dark:text-slate-400 uppercase block font-sans">Saldo Cartera Agencias</span>
                     <span className={`text-lg font-black ${
-                      (agTot?.saldoFinal || 0) > 0 ? 'text-amber-400' : (agTot?.saldoFinal || 0) < 0 ? 'text-rose-400' : 'text-emerald-400'
+                      (agTot?.saldoFinal || 0) > 0 ? 'text-amber-700 dark:text-amber-400' : (agTot?.saldoFinal || 0) < 0 ? 'text-rose-600 dark:text-rose-400' : 'text-emerald-700 dark:text-emerald-400'
                     }`}>
                       {formatCurrency(agTot?.saldoFinal || 0, mon as any)}
                     </span>
@@ -2650,35 +2663,35 @@ export const PreClosureAuditTab: React.FC = () => {
                 </div>
 
                 {/* Columna 2: Cartera Casas Operadoras */}
-                <div className="bg-[#071318] border border-slate-800 rounded-2xl p-4 space-y-3 font-mono">
-                  <div className="flex items-center justify-between border-b border-slate-800 pb-2">
-                    <span className="text-xs font-bold text-amber-400 flex items-center gap-1.5">
+                <div className="bg-slate-50/90 dark:bg-[#071318] border border-slate-200 dark:border-slate-800 rounded-2xl p-4 space-y-3 font-mono">
+                  <div className="flex items-center justify-between border-b border-slate-200/80 dark:border-slate-800 pb-2">
+                    <span className="text-xs font-bold text-amber-700 dark:text-amber-400 flex items-center gap-1.5">
                       <Globe className="w-4 h-4" /> 2. Casas Operadoras
                     </span>
-                    <span className="text-[10px] text-slate-500 font-sans">Liquidación</span>
+                    <span className="text-[10px] text-slate-500 font-sans font-medium">Liquidación</span>
                   </div>
                   <div className="space-y-1.5 text-xs">
                     <div className="flex justify-between">
-                      <span className="text-slate-400">Arrastre Inicial:</span>
-                      <span className="text-slate-200">{formatCurrency(opTot?.saldoInit || 0, mon as any)}</span>
+                      <span className="text-slate-500 dark:text-slate-400">Arrastre Inicial:</span>
+                      <span className="text-slate-900 dark:text-slate-200 font-semibold">{formatCurrency(opTot?.saldoInit || 0, mon as any)}</span>
                     </div>
                     <div className="flex justify-between">
-                      <span className="text-slate-400">Utilidad Casa (60%):</span>
-                      <span className="text-amber-400">+{formatCurrency(opTot?.netoOperadora || 0, mon as any)}</span>
+                      <span className="text-slate-500 dark:text-slate-400">Utilidad Casa (60%):</span>
+                      <span className="text-amber-700 dark:text-amber-400 font-semibold">+{formatCurrency(opTot?.netoOperadora || 0, mon as any)}</span>
                     </div>
                     <div className="flex justify-between">
-                      <span className="text-slate-400">Pagos Netos Realizados:</span>
-                      <span className="text-cyan-400">-{formatCurrency(opTot?.pagosNetos || 0, mon as any)}</span>
+                      <span className="text-slate-500 dark:text-slate-400">Pagos Netos Realizados:</span>
+                      <span className="text-cyan-700 dark:text-cyan-400 font-semibold">-{formatCurrency(opTot?.pagosNetos || 0, mon as any)}</span>
                     </div>
                     <div className="flex justify-between">
-                      <span className="text-slate-400">Venta Bruta Global:</span>
-                      <span className="text-slate-400">{formatCurrency(opTot?.venta || 0, mon as any)}</span>
+                      <span className="text-slate-500 dark:text-slate-400">Venta Bruta Global:</span>
+                      <span className="text-slate-700 dark:text-slate-400">{formatCurrency(opTot?.venta || 0, mon as any)}</span>
                     </div>
                   </div>
-                  <div className="pt-2 border-t border-slate-800 text-center">
-                    <span className="text-[10px] text-slate-400 uppercase block">Balance Casas Operadoras</span>
+                  <div className="pt-2 border-t border-slate-200/80 dark:border-slate-800 text-center">
+                    <span className="text-[10px] text-slate-500 dark:text-slate-400 uppercase block font-sans">Balance Casas Operadoras</span>
                     <span className={`text-lg font-black ${
-                      (opTot?.balanceFinal || 0) > 0.01 ? 'text-rose-400' : (opTot?.balanceFinal || 0) < -0.01 ? 'text-emerald-400' : 'text-slate-300'
+                      (opTot?.balanceFinal || 0) > 0.01 ? 'text-rose-600 dark:text-rose-400' : (opTot?.balanceFinal || 0) < -0.01 ? 'text-emerald-700 dark:text-emerald-400' : 'text-slate-700 dark:text-slate-300'
                     }`}>
                       {formatCurrency(opTot?.balanceFinal || 0, mon as any)}
                     </span>
@@ -2686,31 +2699,31 @@ export const PreClosureAuditTab: React.FC = () => {
                 </div>
 
                 {/* Columna 3: Resultado Comercializador */}
-                <div className="bg-[#071318] border border-emerald-500/30 rounded-2xl p-4 space-y-3 font-mono">
-                  <div className="flex items-center justify-between border-b border-slate-800 pb-2">
-                    <span className="text-xs font-bold text-emerald-400 flex items-center gap-1.5">
+                <div className="bg-slate-50/90 dark:bg-[#071318] border border-emerald-300 dark:border-emerald-500/30 rounded-2xl p-4 space-y-3 font-mono">
+                  <div className="flex items-center justify-between border-b border-slate-200/80 dark:border-slate-800 pb-2">
+                    <span className="text-xs font-bold text-emerald-700 dark:text-emerald-400 flex items-center gap-1.5">
                       <Sparkles className="w-4 h-4" /> 3. Ganancia Comercializador
                     </span>
-                    <span className="text-[10px] text-emerald-400/80 font-sans font-bold">Semanal</span>
+                    <span className="text-[10px] text-emerald-700 dark:text-emerald-400/80 font-sans font-bold">Semanal</span>
                   </div>
                   <div className="space-y-1.5 text-xs">
                     <div className="flex justify-between">
-                      <span className="text-slate-400">Diferencial Comisión:</span>
-                      <span className="text-cyan-400">+{formatCurrency(opTot?.difCom || 0, mon as any)}</span>
+                      <span className="text-slate-500 dark:text-slate-400">Diferencial Comisión:</span>
+                      <span className="text-cyan-700 dark:text-cyan-400 font-semibold">+{formatCurrency(opTot?.difCom || 0, mon as any)}</span>
                     </div>
                     <div className="flex justify-between">
-                      <span className="text-slate-400">Participación (40%):</span>
-                      <span className="text-emerald-400">+{formatCurrency(opTot?.partCom || 0, mon as any)}</span>
+                      <span className="text-slate-500 dark:text-slate-400">Participación (40%):</span>
+                      <span className="text-emerald-700 dark:text-emerald-400 font-semibold">+{formatCurrency(opTot?.partCom || 0, mon as any)}</span>
                     </div>
-                    <div className="flex justify-between pt-1 border-t border-slate-800">
-                      <span className="text-slate-300 font-bold">Ganancia Total:</span>
-                      <span className="text-emerald-400 font-black">{formatCurrency(gananciaComercializador, mon as any)}</span>
+                    <div className="flex justify-between pt-1 border-t border-slate-200/80 dark:border-slate-800">
+                      <span className="text-slate-800 dark:text-slate-300 font-bold">Ganancia Total:</span>
+                      <span className="text-emerald-700 dark:text-emerald-400 font-black">{formatCurrency(gananciaComercializador, mon as any)}</span>
                     </div>
                   </div>
-                  <div className="pt-2 border-t border-slate-800 text-center bg-emerald-950/20 rounded-xl p-2 border border-emerald-500/20">
-                    <span className="text-[10px] text-emerald-300 uppercase block font-bold">Posición Neta (Agencias - Operadoras)</span>
+                  <div className="pt-2 border-t border-slate-200/80 dark:border-slate-800 text-center bg-emerald-50 dark:bg-emerald-950/20 rounded-xl p-2 border border-emerald-200 dark:border-emerald-500/20">
+                    <span className="text-[10px] text-emerald-800 dark:text-emerald-300 uppercase block font-bold font-sans">Posición Neta (Agencias - Operadoras)</span>
                     <span className={`text-lg font-black ${
-                      posicionNetaCartera >= 0 ? 'text-emerald-400' : 'text-rose-400'
+                      posicionNetaCartera >= 0 ? 'text-emerald-700 dark:text-emerald-400' : 'text-rose-600 dark:text-rose-400'
                     }`}>
                       {formatCurrency(posicionNetaCartera, mon as any)}
                     </span>
@@ -2737,7 +2750,18 @@ export const PreClosureAuditTab: React.FC = () => {
         />
       )}
 
-      {/* Modal 2: Acta del Operador de Confirmaciones */}
+      {/* Modal: Acta Oficial de Casas Operadoras (Imprimible en PDF) */}
+      {isOperatorActaModalOpen && (
+        <OperatorDeliveryReportModal
+          isOpen={isOperatorActaModalOpen}
+          onClose={() => setIsOperatorActaModalOpen(false)}
+          systemCycle={systemCycle}
+          userName={user?.nombre || user?.email?.split('@')[0] || 'Administración'}
+          companyName="CORPORACION CALENDARIO, CA"
+          operatorGroups={operatorGroups}
+          totalsByCurrency={operatorTotalsByCurrency}
+        />
+      )}
       {isConfirmationActaOpen && (
         <ConfirmationOperatorActaModal
           isOpen={isConfirmationActaOpen}
