@@ -910,7 +910,12 @@ export const WeeklyClosureTab: React.FC = () => {
                   </table>
                 </div>
               </div>
-       {/* 2. OPERADORA VERIFIED TABLES (Grouped by Operadora with currencies stacked) */}
+            );
+          })}
+        </div>
+      )}
+
+      {/* 2. OPERADORA VERIFIED TABLES (Grouped by Operadora with currencies stacked) */}
       {closureInspectionMode === 'operadoras' && (
         <div className="space-y-6">
           {/* Resumen Global de Tesorería por Moneda */}
