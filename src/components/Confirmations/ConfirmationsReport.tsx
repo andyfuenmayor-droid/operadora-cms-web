@@ -626,9 +626,9 @@ export const ConfirmationsReport: React.FC = () => {
               <FileText className="w-6 h-6" />
             </div>
             <div>
-              <h2 className="text-xl font-black text-white tracking-tight">Rep. Confirmaciones</h2>
+              <h2 className="text-xl font-black text-white tracking-tight">Confirmados</h2>
               <p className="text-xs text-slate-400 mt-0.5">
-                Reportes históricos, auditoría de transacciones rechazadas y control de custodia de efectivo.
+                Reportes históricos, auditoría de transacciones confirmadas, rechazadas y custodia de efectivo.
               </p>
             </div>
           </div>

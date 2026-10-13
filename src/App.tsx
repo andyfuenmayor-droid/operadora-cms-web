@@ -61,6 +61,7 @@ const AppContent: React.FC = () => {
       case 'Pizarra Confirmaciones':
         return <ConfirmationsQuick />;
 
+      case 'Confirmados':
       case 'Rep. Confirmaciones':
         return <ConfirmationsReport />;
 
@@ -101,19 +102,15 @@ const AppContent: React.FC = () => {
         return <AccountBalancesTab />;
 
       case 'Cierre ':
+      case 'Cierre Operadora':
         return <WeeklyClosureTab />;
 
       case 'Auditoría':
         return <AuditLogTab />;
 
-      case 'Venta Operadora':
-        return <OperatorsTab initialSubTab="venta" />;
-
       case 'Reporte Operadora':
+      case 'Venta Operadora':
         return <OperatorsTab initialSubTab="reporte" />;
-
-      case 'Cierre Operadora':
-        return <OperatorsTab initialSubTab="cierres" />;
 
       case 'Ajustes':
         return <CycleSettingsTab />;

@@ -40,9 +40,12 @@ interface SidebarProps {
   onCloseMobile: () => void;
 }
 
+const HIDDEN_MENU_MODULES = new Set<string>(['Venta Operadora', 'Cierre Operadora', 'Rep. Confirmaciones']);
+
 const moduleIconMap: Record<ModuleId, React.ComponentType<{ className?: string }>> = {
   Inicio: Home,
   Confirmaciones: CheckSquare,
+  Confirmados: ClipboardList,
   'Rep. Confirmaciones': ClipboardList,
   'Pizarra Confirmaciones': CheckSquare,
   Sistemas: Layers,
@@ -148,7 +151,9 @@ export const Sidebar: React.FC<SidebarProps> = ({
 
         {/* Middle: Navigation Items */}
         <div className="flex-1 overflow-y-auto py-2 px-2.5 space-y-0.5">
-          {allowedModules.map((modId) => {
+          {allowedModules
+            .filter((modId) => !HIDDEN_MENU_MODULES.has(modId))
+            .map((modId) => {
             const IconComp = moduleIconMap[modId] || Layers;
             const isActive = currentModule === modId;
 
