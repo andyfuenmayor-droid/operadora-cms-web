@@ -54,9 +54,13 @@ import {
   type OperatorSettlementRow,
 } from '../../utils/operatorSettlement';
 import { loadSystemKeywords, type SystemKeywordsMap } from '../../utils/systemKeywords';
+import {
+  checkIsBalancesCorrupted,
+  executeRestoreAuditedBalances,
+} from '../../utils/auditedBalancesS40';
 
 export const PreClosureAuditTab: React.FC = () => {
-  const { effectiveUserId, systemCycle, user } = useAuth();
+  const { effectiveUserId, systemCycle, user, refreshSystemCycle } = useAuth();
 
   const [isLoading, setIsLoading] = useState(true);
   const [auditMode, setAuditMode] = useState<'agencias' | 'operadoras' | 'consolidado'>('agencias');
@@ -119,6 +123,11 @@ export const PreClosureAuditTab: React.FC = () => {
       ]);
 
       const agList = agRes.data || [];
+      if (checkIsBalancesCorrupted(agList) && effectiveUserId) {
+        console.warn('Detectados saldos corrompidos por doble cierre. Auto-reparando con arrastres oficiales S40...');
+        await executeRestoreAuditedBalances(effectiveUserId, agList, refreshSystemCycle);
+      }
+
       const maximaAg = agList.find((a: any) => String(a.nombre_agencia || '').toUpperCase().includes('MAXIMA') && Number(a.saldo_inicial_cop) === 328901);
       if (maximaAg && effectiveUserId) {
         try {

@@ -40,6 +40,21 @@ export interface ConsolidationOptions {
   filtrarPeriodo?: boolean;
 }
 
+export function normalizeToIsoDate(val?: string | null): string {
+  if (!val) return '';
+  const clean = String(val).trim().split('T')[0].split(' ')[0];
+  if (/^\d{4}-\d{2}-\d{2}$/.test(clean)) return clean;
+  const parts = clean.split('/');
+  if (parts.length === 3 && parts[2].length === 4) {
+    return `${parts[2]}-${parts[1].padStart(2, '0')}-${parts[0].padStart(2, '0')}`;
+  }
+  const dashParts = clean.split('-');
+  if (dashParts.length === 3 && dashParts[2].length === 4) {
+    return `${dashParts[2]}-${dashParts[1].padStart(2, '0')}-${dashParts[0].padStart(2, '0')}`;
+  }
+  return clean;
+}
+
 /**
  * Obtiene y consolida todos los pagos de:
  * 1. pagos_semana (manuales en CMS)
@@ -150,6 +165,16 @@ export async function getConsolidatedPayments(
       const monNorm = normalizarMoneda(r.moneda) as 'BS' | 'USD' | 'COP';
       const refRaw = String(r.referencia || 'N/A').trim().toUpperCase();
 
+      // Filtrar pagos bancarios por periodo operativo si aplica
+      if (filtrarPeriodo && (fechaDesde || fechaHasta)) {
+        const hoyStr = getTodayDateString();
+        const fIso = normalizeToIsoDate(fechaRaw) || normalizeToIsoDate(r.created_at);
+        const desdeIso = normalizeToIsoDate(fechaDesde);
+        const hastaIso = normalizeToIsoDate(fechaHasta || hoyStr);
+        if (fIso && desdeIso && fIso < desdeIso) return;
+        if (fIso && hastaIso && fIso > hastaIso) return;
+      }
+
       const pbId = r.id;
       if (pbId && pbSeenTx.has(`pb_${pbId}`)) return;
       if (pbId) pbSeenTx.add(`pb_${pbId}`);
@@ -224,19 +249,22 @@ export async function getConsolidatedPayments(
 
       // Si se filtra por periodo, restringir los pagos diarios al ciclo ANTES de calcular el balance de supervisor vs cobrador
       if (filtrarPeriodo && (fechaDesde || fechaHasta)) {
-        const enRangoFecha = (!fechaDesde || fCorta >= fechaDesde) && (!limiteHasta || fCorta <= limiteHasta);
-        const enRangoCreacion = (!fCorta || fCorta === 'N/A' || fCorta.length < 10) && cStr && (!fechaDesde || cStr >= fechaDesde) && (!limiteHasta || cStr <= limiteHasta);
+        const hoyStr = getTodayDateString();
+        const desdeIso = normalizeToIsoDate(fechaDesde);
+        const hastaIso = normalizeToIsoDate(fechaHasta || hoyStr);
+        const fIso = normalizeToIsoDate(fechaRaw) || normalizeToIsoDate(r.created_at);
 
         let enRangoCobrador = false;
         if (isCob) {
-          const fEsc = r.fecha_escaneo_cobrador ? String(r.fecha_escaneo_cobrador).slice(0, 10) : '';
-          const fLiq = r.fecha_liquidacion_admin ? String(r.fecha_liquidacion_admin).slice(0, 10) : '';
-          const enRangoEsc = fEsc && (!fechaDesde || fEsc >= fechaDesde) && (!limiteHasta || fEsc <= limiteHasta);
-          const enRangoLiq = fLiq && (!fechaDesde || fLiq >= fechaDesde) && (!limiteHasta || fLiq <= limiteHasta);
+          const fEscIso = normalizeToIsoDate(r.fecha_escaneo_cobrador);
+          const fLiqIso = normalizeToIsoDate(r.fecha_liquidacion_admin);
+          const enRangoEsc = fEscIso && (!desdeIso || fEscIso >= desdeIso) && (!hastaIso || fEscIso <= hastaIso);
+          const enRangoLiq = fLiqIso && (!desdeIso || fLiqIso >= desdeIso) && (!hastaIso || fLiqIso <= hastaIso);
           enRangoCobrador = Boolean(enRangoEsc || enRangoLiq);
         }
 
-        if (!enRangoFecha && !enRangoCreacion && !enRangoCobrador) return;
+        const enRangoFecha = Boolean(fIso && (!desdeIso || fIso >= desdeIso) && (!hastaIso || fIso <= hastaIso));
+        if (!enRangoFecha && !enRangoCobrador) return;
       }
 
       // Si es pura transferencia bancaria duplicada sin efectivo, omitir
@@ -366,7 +394,8 @@ export async function getConsolidatedPayments(
     // 4. Filtrar fechas según ciclo operativo (preservando pagos manuales del CMS del ciclo abierto)
     if (filtrarPeriodo && (fechaDesde || fechaHasta)) {
       const hoyStr = getTodayDateString();
-      const limiteHasta = fechaHasta || hoyStr;
+      const desdeIso = normalizeToIsoDate(fechaDesde);
+      const hastaIso = normalizeToIsoDate(fechaHasta || hoyStr);
 
       return listaItems.filter((item) => {
         // Los pagos ingresados directamente en pagos_semana pertenecen al ciclo abierto actual
@@ -374,17 +403,11 @@ export async function getConsolidatedPayments(
           return true;
         }
 
-        const fStr = item.fecha.slice(0, 10);
-        const cStr = item.created_at ? item.created_at.slice(0, 10) : '';
-
-        // 1. Rango estándar por fecha operativa
-        const enRangoFecha = (!fechaDesde || fStr >= fechaDesde) && (!limiteHasta || fStr <= limiteHasta);
-        if (enRangoFecha) return true;
-
-        // 2. Si no tiene fecha válida, recurrir a fecha de creación
-        if (!fStr || fStr === 'N/A' || fStr.length < 10) {
-          const enRangoCreacion = cStr && (!fechaDesde || cStr >= fechaDesde) && (!limiteHasta || cStr <= limiteHasta);
-          if (enRangoCreacion) return true;
+        const fIso = normalizeToIsoDate(item.fecha) || normalizeToIsoDate(item.created_at);
+        if (fIso) {
+          if (desdeIso && fIso < desdeIso) return false;
+          if (hastaIso && fIso > hastaIso) return false;
+          return true;
         }
 
         return false;
@@ -492,20 +515,17 @@ export async function getConsolidatedExpenses(
     // 3. Filtrar fechas según ciclo operativo
     if (filtrarPeriodo && (fechaDesde || fechaHasta)) {
       const hoyStr = getTodayDateString();
-      const limiteHasta = fechaHasta || hoyStr;
+      const desdeIso = normalizeToIsoDate(fechaDesde);
+      const hastaIso = normalizeToIsoDate(fechaHasta || hoyStr);
 
       return listaGastos.filter((item) => {
         if (!item.id.startsWith('gd_')) return true;
 
-        const fStr = item.fecha.slice(0, 10);
-        const cStr = item.created_at ? item.created_at.slice(0, 10) : '';
-
-        const enRangoFecha = (!fechaDesde || fStr >= fechaDesde) && (!limiteHasta || fStr <= limiteHasta);
-        if (enRangoFecha) return true;
-
-        if (!fStr || fStr === 'N/A' || fStr.length < 10) {
-          const enRangoCreacion = cStr && (!fechaDesde || cStr >= fechaDesde) && (!limiteHasta || cStr <= limiteHasta);
-          if (enRangoCreacion) return true;
+        const fIso = normalizeToIsoDate(item.fecha) || normalizeToIsoDate(item.created_at);
+        if (fIso) {
+          if (desdeIso && fIso < desdeIso) return false;
+          if (hastaIso && fIso > hastaIso) return false;
+          return true;
         }
 
         return false;

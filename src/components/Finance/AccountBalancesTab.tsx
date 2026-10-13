@@ -28,8 +28,13 @@ import {
   List,
   ChevronRight,
   Layers,
-  History
+  History,
+  ShieldCheck
 } from 'lucide-react';
+import {
+  checkIsBalancesCorrupted,
+  executeRestoreAuditedBalances,
+} from '../../utils/auditedBalancesS40';
 
 const WhatsAppIcon: React.FC<{ className?: string }> = ({ className = 'w-4 h-4' }) => (
   <svg className={className} viewBox="0 0 24 24" fill="currentColor">
@@ -51,7 +56,7 @@ interface BalanceRow {
 }
 
 export const AccountBalancesTab: React.FC = () => {
-  const { effectiveUserId, systemCycle } = useAuth();
+  const { effectiveUserId, systemCycle, refreshSystemCycle } = useAuth();
   const { isLight } = useTheme();
 
   const [activeMainSubTab, setActiveMainSubTab] = useState<'activo' | 'historico'>('activo');
@@ -83,12 +88,31 @@ export const AccountBalancesTab: React.FC = () => {
         getConsolidatedExpenses(effectiveUserId, { fechaDesde: systemCycle.desde, fechaHasta: systemCycle.hasta }),
       ]);
 
-      setAgencies(agRes.data || []);
+      const agList = agRes.data || [];
+      if (checkIsBalancesCorrupted(agList) && effectiveUserId) {
+        console.warn('Detectados saldos corrompidos por doble cierre. Auto-reparando con arrastres oficiales S40...');
+        await executeRestoreAuditedBalances(effectiveUserId, agList, refreshSystemCycle);
+      }
+
+      setAgencies(agList);
       setSales(sRes.data || []);
       setPayments(pConsolidated);
       setExpenses(gConsolidated);
     } catch (err: any) {
       console.error('Error loading account balances data:', err);
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const handleSyncOfficialS40 = async () => {
+    if (!effectiveUserId) return;
+    setIsLoading(true);
+    try {
+      await executeRestoreAuditedBalances(effectiveUserId, agencies, refreshSystemCycle);
+      await loadData();
+    } catch (err) {
+      console.error('Error syncing official balances S40:', err);
     } finally {
       setIsLoading(false);
     }
@@ -394,6 +418,16 @@ ${textoSistemas}
           >
             <RefreshCw className={`w-3.5 h-3.5 ${isLoading ? 'animate-spin' : ''}`} />
             Actualizar
+          </button>
+
+          <button
+            onClick={handleSyncOfficialS40}
+            disabled={isLoading}
+            title="Sincronizar y restaurar saldos de arrastre del acta oficial S40"
+            className="px-3.5 py-2.5 rounded-xl bg-cyan-500/10 hover:bg-cyan-500/20 text-cyan-400 text-xs font-semibold flex items-center gap-1.5 transition-all border border-cyan-500/30 cursor-pointer disabled:opacity-50"
+          >
+            <ShieldCheck className="w-3.5 h-3.5" />
+            Sincronizar Arrastres S40
           </button>
 
           <a

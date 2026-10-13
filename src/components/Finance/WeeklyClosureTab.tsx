@@ -27,7 +27,8 @@ import {
   FileText,
   Globe,
   Scale,
-  Sparkles
+  Sparkles,
+  ShieldCheck
 } from 'lucide-react';
 import confetti from 'canvas-confetti';
 import {
@@ -40,6 +41,10 @@ import {
   saveSystemKeywords,
   type SystemKeywordsMap,
 } from '../../utils/systemKeywords';
+import {
+  checkIsBalancesCorrupted,
+  executeRestoreAuditedBalances,
+} from '../../utils/auditedBalancesS40';
 
 interface CierreAgencyData {
   ag_id: number;
@@ -101,6 +106,15 @@ export const WeeklyClosureTab: React.FC = () => {
       ]);
 
       const agList = agRes.data || [];
+      if (checkIsBalancesCorrupted(agList) && effectiveUserId) {
+        console.warn('Detectados saldos corrompidos por doble cierre. Auto-reparando con arrastres oficiales S40...');
+        await executeRestoreAuditedBalances(effectiveUserId, agList, refreshSystemCycle);
+        setMessage({
+          type: 'success',
+          text: '🛡️ Saldos oficiales del Pre-Cierre Semana 40 sincronizados correctamente. Ciclo configurado en Semana 41 (2026-10-05 al 2026-10-11).'
+        });
+      }
+
       const maximaAg = agList.find((a: any) => String(a.nombre_agencia || '').toUpperCase().includes('MAXIMA') && Number(a.saldo_inicial_cop) === 328901);
       if (maximaAg && effectiveUserId) {
         try {
@@ -493,6 +507,30 @@ export const WeeklyClosureTab: React.FC = () => {
     }
   };
 
+  // Manual synchronization of audited official Semana 40 balances
+  const handleSyncOfficialS40 = async () => {
+    if (!effectiveUserId) return;
+    setIsProcessing(true);
+    setMessage(null);
+    try {
+      const ok = await executeRestoreAuditedBalances(effectiveUserId, agencies, refreshSystemCycle);
+      if (ok) {
+        await loadData();
+        setMessage({
+          type: 'success',
+          text: '🛡️ Sincronización exitosa: Arrastres oficiales del Pre-Cierre Semana 40 aplicados para todas las agencias y operadoras. Semana 41 (2026-10-05 al 2026-10-11) activa.',
+        });
+      } else {
+        setMessage({ type: 'error', text: 'No se pudieron sincronizar los arrastres oficiales.' });
+      }
+    } catch (err: any) {
+      console.error('Error syncing official balances:', err);
+      setMessage({ type: 'error', text: err?.message || 'Error en la sincronización.' });
+    } finally {
+      setIsProcessing(false);
+    }
+  };
+
   // Execute Cycle Finalization
   const handleFinalizeWeek = async () => {
     if (!effectiveUserId) {
@@ -501,6 +539,15 @@ export const WeeklyClosureTab: React.FC = () => {
       setMessage({ type: 'error', text: errTxt });
       return;
     }
+
+    if (sales.length === 0) {
+      const errTxt = '⚠️ No se puede finalizar el ciclo: No hay ventas registradas en la carga actual. Finalizar un ciclo vacío causaría saldos de arrastre corrompidos.';
+      setModalError(errTxt);
+      setMessage({ type: 'error', text: errTxt });
+      setIsProcessing(false);
+      return;
+    }
+
     setIsProcessing(true);
     setModalError(null);
     setMessage(null);
@@ -770,8 +817,18 @@ export const WeeklyClosureTab: React.FC = () => {
           </button>
 
           <button
+            onClick={handleSyncOfficialS40}
+            disabled={isProcessing}
+            title="Sincronizar y restaurar saldos de arrastre del Acta Oficial S40 y fijar Semana 41"
+            className="px-3.5 py-2.5 rounded-xl bg-cyan-500/10 hover:bg-cyan-500/20 text-cyan-400 text-xs font-semibold flex items-center gap-1.5 transition-all border border-cyan-500/30 cursor-pointer disabled:opacity-50"
+          >
+            <ShieldCheck className="w-3.5 h-3.5" />
+            Sincronizar Arrastres Oficiales S40
+          </button>
+
+          <button
             onClick={() => loadData()}
-            disabled={isLoading}
+            disabled={isLoading || isProcessing}
             className="px-3.5 py-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-semibold flex items-center gap-1.5 transition-all border border-slate-700 cursor-pointer disabled:opacity-50"
           >
             <RefreshCw className={`w-3.5 h-3.5 ${isLoading ? 'animate-spin' : ''}`} />
