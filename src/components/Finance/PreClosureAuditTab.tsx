@@ -443,11 +443,11 @@ export const PreClosureAuditTab: React.FC = () => {
       systemConfigs,
       sales,
       operatorPayments,
-      selectedCurrency
+      'ALL'
     );
-  }, [registeredSystems, systemConfigs, sales, operatorPayments, selectedCurrency]);
+  }, [registeredSystems, systemConfigs, sales, operatorPayments]);
 
-  // Filtered Operator Rows for Table View
+  // Filtered Operator Rows for Table and Card Views
   const filteredOperatorRows = useMemo(() => {
     return operatorRows.filter((r) => {
       if (selectedCurrency !== 'ALL' && r.moneda !== selectedCurrency) return false;
@@ -462,7 +462,30 @@ export const PreClosureAuditTab: React.FC = () => {
     });
   }, [operatorRows, selectedCurrency, operatorSearchQuery, operatorStatusFilter]);
 
-  // Handler: Copy WhatsApp Operator Acta
+  // Operator Groups: Group by Operadora with currencies stacked one below the other
+  const operatorGroups = useMemo(() => {
+    const map = new Map<string, OperatorSettlementRow[]>();
+    filteredOperatorRows.forEach((r) => {
+      if (!map.has(r.sistema)) {
+        map.set(r.sistema, []);
+      }
+      map.get(r.sistema)!.push(r);
+    });
+
+    const currOrder: Record<string, number> = { BS: 1, USD: 2, COP: 3 };
+
+    return Array.from(map.entries()).map(([sistema, rows]) => {
+      const sortedRows = [...rows].sort((a, b) => (currOrder[a.moneda] || 99) - (currOrder[b.moneda] || 99));
+      return {
+        sistema,
+        rows: sortedRows,
+        hasDeuda: sortedRows.some((r) => r.balanceFinal > 0.01),
+        hasFavor: sortedRows.some((r) => r.balanceFinal < -0.01),
+      };
+    });
+  }, [filteredOperatorRows]);
+
+  // Handler: Copy WhatsApp Operator Acta (Grouped by Operadora with currencies stacked)
   const handleCopyOperatorActaWhatsApp = () => {
     if (operatorRows.length === 0) {
       alert('No hay datos de casas operadoras en este ciclo para generar el acta.');
@@ -477,30 +500,39 @@ export const PreClosureAuditTab: React.FC = () => {
       `━━━━━━━━━━━━━━━━━━━━━━━━`,
     ];
 
-    filteredOperatorRows.forEach((r) => {
+    operatorGroups.forEach((group) => {
       lines.push(
-        `🌐 *OPERADORA: ${r.sistema} (${r.moneda})*`,
-        `• Venta Bruta: ${formatCurrency(r.venta, r.moneda as any)}`,
-        `• Premios Pagados: ${formatCurrency(r.premio, r.moneda as any)}`,
-        `• Utilidad Bruta (GGR): ${formatCurrency(r.utilidadBruta, r.moneda as any)}`,
-        `• Com. Proveedor (${r.comisionPct}%): ${formatCurrency(r.comCompletaProv, r.moneda as any)}`,
-        `• (-) Com. Pagada Agencias: ${formatCurrency(r.comAgencias, r.moneda as any)}`,
-        `• (=) Diferencial a Favor: ${formatCurrency(r.difCom, r.moneda as any)}`,
-        `• Base Neta (GGR - Com 16%): ${formatCurrency(r.baseUtil, r.moneda as any)}`,
-        `• Participación (${r.participacionPct}%): ${formatCurrency(r.partCom, r.moneda as any)}`,
-        `• 🏆 *Total Ganancia Comercializador:* ${formatCurrency(r.totalCom, r.moneda as any)}`,
-        `• 🏛️ *Utilidad Casa Operadora (60%):* ${formatCurrency(r.netoOperadora, r.moneda as any)}`,
-        `• Saldo Inicial Arrastre: ${formatCurrency(r.saldoInit, r.moneda as any)}`,
-        `• Pagos Netos Realizados: ${formatCurrency(r.pagosNetos, r.moneda as any)}`,
-        `• 👉 *BALANCE FINAL: ${formatCurrency(r.balanceFinal, r.moneda as any)}* ${
-          r.balanceFinal > 0.01
-            ? '🔴 (A PAGAR A OPERADORA)'
-            : r.balanceFinal < -0.01
-            ? '🟢 (A FAVOR COMERCIALIZADOR)'
-            : '⚪ (AL DÍA / SOLVENTE)'
-        }`,
+        `🌐 *CASA OPERADORA: ${group.sistema}* (${group.rows.length} ${group.rows.length === 1 ? 'Moneda' : 'Monedas'})`,
         `────────────────────────`
       );
+
+      group.rows.forEach((r) => {
+        const flag = r.moneda === 'BS' ? '🇻🇪' : r.moneda === 'USD' ? '🇺🇸' : '🇨🇴';
+        const monNombre = r.moneda === 'BS' ? 'Bolívares (BS)' : r.moneda === 'USD' ? 'Dólares (USD)' : 'Pesos (COP)';
+
+        lines.push(
+          `${flag} *Moneda: ${monNombre}*`,
+          `  • Venta Bruta: ${formatCurrency(r.venta, r.moneda as any)}`,
+          `  • Premios Pagados: ${formatCurrency(r.premio, r.moneda as any)}`,
+          `  • Utilidad Bruta (GGR): ${formatCurrency(r.utilidadBruta, r.moneda as any)}`,
+          `  • Com. Proveedor (${r.comisionPct}%): ${formatCurrency(r.comCompletaProv, r.moneda as any)}`,
+          `  • Diferencial a Favor Comercializador: ${formatCurrency(r.difCom, r.moneda as any)}`,
+          `  • Participación Comercializador (${r.participacionPct}%): ${formatCurrency(r.partCom, r.moneda as any)}`,
+          `  • 🏆 *Total Ganancia Comercializador:* ${formatCurrency(r.totalCom, r.moneda as any)}`,
+          `  • 🏛️ *Utilidad Casa Matriz (60%):* ${formatCurrency(r.netoOperadora, r.moneda as any)}`,
+          `  • Arrastre Inicial: ${formatCurrency(r.saldoInit, r.moneda as any)}`,
+          `  • Pagos Netos Realizados: ${formatCurrency(r.pagosNetos, r.moneda as any)}`,
+          `  • 👉 *BALANCE FINAL: ${formatCurrency(r.balanceFinal, r.moneda as any)}* ${
+            r.balanceFinal > 0.01
+              ? '🔴 (A PAGAR A OPERADORA)'
+              : r.balanceFinal < -0.01
+              ? '🟢 (A FAVOR COMERCIALIZADOR)'
+              : '⚪ (AL DÍA / SOLVENTE)'
+          }`,
+          ``
+        );
+      });
+      lines.push(`━━━━━━━━━━━━━━━━━━━━━━━━`);
     });
 
     lines.push(`💼 *RESUMEN TOTALIZADO POR MONEDA:*`);
@@ -2026,158 +2058,288 @@ export const PreClosureAuditTab: React.FC = () => {
 
   {auditMode === 'operadoras' && (
     <div className="space-y-6">
-      {/* Operator Multi-Currency KPI Cards */}
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-5">
-        {['BS', 'USD', 'COP'].map((mon) => {
-          const tot = operatorTotalsByCurrency[mon];
-          if (!tot) return null;
+      {/* 1. Macro Resumen de Tesorería Global por Moneda */}
+      <div className="bg-[#0D1B22] border border-slate-800 rounded-3xl p-5 shadow-xl">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between pb-3.5 border-b border-slate-800 gap-2 mb-4">
+          <div>
+            <span className="text-[10px] font-black uppercase tracking-wider text-amber-400 font-mono">
+              Posición Financiera Consolidada
+            </span>
+            <h3 className="text-base font-black text-white flex items-center gap-2">
+              <Scale className="w-4 h-4 text-amber-400" />
+              Resumen Global de Liquidación a Casas Operadoras
+            </h3>
+          </div>
+          <span className="text-xs font-mono font-bold text-slate-400 bg-[#071217] px-3 py-1 rounded-xl border border-slate-800 w-fit">
+            Semana {systemCycle.semana}
+          </span>
+        </div>
 
-          const isSelected = selectedCurrency === mon;
-          const flag = mon === 'BS' ? '🇻🇪' : mon === 'USD' ? '🇺🇸' : '🇨🇴';
-          const currencyName = mon === 'BS' ? 'Bolívares (BS)' : mon === 'USD' ? 'Dólares (USD)' : 'Pesos (COP)';
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+          {['BS', 'USD', 'COP'].map((mon) => {
+            const tot = operatorTotalsByCurrency[mon];
+            if (!tot) return null;
+            const flag = mon === 'BS' ? '🇻🇪' : mon === 'USD' ? '🇺🇸' : '🇨🇴';
+            const currencyName = mon === 'BS' ? 'Bolívares (BS)' : mon === 'USD' ? 'Dólares (USD)' : 'Pesos (COP)';
+            const isDeuda = tot.balanceFinal > 0.01;
+            const isFavor = tot.balanceFinal < -0.01;
 
-          return (
-            <div
-              key={mon}
-              onClick={() => setSelectedCurrency(mon as any)}
-              className={`p-5 rounded-3xl border transition-all cursor-pointer flex flex-col justify-between relative overflow-hidden ${
-                isSelected
-                  ? 'bg-gradient-to-b from-[#1C180A] to-[#0A1A23] border-amber-500/50 shadow-2xl shadow-amber-500/15 ring-2 ring-amber-500/30'
-                  : 'bg-[#0D1B22] border-slate-800 hover:border-slate-700 hover:bg-[#0f1f28]'
-              }`}
-            >
-              {/* Card Header */}
-              <div className="flex items-center justify-between pb-3 border-b border-slate-800/80 mb-3.5">
-                <div className="flex items-center gap-2.5">
-                  <span className="text-xl">{flag}</span>
-                  <div>
-                    <h4 className="text-xs font-black uppercase text-amber-400 font-mono tracking-wider">
-                      Casas Operadoras {currencyName}
-                    </h4>
-                    <span className="text-[11px] text-slate-400">
-                      {tot.count} {tot.count === 1 ? 'operadora' : 'operadoras con actividad'}
+            return (
+              <div
+                key={`macro_${mon}`}
+                className="bg-[#071318] border border-slate-800/80 rounded-2xl p-4 flex flex-col justify-between"
+              >
+                <div className="flex items-center justify-between border-b border-slate-800/60 pb-2 mb-2.5">
+                  <span className="text-xs font-bold text-slate-300 flex items-center gap-1.5 font-mono">
+                    <span>{flag}</span> {currencyName}
+                  </span>
+                  <span className="text-[10px] text-slate-400 font-mono">
+                    {tot.count} {tot.count === 1 ? 'operadora' : 'operadoras'}
+                  </span>
+                </div>
+
+                <div className="space-y-1 mb-3 font-mono">
+                  <span className="text-[10px] uppercase text-slate-400 block font-sans">Balance Final a Proveedores:</span>
+                  <div className={`text-xl sm:text-2xl font-black ${isDeuda ? 'text-rose-400' : isFavor ? 'text-emerald-400' : 'text-slate-300'}`}>
+                    {formatCurrency(tot.balanceFinal, mon as any)}
+                  </div>
+                  <span className="text-[10px] text-slate-400 block font-sans">
+                    {isDeuda ? '🔴 Deuda neta a pagar' : isFavor ? '🟢 Saldo a favor comercializador' : '⚪ Al día'}
+                  </span>
+                </div>
+
+                <div className="pt-2 border-t border-slate-800/60 text-[11px] font-mono space-y-1 text-slate-400">
+                  <div className="flex justify-between">
+                    <span>Venta Bruta:</span>
+                    <span className="text-slate-200 font-semibold">{formatCurrency(tot.venta, mon as any)}</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span>Ganancia Comercializador:</span>
+                    <span className="text-emerald-400 font-semibold">+{formatCurrency(tot.totalComercializador, mon as any)}</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span>Utilidad Casa (60%):</span>
+                    <span className={`font-semibold ${tot.netoOperadora >= 0 ? 'text-amber-400' : 'text-rose-400'}`}>
+                      {formatCurrency(tot.netoOperadora, mon as any)}
                     </span>
                   </div>
                 </div>
-
-                <span
-                  className={`text-[10px] font-extrabold uppercase px-2.5 py-1 rounded-full border transition-all ${
-                    isSelected
-                      ? 'bg-amber-500/20 text-amber-400 border-amber-500/40 shadow-sm shadow-amber-500/20'
-                      : 'bg-slate-800/80 text-slate-400 border-slate-700'
-                  }`}
-                >
-                  {isSelected ? '● Filtrado' : 'Filtrar'}
-                </span>
               </div>
-
-              {/* Big Hero: Balance Final Casas Operadoras */}
-              <div className="bg-[#071318] border border-slate-800/90 rounded-2xl p-3.5 mb-3.5 text-center shadow-inner">
-                <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block mb-1">
-                  Balance Final a Casas Operadoras
-                </span>
-                <div
-                  className={`text-2xl sm:text-3xl font-black font-mono tracking-tight ${
-                    tot.balanceFinal > 0.01
-                      ? 'text-rose-400'
-                      : tot.balanceFinal < -0.01
-                      ? 'text-emerald-400'
-                      : 'text-slate-300'
-                  }`}
-                >
-                  {formatCurrency(tot.balanceFinal, mon as any)}
-                </div>
-                <span className="text-[10px] text-slate-400 mt-1 block">
-                  {tot.balanceFinal > 0.01
-                    ? 'Deuda neta a pagar a casas matrices'
-                    : tot.balanceFinal < -0.01
-                    ? 'Saldo a favor del comercializador'
-                    : 'Cuentas cuadradas al día'}
-                </span>
-              </div>
-
-              {/* Three Clean Sections: Operativo + Comercializador + Posición Operadora */}
-              <div className="space-y-3 font-mono text-xs">
-                {/* 1. Movimiento Operativo */}
-                <div className="bg-[#08151D] border border-slate-800/70 rounded-2xl p-3 space-y-2">
-                  <div className="text-[10px] font-black text-slate-400 uppercase tracking-wider border-b border-slate-800/80 pb-1.5 flex items-center justify-between">
-                    <span>📊 Movimiento Operativo</span>
-                    <span className="text-[9px] text-slate-500 font-sans font-normal">Semana {systemCycle.semana}</span>
-                  </div>
-                  <div className="space-y-1.5 text-[11px]">
-                    <div className="flex justify-between items-center">
-                      <span className="text-slate-400">Venta Bruta:</span>
-                      <span className="font-semibold text-slate-200">{formatCurrency(tot.venta, mon as any)}</span>
-                    </div>
-                    <div className="flex justify-between items-center">
-                      <span className="text-slate-400">Premios Pagados:</span>
-                      <span className="font-semibold text-amber-400">-{formatCurrency(tot.premios, mon as any)}</span>
-                    </div>
-                    <div className="flex justify-between items-center pt-1 border-t border-slate-800/60">
-                      <span className="text-slate-300 font-bold">Utilidad Bruta (GGR):</span>
-                      <span className={`font-bold ${tot.ggr >= 0 ? 'text-emerald-400' : 'text-rose-400'}`}>
-                        {formatCurrency(tot.ggr, mon as any)}
-                      </span>
-                    </div>
-                  </div>
-                </div>
-
-                {/* 2. Ganancia Comercializador (Modelo Opción B) */}
-                <div className="bg-[#08151D] border border-emerald-500/20 rounded-2xl p-3 space-y-2">
-                  <div className="text-[10px] font-black text-emerald-400 uppercase tracking-wider border-b border-slate-800/80 pb-1.5 flex items-center justify-between">
-                    <span>🏆 Ganancia Comercializador</span>
-                    <span className="text-[9px] text-emerald-400/80 font-sans font-bold">Opción B</span>
-                  </div>
-                  <div className="space-y-1.5 text-[11px]">
-                    <div className="flex justify-between items-center">
-                      <span className="text-slate-400">Diferencial Comisión:</span>
-                      <span className="font-semibold text-cyan-400">+{formatCurrency(tot.difCom, mon as any)}</span>
-                    </div>
-                    <div className="flex justify-between items-center">
-                      <span className="text-slate-400">Participación (40% s/ Base):</span>
-                      <span className={`font-semibold ${tot.partCom >= 0 ? 'text-emerald-400' : 'text-rose-400'}`}>
-                        {formatCurrency(tot.partCom, mon as any)}
-                      </span>
-                    </div>
-                    <div className="flex justify-between items-center pt-1 border-t border-slate-800/60">
-                      <span className="text-emerald-300 font-bold">Total Ganancia Comercializador:</span>
-                      <span className="font-black text-emerald-400 bg-emerald-500/10 px-1.5 py-0.5 rounded border border-emerald-500/20">
-                        {formatCurrency(tot.totalComercializador, mon as any)}
-                      </span>
-                    </div>
-                  </div>
-                </div>
-
-                {/* 3. Posición Casa Operadora */}
-                <div className="bg-[#08151D] border border-slate-800/70 rounded-2xl p-3 space-y-2">
-                  <div className="text-[10px] font-black text-slate-400 uppercase tracking-wider border-b border-slate-800/80 pb-1.5 flex items-center justify-between">
-                    <span>🏛️ Posición Casa Matriz (60%)</span>
-                    <span className="text-[9px] text-slate-500 font-sans font-normal">Arqueo Real</span>
-                  </div>
-                  <div className="space-y-1.5 text-[11px]">
-                    <div className="flex justify-between items-center">
-                      <span className="text-slate-400">Arrastre Inicial:</span>
-                      <span className="font-semibold text-slate-300">{formatCurrency(tot.saldoInit, mon as any)}</span>
-                    </div>
-                    <div className="flex justify-between items-center">
-                      <span className="text-slate-400">Utilidad Casa (60%):</span>
-                      <span className={`font-semibold ${tot.netoOperadora >= 0 ? 'text-amber-400' : 'text-rose-400'}`}>
-                        {formatCurrency(tot.netoOperadora, mon as any)}
-                      </span>
-                    </div>
-                    <div className="flex justify-between items-center">
-                      <span className="text-slate-400">Pagos Netos Realizados:</span>
-                      <span className="font-semibold text-cyan-400">-{formatCurrency(tot.pagosNetos, mon as any)}</span>
-                    </div>
-                  </div>
-                </div>
-              </div>
-            </div>
-          );
-        })}
+            );
+          })}
+        </div>
       </div>
 
-      {/* Operator Filter and Search Bar */}
+      {/* 2. Tarjetas de Casas Operadoras: Balances con Monedas una debajo de la otra */}
+      <div className="space-y-4">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-1">
+          <div className="flex items-center gap-2">
+            <Globe className="w-4 h-4 text-amber-400" />
+            <h4 className="text-xs font-black uppercase tracking-wider text-white">
+              Balances por Casa Operadora ({operatorGroups.length})
+            </h4>
+          </div>
+          <span className="text-[11px] text-slate-400">
+            Monedas activas apiladas por cada proveedor
+          </span>
+        </div>
+
+        {operatorGroups.length === 0 ? (
+          <div className="bg-[#0D1B22] border border-slate-800 rounded-3xl p-8 text-center text-slate-500 font-sans">
+            <Globe className="w-8 h-8 mx-auto mb-2 opacity-40 text-slate-400" />
+            No se encontraron casas operadoras con los filtros seleccionados.
+          </div>
+        ) : (
+          <div className="grid grid-cols-1 xl:grid-cols-2 gap-5">
+            {operatorGroups.map((group) => {
+              return (
+                <div
+                  key={`card_group_${group.sistema}`}
+                  className="bg-[#0D1B22] border border-slate-800 rounded-3xl p-5 shadow-xl flex flex-col justify-between hover:border-slate-700 transition-all"
+                >
+                  {/* Header de la Casa Operadora */}
+                  <div className="flex items-center justify-between pb-3.5 border-b border-slate-800 mb-4">
+                    <div className="flex items-center gap-3">
+                      <div className="w-10 h-10 rounded-2xl bg-amber-500/10 border border-amber-500/20 flex items-center justify-center text-amber-400 text-lg font-black">
+                        🌐
+                      </div>
+                      <div>
+                        <h4 className="text-base font-black text-white font-mono tracking-tight flex items-center gap-2">
+                          {group.sistema}
+                        </h4>
+                        <div className="flex items-center gap-2 mt-0.5">
+                          <span className="text-[10px] text-slate-400 font-mono">
+                            {group.rows.length} {group.rows.length === 1 ? 'Moneda activa' : 'Monedas activas'}:
+                          </span>
+                          <div className="flex items-center gap-1">
+                            {group.rows.map((r) => (
+                              <span
+                                key={`badge_${r.sistema}_${r.moneda}`}
+                                className={`text-[9px] font-bold px-1.5 py-0.5 rounded ${
+                                  r.moneda === 'BS'
+                                    ? 'bg-amber-500/10 text-amber-400 border border-amber-500/20'
+                                    : r.moneda === 'USD'
+                                    ? 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20'
+                                    : 'bg-sky-500/10 text-sky-400 border border-sky-500/20'
+                                }`}
+                              >
+                                {r.moneda}
+                              </span>
+                            ))}
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Estado global de la Operadora */}
+                    <div className="text-right">
+                      <span
+                        className={`text-[10px] font-extrabold uppercase px-2.5 py-1 rounded-full border ${
+                          group.hasDeuda
+                            ? 'bg-rose-500/20 text-rose-400 border-rose-500/30'
+                            : group.hasFavor
+                            ? 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/30'
+                            : 'bg-slate-800 text-slate-400 border border-slate-700'
+                        }`}
+                      >
+                        {group.hasDeuda ? '🔴 Con Deuda Pendiente' : group.hasFavor ? '🟢 Saldo a Favor' : '⚪ Solvente'}
+                      </span>
+                    </div>
+                  </div>
+
+                  {/* Lista de Monedas UNA DEBAJO DE LA OTRA */}
+                  <div className="space-y-3">
+                    {group.rows.map((r) => {
+                      const flag = r.moneda === 'BS' ? '🇻🇪' : r.moneda === 'USD' ? '🇺🇸' : '🇨🇴';
+                      const monLabel = r.moneda === 'BS' ? 'Bolívares (BS)' : r.moneda === 'USD' ? 'Dólares (USD)' : 'Pesos (COP)';
+                      const isDeuda = r.balanceFinal > 0.01;
+                      const isFavor = r.balanceFinal < -0.01;
+
+                      return (
+                        <div
+                          key={`row_curr_${group.sistema}_${r.moneda}`}
+                          className="bg-[#071318] border border-slate-800/80 rounded-2xl p-3.5 space-y-2.5 hover:border-slate-700/80 transition-colors"
+                        >
+                          {/* Fila Cabecera de la Moneda: Moneda + Balance Final */}
+                          <div className="flex flex-col sm:flex-row sm:items-center justify-between pb-2 border-b border-slate-800/60 gap-2">
+                            <div className="flex items-center gap-2">
+                              <span className="text-base">{flag}</span>
+                              <span className="text-xs font-bold text-slate-200 font-mono">
+                                {monLabel}
+                              </span>
+                              <span className="text-[10px] text-slate-500 font-mono">
+                                (Com: {r.comisionPct}% • Part: {r.participacionPct}%)
+                              </span>
+                            </div>
+
+                            <div className="flex items-center gap-2 font-mono">
+                              <span className="text-[10px] text-slate-400 font-sans uppercase">Balance Final:</span>
+                              <span
+                                className={`text-sm font-black px-2 py-0.5 rounded-lg border ${
+                                  isDeuda
+                                    ? 'bg-rose-500/10 text-rose-400 border-rose-500/20'
+                                    : isFavor
+                                    ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20'
+                                    : 'bg-slate-800/60 text-slate-300 border-slate-700'
+                                }`}
+                              >
+                                {formatCurrency(r.balanceFinal, r.moneda as any)}
+                              </span>
+                              <span
+                                className={`text-[9px] font-black uppercase px-2 py-0.5 rounded-full ${
+                                  isDeuda
+                                    ? 'bg-rose-500/20 text-rose-400'
+                                    : isFavor
+                                    ? 'bg-emerald-500/20 text-emerald-400'
+                                    : 'bg-slate-800 text-slate-400'
+                                }`}
+                              >
+                                {isDeuda ? 'A Pagar' : isFavor ? 'A Favor' : 'Al Día'}
+                              </span>
+                            </div>
+                          </div>
+
+                          {/* Desglose de 3 columnas para esta moneda: Operativo | Comercializador | Posición Casa */}
+                          <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 text-[10.5px] font-mono">
+                            {/* Columna A: Movimiento Operativo */}
+                            <div className="bg-[#050D11] rounded-xl p-2.5 border border-slate-800/50 space-y-1">
+                              <span className="text-[9px] font-bold text-slate-400 uppercase tracking-wider block border-b border-slate-800/50 pb-0.5 font-sans">
+                                📊 Movimiento
+                              </span>
+                              <div className="flex justify-between">
+                                <span className="text-slate-400">Venta:</span>
+                                <span className="text-slate-200 font-semibold">{formatCurrency(r.venta, r.moneda as any)}</span>
+                              </div>
+                              <div className="flex justify-between">
+                                <span className="text-slate-400">Premios:</span>
+                                <span className="text-amber-400 font-semibold">
+                                  {r.premio > 0 ? `-${formatCurrency(r.premio, r.moneda as any)}` : formatCurrency(0, r.moneda as any)}
+                                </span>
+                              </div>
+                              <div className="flex justify-between pt-0.5 border-t border-slate-800/40">
+                                <span className="text-slate-300 font-bold">GGR:</span>
+                                <span className={`font-bold ${r.utilidadBruta >= 0 ? 'text-emerald-400' : 'text-rose-400'}`}>
+                                  {formatCurrency(r.utilidadBruta, r.moneda as any)}
+                                </span>
+                              </div>
+                            </div>
+
+                            {/* Columna B: Comercializador */}
+                            <div className="bg-[#050D11] rounded-xl p-2.5 border border-emerald-500/15 space-y-1">
+                              <span className="text-[9px] font-bold text-emerald-400 uppercase tracking-wider block border-b border-slate-800/50 pb-0.5 font-sans">
+                                🏆 Comercializador
+                              </span>
+                              <div className="flex justify-between">
+                                <span className="text-slate-400">Dif. Com:</span>
+                                <span className="text-cyan-400 font-semibold">{formatCurrency(r.difCom, r.moneda as any)}</span>
+                              </div>
+                              <div className="flex justify-between">
+                                <span className="text-slate-400">Part. ({r.participacionPct}%):</span>
+                                <span className={`font-semibold ${r.partCom >= 0 ? 'text-emerald-400' : 'text-rose-400'}`}>
+                                  {formatCurrency(r.partCom, r.moneda as any)}
+                                </span>
+                              </div>
+                              <div className="flex justify-between pt-0.5 border-t border-slate-800/40">
+                                <span className="text-emerald-300 font-bold">Ganancia Total:</span>
+                                <span className="text-emerald-400 font-black">{formatCurrency(r.totalCom, r.moneda as any)}</span>
+                              </div>
+                            </div>
+
+                            {/* Columna C: Posición Casa Matriz */}
+                            <div className="bg-[#050D11] rounded-xl p-2.5 border border-slate-800/50 space-y-1">
+                              <span className="text-[9px] font-bold text-slate-400 uppercase tracking-wider block border-b border-slate-800/50 pb-0.5 font-sans">
+                                🏛️ Casa Matriz (60%)
+                              </span>
+                              <div className="flex justify-between">
+                                <span className="text-slate-400">Arrastre:</span>
+                                <span className="text-slate-300 font-semibold">{formatCurrency(r.saldoInit, r.moneda as any)}</span>
+                              </div>
+                              <div className="flex justify-between">
+                                <span className="text-slate-400">Utilidad Casa:</span>
+                                <span className={`font-semibold ${r.netoOperadora >= 0 ? 'text-amber-400' : 'text-rose-400'}`}>
+                                  {formatCurrency(r.netoOperadora, r.moneda as any)}
+                                </span>
+                              </div>
+                              <div className="flex justify-between pt-0.5 border-t border-slate-800/40">
+                                <span className="text-slate-400">Pagos Netos:</span>
+                                <span className="text-cyan-400 font-semibold">
+                                  {r.pagosNetos !== 0 ? `-${formatCurrency(r.pagosNetos, r.moneda as any)}` : formatCurrency(0, r.moneda as any)}
+                                </span>
+                              </div>
+                            </div>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        )}
+      </div>
+
+      {/* 3. Barra de Filtros y Búsqueda */}
       <div className="flex flex-col sm:flex-row items-center justify-between gap-4 bg-[#0D1B22] border border-slate-800 rounded-2xl p-4">
         {/* Currency Switcher Tabs */}
         <div className="flex items-center gap-1.5 overflow-x-auto w-full sm:w-auto">
@@ -2232,13 +2394,13 @@ export const PreClosureAuditTab: React.FC = () => {
         </div>
       </div>
 
-      {/* Operator Main Table */}
+      {/* 4. Matriz / Tabla Detallada agrupada por Casa Operadora con Monedas una debajo de la otra */}
       <div className="bg-[#0D1B22] border border-slate-800 rounded-3xl overflow-hidden shadow-xl">
         <div className="p-4 sm:p-5 border-b border-slate-800 flex items-center justify-between">
           <div>
             <h4 className="text-xs font-bold text-white uppercase tracking-wider flex items-center gap-2">
               <Globe className="w-4 h-4 text-amber-400" />
-              Matriz de Arqueo y Pre-Cierre de Casas Operadoras ({filteredOperatorRows.length})
+              Matriz de Arqueo y Pre-Cierre de Casas Operadoras ({filteredOperatorRows.length} registros en {operatorGroups.length} operadoras)
             </h4>
             <p className="text-[11px] text-slate-400 mt-0.5">
               Modelo Opción B: Diferencial Comisión + Participación (40%) = Comercializador • Base Neta restante (60%) = Casa Operadora
@@ -2268,7 +2430,7 @@ export const PreClosureAuditTab: React.FC = () => {
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-800/80 font-mono text-slate-300">
-              {filteredOperatorRows.length === 0 ? (
+              {operatorGroups.length === 0 ? (
                 <tr>
                   <td colSpan={15} className="py-12 text-center text-slate-500">
                     <Globe className="w-8 h-8 mx-auto mb-2 opacity-40 text-slate-400" />
@@ -2276,83 +2438,126 @@ export const PreClosureAuditTab: React.FC = () => {
                   </td>
                 </tr>
               ) : (
-                filteredOperatorRows.map((r) => {
-                  const isDeuda = r.balanceFinal > 0.01;
-                  const isFavor = r.balanceFinal < -0.01;
-
+                operatorGroups.map((group) => {
                   return (
-                    <tr key={`${r.sistema}_${r.moneda}`} className="hover:bg-slate-800/30 transition-colors">
-                      <td className="py-3 px-3.5 font-sans font-bold text-white whitespace-nowrap">
-                        <div className="flex items-center gap-2">
-                          <span className="p-1 rounded bg-amber-500/10 text-amber-400">🌐</span>
-                          <span>{r.sistema}</span>
-                        </div>
-                      </td>
-                      <td className="py-3 px-2 text-center">
-                        <span className={`px-2 py-0.5 rounded text-[10px] font-bold ${
-                          r.moneda === 'BS'
-                            ? 'bg-amber-500/10 text-amber-400 border border-amber-500/20'
-                            : r.moneda === 'USD'
-                            ? 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20'
-                            : 'bg-sky-500/10 text-sky-400 border border-sky-500/20'
-                        }`}>
-                          {r.moneda}
-                        </span>
-                      </td>
-                      <td className="py-3 px-3 text-right font-semibold text-slate-200">
-                        {formatCurrency(r.venta, r.moneda as any)}
-                      </td>
-                      <td className="py-3 px-3 text-right text-amber-400">
-                        {r.premio > 0 ? `-${formatCurrency(r.premio, r.moneda as any)}` : formatCurrency(0, r.moneda as any)}
-                      </td>
-                      <td className={`py-3 px-3 text-right font-bold ${r.utilidadBruta >= 0 ? 'text-emerald-400' : 'text-rose-400'}`}>
-                        {formatCurrency(r.utilidadBruta, r.moneda as any)}
-                      </td>
-                      <td className="py-3 px-3 text-right text-slate-400">
-                        <div className="text-[11px] font-bold text-slate-300">{formatCurrency(r.comCompletaProv, r.moneda as any)}</div>
-                        <div className="text-[9px] text-slate-500">{r.comisionPct}% Otorgado</div>
-                      </td>
-                      <td className="py-3 px-3 text-right font-semibold text-cyan-400">
-                        {formatCurrency(r.difCom, r.moneda as any)}
-                      </td>
-                      <td className="py-3 px-3 text-right text-slate-300">
-                        {formatCurrency(r.baseUtil, r.moneda as any)}
-                      </td>
-                      <td className="py-3 px-3 text-right text-slate-400">
-                        <div className={`text-[11px] font-bold ${r.partCom >= 0 ? 'text-emerald-400' : 'text-rose-400'}`}>
-                          {formatCurrency(r.partCom, r.moneda as any)}
-                        </div>
-                        <div className="text-[9px] text-slate-500">{r.participacionPct}% Part.</div>
-                      </td>
-                      <td className="py-3 px-3 text-right font-black text-emerald-400 bg-emerald-500/5">
-                        {formatCurrency(r.totalCom, r.moneda as any)}
-                      </td>
-                      <td className={`py-3 px-3 text-right font-bold ${r.netoOperadora >= 0 ? 'text-amber-400' : 'text-rose-400'}`}>
-                        {formatCurrency(r.netoOperadora, r.moneda as any)}
-                      </td>
-                      <td className="py-3 px-3 text-right text-slate-400">
-                        {formatCurrency(r.saldoInit, r.moneda as any)}
-                      </td>
-                      <td className="py-3 px-3 text-right text-cyan-400 font-semibold">
-                        {r.pagosNetos !== 0 ? `-${formatCurrency(r.pagosNetos, r.moneda as any)}` : formatCurrency(0, r.moneda as any)}
-                      </td>
-                      <td className={`py-3 px-3.5 text-right font-black text-sm ${
-                        isDeuda ? 'text-rose-400' : isFavor ? 'text-emerald-400' : 'text-slate-300'
-                      }`}>
-                        {formatCurrency(r.balanceFinal, r.moneda as any)}
-                      </td>
-                      <td className="py-3 px-3 text-center">
-                        <span className={`px-2 py-0.5 rounded-full text-[10px] font-extrabold uppercase ${
-                          isDeuda
-                            ? 'bg-rose-500/20 text-rose-400 border border-rose-500/30'
-                            : isFavor
-                            ? 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/30'
-                            : 'bg-slate-800 text-slate-400 border border-slate-700'
-                        }`}>
-                          {isDeuda ? 'A Pagar' : isFavor ? 'A Favor' : 'Solvente'}
-                        </span>
-                      </td>
-                    </tr>
+                    <React.Fragment key={`table_group_${group.sistema}`}>
+                      {/* Fila Encabezado de la Casa Operadora */}
+                      <tr className="bg-[#050E13] border-t-2 border-slate-700/80">
+                        <td colSpan={15} className="py-2.5 px-3.5">
+                          <div className="flex items-center justify-between">
+                            <div className="flex items-center gap-2">
+                              <span className="p-1 rounded bg-amber-500/15 text-amber-400 text-xs">🌐</span>
+                              <span className="font-sans font-black text-white text-sm tracking-wide">
+                                {group.sistema}
+                              </span>
+                              <span className="text-[10px] text-slate-400 font-mono bg-slate-800/80 px-2 py-0.5 rounded-full border border-slate-700">
+                                {group.rows.length} {group.rows.length === 1 ? 'Moneda' : 'Monedas'}
+                              </span>
+                            </div>
+                            <span
+                              className={`text-[10px] font-extrabold uppercase px-2.5 py-0.5 rounded-full ${
+                                group.hasDeuda
+                                  ? 'bg-rose-500/20 text-rose-400 border border-rose-500/30'
+                                  : group.hasFavor
+                                  ? 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/30'
+                                  : 'bg-slate-800 text-slate-400 border border-slate-700'
+                              }`}
+                            >
+                              {group.hasDeuda ? '🔴 Deuda Pendiente' : group.hasFavor ? '🟢 Saldo a Favor' : '⚪ Solvente'}
+                            </span>
+                          </div>
+                        </td>
+                      </tr>
+
+                      {/* Filas de sus monedas: UNA DEBAJO DE LA OTRA */}
+                      {group.rows.map((r) => {
+                        const isDeuda = r.balanceFinal > 0.01;
+                        const isFavor = r.balanceFinal < -0.01;
+                        const flag = r.moneda === 'BS' ? '🇻🇪' : r.moneda === 'USD' ? '🇺🇸' : '🇨🇴';
+
+                        return (
+                          <tr key={`${r.sistema}_${r.moneda}`} className="hover:bg-slate-800/30 transition-colors">
+                            <td className="py-3 px-3.5 font-sans font-medium text-slate-300 pl-8 whitespace-nowrap">
+                              <div className="flex items-center gap-2">
+                                <span className="text-slate-500">↳</span>
+                                <span className="text-xs font-semibold text-slate-200">{r.sistema}</span>
+                              </div>
+                            </td>
+                            <td className="py-3 px-2 text-center">
+                              <span
+                                className={`inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-bold ${
+                                  r.moneda === 'BS'
+                                    ? 'bg-amber-500/10 text-amber-400 border border-amber-500/20'
+                                    : r.moneda === 'USD'
+                                    ? 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20'
+                                    : 'bg-sky-500/10 text-sky-400 border border-sky-500/20'
+                                }`}
+                              >
+                                <span>{flag}</span>
+                                <span>{r.moneda}</span>
+                              </span>
+                            </td>
+                            <td className="py-3 px-3 text-right font-semibold text-slate-200">
+                              {formatCurrency(r.venta, r.moneda as any)}
+                            </td>
+                            <td className="py-3 px-3 text-right text-amber-400">
+                              {r.premio > 0 ? `-${formatCurrency(r.premio, r.moneda as any)}` : formatCurrency(0, r.moneda as any)}
+                            </td>
+                            <td className={`py-3 px-3 text-right font-bold ${r.utilidadBruta >= 0 ? 'text-emerald-400' : 'text-rose-400'}`}>
+                              {formatCurrency(r.utilidadBruta, r.moneda as any)}
+                            </td>
+                            <td className="py-3 px-3 text-right text-slate-400">
+                              <div className="text-[11px] font-bold text-slate-300">{formatCurrency(r.comCompletaProv, r.moneda as any)}</div>
+                              <div className="text-[9px] text-slate-500">{r.comisionPct}% Otorgado</div>
+                            </td>
+                            <td className="py-3 px-3 text-right font-semibold text-cyan-400">
+                              {formatCurrency(r.difCom, r.moneda as any)}
+                            </td>
+                            <td className="py-3 px-3 text-right text-slate-300">
+                              {formatCurrency(r.baseUtil, r.moneda as any)}
+                            </td>
+                            <td className="py-3 px-3 text-right text-slate-400">
+                              <div className={`text-[11px] font-bold ${r.partCom >= 0 ? 'text-emerald-400' : 'text-rose-400'}`}>
+                                {formatCurrency(r.partCom, r.moneda as any)}
+                              </div>
+                              <div className="text-[9px] text-slate-500">{r.participacionPct}% Part.</div>
+                            </td>
+                            <td className="py-3 px-3 text-right font-black text-emerald-400 bg-emerald-500/5">
+                              {formatCurrency(r.totalCom, r.moneda as any)}
+                            </td>
+                            <td className={`py-3 px-3 text-right font-bold ${r.netoOperadora >= 0 ? 'text-amber-400' : 'text-rose-400'}`}>
+                              {formatCurrency(r.netoOperadora, r.moneda as any)}
+                            </td>
+                            <td className="py-3 px-3 text-right text-slate-400">
+                              {formatCurrency(r.saldoInit, r.moneda as any)}
+                            </td>
+                            <td className="py-3 px-3 text-right text-cyan-400 font-semibold">
+                              {r.pagosNetos !== 0 ? `-${formatCurrency(r.pagosNetos, r.moneda as any)}` : formatCurrency(0, r.moneda as any)}
+                            </td>
+                            <td
+                              className={`py-3 px-3.5 text-right font-black text-sm ${
+                                isDeuda ? 'text-rose-400' : isFavor ? 'text-emerald-400' : 'text-slate-300'
+                              }`}
+                            >
+                              {formatCurrency(r.balanceFinal, r.moneda as any)}
+                            </td>
+                            <td className="py-3 px-3 text-center">
+                              <span
+                                className={`px-2 py-0.5 rounded-full text-[10px] font-extrabold uppercase ${
+                                  isDeuda
+                                    ? 'bg-rose-500/20 text-rose-400 border border-rose-500/30'
+                                    : isFavor
+                                    ? 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/30'
+                                    : 'bg-slate-800 text-slate-400 border border-slate-700'
+                                }`}
+                              >
+                                {isDeuda ? 'A Pagar' : isFavor ? 'A Favor' : 'Solvente'}
+                              </span>
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    </React.Fragment>
                   );
                 })
               )}
