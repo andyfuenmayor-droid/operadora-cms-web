@@ -1,7 +1,8 @@
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import { supabase } from '../../lib/supabase';
 import { useAuth } from '../../context/AuthContext';
-import { formatCurrency, formatDate, normalizarMoneda } from '../../utils/formatters';
+import { formatCurrency, formatDate, normalizarMoneda, cleanAgencyName } from '../../utils/formatters';
+import { getAgencyCommissionAndParticipation } from '../../utils/salesRecalculation';
 import {
   getConsolidatedPayments,
   getConsolidatedExpenses,
@@ -56,6 +57,7 @@ import {
   type IndividualAgencyActaData,
 } from './IndividualAgencyActaModal';
 import { logAuditEvent } from '../../utils/auditLogger';
+import { AuditLogTab } from '../Audit/AuditLogTab';
 
 interface CierreAgencyData {
   ag_id: number;
@@ -73,7 +75,7 @@ interface CierreAgencyData {
 export const WeeklyClosureTab: React.FC = () => {
   const { user, effectiveUserId, systemCycle, refreshSystemCycle } = useAuth();
 
-  const [activeSubTab, setActiveSubTab] = useState<'precierre' | 'cierre' | 'historico_actas'>('precierre');
+  const [activeSubTab, setActiveSubTab] = useState<'precierre' | 'cierre' | 'historico_actas' | 'auditoria'>('precierre');
   const [isLoading, setIsLoading] = useState(true);
   const [isProcessing, setIsProcessing] = useState(false);
   const [agencies, setAgencies] = useState<Agency[]>([]);
@@ -335,10 +337,30 @@ export const WeeklyClosureTab: React.FC = () => {
         const sAnt = Math.abs(rawAnt) < 0.0001 ? 0 : rawAnt;
 
         if (confMon.includes(m) || Math.abs(sAnt) > 0.01) {
-          // Ventas: la venta neta (neto) es la utilidad real del período
-          const agSales = sales.filter((s) => s.agencia === nom && normalizarMoneda(s.moneda) === m);
+          // Ventas: la venta neta (neto) descontando la participación de la agencia es la utilidad real
+          const agSales = sales.filter((s) => {
+            if (normalizarMoneda(s.moneda) !== m) return false;
+            const sNom = String(s.agencia || '').trim().toUpperCase();
+            return sNom === nom || cleanAgencyName(s.agencia) === cleanAgencyName(nom);
+          });
           const brutoTotal = agSales.reduce((sum, curr) => sum + Number(curr.neto || 0), 0);
-          const utilVal = brutoTotal;
+          const utilVal = agSales.reduce((sum, s) => {
+            const { partPct } = getAgencyCommissionAndParticipation(ag, s.sistema, m);
+            const v = Number(s.venta ?? s.monto_venta ?? 0);
+            const c = Number(s.comision ?? 0);
+            const p = Number(s.premios ?? s.monto_premios ?? 0);
+            const neto = s.neto !== undefined && s.neto !== null ? Number(s.neto) : Math.round((v - c - p) * 100) / 100;
+
+            let utilAg = 0;
+            if (partPct > 0) {
+              utilAg = Math.round((neto * (partPct / 100)) * 100) / 100;
+            } else if (Number(s.util_ag || 0) > 0) {
+              utilAg = Number(s.util_ag);
+            }
+
+            const utilOp = Math.round((neto - utilAg) * 100) / 100;
+            return sum + utilOp;
+          }, 0);
 
           // Gastos (solo confirmados en Pizarra de Confirmaciones)
           const agExp = expenses.filter((g) => g.agencia === nom && normalizarMoneda(g.moneda) === m && Boolean(g.confirmado));
@@ -1019,10 +1041,24 @@ export const WeeklyClosureTab: React.FC = () => {
           <FileText className="w-4 h-4" />
           <span>📜 Histórico de Actas de Cierre</span>
         </button>
+
+        <button
+          onClick={() => setActiveSubTab('auditoria')}
+          className={`px-4 py-2.5 rounded-xl text-xs sm:text-sm font-bold flex items-center gap-2 transition-all cursor-pointer ${
+            activeSubTab === 'auditoria'
+              ? 'bg-amber-500/10 text-amber-400 border border-amber-500/30'
+              : 'text-slate-400 hover:text-white hover:bg-slate-800/60'
+          }`}
+        >
+          <ShieldCheck className="w-4 h-4" />
+          <span>🛡️ Log de Auditoría</span>
+        </button>
       </div>
 
       {activeSubTab === 'precierre' ? (
         <PreClosureAuditTab />
+      ) : activeSubTab === 'auditoria' ? (
+        <AuditLogTab />
       ) : activeSubTab === 'historico_actas' ? (
         <div className="space-y-6">
           {/* Header Banner */}

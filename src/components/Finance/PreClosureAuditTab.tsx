@@ -1,7 +1,8 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { supabase } from '../../lib/supabase';
 import { useAuth } from '../../context/AuthContext';
-import { formatCurrency, formatDate, normalizarMoneda } from '../../utils/formatters';
+import { formatCurrency, formatDate, normalizarMoneda, cleanAgencyName } from '../../utils/formatters';
+import { getAgencyCommissionAndParticipation } from '../../utils/salesRecalculation';
 import {
   getConsolidatedPayments,
   getConsolidatedExpenses,
@@ -270,11 +271,31 @@ export const PreClosureAuditTab: React.FC = () => {
         const sAnt = Number(ag[colIni] || 0);
 
         // Filter sales for this agency and currency
-        const agSales = sales.filter((s) => s.agencia === nom && normalizarMoneda(s.moneda) === mon);
+        const agSales = sales.filter((s) => {
+          if (normalizarMoneda(s.moneda) !== mon) return false;
+          const sNom = String(s.agencia || '').trim().toUpperCase();
+          return sNom === nom || cleanAgencyName(s.agencia) === cleanAgencyName(nom);
+        });
         const vtaBruta = agSales.reduce((sum, curr) => sum + Number(curr.venta || curr.monto_ventas || curr.neto || 0), 0);
         const com = agSales.reduce((sum, curr) => sum + Number(curr.comision || 0), 0);
         const premTaq = agSales.reduce((sum, curr) => sum + Number(curr.monto_premios || curr.premios || 0), 0);
-        const vtaNeta = agSales.reduce((sum, curr) => sum + Number(curr.neto || curr.util_op || 0), 0);
+        const vtaNeta = agSales.reduce((sum, s) => {
+          const { partPct } = getAgencyCommissionAndParticipation(ag, s.sistema, mon);
+          const v = Number(s.venta ?? s.monto_venta ?? 0);
+          const c = Number(s.comision ?? 0);
+          const p = Number(s.premios ?? s.monto_premios ?? 0);
+          const neto = s.neto !== undefined && s.neto !== null ? Number(s.neto) : Math.round((v - c - p) * 100) / 100;
+
+          let utilAg = 0;
+          if (partPct > 0) {
+            utilAg = Math.round((neto * (partPct / 100)) * 100) / 100;
+          } else if (Number(s.util_ag || 0) > 0) {
+            utilAg = Number(s.util_ag);
+          }
+
+          const utilOp = Math.round((neto - utilAg) * 100) / 100;
+          return sum + utilOp;
+        }, 0);
 
         if (confMon.includes(mon) || Math.abs(sAnt) > 0.01 || agSales.length > 0) {
           // Gastos confirmados en el ciclo

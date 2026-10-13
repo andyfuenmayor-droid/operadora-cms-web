@@ -2,7 +2,7 @@ import React, { useState, useEffect, useMemo } from 'react';
 import { supabase } from '../../lib/supabase';
 import { useAuth } from '../../context/AuthContext';
 import { useTheme } from '../../context/ThemeContext';
-import { formatCurrency, formatDate, normalizarMoneda } from '../../utils/formatters';
+import { formatCurrency, formatDate, normalizarMoneda, cleanAgencyName } from '../../utils/formatters';
 import {
   getConsolidatedPayments,
   getConsolidatedExpenses,
@@ -29,12 +29,30 @@ import {
   ChevronRight,
   Layers,
   History,
-  ShieldCheck
+  ShieldCheck,
+  Printer,
+  Sparkles,
+  Store,
 } from 'lucide-react';
 import {
   checkIsBalancesCorrupted,
   executeRestoreAuditedBalances,
 } from '../../utils/auditedBalancesS40';
+import {
+  getAgencyCommissionAndParticipation,
+  parseAgencyCondiciones,
+  recalculateAllCycleSales,
+} from '../../utils/salesRecalculation';
+import {
+  IndividualAgencyActaModal,
+  type IndividualAgencyActaData,
+} from './IndividualAgencyActaModal';
+import {
+  DeliveryReportModal,
+  type PreClosureAgencyRow,
+} from './DeliveryReportModal';
+import { AuditLogTab } from '../Audit/AuditLogTab';
+import { logAuditEvent } from '../../utils/auditLogger';
 
 const WhatsAppIcon: React.FC<{ className?: string }> = ({ className = 'w-4 h-4' }) => (
   <svg className={className} viewBox="0 0 24 24" fill="currentColor">
@@ -56,10 +74,10 @@ interface BalanceRow {
 }
 
 export const AccountBalancesTab: React.FC = () => {
-  const { effectiveUserId, systemCycle, refreshSystemCycle } = useAuth();
+  const { user, profile, effectiveUserId, systemCycle, refreshSystemCycle } = useAuth();
   const { isLight } = useTheme();
 
-  const [activeMainSubTab, setActiveMainSubTab] = useState<'activo' | 'historico'>('activo');
+  const [activeMainSubTab, setActiveMainSubTab] = useState<'activo' | 'historico' | 'actas' | 'auditoria'>('activo');
   const [isLoading, setIsLoading] = useState(true);
   const [activeCurrency, setActiveCurrency] = useState<'BS' | 'USD' | 'COP'>('BS');
   const [agencies, setAgencies] = useState<Agency[]>([]);
@@ -69,6 +87,8 @@ export const AccountBalancesTab: React.FC = () => {
 
   const [searchQuery, setSearchQuery] = useState('');
   const [detailModalAgency, setDetailModalAgency] = useState<string | null>(null);
+  const [selectedIndividualActa, setSelectedIndividualActa] = useState<IndividualAgencyActaData | null>(null);
+  const [isGeneralActaOpen, setIsGeneralActaOpen] = useState(false);
 
   // Mobile / Desktop View Mode (cards or table)
   const [viewMode, setViewMode] = useState<'cards' | 'table'>(() =>
@@ -94,8 +114,41 @@ export const AccountBalancesTab: React.FC = () => {
         await executeRestoreAuditedBalances(effectiveUserId, agList, refreshSystemCycle);
       }
 
+      const salesList = sRes.data || [];
+
+      // Check if any active sale with participation has not been recalculated in DB
+      let needsRecalc = false;
+      for (const ag of agList) {
+        for (const s of salesList) {
+          const sAgUpper = String(s.agencia || '').trim().toUpperCase();
+          const cleanAg = cleanAgencyName(s.agencia);
+          if (
+            sAgUpper === String(ag.nombre_agencia || '').trim().toUpperCase() ||
+            cleanAg === cleanAgencyName(ag.nombre_agencia)
+          ) {
+            const { partPct } = getAgencyCommissionAndParticipation(ag, s.sistema, s.moneda);
+            if (partPct > 0 && Number(s.util_ag || 0) === 0 && Number(s.neto || 0) > 0) {
+              needsRecalc = true;
+              break;
+            }
+          }
+        }
+        if (needsRecalc) break;
+      }
+
+      if (needsRecalc && effectiveUserId) {
+        console.log('Detectadas ventas con participación desactualizadas. Auto-recalculando con agencias...');
+        await recalculateAllCycleSales(effectiveUserId);
+        const { data: updatedSales } = await supabase
+          .from('carga_actual')
+          .select('*')
+          .eq('user_id', effectiveUserId);
+        setSales(updatedSales || salesList);
+      } else {
+        setSales(salesList);
+      }
+
       setAgencies(agList);
-      setSales(sRes.data || []);
       setPayments(pConsolidated);
       setExpenses(gConsolidated);
     } catch (err: any) {
@@ -148,26 +201,69 @@ export const AccountBalancesTab: React.FC = () => {
 
     agencies.forEach((ag) => {
       const nom = String(ag.nombre_agencia || '').trim().toUpperCase();
+      const cleanNom = cleanAgencyName(ag.nombre_agencia);
+      const cond = parseAgencyCondiciones(ag);
+      const agencyCodigos = Object.values(cond)
+        .map((c: any) => (c?.codigo ? String(c.codigo).trim().toUpperCase() : null))
+        .filter(Boolean) as string[];
       const sAnt = Number(ag[colInicial] || 0);
 
-      // Utilidad operativa de la semana
-      const uOp = sales
-        .filter((s) => s.agencia === nom && normalizarMoneda(s.moneda) === mon)
-        .reduce((sum, curr) => sum + Number(curr.util_op || 0), 0);
+      // Ventas pertenecientes a la agencia en esta moneda
+      const agSales = sales.filter((s) => {
+        if (normalizarMoneda(s.moneda) !== mon) return false;
+        const sNom = String(s.agencia || '').trim().toUpperCase();
+        if (sNom === nom) return true;
+        if (agencyCodigos.includes(sNom)) return true;
+        if (cleanAgencyName(s.agencia) === cleanNom) return true;
+        return false;
+      });
+
+      // Utilidad operativa de la semana (descontando participación de agencia si aplica)
+      const uOp = agSales.reduce((sum, s) => {
+        const { partPct } = getAgencyCommissionAndParticipation(ag, s.sistema, mon);
+        const v = Number(s.venta ?? s.monto_venta ?? 0);
+        const c = Number(s.comision ?? 0);
+        const p = Number(s.premios ?? s.monto_premios ?? 0);
+        const neto = s.neto !== undefined && s.neto !== null ? Number(s.neto) : Math.round((v - c - p) * 100) / 100;
+
+        let utilAg = 0;
+        if (partPct > 0) {
+          utilAg = Math.round((neto * (partPct / 100)) * 100) / 100;
+        } else if (Number(s.util_ag || 0) > 0) {
+          utilAg = Number(s.util_ag);
+        }
+
+        const utilOp = Math.round((neto - utilAg) * 100) / 100;
+        return sum + utilOp;
+      }, 0);
 
       // Gastos (solo confirmados en Pizarra de Confirmaciones)
       const gTot = expenses
-        .filter((g) => g.agencia === nom && normalizarMoneda(g.moneda) === mon && Boolean(g.confirmado))
+        .filter((g) => {
+          if (normalizarMoneda(g.moneda) !== mon || !Boolean(g.confirmado)) return false;
+          const gNom = String(g.agencia || '').trim().toUpperCase();
+          return gNom === nom || cleanAgencyName(g.agencia) === cleanNom;
+        })
         .reduce((sum, curr) => sum + Number(curr.monto || 0), 0);
 
       // Pagos ordinarios recibidos de la agencia (solo confirmados, reducen la deuda)
       const pCobros = payments
-        .filter((p) => p.agencia === nom && normalizarMoneda(p.moneda) === mon && !String(p.tipo_pago || '').toUpperCase().includes('PREMIO') && Boolean(p.confirmado))
+        .filter((p) => {
+          if (normalizarMoneda(p.moneda) !== mon || !Boolean(p.confirmado)) return false;
+          if (String(p.tipo_pago || '').toUpperCase().includes('PREMIO')) return false;
+          const pNom = String(p.agencia || '').trim().toUpperCase();
+          return pNom === nom || cleanAgencyName(p.agencia) === cleanNom;
+        })
         .reduce((sum, curr) => sum + Number(curr.monto || 0), 0);
 
       // Reposición de premios pagados por la operadora a la agencia (solo confirmados)
       const pPremios = payments
-        .filter((p) => p.agencia === nom && normalizarMoneda(p.moneda) === mon && String(p.tipo_pago || '').toUpperCase().includes('PREMIO') && Boolean(p.confirmado))
+        .filter((p) => {
+          if (normalizarMoneda(p.moneda) !== mon || !Boolean(p.confirmado)) return false;
+          if (!String(p.tipo_pago || '').toUpperCase().includes('PREMIO')) return false;
+          const pNom = String(p.agencia || '').trim().toUpperCase();
+          return pNom === nom || cleanAgencyName(p.agencia) === cleanNom;
+        })
         .reduce((sum, curr) => sum + Number(curr.monto || 0), 0);
 
       // Pagos netos (PAGOS - PREMIOS)
@@ -259,19 +355,90 @@ export const AccountBalancesTab: React.FC = () => {
     });
   };
 
+  // Generate and open Individual Acta voucher in PDF
+  const openIndividualActa = (row: BalanceRow) => {
+    const ag = agencies.find((a) => a.id === row.id || String(a.nombre_agencia || '').trim().toUpperCase() === row.agencia);
+    const cond = parseAgencyCondiciones(ag);
+    const agencyCodigos = Object.values(cond)
+      .map((c: any) => (c?.codigo ? String(c.codigo).trim().toUpperCase() : null))
+      .filter(Boolean) as string[];
+
+    const agSales = sales.filter((s) => {
+      if (normalizarMoneda(s.moneda) !== activeCurrency) return false;
+      const sNom = String(s.agencia || '').trim().toUpperCase();
+      if (sNom === row.agencia) return true;
+      if (agencyCodigos.includes(sNom)) return true;
+      if (cleanAgencyName(s.agencia) === cleanAgencyName(row.agencia)) return true;
+      return false;
+    });
+
+    const ventaBruta = agSales.reduce((acc, s) => acc + Number(s.venta ?? s.monto_ventas ?? 0), 0);
+    const comision = agSales.reduce((acc, s) => acc + Number(s.comision ?? 0), 0);
+    const premios = agSales.reduce((acc, s) => acc + Number(s.premios ?? s.monto_premios ?? 0), 0);
+    const ventaNeta = agSales.reduce((acc, s) => {
+      const v = Number(s.venta ?? s.monto_ventas ?? 0);
+      const c = Number(s.comision ?? 0);
+      const p = Number(s.premios ?? s.monto_premios ?? 0);
+      return acc + (s.neto !== undefined && s.neto !== null ? Number(s.neto) : Math.round((v - c - p) * 100) / 100);
+    }, 0);
+
+    let participacionMonto = 0;
+    let participacionPct = 0;
+    agSales.forEach((s) => {
+      const { partPct } = getAgencyCommissionAndParticipation(ag, s.sistema, activeCurrency);
+      if (partPct > 0) {
+        participacionPct = partPct;
+        const v = Number(s.venta ?? s.monto_ventas ?? 0);
+        const c = Number(s.comision ?? 0);
+        const p = Number(s.premios ?? s.monto_premios ?? 0);
+        const n = s.neto !== undefined && s.neto !== null ? Number(s.neto) : (v - c - p);
+        participacionMonto += Math.round(n * (partPct / 100) * 100) / 100;
+      }
+    });
+
+    const utilidadOperadora = Math.round((ventaNeta - participacionMonto) * 100) / 100;
+
+    setSelectedIndividualActa({
+      agencyName: row.agencia,
+      agencyId: row.id,
+      periodo: systemCycle.tipo === 'SEMANAL' ? `Semana ${systemCycle.semana} (${systemCycle.desde} al ${systemCycle.hasta})` : `Ciclo Diario (${systemCycle.desde})`,
+      moneda: activeCurrency,
+      saldoAnterior: row.saldo_arrastre,
+      ventaBruta,
+      comision,
+      premios,
+      ventaNeta,
+      participacionPct,
+      participacionMonto,
+      utilidadOperadora,
+      cobros: row.pagos,
+      gastos: row.gastos,
+      saldoFinal: row.balance_final,
+      status: row.status === 'pagado' ? 'AL DÍA' : row.status === 'pendiente' ? 'DEUDA PENDIENTE' : 'SALDO A FAVOR',
+    });
+  };
+
   // Generate individual agency WhatsApp account balance message with systems breakdown
   const generateAgencyWhatsAppUrl = (r: BalanceRow) => {
     const nom = String(r.agencia || '').trim().toUpperCase();
     const ag = agencies.find((a) => String(a.nombre_agencia || '').trim().toUpperCase() === nom);
-    const pctPartAg = Number(ag?.participacion_ag || 0) / 100;
-    const pctPartAgInt = Math.round(Number(ag?.participacion_ag || 0));
+    const cond = parseAgencyCondiciones(ag);
+    const agencyCodigos = Object.values(cond)
+      .map((c: any) => (c?.codigo ? String(c.codigo).trim().toUpperCase() : null))
+      .filter(Boolean) as string[];
 
     // Sales of this agency in activeCurrency
-    const agSales = sales.filter((s) => s.agencia === nom && normalizarMoneda(s.moneda) === activeCurrency);
+    const agSales = sales.filter((s) => {
+      if (normalizarMoneda(s.moneda) !== activeCurrency) return false;
+      const sNom = String(s.agencia || '').trim().toUpperCase();
+      return sNom === nom || agencyCodigos.includes(sNom) || cleanAgencyName(s.agencia) === cleanAgencyName(nom);
+    });
 
     // Group sales by system
     const sistemasMap: Record<string, { venta: number; comision: number; premios: number; neto: number }> = {};
     let totalNetoSistemas = 0;
+    let totalPartAg = 0;
+    let maxPartPct = 0;
 
     agSales.forEach((s) => {
       const sis = (s.sistema || 'GENERAL').trim().toUpperCase();
@@ -281,7 +448,7 @@ export const AccountBalancesTab: React.FC = () => {
       const v = Number(s.venta || 0);
       const c = Number(s.comision || 0);
       const p = Number(s.premios || 0);
-      const n = Number(s.neto !== undefined && s.neto !== null ? s.neto : s.util_op !== undefined ? s.util_op : (v - c - p));
+      const n = Number(s.neto !== undefined && s.neto !== null ? s.neto : (v - c - p));
       sistemasMap[sis].venta += v;
       sistemasMap[sis].comision += c;
       sistemasMap[sis].premios += p;
@@ -296,28 +463,52 @@ export const AccountBalancesTab: React.FC = () => {
     } else {
       sisKeys.forEach((sis) => {
         const item = sistemasMap[sis];
+        const { partPct } = getAgencyCommissionAndParticipation(ag, sis, activeCurrency);
+        if (partPct > maxPartPct) maxPartPct = partPct;
+        const partMonto = partPct > 0 ? Math.round(item.neto * (partPct / 100) * 100) / 100 : 0;
+        const utilOpSis = Math.round((item.neto - partMonto) * 100) / 100;
+        totalPartAg += partMonto;
+
         textoSistemas += `🔹 *${sis}*\n`;
         textoSistemas += `   Venta: ${fmtNumber(item.venta)} | Com: -${fmtNumber(Math.abs(item.comision))}\n`;
-        textoSistemas += `   Prem: -${fmtNumber(Math.abs(item.premios))} | *Neto: ${fmtNumber(item.neto)}*\n`;
+        textoSistemas += `   Prem: -${fmtNumber(Math.abs(item.premios))} | Neto: ${fmtNumber(item.neto)}\n`;
+        if (partPct > 0) {
+          textoSistemas += `   Part. Agencia (${partPct}%): -${fmtNumber(partMonto)}\n`;
+          textoSistemas += `   *Utilidad Operadora: ${fmtNumber(utilOpSis)}*\n`;
+        } else {
+          textoSistemas += `   *Utilidad Semanal: ${fmtNumber(item.neto)}*\n`;
+        }
         textoSistemas += `   ----------\n`;
       });
     }
 
-    const totalPartAg = Math.round(totalNetoSistemas * pctPartAg * 100) / 100;
-
     // Gastos
     const totalGastos = expenses
-      .filter((g) => g.agencia === nom && normalizarMoneda(g.moneda) === activeCurrency)
+      .filter((g) => {
+        if (normalizarMoneda(g.moneda) !== activeCurrency) return false;
+        const gNom = String(g.agencia || '').trim().toUpperCase();
+        return gNom === nom || cleanAgencyName(g.agencia) === cleanAgencyName(nom);
+      })
       .reduce((sum, curr) => sum + Number(curr.monto || 0), 0);
 
     // Pagos ordinarios recibidos
-    const pRecibidos = payments
-      .filter((p) => p.agencia === nom && normalizarMoneda(p.moneda) === activeCurrency && !String(p.tipo_pago || '').toUpperCase().includes('PREMIO'))
+    const pCobros = payments
+      .filter((p) => {
+        if (normalizarMoneda(p.moneda) !== activeCurrency) return false;
+        if (String(p.tipo_pago || '').toUpperCase().includes('PREMIO')) return false;
+        const pNom = String(p.agencia || '').trim().toUpperCase();
+        return pNom === nom || cleanAgencyName(p.agencia) === cleanAgencyName(nom);
+      })
       .reduce((sum, curr) => sum + Number(curr.monto || 0), 0);
 
     // Premios pagados (reposición)
     const pPremios = payments
-      .filter((p) => p.agencia === nom && normalizarMoneda(p.moneda) === activeCurrency && String(p.tipo_pago || '').toUpperCase().includes('PREMIO'))
+      .filter((p) => {
+        if (normalizarMoneda(p.moneda) !== activeCurrency) return false;
+        if (!String(p.tipo_pago || '').toUpperCase().includes('PREMIO')) return false;
+        const pNom = String(p.agencia || '').trim().toUpperCase();
+        return pNom === nom || cleanAgencyName(p.agencia) === cleanAgencyName(nom);
+      })
       .reduce((sum, curr) => sum + Number(curr.monto || 0), 0);
 
     const fDesde = systemCycle?.desde || '';
@@ -343,9 +534,8 @@ export const AccountBalancesTab: React.FC = () => {
 ${textoSistemas}
 *RESUMEN SEMANA:*
     (+) Neto Sistemas: ${fmtNumber(totalNetoSistemas)}
-    (-) Part. Agencia (${pctPartAgInt}%): ${fmtNumber(totalPartAg)}
-    (-) Gastos: ${fmtNumber(totalGastos)}
-    (+/-) Pagos Recibidos: ${fmtNumber(pRecibidos)}
+${totalPartAg > 0 ? `    (-) Part. Agencia (${maxPartPct}%): ${fmtNumber(totalPartAg)}\n` : ''}    (-) Gastos: ${fmtNumber(totalGastos)}
+    (+/-) Pagos Recibidos: ${fmtNumber(pCobros)}
     (+/-) Premios Pagados: ${fmtNumber(pPremios)}
 ------------------------------------------
 💵 *SALDO ACTUAL: ${activeCurrency} ${fmtNumber(r.balance_final)}*${statusMsg}`;
@@ -410,7 +600,7 @@ ${textoSistemas}
           </p>
         </div>
 
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2 flex-wrap">
           <button
             onClick={() => loadData()}
             disabled={isLoading}
@@ -430,6 +620,28 @@ ${textoSistemas}
             Sincronizar Arrastres S40
           </button>
 
+          <button
+            onClick={() => setIsGeneralActaOpen(true)}
+            className="px-3.5 py-2.5 rounded-xl bg-sky-500/10 hover:bg-sky-500/20 text-sky-400 text-xs font-semibold flex items-center gap-1.5 transition-all border border-sky-500/30 cursor-pointer"
+            title="Imprimir Acta General de Entrega y Cierre en PDF"
+          >
+            <Printer className="w-3.5 h-3.5" />
+            Acta General (PDF)
+          </button>
+
+          <button
+            onClick={() => setActiveMainSubTab('auditoria')}
+            className={`px-3.5 py-2.5 rounded-xl text-xs font-semibold flex items-center gap-1.5 transition-all border cursor-pointer ${
+              activeMainSubTab === 'auditoria'
+                ? 'bg-amber-500 text-black border-amber-400 font-bold'
+                : 'bg-amber-500/10 hover:bg-amber-500/20 text-amber-400 border-amber-500/30'
+            }`}
+            title="Ver Log de Auditoría y Movimientos"
+          >
+            <ShieldCheck className="w-3.5 h-3.5" />
+            Log Auditoría
+          </button>
+
           <a
             href={generateWhatsAppUrl()}
             target="_blank"
@@ -437,13 +649,13 @@ ${textoSistemas}
             className="px-4 py-2.5 rounded-xl bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white font-bold text-xs shadow-lg shadow-emerald-600/20 flex items-center gap-2 transition-all"
           >
             <Share2 className="w-4 h-4" />
-            Enviar Reporte WhatsApp
+            Reporte WhatsApp
           </a>
         </div>
       </div>
 
       {/* Sub-tabs Navigation */}
-      <div className="flex items-center gap-2 border-b border-slate-800 pb-3">
+      <div className="flex items-center gap-2 border-b border-slate-800 pb-3 flex-wrap">
         <button
           onClick={() => setActiveMainSubTab('activo')}
           className={`px-4 py-2.5 rounded-xl text-xs sm:text-sm font-bold flex items-center gap-2 transition-all cursor-pointer ${
@@ -465,12 +677,102 @@ ${textoSistemas}
           }`}
         >
           <History className="w-4 h-4" />
-          <span>📜 Histórico Individual por Taquilla (Semanal / Mensual)</span>
+          <span>📜 Histórico por Taquilla</span>
+        </button>
+
+        <button
+          onClick={() => setActiveMainSubTab('actas')}
+          className={`px-4 py-2.5 rounded-xl text-xs sm:text-sm font-bold flex items-center gap-2 transition-all cursor-pointer ${
+            activeMainSubTab === 'actas'
+              ? 'bg-sky-500/10 text-sky-400 border border-sky-500/30'
+              : 'text-slate-400 hover:text-white hover:bg-slate-800/60'
+          }`}
+        >
+          <Printer className="w-4 h-4" />
+          <span>📜 Actas y Finiquitos (PDF)</span>
+        </button>
+
+        <button
+          onClick={() => setActiveMainSubTab('auditoria')}
+          className={`px-4 py-2.5 rounded-xl text-xs sm:text-sm font-bold flex items-center gap-2 transition-all cursor-pointer ${
+            activeMainSubTab === 'auditoria'
+              ? 'bg-amber-500/10 text-amber-400 border border-amber-500/30'
+              : 'text-slate-400 hover:text-white hover:bg-slate-800/60'
+          }`}
+        >
+          <ShieldCheck className="w-4 h-4" />
+          <span>🛡️ Log de Auditoría y Movimientos</span>
         </button>
       </div>
 
       {activeMainSubTab === 'historico' ? (
         <AgencyCycleHistoryTab initialAgency={searchQuery || undefined} />
+      ) : activeMainSubTab === 'auditoria' ? (
+        <AuditLogTab />
+      ) : activeMainSubTab === 'actas' ? (
+        <div className="space-y-6">
+          <div className="bg-[#0D1B22] border border-slate-800 rounded-3xl p-6 shadow-xl space-y-4">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+              <div>
+                <h3 className="text-base sm:text-lg font-black text-white flex items-center gap-2">
+                  <Printer className="w-5 h-5 text-sky-400" />
+                  <span>Emisión de Actas de Entrega y Finiquitos Individuales</span>
+                </h3>
+                <p className="text-xs text-slate-400 mt-1">
+                  Generación e impresión directa en formato PDF oficial para cada agencia o consolidado general del ciclo activo ({systemCycle.desde} al {systemCycle.hasta}).
+                </p>
+              </div>
+
+              <button
+                onClick={() => setIsGeneralActaOpen(true)}
+                className="px-4 py-2.5 rounded-2xl bg-gradient-to-r from-sky-600 to-indigo-600 hover:from-sky-500 hover:to-indigo-500 text-white font-black text-xs uppercase tracking-wider shadow-lg shadow-sky-600/20 flex items-center gap-2 cursor-pointer transition-all self-start sm:self-auto"
+              >
+                <Printer className="w-4 h-4" />
+                <span>Acta General de Entrega ({activeCurrency})</span>
+              </button>
+            </div>
+
+            {/* List of Agencies with 1-click Acta generation */}
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 pt-2">
+              {activeBalances.rows.map((r) => (
+                <div
+                  key={r.id}
+                  className="bg-[#071217] border border-slate-800/90 rounded-2xl p-4 flex items-center justify-between hover:border-slate-700 transition-all"
+                >
+                  <div className="min-w-0 pr-2">
+                    <div className="flex items-center gap-1.5">
+                      <span className="text-[10px] text-slate-500 font-mono">#{r.id}</span>
+                      <h4 className="text-xs font-bold text-white truncate">{r.agencia}</h4>
+                    </div>
+                    <div className="text-[11px] font-mono mt-0.5">
+                      <span className="text-slate-400">Balance: </span>
+                      <span
+                        className={`font-black ${
+                          r.status === 'pendiente'
+                            ? 'text-rose-400'
+                            : r.status === 'favor'
+                            ? 'text-cyan-400'
+                            : 'text-emerald-400'
+                        }`}
+                      >
+                        {formatCurrency(r.balance_final, activeCurrency)}
+                      </span>
+                    </div>
+                  </div>
+
+                  <button
+                    onClick={() => openIndividualActa(r)}
+                    className="px-3 py-2 rounded-xl bg-sky-500/15 hover:bg-sky-500 text-sky-300 hover:text-white border border-sky-500/30 text-xs font-bold flex items-center gap-1.5 transition-all cursor-pointer shrink-0"
+                    title={`Generar e Imprimir Finiquito Individual de ${r.agencia}`}
+                  >
+                    <Printer className="w-3.5 h-3.5" />
+                    <span>Acta PDF</span>
+                  </button>
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
       ) : (
         <>
           {/* Currency Switcher & Total Cartera Metric */}
@@ -708,6 +1010,16 @@ ${textoSistemas}
                         A FAVOR
                       </span>
                     )}
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        openIndividualActa(r);
+                      }}
+                      className="p-1 rounded-lg bg-sky-500/20 hover:bg-sky-500 text-sky-400 hover:text-white border border-sky-500/30 transition-colors cursor-pointer"
+                      title="Generar / Imprimir Acta en PDF"
+                    >
+                      <Printer className="w-4 h-4" />
+                    </button>
                     <a
                       href={generateAgencyWhatsAppUrl(r)}
                       target="_blank"
@@ -876,6 +1188,13 @@ ${textoSistemas}
                     </td>
                     <td className="py-3.5 px-4 text-center">
                       <div className="flex items-center justify-center gap-1.5">
+                        <button
+                          onClick={() => openIndividualActa(r)}
+                          className="p-1.5 rounded-lg bg-sky-500/20 hover:bg-sky-500 text-sky-400 hover:text-white border border-sky-500/30 transition-all cursor-pointer"
+                          title={`Imprimir Acta / Finiquito de ${r.agencia} en PDF`}
+                        >
+                          <Printer className="w-3.5 h-3.5" />
+                        </button>
                         <button
                           onClick={() => setDetailModalAgency(r.agencia)}
                           className="p-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white transition-colors cursor-pointer"
@@ -1164,6 +1483,67 @@ ${textoSistemas}
         </div>
       )}
         </>
+      )}
+
+      {/* =========================================================================
+          INDIVIDUAL AGENCY ACTA (PDF) MODAL
+      ========================================================================= */}
+      {selectedIndividualActa && (
+        <IndividualAgencyActaModal
+          isOpen={true}
+          onClose={() => setSelectedIndividualActa(null)}
+          actaData={selectedIndividualActa}
+          companyName={(profile?.nombre_banca || profile?.banca || 'Corporacion Calendario, ca').toUpperCase()}
+          userName={user?.email || 'Administración'}
+        />
+      )}
+
+      {/* =========================================================================
+          GENERAL DELIVERY REPORT (PDF) MODAL
+      ========================================================================= */}
+      {isGeneralActaOpen && (
+        <DeliveryReportModal
+          isOpen={true}
+          onClose={() => setIsGeneralActaOpen(false)}
+          systemCycle={{
+            semana: String(systemCycle.semana || '41'),
+            desde: systemCycle.desde || '',
+            hasta: systemCycle.hasta || '',
+            tipo: systemCycle.tipo || 'SEMANAL',
+          }}
+          companyName={(profile?.nombre_banca || profile?.banca || 'Corporacion Calendario, ca').toUpperCase()}
+          userName={user?.email || 'Administración'}
+          auditRows={activeBalances.rows.map((r, i) => ({
+            ag_id: r.id || i + 1,
+            entidad: r.agencia,
+            moneda: activeCurrency,
+            saldo_anterior: r.saldo_arrastre,
+            venta_bruta: r.utilidad_semana,
+            comision: 0,
+            premios_taquilla: 0,
+            venta_neta: r.utilidad_semana,
+            gastos: r.gastos,
+            cobrador_ruta: 0,
+            efectivo_taquilla: 0,
+            bancos: r.pagos,
+            reposicion_premios: r.reposicion_premios,
+            pagos_netos: r.pagos_netos || r.pagos,
+            saldo_final: r.balance_final,
+            status: r.status,
+          }))}
+          totalsByCurrency={{
+            [activeCurrency]: {
+              saldoAnterior: activeBalances.rows.reduce((sum, r) => sum + r.saldo_arrastre, 0),
+              ventaNeta: activeBalances.rows.reduce((sum, r) => sum + r.utilidad_semana, 0),
+              gastos: activeBalances.rows.reduce((sum, r) => sum + r.gastos, 0),
+              cobradorRuta: 0,
+              efectivoTaquilla: 0,
+              bancos: activeBalances.rows.reduce((sum, r) => sum + r.pagos, 0),
+              reposicionPremios: activeBalances.rows.reduce((sum, r) => sum + r.reposicion_premios, 0),
+              saldoFinal: activeBalances.totalDebt,
+            },
+          }}
+        />
       )}
     </div>
   );

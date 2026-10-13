@@ -19,7 +19,8 @@ import {
   Wallet,
   ArrowRight,
 } from 'lucide-react';
-import { formatCurrency, formatDate, normalizarMoneda } from '../../utils/formatters';
+import { formatCurrency, formatDate, normalizarMoneda, cleanAgencyName } from '../../utils/formatters';
+import { getAgencyCommissionAndParticipation } from '../../utils/salesRecalculation';
 import { getConsolidatedPayments, getConsolidatedExpenses } from '../../utils/consolidations';
 import { loadSystemKeywords, type SystemKeywordsMap } from '../../utils/systemKeywords';
 import {
@@ -139,10 +140,20 @@ export const HomeDashboard: React.FC<HomeDashboardProps> = ({ onNavigate }) => {
         const colInicial = `saldo_inicial_${mon.toLowerCase()}`;
         const saldoAnt = agList.reduce((acc: number, ag: any) => acc + (Number(ag[colInicial]) || 0), 0);
 
-        // Venta neta = neto de carga actual
+        // Venta neta = neto de carga actual deduciendo participación de agencias
         const vTot = ventasList
           .filter((v: any) => (v.moneda || '').toUpperCase().includes(mon))
-          .reduce((acc: number, v: any) => acc + Number(v.neto ?? v.util_op ?? 0), 0);
+          .reduce((acc: number, v: any) => {
+            const ag = agList.find(
+              (a: any) =>
+                cleanAgencyName(a.nombre_agencia) === cleanAgencyName(v.agencia) ||
+                String(a.nombre_agencia || '').trim().toUpperCase() === String(v.agencia || '').trim().toUpperCase()
+            );
+            const { partPct } = ag ? getAgencyCommissionAndParticipation(ag, v.sistema, mon) : { partPct: 0 };
+            const n = Number(v.neto ?? v.util_op ?? 0);
+            const partMonto = partPct > 0 ? Math.round(n * (partPct / 100) * 100) / 100 : Number(v.util_ag || 0);
+            return acc + (n - partMonto);
+          }, 0);
 
         // Gastos operativos confirmados
         const gTot = gastosList
