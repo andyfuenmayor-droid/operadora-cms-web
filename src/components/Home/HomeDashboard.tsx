@@ -14,9 +14,20 @@ import {
   Calendar,
   AlertCircle,
   FileText,
+  Globe,
+  Building2,
+  Wallet,
+  ArrowRight,
 } from 'lucide-react';
-import { formatCurrency, formatDate } from '../../utils/formatters';
+import { formatCurrency, formatDate, normalizarMoneda } from '../../utils/formatters';
 import { getConsolidatedPayments, getConsolidatedExpenses } from '../../utils/consolidations';
+import { loadSystemKeywords, type SystemKeywordsMap } from '../../utils/systemKeywords';
+import {
+  calculateOperatorSettlements,
+  type OperatorPayment,
+  type OperatorSettlementRow,
+  type OperatorSettlementTotals,
+} from '../../utils/operatorSettlement';
 
 interface HomeDashboardProps {
   onNavigate: (module: ModuleId) => void;
@@ -44,6 +55,8 @@ export const HomeDashboard: React.FC<HomeDashboardProps> = ({ onNavigate }) => {
   const [cobradoresActivos, setCobradoresActivos] = useState(0);
   const [montoEnRuta, setMontoEnRuta] = useState(0);
   const [balancesByCurrency, setBalancesByCurrency] = useState<Record<string, CurrencyBalance>>({});
+  const [operatorRows, setOperatorRows] = useState<OperatorSettlementRow[]>([]);
+  const [operatorTotalsByCurrency, setOperatorTotalsByCurrency] = useState<Record<string, OperatorSettlementTotals>>({});
 
   const limiteAgencias = Number(profile?.limite_agencias || 5);
   const planName = (profile?.plan || user?.plan || 'Elite').toUpperCase();
@@ -102,14 +115,22 @@ export const HomeDashboard: React.FC<HomeDashboardProps> = ({ onNavigate }) => {
       const totalRuta = (liqPend || []).reduce((acc: number, r: any) => acc + (Number(r.monto) || 0), 0);
       setMontoEnRuta(totalRuta);
 
-      // 4. Cargar Saldos Consolidados por Moneda (BS, USD, COP)
+      // 4. Cargar Saldos Consolidados por Moneda (BS, USD, COP) y Operadoras
       const currencies = ['BS', 'USD', 'COP'];
       const balancesMap: Record<string, CurrencyBalance> = {};
 
-      const [resVentas, gastosList, pagosList] = await Promise.all([
+      const [resVentas, gastosList, pagosList, sysRes, confs, payRes] = await Promise.all([
         supabase.from('carga_actual').select('*').eq('user_id', effectiveUserId),
         getConsolidatedExpenses(effectiveUserId, { fechaDesde: systemCycle?.desde, fechaHasta: systemCycle?.hasta }),
         getConsolidatedPayments(effectiveUserId, { fechaDesde: systemCycle?.desde, fechaHasta: systemCycle?.hasta }),
+        supabase.from('sistemas').select('nombre_sistema').eq('user_id', effectiveUserId).order('nombre_sistema', { ascending: true }),
+        loadSystemKeywords(effectiveUserId),
+        supabase
+          .from('pagos_semana')
+          .select('*')
+          .eq('user_id', effectiveUserId)
+          .or('tipo_pago.eq.PAGO_OPERADORA,tipo_pago.eq.ABONO_OPERADORA,agencia.ilike.OPERADORA:%')
+          .order('id', { ascending: false }),
       ]);
 
       const ventasList = resVentas.data || [];
@@ -154,6 +175,44 @@ export const HomeDashboard: React.FC<HomeDashboardProps> = ({ onNavigate }) => {
       });
 
       setBalancesByCurrency(balancesMap);
+
+      // 5. Liquidación y Saldos de Casas Operadoras (Proveedores)
+      const rawOperatorPayments: OperatorPayment[] = (payRes.data || []).map((p: any) => {
+        let sysName = '';
+        if (p.agencia && p.agencia.toUpperCase().startsWith('OPERADORA:')) {
+          sysName = p.agencia.replace(/^OPERADORA:\s*/i, '').trim().toUpperCase();
+        } else {
+          sysName = String(p.sistema || p.agencia || '').trim().toUpperCase();
+        }
+        return {
+          id: p.id,
+          fecha: p.fecha || new Date().toISOString().slice(0, 10),
+          sistema: sysName,
+          moneda: String(p.moneda || 'BS').toUpperCase(),
+          monto: Number(p.monto || 0),
+          referencia: p.referencia || 'S/R',
+          tipo_pago: (p.tipo_pago === 'ABONO_OPERADORA' ? 'ABONO_OPERADORA' : 'PAGO_OPERADORA') as any,
+          banco: p.banco || p.metodo,
+          agencia: p.agencia,
+        };
+      });
+
+      const sysList = Array.from(new Set([
+        ...(sysRes.data?.map((s) => s.nombre_sistema?.toUpperCase()) || []),
+        ...(ventasList.map((s: any) => String(s.sistema || '').toUpperCase()).filter(Boolean)),
+        ...Object.keys(confs).map((k) => k.toUpperCase())
+      ])).sort();
+
+      const opCalc = calculateOperatorSettlements(
+        sysList,
+        confs,
+        ventasList,
+        rawOperatorPayments,
+        'ALL'
+      );
+
+      setOperatorRows(opCalc.rows);
+      setOperatorTotalsByCurrency(opCalc.totalsByCurrency);
     } catch (err) {
       console.error('Error loading dashboard:', err);
     } finally {
@@ -407,38 +466,249 @@ export const HomeDashboard: React.FC<HomeDashboardProps> = ({ onNavigate }) => {
         </div>
       </div>
 
-      {/* Fast Navigation Shortcuts */}
-      <div className="bg-[#0D1B22] border border-slate-800 rounded-3xl p-6 shadow-xl space-y-4">
-        <h3 className="text-base font-extrabold text-white flex items-center gap-2">
-          <span>⚡</span>
-          <span>Accesos Rápidos del Sistema</span>
-        </h3>
+      {/* 5. Liquidación y Saldos a Casas Operadoras (Proveedores) */}
+      <div className="bg-[#0D1B22] border border-slate-800 rounded-3xl p-6 shadow-xl space-y-6">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-slate-800/80 pb-4">
+          <div>
+            <h3 className="text-base font-extrabold text-white flex items-center gap-2">
+              <span>🏛️</span>
+              <span>Saldos y Liquidación a Casas Operadoras (Proveedores)</span>
+            </h3>
+            <p className="text-xs text-slate-400 mt-1">
+              Fórmula Modelo Dual (40% Comercializador / 60% Casa Matriz): Arrastre Inicial + Utilidad Casa - Pagos Netos = Balance Final a Casas
+            </p>
+          </div>
+          <div className="flex items-center gap-2 self-start sm:self-auto flex-wrap">
+            <button
+              onClick={() => onNavigate('Venta Operadora')}
+              className="px-3 py-1.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-xs font-bold text-slate-200 transition-colors flex items-center gap-1.5 cursor-pointer"
+            >
+              <span>Venta Operadora</span>
+              <ArrowRight className="w-3.5 h-3.5 text-slate-400" />
+            </button>
+            <button
+              onClick={() => onNavigate('Cierre Operadora')}
+              className="px-3 py-1.5 rounded-xl bg-amber-500/20 hover:bg-amber-500/30 text-amber-300 border border-amber-500/30 text-xs font-bold transition-colors flex items-center gap-1.5 cursor-pointer"
+            >
+              <span>Cierre Operadora</span>
+              <ArrowUpRight className="w-3.5 h-3.5 text-amber-300" />
+            </button>
+          </div>
+        </div>
 
-        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
-          {[
-            { id: 'Confirmaciones' as ModuleId, label: 'Confirmaciones', icon: CheckSquare, color: 'text-amber-400 bg-amber-500/10' },
-            { id: 'Rep. Confirmaciones' as ModuleId, label: 'Rep. Confirm.', icon: FileText, color: 'text-sky-400 bg-sky-500/10' },
-            { id: 'Agencias' as ModuleId, label: 'Agencias', icon: Store, color: 'text-emerald-400 bg-emerald-500/10' },
-            { id: 'Cargar Ventas' as ModuleId, label: 'Cargar Ventas', icon: TrendingUp, color: 'text-teal-400 bg-teal-500/10' },
-            { id: 'Saldo Agencias' as ModuleId, label: 'Estados Cuenta', icon: Coins, color: 'text-indigo-400 bg-indigo-500/10' },
-            { id: 'Cobradores' as ModuleId, label: 'Cobradores QR', icon: Bike, color: 'text-purple-400 bg-purple-500/10' },
-          ].map((item) => {
-            const IconC = item.icon;
+        {/* Currency Summary Cards */}
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-4 pt-1">
+          {['BS', 'USD', 'COP'].map((mon) => {
+            const tot = operatorTotalsByCurrency[mon] || {
+              venta: 0,
+              premios: 0,
+              ggr: 0,
+              comCompletaProv: 0,
+              comAgencias: 0,
+              difCom: 0,
+              baseUtil: 0,
+              partCom: 0,
+              totalCom: 0,
+              totalComercializador: 0,
+              netoOperadora: 0,
+              saldoInit: 0,
+              pagosRealizados: 0,
+              abonosRecibidos: 0,
+              pagosNetos: 0,
+              balanceFinal: 0,
+              count: 0,
+            };
+
+            const isDeuda = tot.balanceFinal > 0.05;
+            const isAFavor = tot.balanceFinal < -0.05;
+            const isAlDia = !isDeuda && !isAFavor;
+
             return (
-              <button
-                key={item.id}
-                onClick={() => onNavigate(item.id)}
-                className="p-3.5 rounded-2xl bg-[#071217] border border-slate-800 hover:border-slate-700 flex flex-col items-center justify-center gap-2 text-center transition-all cursor-pointer hover:scale-102 group"
+              <div
+                key={mon}
+                className="bg-[#071217] border border-slate-800/80 rounded-2xl p-4 space-y-3 flex flex-col justify-between"
               >
-                <div className={`p-2.5 rounded-xl ${item.color} group-hover:scale-110 transition-transform`}>
-                  <IconC className="w-5 h-5" />
+                <div>
+                  <div className="flex items-center justify-between pb-2 border-b border-slate-800">
+                    <div className="flex items-center gap-1.5">
+                      <span className="text-xs font-black tracking-wider text-slate-300">
+                        {mon === 'BS' ? '🇻🇪 BOLÍVARES (BS)' : mon === 'USD' ? '🇺🇸 DÓLARES (USD)' : '🇨🇴 PESOS (COP)'}
+                      </span>
+                      <span className="text-[10px] text-slate-400 font-medium">
+                        ({tot.count} {tot.count === 1 ? 'activa' : 'activas'})
+                      </span>
+                    </div>
+                    <span
+                      className={`text-[10px] font-black px-2 py-0.5 rounded-full ${
+                        isAlDia
+                          ? 'bg-slate-800 text-slate-400'
+                          : isDeuda
+                          ? 'bg-rose-500/20 text-rose-400 border border-rose-500/30'
+                          : 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/30'
+                      }`}
+                    >
+                      {isAlDia ? 'AL DÍA' : isDeuda ? 'DEUDA A PAGAR' : 'A FAVOR COMERCIALIZADOR'}
+                    </span>
+                  </div>
+
+                  <div className="space-y-1.5 text-xs pt-2">
+                    <div className="flex justify-between text-slate-400">
+                      <span>Arrastre Inicial:</span>
+                      <span className="font-mono text-slate-300">{formatCurrency(tot.saldoInit, mon)}</span>
+                    </div>
+                    <div className="flex justify-between text-slate-400">
+                      <span>Venta Bruta:</span>
+                      <span className="font-mono text-slate-300">{formatCurrency(tot.venta, mon)}</span>
+                    </div>
+                    <div className="flex justify-between text-slate-400">
+                      <span>Premios Pagados (-):</span>
+                      <span className="font-mono text-rose-400">
+                        {tot.premios > 0 ? `-${formatCurrency(tot.premios, mon)}` : formatCurrency(0, mon)}
+                      </span>
+                    </div>
+                    <div className="flex justify-between text-slate-400">
+                      <span>Utilidad Bruta (GGR):</span>
+                      <span className={`font-mono ${tot.ggr >= 0 ? 'text-slate-300' : 'text-rose-400'}`}>
+                        {formatCurrency(tot.ggr, mon)}
+                      </span>
+                    </div>
+                    <div className="flex justify-between text-slate-400 pt-1 border-t border-slate-800/60">
+                      <span className="text-emerald-400/90 font-medium">Ganancia Comercializador (+):</span>
+                      <span className="font-mono text-emerald-400 font-bold">
+                        +{formatCurrency(tot.totalComercializador, mon)}
+                      </span>
+                    </div>
+                    <div className="flex justify-between text-slate-400">
+                      <span className="text-sky-400/90 font-medium">Utilidad Casa Matriz (60%):</span>
+                      <span className="font-mono text-sky-400 font-bold">
+                        {formatCurrency(tot.netoOperadora, mon)}
+                      </span>
+                    </div>
+                    <div className="flex justify-between text-slate-400">
+                      <span>Pagos Netos Realizados (-):</span>
+                      <span className="font-mono text-amber-400">
+                        {tot.pagosNetos !== 0 ? `-${formatCurrency(tot.pagosNetos, mon)}` : formatCurrency(0, mon)}
+                      </span>
+                    </div>
+                  </div>
                 </div>
-                <span className="text-xs font-bold text-slate-300 group-hover:text-white truncate w-full">
-                  {item.label}
-                </span>
-              </button>
+
+                <div className="pt-2.5 border-t border-slate-800/80 flex items-center justify-between">
+                  <span className="text-xs font-bold text-white">Balance Final a Casas:</span>
+                  <span
+                    className={`text-base font-black font-mono ${
+                      isAlDia ? 'text-slate-400' : isDeuda ? 'text-rose-400' : 'text-emerald-400'
+                    }`}
+                  >
+                    {formatCurrency(tot.balanceFinal, mon)}
+                  </span>
+                </div>
+              </div>
             );
           })}
+        </div>
+
+        {/* Detailed Operators Table */}
+        <div className="space-y-3 pt-2">
+          <div className="flex items-center justify-between">
+            <h4 className="text-xs font-extrabold uppercase tracking-wider text-slate-400 flex items-center gap-2">
+              <span>📋</span>
+              <span>Desglose por Casa Operadora Activa ({operatorRows.length})</span>
+            </h4>
+            <span className="text-[11px] text-slate-500">
+              Arqueo auditado en tiempo real
+            </span>
+          </div>
+
+          {operatorRows.length === 0 ? (
+            <div className="bg-[#071217] border border-slate-800/60 rounded-2xl p-6 text-center text-slate-400 text-xs">
+              No hay movimientos ni saldos pendientes de casas operadoras para este ciclo.
+            </div>
+          ) : (
+            <div className="overflow-x-auto rounded-2xl border border-slate-800/80 bg-[#071217]">
+              <table className="w-full text-left text-xs border-collapse">
+                <thead>
+                  <tr className="border-b border-slate-800 text-[11px] uppercase tracking-wider text-slate-400 bg-slate-900/60">
+                    <th className="py-2.5 px-3 font-bold">Sistema / Operadora</th>
+                    <th className="py-2.5 px-2 font-bold text-center">Moneda</th>
+                    <th className="py-2.5 px-3 font-bold text-right">Arrastre</th>
+                    <th className="py-2.5 px-3 font-bold text-right">Venta Bruta</th>
+                    <th className="py-2.5 px-3 font-bold text-right">Premios</th>
+                    <th className="py-2.5 px-3 font-bold text-right text-emerald-400">Ganancia Com.</th>
+                    <th className="py-2.5 px-3 font-bold text-right text-sky-400">Casa (60%)</th>
+                    <th className="py-2.5 px-3 font-bold text-right text-amber-400">Pagos Netos</th>
+                    <th className="py-2.5 px-3 font-bold text-right text-white">Balance Final</th>
+                    <th className="py-2.5 px-3 font-bold text-center">Estado</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-800/60">
+                  {operatorRows.map((row) => {
+                    const isRowDeuda = row.balanceFinal > 0.05;
+                    const isRowAFavor = row.balanceFinal < -0.05;
+                    const isRowAlDia = !isRowDeuda && !isRowAFavor;
+
+                    return (
+                      <tr key={`${row.sistema}-${row.moneda}`} className="hover:bg-slate-800/30 transition-colors">
+                        <td className="py-2.5 px-3 font-bold text-white flex items-center gap-2">
+                          <Building2 className="w-3.5 h-3.5 text-amber-400 shrink-0" />
+                          <span>{row.sistema}</span>
+                        </td>
+                        <td className="py-2.5 px-2 text-center">
+                          <span
+                            className={`text-[10px] font-black px-1.5 py-0.5 rounded ${
+                              row.moneda === 'BS'
+                                ? 'bg-amber-500/10 text-amber-300 border border-amber-500/20'
+                                : row.moneda === 'USD'
+                                ? 'bg-emerald-500/10 text-emerald-300 border border-emerald-500/20'
+                                : 'bg-sky-500/10 text-sky-300 border border-sky-500/20'
+                            }`}
+                          >
+                            {row.moneda}
+                          </span>
+                        </td>
+                        <td className="py-2.5 px-3 text-right font-mono text-slate-300">
+                          {formatCurrency(row.saldoInit, row.moneda)}
+                        </td>
+                        <td className="py-2.5 px-3 text-right font-mono text-slate-300">
+                          {formatCurrency(row.venta, row.moneda)}
+                        </td>
+                        <td className="py-2.5 px-3 text-right font-mono text-rose-400">
+                          {row.premio > 0 ? `-${formatCurrency(row.premio, row.moneda)}` : formatCurrency(0, row.moneda)}
+                        </td>
+                        <td className="py-2.5 px-3 text-right font-mono text-emerald-400 font-semibold">
+                          +{formatCurrency(row.totalComercializador, row.moneda)}
+                        </td>
+                        <td className="py-2.5 px-3 text-right font-mono text-sky-400 font-semibold">
+                          {formatCurrency(row.netoOperadora, row.moneda)}
+                        </td>
+                        <td className="py-2.5 px-3 text-right font-mono text-amber-400">
+                          {row.pagosNetos !== 0 ? `-${formatCurrency(row.pagosNetos, row.moneda)}` : formatCurrency(0, row.moneda)}
+                        </td>
+                        <td className="py-2.5 px-3 text-right font-mono font-bold">
+                          <span className={isRowAlDia ? 'text-slate-400' : isRowDeuda ? 'text-rose-400' : 'text-emerald-400'}>
+                            {formatCurrency(row.balanceFinal, row.moneda)}
+                          </span>
+                        </td>
+                        <td className="py-2.5 px-3 text-center">
+                          <span
+                            className={`text-[9px] font-black px-2 py-0.5 rounded-full whitespace-nowrap ${
+                              isRowAlDia
+                                ? 'bg-slate-800 text-slate-400'
+                                : isRowDeuda
+                                ? 'bg-rose-500/20 text-rose-400 border border-rose-500/30'
+                                : 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/30'
+                            }`}
+                          >
+                            {isRowAlDia ? 'AL DÍA' : isRowDeuda ? 'A PAGAR' : 'A FAVOR'}
+                          </span>
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          )}
         </div>
       </div>
     </div>
