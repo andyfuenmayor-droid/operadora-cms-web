@@ -179,6 +179,18 @@ export const SalesEntryTab: React.FC = () => {
       ]);
 
       const loadedSales = salesRes.data || [];
+      // Auto-reparar registros de CDAPUESTAS guardados erróneamente en COP a USD
+      const wrongCdapuestas = loadedSales.filter(
+        (s: any) => String(s.sistema || '').toUpperCase() === 'CDAPUESTAS' && normalizarMoneda(s.moneda) === 'COP'
+      );
+      if (wrongCdapuestas.length > 0 && effectiveUserId) {
+        for (const item of wrongCdapuestas) {
+          try {
+            await supabase.from('carga_actual').update({ moneda: 'USD' }).eq('id', item.id).eq('user_id', effectiveUserId);
+            item.moneda = 'USD';
+          } catch (_) {}
+        }
+      }
       const loadedAgencies = agRes.data || [];
       const loadedSystems = sisRes.data || [];
       const loadedCurrencies = monRes.data || [];
@@ -738,12 +750,19 @@ export const SalesEntryTab: React.FC = () => {
               fileNameUpper.includes('BETM3') ||
               (fileNameUpper.includes('BET') && !fileNameUpper.includes('ALPHABET') && !fileNameUpper.includes('GATO') && !fileNameUpper.includes('BANKLOT'));
 
+            const isCdapuestas =
+              headerDna.includes('CDAPUESTAS') ||
+              fileNameUpper.includes('CDAPUESTAS') ||
+              (headerDna.includes('UTILIDAD FINAL') && headerDna.includes('PARTICIPACION'));
+
             if (isGatoweb) {
               sistDet = 'GATOWEB';
             } else if (isKeno) {
               sistDet = 'KENO';
             } else if (isBetm3) {
               sistDet = 'BETM3';
+            } else if (isCdapuestas) {
+              sistDet = 'CDAPUESTAS';
             }
           }
 
@@ -783,23 +802,47 @@ export const SalesEntryTab: React.FC = () => {
           }
         }
 
+        // Detect report date from filename if present (e.g. 2026-10-05_2026-10-11)
+        const dateMatches = file.name.match(/\d{4}-\d{2}-\d{2}/g);
+        if (dateMatches && dateMatches.length > 0) {
+          const fileReportDate = dateMatches[dateMatches.length - 1];
+          setBulkFileDate(fileReportDate);
+        }
+
+        // Improved currency detection using word and non-alphanumeric boundaries (_USD, -USD, .USD)
+        const regUsd = /(?:^|[^A-Z0-9])(USD|DOLAR|DOLARES|USDT|\$USD)(?:[^A-Z0-9]|$)/i;
+        const regBs = /(?:^|[^A-Z0-9])(BS|VES|BOLIVAR|BOLIVARES|BSF|BSD)(?:[^A-Z0-9]|$)/i;
+        const regCop = /(?:^|[^A-Z0-9])(COP|PESO|PESOS|COLOMBIA)(?:[^A-Z0-9]|$)/i;
+
         let detectedMoneda = bulkCurrency !== 'AUTO' ? bulkCurrency : '';
         if (!detectedMoneda) {
-          if (/\b(BS|VES|BOLIVAR|BOLIVARES)\b/i.test(fileNameUpper)) {
-            detectedMoneda = 'BS';
-          } else if (/\b(COP|PESO|PESOS)\b/i.test(fileNameUpper) || sistDet.toUpperCase().includes('PESO')) {
-            detectedMoneda = 'COP';
-          } else if (/\b(USD|DOLAR|DOLARES)\b/i.test(fileNameUpper)) {
+          if (regUsd.test(fileNameUpper)) {
             detectedMoneda = 'USD';
+          } else if (regBs.test(fileNameUpper)) {
+            detectedMoneda = 'BS';
+          } else if (regCop.test(fileNameUpper) || sistDet.toUpperCase().includes('PESO')) {
+            detectedMoneda = 'COP';
           } else {
-            if (/\b(VES|BOLIVAR|BOLIVARES)\b/i.test(headerDna)) {
-              detectedMoneda = 'BS';
-            } else if (/\b(COP|PESO|PESOS)\b/i.test(headerDna) || headerDna.includes('$')) {
-              detectedMoneda = 'COP';
-            } else if (/\b(USD|DOLAR|DOLARES)\b/i.test(headerDna)) {
+            if (regUsd.test(headerDna)) {
               detectedMoneda = 'USD';
+            } else if (regBs.test(headerDna)) {
+              detectedMoneda = 'BS';
+            } else if (regCop.test(headerDna)) {
+              detectedMoneda = 'COP';
+            } else if (sistDet.toUpperCase() === 'CDAPUESTAS') {
+              detectedMoneda = 'USD';
+            } else if (sistDet.toUpperCase() === 'KENO' || sistDet.toUpperCase() === 'GATO PESOS') {
+              detectedMoneda = 'COP';
             }
           }
+        }
+
+        // Synchronize UI dropdowns with detected values
+        if (bulkCurrency === 'AUTO' && detectedMoneda) {
+          setBulkCurrency(detectedMoneda);
+        }
+        if (bulkSystem === 'AUTO' && sistDet) {
+          setBulkSystem(sistDet);
         }
 
         // 2. Dynamic Keywords Configured for this System + Multilingual Synonyms
@@ -1039,21 +1082,24 @@ export const SalesEntryTab: React.FC = () => {
               : 0;
           }
 
-          // Currency resolution prioritizing agency configuration:
+          // Currency resolution:
           // 1. Explicit dropdown selection (bulkCurrency !== 'AUTO')
-          // 2. Specific matched currency from system condition
-          // 3. System-specific currency in agency condiciones_sistemas
-          // 4. Agency's configured monedas (if strictly 1, MUST use that; if multiple, use detected if in list, else primary)
-          // 5. Detected file currency, fallback to 'COP'
+          // 2. Detected currency from file or filename (detectedMoneda)
+          // 3. Matched currency from specific system condition in agency
+          // 4. System-specific currency in agency condiciones_sistemas
+          // 5. Agency's configured monedas
+          // 6. Fallback based on system (CDAPUESTAS -> USD, etc.)
           const agencyCurrencies = (matchedAg.monedas || '')
             .split(',')
             .map((m: string) => normalizarMoneda(m.trim()))
             .filter(Boolean);
           const primaryAgencyCurr = agencyCurrencies[0] || 'COP';
 
+          const fileCur = bulkCurrency !== 'AUTO' ? bulkCurrency : detectedMoneda;
+
           let rowMoneda = 'COP';
-          if (bulkCurrency !== 'AUTO') {
-            rowMoneda = bulkCurrency;
+          if (fileCur) {
+            rowMoneda = normalizarMoneda(fileCur);
           } else if (matchResult.moneda) {
             rowMoneda = normalizarMoneda(matchResult.moneda);
           } else if (sysMoneda) {
@@ -1061,13 +1107,11 @@ export const SalesEntryTab: React.FC = () => {
           } else if (agencyCurrencies.length === 1) {
             rowMoneda = agencyCurrencies[0];
           } else if (agencyCurrencies.length > 1) {
-            if (detectedMoneda && agencyCurrencies.includes(detectedMoneda)) {
-              rowMoneda = detectedMoneda;
-            } else {
-              rowMoneda = primaryAgencyCurr;
-            }
+            rowMoneda = primaryAgencyCurr;
+          } else if (matchedSystem.toUpperCase() === 'CDAPUESTAS') {
+            rowMoneda = 'USD';
           } else {
-            rowMoneda = detectedMoneda || 'COP';
+            rowMoneda = 'COP';
           }
 
           // Exact currency condition override if available for this system & rowMoneda
@@ -1076,7 +1120,7 @@ export const SalesEntryTab: React.FC = () => {
               const cond = typeof matchedAg.condiciones_sistemas === 'string'
                 ? JSON.parse(matchedAg.condiciones_sistemas)
                 : matchedAg.condiciones_sistemas;
-              const exactConf = cond?.[`${matchedSystem}_${rowMoneda}`];
+              const exactConf = cond?.[`${matchedSystem}_${rowMoneda}`] || cond?.[matchedSystem];
               if (exactConf) {
                 if (exactConf.comision !== undefined && exactConf.comision !== null && exactConf.comision !== '') {
                   comPct = Number(exactConf.comision);
