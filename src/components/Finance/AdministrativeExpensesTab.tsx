@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import { supabase } from '../../lib/supabase';
 import { useAuth } from '../../context/AuthContext';
-import { formatCurrency, formatDate, normalizarMoneda } from '../../utils/formatters';
+import { formatCurrency, formatDate, formatDateTime, normalizarMoneda, montoEnLetras } from '../../utils/formatters';
 import { notificationService } from '../../utils/notificationService';
 import { realtimeBroadcast } from '../../utils/realtimeBroadcast';
 import { logAuditEvent } from '../../utils/auditLogger';
@@ -26,7 +26,12 @@ import {
   Tag,
   ShieldCheck,
   Calendar,
-  X
+  X,
+  Receipt,
+  FileText,
+  Share2,
+  Sparkles,
+  Hash
 } from 'lucide-react';
 import confetti from 'canvas-confetti';
 
@@ -58,6 +63,37 @@ const CATEGORIAS_CONFIG: Record<
   OTROS: { label: 'Otros Gastos Administrativos', icon: Tag, color: 'text-purple-400', bg: 'bg-purple-500/10 border-purple-500/30' },
 };
 
+/**
+ * Calcula el siguiente número de recibo continuo/correlativo a partir de los registros existentes.
+ * Si el último recibo es "01", el siguiente será "02".
+ * Soporta cualquier número de dígitos o prefijos comunes (ej. "01", "002", "REC-05").
+ */
+export function getNextContinuousReceipt(records: AdminExpenseRecord[]): string {
+  let maxNum = 0;
+  let padLength = 2; // Formato continuo estándar de al menos 2 dígitos: "01", "02"...
+
+  for (const r of records) {
+    const ref = (r.referencia || '').trim();
+    if (!ref || ref === 'N/A' || ref === '—') continue;
+
+    // Buscar secuencias de dígitos
+    const matches = ref.match(/\d+/g);
+    if (matches && matches.length > 0) {
+      const lastNumStr = matches[matches.length - 1];
+      const val = parseInt(lastNumStr, 10);
+      if (!isNaN(val) && val > maxNum) {
+        maxNum = val;
+        if (lastNumStr.length > padLength) {
+          padLength = lastNumStr.length;
+        }
+      }
+    }
+  }
+
+  const nextVal = maxNum + 1;
+  return String(nextVal).padStart(padLength, '0');
+}
+
 export const AdministrativeExpensesTab: React.FC = () => {
   const { effectiveUserId, systemCycle, user, profile } = useAuth();
 
@@ -78,10 +114,12 @@ export const AdministrativeExpensesTab: React.FC = () => {
   const [formBeneficiario, setFormBeneficiario] = useState('');
   const [formConcepto, setFormConcepto] = useState('');
   const [formReferencia, setFormReferencia] = useState('');
+  const [nextContinuousCorrelativo, setNextContinuousCorrelativo] = useState('01');
   const [formFecha, setFormFecha] = useState(systemCycle?.hasta || new Date().toISOString().slice(0, 10));
 
-  // Delete modal state
+  // Modals state
   const [deleteTarget, setDeleteTarget] = useState<AdminExpenseRecord | null>(null);
+  const [receiptModalExpense, setReceiptModalExpense] = useState<AdminExpenseRecord | null>(null);
 
   const [message, setMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
 
@@ -110,7 +148,7 @@ export const AdministrativeExpensesTab: React.FC = () => {
         let rawConcepto = String(r.concepto || r.descripcion || 'Gasto Administrativo').trim();
         let cat = 'OTROS';
         let ben = 'N/A';
-        let ref = 'N/A';
+        let ref = r.referencia ? String(r.referencia).trim() : 'N/A';
 
         // Extract [CAT]
         const catMatch = rawConcepto.match(/^\[([A-Z0-9_\s]+)\]/i);
@@ -149,6 +187,11 @@ export const AdministrativeExpensesTab: React.FC = () => {
       });
 
       setExpenses(list);
+
+      // Calcular correlativo continuo
+      const nextCorr = getNextContinuousReceipt(list);
+      setNextContinuousCorrelativo(nextCorr);
+      setFormReferencia((prev) => (!prev || prev.trim() === '' ? nextCorr : prev));
     } catch (err: any) {
       console.error('Error loading administrative expenses:', err);
       setMessage({ type: 'error', text: 'Error al cargar gastos administrativos: ' + (err?.message || '') });
@@ -224,14 +267,15 @@ export const AdministrativeExpensesTab: React.FC = () => {
 
     try {
       const adminNom = user?.nombre || user?.email?.split('@')[0] || 'ADMIN';
+      const finalReferencia = (formReferencia || '').trim() || nextContinuousCorrelativo;
 
       // Build structured concept: [CATEGORIA] Concepto [BEN: Beneficiario] [REF: Referencia]
       let compuesto = `[${formCategoria}] ${formConcepto.trim().toUpperCase()}`;
       if (formBeneficiario.trim()) {
         compuesto += ` [BEN: ${formBeneficiario.trim().toUpperCase()}]`;
       }
-      if (formReferencia.trim()) {
-        compuesto += ` [REF: ${formReferencia.trim().toUpperCase()}]`;
+      if (finalReferencia) {
+        compuesto += ` [REF: ${finalReferencia.toUpperCase()}]`;
       }
 
       const payload = {
@@ -256,17 +300,38 @@ export const AdministrativeExpensesTab: React.FC = () => {
         tipo_accion: 'REGISTRO_GASTO_ADMINISTRATIVO',
         modulo: 'GASTOS',
         entidad_afectada: `COMERCIALIZADOR (${formMoneda})`,
-        descripcion: `Registro de Gasto Administrativo [${CATEGORIAS_CONFIG[formCategoria]?.label || formCategoria}]: ${formConcepto.trim()} por ${formatCurrency(montoNum, formMoneda)} (Beneficiario: ${formBeneficiario || 'N/A'})`,
+        descripcion: `Registro de Gasto Administrativo [${CATEGORIAS_CONFIG[formCategoria]?.label || formCategoria}]: ${formConcepto.trim()} por ${formatCurrency(montoNum, formMoneda)} (Recibo Cont.: #${finalReferencia}, Beneficiario: ${formBeneficiario || 'N/A'})`,
         impacto_financiero: montoNum > 50000 ? 'ALTO' : 'MEDIO',
       });
 
       confetti({ particleCount: 40, spread: 60, origin: { y: 0.8 } });
 
-      setMessage({ type: 'success', text: 'Gasto administrativo registrado exitosamente.' });
+      setMessage({
+        type: 'success',
+        text: `Gasto administrativo registrado exitosamente con Recibo Continuo #${finalReferencia}.`,
+      });
+
+      // Limpiar formulario y auto-incrementar correlativo continuo
       setFormMonto('');
       setFormConcepto('');
       setFormBeneficiario('');
-      setFormReferencia('');
+
+      const optimisticRecord: AdminExpenseRecord = {
+        id: inserted?.[0]?.id || Date.now(),
+        categoria: formCategoria,
+        concepto: formConcepto.trim().toUpperCase(),
+        beneficiario: formBeneficiario.trim().toUpperCase() || 'N/A',
+        referencia: finalReferencia,
+        moneda: formMoneda,
+        monto: montoNum,
+        fecha: formFecha,
+        confirmado: true,
+        confirmado_por: adminNom,
+      };
+
+      const newNext = getNextContinuousReceipt([optimisticRecord, ...expenses]);
+      setNextContinuousCorrelativo(newNext);
+      setFormReferencia(newNext);
 
       await loadData();
     } catch (err: any) {
@@ -297,7 +362,7 @@ export const AdministrativeExpensesTab: React.FC = () => {
         tipo_accion: 'ELIMINACION_GASTO_ADMINISTRATIVO',
         modulo: 'GASTOS',
         entidad_afectada: `COMERCIALIZADOR (${deleteTarget.moneda})`,
-        descripcion: `Eliminación de Gasto Administrativo [${deleteTarget.categoria}]: ${deleteTarget.concepto} por ${formatCurrency(deleteTarget.monto, deleteTarget.moneda)}`,
+        descripcion: `Eliminación de Gasto Administrativo [${deleteTarget.categoria}]: ${deleteTarget.concepto} por ${formatCurrency(deleteTarget.monto, deleteTarget.moneda)} (Recibo: ${deleteTarget.referencia})`,
         impacto_financiero: 'MEDIO',
       });
 
@@ -316,7 +381,7 @@ export const AdministrativeExpensesTab: React.FC = () => {
   const handleExportCSV = () => {
     if (filteredExpenses.length === 0) return;
 
-    const headers = ['ID', 'Fecha', 'Categoria', 'Concepto', 'Beneficiario', 'Referencia', 'Moneda', 'Monto'];
+    const headers = ['ID', 'Fecha', 'Categoria', 'Concepto', 'Beneficiario', 'Nro_Recibo_Continuo', 'Moneda', 'Monto'];
     const rows = filteredExpenses.map((e) => [
       e.id,
       e.fecha,
@@ -340,7 +405,7 @@ export const AdministrativeExpensesTab: React.FC = () => {
     URL.revokeObjectURL(url);
   };
 
-  // Print PDF Generator
+  // Print Bitácora PDF (General)
   const handlePrintPDF = () => {
     const printWindow = window.open('', '_blank');
     if (!printWindow) return;
@@ -358,7 +423,9 @@ export const AdministrativeExpensesTab: React.FC = () => {
           </td>
           <td style="padding: 7px 8px; font-size: 8.5pt;">${e.concepto}</td>
           <td style="padding: 7px 8px; font-size: 8.5pt; color: #475569;">${e.beneficiario}</td>
-          <td style="padding: 7px 8px; font-size: 8.5pt; font-family: monospace;">${e.referencia}</td>
+          <td style="padding: 7px 8px; font-size: 8.5pt; font-family: monospace; font-weight: bold; color: #0284c7;">
+            ${e.referencia !== 'N/A' ? '#' + e.referencia : '#' + e.id}
+          </td>
           <td style="padding: 7px 8px; font-size: 8.5pt; font-weight: bold; text-align: center;">${e.moneda}</td>
           <td style="padding: 7px 8px; font-size: 9pt; font-weight: 800; text-align: right; font-family: monospace;">
             ${formatCurrency(e.monto, e.moneda)}
@@ -420,7 +487,7 @@ export const AdministrativeExpensesTab: React.FC = () => {
               <div class="kpi-val" style="color: #16a34a;">${formatCurrency(totalsByCurrency.COP, 'COP')}</div>
             </div>
             <div class="kpi-box">
-              <div class="kpi-lbl">Total Operaciones</div>
+              <div class="kpi-lbl">Total Recibos</div>
               <div class="kpi-val">${filteredExpenses.length} comprobantes</div>
             </div>
           </div>
@@ -430,9 +497,9 @@ export const AdministrativeExpensesTab: React.FC = () => {
               <tr>
                 <th style="width: 11%;">Fecha</th>
                 <th style="width: 17%;">Categoría</th>
-                <th style="width: 28%;">Concepto / Descripción</th>
+                <th style="width: 27%;">Concepto / Descripción</th>
                 <th style="width: 18%;">Beneficiario / Proveedor</th>
-                <th style="width: 10%;">Referencia</th>
+                <th style="width: 11%;">Recibo Cont.</th>
                 <th style="width: 6%; text-align: center;">Moneda</th>
                 <th style="width: 10%; text-align: right;">Monto</th>
               </tr>
@@ -477,6 +544,222 @@ export const AdministrativeExpensesTab: React.FC = () => {
     }, 400);
   };
 
+  // Print Single Continuous Receipt in 80mm format (Thermal POS)
+  const handlePrintSingleReceipt = (exp: AdminExpenseRecord) => {
+    const printWindow = window.open('', '_blank');
+    if (!printWindow) return;
+
+    const companyName = (profile?.nombre_banca || profile?.banca || 'CORPORACION CALENDARIO, CA').toUpperCase();
+    const horaEmision = new Date().toLocaleTimeString('es-VE', { hour: '2-digit', minute: '2-digit', hour12: true });
+    const numeroRecibo = exp.referencia !== 'N/A' && exp.referencia.trim() ? exp.referencia : String(exp.id);
+    const letras = montoEnLetras(exp.monto, exp.moneda);
+
+    printWindow.document.write(`
+      <!DOCTYPE html>
+      <html>
+        <head>
+          <title>Recibo Continuo de Egreso #${numeroRecibo} - ${companyName}</title>
+          <meta charset="utf-8" />
+          <style>
+            @page { size: 80mm auto; margin: 2mm; }
+            body { font-family: "Courier New", Courier, monospace, sans-serif; color: #000; margin: 0; padding: 4px; font-size: 11px; line-height: 1.3; }
+            .center { text-align: center; }
+            .bold { font-weight: bold; }
+            .title { font-size: 13px; font-weight: 900; margin-bottom: 2px; }
+            .subtitle { font-size: 9.5px; color: #333; margin-bottom: 6px; }
+            .recibo-num { font-size: 14px; font-weight: 900; border: 1.5px dashed #000; padding: 5px; margin: 6px 0; }
+            .divider { border-top: 1px dashed #000; margin: 6px 0; }
+            .row { display: flex; justify-content: space-between; margin: 3px 0; }
+            .lbl { font-weight: bold; color: #222; }
+            .val { text-align: right; }
+            .concept-box { background: #f4f4f4; border: 1px solid #ccc; padding: 6px; margin: 6px 0; font-size: 10.5px; border-radius: 4px; font-family: sans-serif; }
+            .monto-box { border: 2px solid #000; padding: 7px; margin: 8px 0; text-align: center; }
+            .monto-val { font-size: 16px; font-weight: 900; }
+            .monto-letras { font-size: 9px; font-style: italic; margin-top: 3px; font-family: sans-serif; }
+            .sig-row { display: flex; justify-content: space-between; gap: 8px; margin-top: 30px; }
+            .sig-col { flex: 1; text-align: center; border-top: 1px solid #000; padding-top: 3px; font-size: 8.5px; }
+            .footer { font-size: 8px; text-align: center; margin-top: 16px; color: #555; }
+          </style>
+        </head>
+        <body>
+          <div class="center">
+            <div class="title">${companyName}</div>
+            <div class="subtitle">SISTEMA MULTIBANCA EXPRESS • CASA MATRIZ</div>
+            <div class="recibo-num">RECIBO CONTINUO DE EGRESO #${numeroRecibo}</div>
+          </div>
+
+          <div class="divider"></div>
+
+          <div class="row">
+            <span class="lbl">FECHA:</span>
+            <span class="val">${formatDate(exp.fecha)} ${horaEmision}</span>
+          </div>
+          <div class="row">
+            <span class="lbl">CICLO:</span>
+            <span class="val">Semana ${systemCycle.semana || 'Actual'}</span>
+          </div>
+          <div class="row">
+            <span class="lbl">CATEGORÍA:</span>
+            <span class="val bold">${CATEGORIAS_CONFIG[exp.categoria]?.label || exp.categoria}</span>
+          </div>
+          <div class="row">
+            <span class="lbl">BENEFICIARIO:</span>
+            <span class="val bold">${exp.beneficiario !== 'N/A' ? exp.beneficiario : 'NO ESPECIFICADO'}</span>
+          </div>
+          <div class="row">
+            <span class="lbl">N° CORRELATIVO:</span>
+            <span class="val bold">#${numeroRecibo}</span>
+          </div>
+
+          <div class="divider"></div>
+
+          <div class="lbl">CONCEPTO / DETALLE:</div>
+          <div class="concept-box">${exp.concepto}</div>
+
+          <div class="monto-box">
+            <div class="lbl" style="font-size: 9px;">MONTO TOTAL CANCELADO</div>
+            <div class="monto-val">${formatCurrency(exp.monto, exp.moneda)}</div>
+            <div class="monto-letras">${letras}</div>
+          </div>
+
+          <div class="sig-row">
+            <div class="sig-col">
+              <span class="bold">ENTREGADO POR (CAJA)</span><br />
+              <span>${exp.confirmado_por || user?.nombre || 'Administración'}</span>
+            </div>
+            <div class="sig-col">
+              <span class="bold">RECIBÍ CONFORME</span><br />
+              <span>${exp.beneficiario !== 'N/A' ? exp.beneficiario : 'Beneficiario'}</span><br />
+              <span style="font-size: 7.5px;">C.I.: ________________</span>
+            </div>
+          </div>
+
+          <div class="footer">
+            *** COMPROBANTE OFICIAL DE PAGO CONTINUO ***<br />
+            Trazabilidad Inmutable • Folio Sistema #${exp.id}
+          </div>
+        </body>
+      </html>
+    `);
+    printWindow.document.close();
+    setTimeout(() => {
+      printWindow.focus();
+      printWindow.print();
+    }, 400);
+  };
+
+  // Print Official Half-Letter / Letter Voucher (Original + Copia Beneficiario)
+  const handlePrintLetterVoucher = (exp: AdminExpenseRecord) => {
+    const printWindow = window.open('', '_blank');
+    if (!printWindow) return;
+
+    const companyName = (profile?.nombre_banca || profile?.banca || 'CORPORACION CALENDARIO, CA').toUpperCase();
+    const fechaStr = formatDate(exp.fecha);
+    const numeroRecibo = exp.referencia !== 'N/A' && exp.referencia.trim() ? exp.referencia : String(exp.id);
+    const letras = montoEnLetras(exp.monto, exp.moneda);
+
+    const voucherHtml = (copyLabel: string) => `
+      <div style="border: 2px solid #0f172a; border-radius: 8px; padding: 16px; margin-bottom: 20px; background: #fff;">
+        <div style="display: flex; justify-content: space-between; align-items: flex-start; border-bottom: 2px solid #0f172a; padding-bottom: 10px; margin-bottom: 12px;">
+          <div>
+            <h2 style="margin: 0; font-size: 15pt; font-weight: 900; color: #0f172a;">${companyName}</h2>
+            <div style="font-size: 9pt; font-weight: 800; color: #0284c7; text-transform: uppercase;">COMPROBANTE DE EGRESO CONTINUO • CASA MATRIZ</div>
+            <div style="font-size: 8pt; color: #64748b;">Gastos Operacionales y Administrativos del Comercializador</div>
+          </div>
+          <div style="text-align: right;">
+            <div style="display: inline-block; border: 2px solid #dc2626; border-radius: 6px; padding: 4px 10px; background: #fef2f2;">
+              <div style="font-size: 8pt; font-weight: 800; color: #dc2626; text-transform: uppercase;">RECIBO N°</div>
+              <div style="font-size: 15pt; font-weight: 900; color: #991b1b; font-family: monospace;">#${numeroRecibo}</div>
+            </div>
+            <div style="font-size: 7.5pt; font-weight: bold; color: #64748b; margin-top: 4px; text-transform: uppercase;">[ ${copyLabel} ]</div>
+          </div>
+        </div>
+
+        <div style="display: grid; grid-template-columns: 2fr 1fr 1fr; gap: 10px; font-size: 8.5pt; margin-bottom: 12px; background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 6px; padding: 8px 12px;">
+          <div><strong>Beneficiario:</strong> ${exp.beneficiario !== 'N/A' ? exp.beneficiario : 'Personal / Proveedor'}</div>
+          <div><strong>Fecha:</strong> ${fechaStr}</div>
+          <div><strong>Ciclo:</strong> Semana ${systemCycle.semana || 'Actual'}</div>
+        </div>
+
+        <div style="margin-bottom: 12px;">
+          <div style="font-size: 8pt; font-weight: bold; text-transform: uppercase; color: #475569; margin-bottom: 4px;">Concepto / Descripción del Gasto:</div>
+          <div style="border: 1px solid #cbd5e1; border-radius: 6px; padding: 8px 12px; font-size: 9pt; background: #fff;">
+            <strong>[${CATEGORIAS_CONFIG[exp.categoria]?.label || exp.categoria}]</strong> ${exp.concepto}
+          </div>
+        </div>
+
+        <div style="display: flex; justify-content: space-between; align-items: center; border: 2px solid #0f172a; border-radius: 6px; padding: 10px 14px; background: #f1f5f9; margin-bottom: 22px;">
+          <div style="font-size: 8pt; color: #334155; max-width: 65%;">
+            <div style="font-weight: 800; text-transform: uppercase;">Cantidad en Letras:</div>
+            <div style="font-style: italic; font-weight: 700;">${letras}</div>
+          </div>
+          <div style="text-align: right;">
+            <div style="font-size: 7.5pt; font-weight: 800; text-transform: uppercase; color: #64748b;">Monto Pagado (${exp.moneda})</div>
+            <div style="font-size: 16pt; font-weight: 900; color: #0f172a; font-family: monospace;">${formatCurrency(exp.monto, exp.moneda)}</div>
+          </div>
+        </div>
+
+        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 40px; margin-top: 25px;">
+          <div style="border-top: 1px solid #334155; padding-top: 5px; text-align: center; font-size: 8pt;">
+            <strong>ENTREGADO POR (CAJA)</strong><br />
+            <span>${exp.confirmado_por || user?.nombre || 'Caja Central / Administración'}</span><br />
+            <span style="font-size: 7pt; color: #64748b;">Firma Autorizada</span>
+          </div>
+          <div style="border-top: 1px solid #334155; padding-top: 5px; text-align: center; font-size: 8pt;">
+            <strong>RECIBÍ CONFORME</strong><br />
+            <span>${exp.beneficiario !== 'N/A' ? exp.beneficiario : 'Beneficiario'}</span><br />
+            <span style="font-size: 7pt; color: #64748b;">C.I. / Huella Dactilar</span>
+          </div>
+        </div>
+      </div>
+    `;
+
+    printWindow.document.write(`
+      <!DOCTYPE html>
+      <html>
+        <head>
+          <title>Recibo Continuo #${numeroRecibo} - ${companyName}</title>
+          <meta charset="utf-8" />
+          <style>
+            @page { size: letter portrait; margin: 1.2cm; }
+            body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Arial, sans-serif; color: #0f172a; margin: 0; padding: 0; }
+            .cut-line { border-top: 1px dashed #94a3b8; margin: 15px 0 25px 0; text-align: center; position: relative; }
+            .cut-text { background: #fff; padding: 0 10px; font-size: 7pt; color: #64748b; position: relative; top: -7px; text-transform: uppercase; }
+          </style>
+        </head>
+        <body>
+          ${voucherHtml('ORIGINAL - ADMINISTRACIÓN')}
+          <div class="cut-line"><span class="cut-text">✂ Línea de corte / Talón de comprobante ✂</span></div>
+          ${voucherHtml('COPIA - BENEFICIARIO')}
+        </body>
+      </html>
+    `);
+    printWindow.document.close();
+    setTimeout(() => {
+      printWindow.focus();
+      printWindow.print();
+    }, 400);
+  };
+
+  // WhatsApp share link for single expense receipt
+  const getWhatsAppExpenseUrl = (exp: AdminExpenseRecord) => {
+    const companyName = (profile?.nombre_banca || profile?.banca || 'CORPORACION CALENDARIO, CA').toUpperCase();
+    const numeroRecibo = exp.referencia !== 'N/A' && exp.referencia.trim() ? exp.referencia : String(exp.id);
+    const catLabel = CATEGORIAS_CONFIG[exp.categoria]?.label || exp.categoria;
+    const msg =
+      `🏛️ *${companyName}*\n` +
+      `🧾 *RECIBO CONTINUO DE EGRESO #${numeroRecibo}*\n\n` +
+      `📅 *Fecha:* ${formatDate(exp.fecha)}\n` +
+      `👤 *Beneficiario:* ${exp.beneficiario}\n` +
+      `🏷️ *Categoría:* ${catLabel}\n` +
+      `📝 *Concepto:* ${exp.concepto}\n` +
+      `💰 *Monto Cancelado:* ${formatCurrency(exp.monto, exp.moneda)}\n` +
+      `✍️ *Registrado por:* ${exp.confirmado_por || 'Caja Central'}\n` +
+      `🔒 *Estatus:* PAGADO Y CONFORME\n\n` +
+      `_Comprobante emitido por Sistema Multibanca Express CMS_`;
+    return `https://api.whatsapp.com/send?text=${encodeURIComponent(msg)}`;
+  };
+
   return (
     <div className="space-y-6">
       {/* 1. Header Banner */}
@@ -495,7 +778,7 @@ export const AdministrativeExpensesTab: React.FC = () => {
           </div>
           <p className="text-xs text-slate-400 mt-1 max-w-2xl">
             Control y registro de gastos operacionales y administrativos de la casa matriz (sueldos, oficina, internet, equipos y compras). 
-            Estos gastos se descuentan directamente de la ganancia del Comercializador.
+            Estos gastos cuentan con <strong>recibo continuo correlativo</strong> y se descuentan directamente de la ganancia del Comercializador.
           </p>
         </div>
 
@@ -504,7 +787,7 @@ export const AdministrativeExpensesTab: React.FC = () => {
             onClick={handlePrintPDF}
             disabled={filteredExpenses.length === 0}
             className="px-3.5 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer disabled:opacity-50"
-            title="Imprimir comprobantes en PDF"
+            title="Imprimir bitácora general en PDF"
           >
             <Printer className="w-4 h-4 text-sky-400" />
             <span>Imprimir PDF</span>
@@ -524,7 +807,7 @@ export const AdministrativeExpensesTab: React.FC = () => {
             onClick={loadData}
             disabled={isLoading}
             className="p-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white transition-all cursor-pointer"
-            title="Actualizar datos"
+            title="Actualizar datos y recalcular correlativo continuo"
           >
             <RefreshCw className={`w-4 h-4 ${isLoading ? 'animate-spin text-emerald-400' : ''}`} />
           </button>
@@ -674,16 +957,44 @@ export const AdministrativeExpensesTab: React.FC = () => {
               />
             </div>
 
-            {/* Referencia / Factura */}
+            {/* Referencia / Recibo Continuo */}
             <div className="space-y-1.5">
-              <label className="text-xs font-bold text-slate-300">Nro. Factura / Comprobante / Ref</label>
-              <input
-                type="text"
-                value={formReferencia}
-                onChange={(e) => setFormReferencia(e.target.value)}
-                placeholder="Ej: FACT-00912, RECIBO-45"
-                className="w-full bg-[#071217] border border-slate-700 rounded-xl px-3.5 py-2.5 text-xs text-white font-mono focus:outline-none focus:border-indigo-500"
-              />
+              <div className="flex items-center justify-between">
+                <label className="text-xs font-bold text-slate-300 flex items-center gap-1.5">
+                  <span>Nro. Recibo / Comprobante / Ref *</span>
+                  <span className="px-2 py-0.5 rounded-full text-[9px] font-black uppercase tracking-wider bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 flex items-center gap-1">
+                    <Sparkles className="w-2.5 h-2.5" />
+                    <span>Continuo Auto</span>
+                  </span>
+                </label>
+                {formReferencia !== nextContinuousCorrelativo && (
+                  <button
+                    type="button"
+                    onClick={() => setFormReferencia(nextContinuousCorrelativo)}
+                    className="text-[10px] text-sky-400 hover:text-sky-300 underline font-semibold cursor-pointer"
+                    title="Restablecer al siguiente correlativo continuo automático"
+                  >
+                    Usar #{nextContinuousCorrelativo}
+                  </button>
+                )}
+              </div>
+              <div className="relative">
+                <input
+                  type="text"
+                  value={formReferencia}
+                  onChange={(e) => setFormReferencia(e.target.value)}
+                  placeholder={`Ej: ${nextContinuousCorrelativo} (Continuo)`}
+                  className="w-full bg-[#071217] border border-slate-700 rounded-xl px-3.5 py-2.5 text-xs text-white font-mono font-bold focus:outline-none focus:border-indigo-500 pr-24"
+                />
+                <div className="absolute right-2.5 top-1/2 -translate-y-1/2 flex items-center gap-1 pointer-events-none">
+                  <span className="text-[10px] font-mono font-bold px-2 py-0.5 rounded bg-slate-800 text-emerald-400 border border-slate-700">
+                    #{nextContinuousCorrelativo}
+                  </span>
+                </div>
+              </div>
+              <p className="text-[10px] text-slate-400">
+                Correlativo continuo automático (ej: 01, 02, 03...). Puede editarse si cuenta con una factura fiscal externa.
+              </p>
             </div>
           </div>
 
@@ -786,7 +1097,7 @@ export const AdministrativeExpensesTab: React.FC = () => {
                 <th className="py-3.5 px-4">Categoría</th>
                 <th className="py-3.5 px-4">Concepto / Detalle</th>
                 <th className="py-3.5 px-4">Beneficiario</th>
-                <th className="py-3.5 px-4">Referencia</th>
+                <th className="py-3.5 px-4">N° Recibo / Ref</th>
                 <th className="py-3.5 px-4 text-center">Moneda</th>
                 <th className="py-3.5 px-4 text-right">Monto</th>
                 <th className="py-3.5 px-4 text-center">Acciones</th>
@@ -807,6 +1118,7 @@ export const AdministrativeExpensesTab: React.FC = () => {
                 filteredExpenses.map((exp) => {
                   const cfg = CATEGORIAS_CONFIG[exp.categoria] || CATEGORIAS_CONFIG.OTROS;
                   const IconComp = cfg.icon;
+                  const recLabel = exp.referencia !== 'N/A' && exp.referencia.trim() ? exp.referencia : String(exp.id);
 
                   return (
                     <tr key={exp.id} className="hover:bg-slate-800/40 transition-colors">
@@ -829,8 +1141,11 @@ export const AdministrativeExpensesTab: React.FC = () => {
                           <span className="text-slate-500 italic">No especificado</span>
                         )}
                       </td>
-                      <td className="py-3 px-4 font-mono text-[11px] text-slate-400">
-                        {exp.referencia !== 'N/A' ? exp.referencia : '—'}
+                      <td className="py-3 px-4 whitespace-nowrap">
+                        <span className="inline-flex items-center gap-1 font-bold font-mono text-sky-400 bg-sky-500/10 border border-sky-500/20 px-2.5 py-0.5 rounded-lg text-[11px]">
+                          <Hash className="w-3 h-3 text-sky-400" />
+                          <span>{recLabel}</span>
+                        </span>
                       </td>
                       <td className="py-3 px-4 text-center font-black">
                         <span className={`px-2 py-0.5 rounded text-[10px] ${
@@ -845,13 +1160,24 @@ export const AdministrativeExpensesTab: React.FC = () => {
                         {formatCurrency(exp.monto, exp.moneda)}
                       </td>
                       <td className="py-3 px-4 text-center whitespace-nowrap">
-                        <button
-                          onClick={() => setDeleteTarget(exp)}
-                          className="p-1.5 rounded-lg text-slate-400 hover:text-rose-400 hover:bg-rose-500/10 transition-colors cursor-pointer"
-                          title="Eliminar gasto administrativo"
-                        >
-                          <Trash2 className="w-4 h-4" />
-                        </button>
+                        <div className="flex items-center justify-center gap-1">
+                          <button
+                            onClick={() => setReceiptModalExpense(exp)}
+                            className="px-2 py-1 rounded-lg text-slate-300 hover:text-sky-400 hover:bg-sky-500/10 transition-colors cursor-pointer flex items-center gap-1 border border-slate-700/60"
+                            title="Ver e Imprimir Recibo Continuo / Comprobante de Egreso"
+                          >
+                            <Receipt className="w-3.5 h-3.5 text-sky-400" />
+                            <span className="text-[10px] font-bold text-sky-400">Recibo</span>
+                          </button>
+
+                          <button
+                            onClick={() => setDeleteTarget(exp)}
+                            className="p-1.5 rounded-lg text-slate-400 hover:text-rose-400 hover:bg-rose-500/10 transition-colors cursor-pointer"
+                            title="Eliminar gasto administrativo"
+                          >
+                            <Trash2 className="w-4 h-4" />
+                          </button>
+                        </div>
                       </td>
                     </tr>
                   );
@@ -862,7 +1188,146 @@ export const AdministrativeExpensesTab: React.FC = () => {
         </div>
       </div>
 
-      {/* Delete Confirmation Modal */}
+      {/* 6. Receipt Modal: Continuous Voucher (Ticket 80mm / Media Carta / WhatsApp) */}
+      {receiptModalExpense && (
+        <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4 overflow-y-auto">
+          <div className="bg-[#0D1B22] border border-slate-800 rounded-3xl p-6 max-w-md w-full space-y-4 shadow-2xl animate-fade-in my-8">
+            <div className="flex items-center justify-between pb-3 border-b border-slate-800">
+              <h4 className="text-sm font-extrabold text-white flex items-center gap-2">
+                <Receipt className="w-4 h-4 text-sky-400" />
+                <span>Recibo Continuo de Egreso</span>
+                <span className="px-2 py-0.5 rounded-full text-[10px] font-mono font-black bg-sky-500/20 text-sky-300 border border-sky-500/30">
+                  #{receiptModalExpense.referencia !== 'N/A' && receiptModalExpense.referencia.trim() ? receiptModalExpense.referencia : receiptModalExpense.id}
+                </span>
+              </h4>
+              <button
+                onClick={() => setReceiptModalExpense(null)}
+                className="p-1 rounded-lg text-slate-400 hover:text-white cursor-pointer"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            {/* Thermal Ticket 80mm preview (Impresión Continua) */}
+            <div
+              id="thermal-printable-area"
+              className="bg-white text-slate-900 rounded-2xl p-5 shadow-2xl font-mono text-xs space-y-3 border border-slate-200"
+            >
+              <div className="text-center border-b border-dashed border-slate-400 pb-3">
+                <div className="text-[11px] font-black tracking-wider text-slate-900 uppercase">
+                  {(profile?.nombre_banca || profile?.banca || 'CORPORACION CALENDARIO, CA').toUpperCase()}
+                </div>
+                <div className="text-[9px] font-bold text-slate-600 uppercase tracking-widest mt-0.5">
+                  MULTIBANCA EXPRESS CMS • CASA MATRIZ
+                </div>
+                <div className="inline-block mt-2 px-3 py-1 bg-slate-900 text-white rounded font-black text-xs tracking-wider">
+                  RECIBO CONTINUO DE EGRESO #{receiptModalExpense.referencia !== 'N/A' && receiptModalExpense.referencia.trim() ? receiptModalExpense.referencia : receiptModalExpense.id}
+                </div>
+              </div>
+
+              <div className="space-y-1.5 text-[11px] pt-1">
+                <div className="flex justify-between">
+                  <span className="text-slate-500 font-bold">FECHA:</span>
+                  <span className="font-bold">{formatDate(receiptModalExpense.fecha)}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-slate-500 font-bold">CICLO OPERATIVO:</span>
+                  <span>Semana {systemCycle.semana || 'Actual'}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-slate-500 font-bold">CATEGORÍA:</span>
+                  <span className="font-bold">{CATEGORIAS_CONFIG[receiptModalExpense.categoria]?.label || receiptModalExpense.categoria}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-slate-500 font-bold">BENEFICIARIO:</span>
+                  <span className="font-bold">{receiptModalExpense.beneficiario !== 'N/A' ? receiptModalExpense.beneficiario : 'NO ESPECIFICADO'}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-slate-500 font-bold">NRO. CORRELATIVO:</span>
+                  <span className="font-bold font-mono text-indigo-700">
+                    #{receiptModalExpense.referencia !== 'N/A' && receiptModalExpense.referencia.trim() ? receiptModalExpense.referencia : receiptModalExpense.id}
+                  </span>
+                </div>
+              </div>
+
+              <div className="border-t border-dashed border-slate-300 pt-2 text-[10.5px]">
+                <span className="text-slate-500 font-bold block mb-1">CONCEPTO / MOTIVO:</span>
+                <p className="text-slate-800 bg-slate-100 p-2.5 rounded-lg border border-slate-200 font-sans font-medium leading-relaxed">
+                  {receiptModalExpense.concepto}
+                </p>
+              </div>
+
+              <div className="border-2 border-slate-900 py-3 px-3 text-center bg-slate-50 rounded-xl space-y-1">
+                <div className="text-[9px] font-black uppercase text-slate-500 tracking-wider">MONTO TOTAL CANCELADO</div>
+                <div className="text-xl font-black text-slate-900 font-mono">
+                  {formatCurrency(receiptModalExpense.monto, receiptModalExpense.moneda)}
+                </div>
+                <div className="text-[8.5px] font-bold text-slate-600 italic">
+                  {montoEnLetras(receiptModalExpense.monto, receiptModalExpense.moneda)}
+                </div>
+              </div>
+
+              <div className="border-t border-dashed border-slate-400 pt-6 grid grid-cols-2 gap-3 text-center text-[8.5px] text-slate-600">
+                <div>
+                  <div className="border-t border-slate-900 pt-1 font-bold text-slate-900">
+                    ENTREGADO POR (CAJA)
+                  </div>
+                  <div className="text-[7.5px] text-slate-500">
+                    {receiptModalExpense.confirmado_por || user?.nombre || 'Administración'}
+                  </div>
+                </div>
+                <div>
+                  <div className="border-t border-slate-900 pt-1 font-bold text-slate-900">
+                    RECIBÍ CONFORME
+                  </div>
+                  <div className="text-[7.5px] text-slate-500">
+                    {receiptModalExpense.beneficiario !== 'N/A' ? receiptModalExpense.beneficiario : 'Beneficiario'}
+                  </div>
+                  <div className="text-[7px] text-slate-400 mt-0.5">C.I. / Huella Dactilar</div>
+                </div>
+              </div>
+
+              <div className="text-center text-[7.5px] text-slate-400 pt-1 border-t border-dashed border-slate-300">
+                COMPROBANTE INMUTABLE • MULTIBANCA EXPRESS CMS
+              </div>
+            </div>
+
+            {/* Print and WhatsApp Buttons */}
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 pt-2">
+              <button
+                onClick={() => handlePrintSingleReceipt(receiptModalExpense)}
+                className="py-2.5 px-3 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-100 text-xs font-bold flex items-center justify-center gap-1.5 transition-all border border-slate-700 cursor-pointer shadow-md"
+                title="Imprimir ticket térmico en formato continuo (80mm)"
+              >
+                <Printer className="w-3.5 h-3.5 text-sky-400" />
+                <span>Ticket 80mm</span>
+              </button>
+
+              <button
+                onClick={() => handlePrintLetterVoucher(receiptModalExpense)}
+                className="py-2.5 px-3 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-bold flex items-center justify-center gap-1.5 transition-all shadow-md shadow-indigo-600/20 cursor-pointer"
+                title="Imprimir comprobante en formato carta con original y copia para archivar"
+              >
+                <FileText className="w-3.5 h-3.5 text-indigo-200" />
+                <span>Comprobante PDF</span>
+              </button>
+
+              <a
+                href={getWhatsAppExpenseUrl(receiptModalExpense)}
+                target="_blank"
+                rel="noreferrer"
+                className="py-2.5 px-3 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold flex items-center justify-center gap-1.5 transition-all shadow-md shadow-emerald-600/20 cursor-pointer"
+                title="Enviar comprobante de recibo por WhatsApp"
+              >
+                <Share2 className="w-3.5 h-3.5 text-emerald-200" />
+                <span>WhatsApp</span>
+              </a>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* 7. Delete Confirmation Modal */}
       {deleteTarget && (
         <div className="fixed inset-0 bg-black/70 backdrop-blur-xs flex items-center justify-center p-4 z-50">
           <div className="bg-[#0D1B22] border border-slate-800 rounded-3xl p-6 max-w-md w-full space-y-4 shadow-2xl">
@@ -886,6 +1351,7 @@ export const AdministrativeExpensesTab: React.FC = () => {
             <div className="p-3.5 rounded-2xl bg-[#071217] border border-slate-800 text-xs font-mono space-y-1">
               <div><strong className="text-slate-400">Categoría:</strong> {CATEGORIAS_CONFIG[deleteTarget.categoria]?.label || deleteTarget.categoria}</div>
               <div><strong className="text-slate-400">Concepto:</strong> {deleteTarget.concepto}</div>
+              <div><strong className="text-slate-400">Recibo:</strong> #{deleteTarget.referencia}</div>
               <div><strong className="text-slate-400">Monto:</strong> <span className="text-white font-bold">{formatCurrency(deleteTarget.monto, deleteTarget.moneda)}</span></div>
               <div><strong className="text-slate-400">Fecha:</strong> {deleteTarget.fecha}</div>
             </div>
