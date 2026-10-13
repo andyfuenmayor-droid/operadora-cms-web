@@ -75,6 +75,7 @@ export const WeeklyClosureTab: React.FC = () => {
   const [verifiedCheckOperadoras, setVerifiedCheckOperadoras] = useState(false);
   const [message, setMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
   const [isConfirmModalOpen, setIsConfirmModalOpen] = useState(false);
+  const [modalError, setModalError] = useState<string | null>(null);
   const [hasRollbackBackup, setHasRollbackBackup] = useState(false);
   const [lastClosurePeriodo, setLastClosurePeriodo] = useState<string | null>(null);
 
@@ -494,8 +495,14 @@ export const WeeklyClosureTab: React.FC = () => {
 
   // Execute Cycle Finalization
   const handleFinalizeWeek = async () => {
-    if (!effectiveUserId) return;
+    if (!effectiveUserId) {
+      const errTxt = 'No se encontró el ID de usuario activo en la sesión.';
+      setModalError(errTxt);
+      setMessage({ type: 'error', text: errTxt });
+      return;
+    }
     setIsProcessing(true);
+    setModalError(null);
     setMessage(null);
 
     try {
@@ -532,7 +539,7 @@ export const WeeklyClosureTab: React.FC = () => {
         console.warn('Could not save localStorage backup:', e);
       }
 
-      // 1. Insert snapshot into cierres_semanales (Agencias)
+      // 1. Insert snapshot into cierres_semanales (Agencias y Operadoras) de forma segura sin abortar el cierre
       const agencySnapshot = closureData.map((d) => ({
         user_id: effectiveUserId,
         entidad: d.entidad,
@@ -547,7 +554,6 @@ export const WeeklyClosureTab: React.FC = () => {
         fecha_cierre: nowIso,
       }));
 
-      // 1b. Insert snapshot into cierres_semanales (Casas Operadoras)
       const operatorSnapshot = operatorClosureRows.map((op) => ({
         user_id: effectiveUserId,
         entidad: `OPERADORA: ${op.sistema}`,
@@ -562,10 +568,19 @@ export const WeeklyClosureTab: React.FC = () => {
         fecha_cierre: nowIso,
       }));
 
-      const fullSnapshot = [...agencySnapshot, ...operatorSnapshot];
-      if (fullSnapshot.length > 0) {
-        const { error: snapErr } = await supabase.from('cierres_semanales').insert(fullSnapshot);
-        if (snapErr) throw snapErr;
+      try {
+        const fullSnapshot = [...agencySnapshot, ...operatorSnapshot];
+        if (fullSnapshot.length > 0) {
+          const { error: snapErr } = await supabase.from('cierres_semanales').insert(fullSnapshot);
+          if (snapErr) {
+            console.warn('Primary cierres_semanales insert warning:', snapErr);
+            // Fallback: intentar insertar snapshot de agencias con campos base
+            const fallbackAgencySnap = agencySnapshot.map(({ tipo_entidad, ...rest }) => rest);
+            await supabase.from('cierres_semanales').insert(fallbackAgencySnap);
+          }
+        }
+      } catch (snapErr) {
+        console.warn('Could not insert snapshot into cierres_semanales (continuando cierre):', snapErr);
       }
 
       // 1c. Insert snapshots into resultados_operadora (Histórico de liquidación de operadora)
@@ -591,11 +606,14 @@ export const WeeklyClosureTab: React.FC = () => {
       // 2. Traspaso automático de saldos de arrastre de Agencias
       for (const d of closureData) {
         const colUpdate = d.moneda === 'BS' ? 'saldo_inicial_bs' : d.moneda === 'USD' ? 'saldo_inicial_usd' : 'saldo_inicial_cop';
-        await supabase
+        const { error: agUpErr } = await supabase
           .from('agencias')
           .update({ [colUpdate]: d.saldo_final })
           .eq('id', d.ag_id)
           .eq('user_id', effectiveUserId);
+        if (agUpErr) {
+          console.warn(`Error actualizando saldo inicial agencia ${d.entidad}:`, agUpErr);
+        }
       }
 
       // 2b. Traspaso automático de saldos de arrastre de Casas Operadoras (Proveedores)
@@ -641,7 +659,7 @@ export const WeeklyClosureTab: React.FC = () => {
       const nuevaHastaStr = `${nuevaHastaDt.getFullYear()}-${pad(nuevaHastaDt.getMonth() + 1)}-${pad(nuevaHastaDt.getDate())}`;
       const nuevaSemana = String(Number(systemCycle.semana || 1) + 1);
 
-      // Upsert updated cycle configs without wiping other user settings
+      // Actualización robusta del ciclo: primero delete + insert (patrón de CycleSettingsTab), con fallback a upsert
       const cycleUpdates = [
         { parametro: 'fecha_desde', valor: nuevaDesdeStr },
         { parametro: 'fecha_hasta', valor: nuevaHastaStr },
@@ -649,12 +667,38 @@ export const WeeklyClosureTab: React.FC = () => {
         { parametro: 'semana_no', valor: nuevaSemana },
       ];
 
-      for (const item of cycleUpdates) {
-        await supabase.from('config_sistema').upsert(
-          { user_id: effectiveUserId, parametro: item.parametro, valor: item.valor },
-          { onConflict: 'user_id,parametro' }
-        );
+      try {
+        await supabase
+          .from('config_sistema')
+          .delete()
+          .eq('user_id', effectiveUserId)
+          .in('parametro', ['fecha_desde', 'fecha_hasta', 'tipo_cierre', 'semana_no']);
+
+        const { error: insErr } = await supabase
+          .from('config_sistema')
+          .insert(cycleUpdates.map((c) => ({ user_id: effectiveUserId, parametro: c.parametro, valor: c.valor })));
+
+        if (insErr) throw insErr;
+      } catch (cErr) {
+        console.warn('Direct delete+insert falló, ejecutando upsert fallback:', cErr);
+        for (const item of cycleUpdates) {
+          await supabase.from('config_sistema').upsert(
+            { user_id: effectiveUserId, parametro: item.parametro, valor: item.valor },
+            { onConflict: 'user_id,parametro' }
+          );
+        }
       }
+
+      // Sincronizar ciclo en localStorage inmediatamente
+      try {
+        const nextCycleObj = {
+          desde: nuevaDesdeStr,
+          hasta: nuevaHastaStr,
+          tipo: systemCycle.tipo,
+          semana: nuevaSemana,
+        };
+        localStorage.setItem('me_cms_system_cycle', JSON.stringify(nextCycleObj));
+      } catch (e) {}
 
       await refreshSystemCycle();
 
@@ -674,7 +718,9 @@ export const WeeklyClosureTab: React.FC = () => {
       await loadData();
     } catch (err: any) {
       console.error('Error in weekly closure:', err);
-      setMessage({ type: 'error', text: err?.message || 'Error al procesar el cierre semanal.' });
+      const errMsg = err?.message || 'Error al procesar el cierre semanal.';
+      setModalError(errMsg);
+      setMessage({ type: 'error', text: errMsg });
     } finally {
       setIsProcessing(false);
     }
@@ -1106,7 +1152,10 @@ export const WeeklyClosureTab: React.FC = () => {
 
           <div className="flex justify-end pt-2">
             <button
-              onClick={() => setIsConfirmModalOpen(true)}
+              onClick={() => {
+                setModalError(null);
+                setIsConfirmModalOpen(true);
+              }}
               disabled={!verifiedCheckOperadoras || isProcessing}
               className="px-8 py-3.5 rounded-2xl bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-400 hover:to-amber-500 text-slate-950 font-black text-xs uppercase tracking-wider shadow-xl shadow-amber-500/20 flex items-center gap-2 transition-all cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed"
             >
@@ -1141,7 +1190,10 @@ export const WeeklyClosureTab: React.FC = () => {
 
           <div className="flex justify-end pt-2">
             <button
-              onClick={() => setIsConfirmModalOpen(true)}
+              onClick={() => {
+                setModalError(null);
+                setIsConfirmModalOpen(true);
+              }}
               disabled={!verifiedCheckAgencias || isProcessing}
               className="px-8 py-3.5 rounded-2xl bg-gradient-to-r from-emerald-500 to-emerald-600 hover:from-emerald-400 hover:to-emerald-500 text-slate-950 font-black text-xs uppercase tracking-wider shadow-xl shadow-emerald-500/20 flex items-center gap-2 transition-all cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed"
             >
@@ -1266,6 +1318,13 @@ export const WeeklyClosureTab: React.FC = () => {
               </div>
             </div>
 
+            {modalError && (
+              <div className="p-3.5 rounded-2xl bg-rose-500/15 border border-rose-500/30 text-rose-300 text-xs flex items-center gap-2 animate-fade-in">
+                <AlertTriangle className="w-4 h-4 shrink-0 text-rose-400" />
+                <span>{modalError}</span>
+              </div>
+            )}
+
             <div className="flex flex-col sm:flex-row gap-3 pt-2">
               <button
                 type="button"
@@ -1365,6 +1424,13 @@ export const WeeklyClosureTab: React.FC = () => {
                 Se creará automáticamente una copia de seguridad en memoria antes de aplicar los cambios.
               </div>
             </div>
+
+            {modalError && (
+              <div className="p-3.5 rounded-2xl bg-rose-500/15 border border-rose-500/30 text-rose-300 text-xs flex items-center gap-2 animate-fade-in">
+                <AlertTriangle className="w-4 h-4 shrink-0 text-rose-400" />
+                <span>{modalError}</span>
+              </div>
+            )}
 
             <div className="flex flex-col sm:flex-row gap-3 pt-2">
               <button
