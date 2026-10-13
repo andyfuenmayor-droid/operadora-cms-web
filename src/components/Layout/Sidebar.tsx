@@ -30,6 +30,7 @@ import {
   Building2,
   Crown,
   Mail,
+  ShieldCheck,
 } from 'lucide-react';
 
 interface SidebarProps {
@@ -62,6 +63,7 @@ const moduleIconMap: Record<ModuleId, React.ComponentType<{ className?: string }
   'Config. Proveedores': SlidersHorizontal,
   'Gastos Administrativos': Calculator,
   'Cierre ': Lock,
+  Auditoría: ShieldCheck,
   Ajustes: Settings,
   Usuarios: Users,
 };

@@ -23,6 +23,7 @@ import { WeeklyClosureTab } from './components/Finance/WeeklyClosureTab';
 import { OperatorsTab } from './components/Administration/OperatorsTab';
 import { CycleSettingsTab } from './components/Settings/CycleSettingsTab';
 import { UsersTab } from './components/Administration/UsersTab';
+import { AuditLogTab } from './components/Audit/AuditLogTab';
 
 const AppContent: React.FC = () => {
   const { isAuthenticated, isLoading, allowedModules } = useAuth();
@@ -101,6 +102,9 @@ const AppContent: React.FC = () => {
 
       case 'Cierre ':
         return <WeeklyClosureTab />;
+
+      case 'Auditoría':
+        return <AuditLogTab />;
 
       case 'Venta Operadora':
         return <OperatorsTab initialSubTab="venta" />;

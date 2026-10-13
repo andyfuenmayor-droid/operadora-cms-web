@@ -224,5 +224,6 @@ export type ModuleId =
   | 'Config. Proveedores'
   | 'Gastos Administrativos'
   | 'Cierre '
+  | 'Auditoría'
   | 'Ajustes'
   | 'Usuarios';

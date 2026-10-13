@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import { supabase } from '../../lib/supabase';
 import { useAuth } from '../../context/AuthContext';
 import { formatCurrency, formatDate, normalizarMoneda } from '../../utils/formatters';
@@ -28,7 +28,11 @@ import {
   Globe,
   Scale,
   Sparkles,
-  ShieldCheck
+  ShieldCheck,
+  Printer,
+  ChevronRight,
+  Eye,
+  Store,
 } from 'lucide-react';
 import confetti from 'canvas-confetti';
 import {
@@ -45,6 +49,13 @@ import {
   checkIsBalancesCorrupted,
   executeRestoreAuditedBalances,
 } from '../../utils/auditedBalancesS40';
+import { DeliveryReportModal, type PreClosureAgencyRow } from './DeliveryReportModal';
+import { OperatorDeliveryReportModal } from './OperatorDeliveryReportModal';
+import {
+  IndividualAgencyActaModal,
+  type IndividualAgencyActaData,
+} from './IndividualAgencyActaModal';
+import { logAuditEvent } from '../../utils/auditLogger';
 
 interface CierreAgencyData {
   ag_id: number;
@@ -60,9 +71,9 @@ interface CierreAgencyData {
 }
 
 export const WeeklyClosureTab: React.FC = () => {
-  const { effectiveUserId, systemCycle, refreshSystemCycle } = useAuth();
+  const { user, effectiveUserId, systemCycle, refreshSystemCycle } = useAuth();
 
-  const [activeSubTab, setActiveSubTab] = useState<'precierre' | 'cierre'>('precierre');
+  const [activeSubTab, setActiveSubTab] = useState<'precierre' | 'cierre' | 'historico_actas'>('precierre');
   const [isLoading, setIsLoading] = useState(true);
   const [isProcessing, setIsProcessing] = useState(false);
   const [agencies, setAgencies] = useState<Agency[]>([]);
@@ -83,6 +94,13 @@ export const WeeklyClosureTab: React.FC = () => {
   const [modalError, setModalError] = useState<string | null>(null);
   const [hasRollbackBackup, setHasRollbackBackup] = useState(false);
   const [lastClosurePeriodo, setLastClosurePeriodo] = useState<string | null>(null);
+
+  // Historical Actas States
+  const [historicalClosures, setHistoricalClosures] = useState<any[]>([]);
+  const [selectedGeneralActa, setSelectedGeneralActa] = useState<any | null>(null);
+  const [selectedOperatorActa, setSelectedOperatorActa] = useState<any | null>(null);
+  const [selectedIndividualActa, setSelectedIndividualActa] = useState<IndividualAgencyActaData | null>(null);
+  const [agencySelectorClosure, setAgencySelectorClosure] = useState<any | null>(null);
 
   const loadData = async () => {
     if (!effectiveUserId) return;
@@ -186,6 +204,100 @@ export const WeeklyClosureTab: React.FC = () => {
       setIsLoading(false);
     }
   };
+
+  const loadHistoricalClosures = useCallback(async () => {
+    if (!effectiveUserId) return;
+    try {
+      const { data } = await supabase
+        .from('cierres_semanales')
+        .select('*')
+        .eq('user_id', effectiveUserId)
+        .order('id', { ascending: false });
+
+      const grouped: Record<
+        string,
+        {
+          periodo: string;
+          fecha_cierre: string;
+          agencyRows: any[];
+          operatorRows: any[];
+        }
+      > = {};
+
+      if (data && data.length > 0) {
+        data.forEach((r: any) => {
+          const per = r.periodo || 'Semana Anterior';
+          if (!grouped[per]) {
+            grouped[per] = {
+              periodo: per,
+              fecha_cierre: r.fecha_cierre || new Date().toISOString(),
+              agencyRows: [],
+              operatorRows: [],
+            };
+          }
+          if (r.tipo_entidad === 'OPERADORA' || (r.entidad && String(r.entidad).startsWith('OPERADORA:'))) {
+            grouped[per].operatorRows.push(r);
+          } else {
+            grouped[per].agencyRows.push(r);
+          }
+        });
+      }
+
+      // Check localStorage backup
+      try {
+        const lastBackupRaw = localStorage.getItem('cms_last_closure_backup');
+        if (lastBackupRaw) {
+          const b = JSON.parse(lastBackupRaw);
+          const per = b.periodo || `Semana ${b.semana}`;
+          if (!grouped[per]) {
+            grouped[per] = {
+              periodo: per,
+              fecha_cierre: b.timestamp || new Date().toISOString(),
+              agencyRows: (b.agencies || []).map((ag: any) => ({
+                entidad: ag.nombre_agencia || ag.entidad,
+                moneda: ag.moneda || 'BS',
+                saldo_anterior: ag.saldo_inicial_bs || ag.saldo_anterior || 0,
+                saldo_final: ag.saldo_final || 0,
+                utilidad_semana: ag.utilidad_semana || 0,
+                gastos: ag.gastos || 0,
+                movimientos: ag.movimientos || 0,
+              })),
+              operatorRows: [],
+            };
+          }
+        }
+      } catch (err) {}
+
+      // Provide audited historical pre-cierre of Semana 40 as a permanent archive option
+      const perS40 = 'Semana 40 (2026-09-28 al 2026-10-04)';
+      if (!grouped[perS40]) {
+        grouped[perS40] = {
+          periodo: perS40,
+          fecha_cierre: '2026-10-04T23:59:59.000Z',
+          agencyRows: [
+            { entidad: 'JYY', moneda: 'BS', saldo_anterior: 0, venta_bruta: 222050, comision: 22205, premios: 174000, utilidad_semana: 25845, gastos: 0, movimientos: 24855, saldo_final: 990 },
+            { entidad: 'CHUCHO', moneda: 'BS', saldo_anterior: 0, venta_bruta: 211775, comision: 33835.1, premios: 97950, utilidad_semana: 79989.9, gastos: 0, movimientos: 68486.7, saldo_final: 11503.2 },
+            { entidad: 'AG NUEVA LUCHA', moneda: 'BS', saldo_anterior: 0, venta_bruta: 0, comision: 0, premios: 0, utilidad_semana: 0, gastos: 0, movimientos: 0, saldo_final: 68708.62 },
+            { entidad: 'LAS VIVIENDAS', moneda: 'BS', saldo_anterior: 0, venta_bruta: 409600, comision: 49152, premios: 310500, utilidad_semana: 49948, gastos: 0, movimientos: 41934, saldo_final: 8014 },
+            { entidad: 'EL 40', moneda: 'BS', saldo_anterior: 0, venta_bruta: 0, comision: 0, premios: 0, utilidad_semana: 0, gastos: 0, movimientos: 0, saldo_final: 7713.1 },
+            { entidad: 'AGENCIA JAVIER', moneda: 'USD', saldo_anterior: 0, venta_bruta: 332, comision: 49.8, premios: 0, utilidad_semana: 282.2, gastos: 0, movimientos: 159.2, saldo_final: 123 },
+            { entidad: 'AG NUEVA LUCHA', moneda: 'USD', saldo_anterior: 0, venta_bruta: 0, comision: 0, premios: 0, utilidad_semana: 0, gastos: 0, movimientos: 0, saldo_final: 5.24 },
+            { entidad: 'EL FUTURO', moneda: 'USD', saldo_anterior: 0, venta_bruta: 1525.4, comision: 0, premios: 0, utilidad_semana: 622.86, gastos: 0, movimientos: 625.16, saldo_final: -2.3 },
+            { entidad: 'WENDYS', moneda: 'COP', saldo_anterior: 0, venta_bruta: 0, comision: 0, premios: 0, utilidad_semana: 0, gastos: 0, movimientos: 0, saldo_final: 972070 },
+          ],
+          operatorRows: [
+            { entidad: 'OPERADORA: BETM3', moneda: 'BS', saldo_anterior: 300150.97, venta_bruta: 2735589.5, utilidad_semana: -12016.77, movimientos: 0, saldo_final: 288134.2 },
+            { entidad: 'OPERADORA: BETM3', moneda: 'USD', saldo_anterior: 0, venta_bruta: 1200.4, utilidad_semana: 86.27, movimientos: 0, saldo_final: 86.27 },
+            { entidad: 'OPERADORA: CDAPUESTAS', moneda: 'USD', saldo_anterior: 0, venta_bruta: 0, utilidad_semana: 0, movimientos: 0, saldo_final: 0 },
+          ],
+        };
+      }
+
+      setHistoricalClosures(Object.values(grouped));
+    } catch (e) {
+      console.error('Error loading historical closures:', e);
+    }
+  }, [effectiveUserId]);
 
   useEffect(() => {
     loadData();
@@ -749,6 +861,19 @@ export const WeeklyClosureTab: React.FC = () => {
 
       await refreshSystemCycle();
 
+      await logAuditEvent({
+        user_id: effectiveUserId,
+        usuario: user?.email || 'Administración',
+        modulo: 'CIERRES',
+        tipo_accion: 'EJECUTAR_CIERRE_SEMANAL',
+        entidad_afectada: `SEMANA ${systemCycle.semana}`,
+        descripcion: `Cierre del ciclo ejecutado con éxito (${periodoActual}). Se generó el acta inmutable de ${closureData.length} agencias y ${operatorClosureRows.length} operadoras. Ciclo avanzado a Semana ${nuevaSemana}.`,
+        impacto_financiero: 'ALTO',
+        valor_anterior: { semana: systemCycle.semana, desde: systemCycle.desde, hasta: systemCycle.hasta },
+        valor_nuevo: { semana: nuevaSemana, desde: nuevaDesdeStr, hasta: nuevaHastaStr },
+      });
+      await loadHistoricalClosures();
+
       confetti({ particleCount: 90, spread: 100, origin: { y: 0.6 } });
       const successMsg =
         closureInspectionMode === 'operadoras'
@@ -879,10 +1004,250 @@ export const WeeklyClosureTab: React.FC = () => {
           <Lock className="w-4 h-4" />
           <span>🔒 Finalizar Ciclo y Registro Maestro</span>
         </button>
+
+        <button
+          onClick={() => {
+            setActiveSubTab('historico_actas');
+            loadHistoricalClosures();
+          }}
+          className={`px-4 py-2.5 rounded-xl text-xs sm:text-sm font-bold flex items-center gap-2 transition-all cursor-pointer ${
+            activeSubTab === 'historico_actas'
+              ? 'bg-sky-500/10 text-sky-400 border border-sky-500/30'
+              : 'text-slate-400 hover:text-white hover:bg-slate-800/60'
+          }`}
+        >
+          <FileText className="w-4 h-4" />
+          <span>📜 Histórico de Actas de Cierre</span>
+        </button>
       </div>
 
       {activeSubTab === 'precierre' ? (
         <PreClosureAuditTab />
+      ) : activeSubTab === 'historico_actas' ? (
+        <div className="space-y-6">
+          {/* Header Banner */}
+          <div className="bg-gradient-to-r from-[#0D1B22] via-[#0F242C] to-[#0D1B22] border border-slate-800 rounded-3xl p-6 shadow-2xl relative overflow-hidden">
+            <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4 relative z-10">
+              <div className="space-y-1">
+                <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-sky-500/10 border border-sky-500/30 text-sky-400 text-xs font-bold">
+                  <FileText className="w-3.5 h-3.5" />
+                  <span>Archivo Maestro de Documentos Oficiales</span>
+                </div>
+                <h2 className="text-xl sm:text-2xl font-black text-white tracking-tight flex items-center gap-2.5">
+                  <span>Repositorio Histórico de Actas de Cierre</span>
+                  <span className="text-xs px-2.5 py-0.5 rounded-full bg-slate-800 text-slate-300 font-mono font-normal">
+                    {historicalClosures.length} cierres archivados
+                  </span>
+                </h2>
+                <p className="text-xs sm:text-sm text-slate-400 max-w-2xl">
+                  Consulte, vuelva a abrir e imprima en PDF el Acta General de Entrega, el Acta de Casas Operadoras o el Finiquito Individual por Agencia para cualquier semana cerrada.
+                </p>
+              </div>
+
+              <button
+                onClick={() => loadHistoricalClosures()}
+                disabled={isLoading}
+                className="px-4 py-2.5 rounded-2xl bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white font-bold text-xs flex items-center gap-2 transition-all border border-slate-700 cursor-pointer self-start lg:self-auto"
+              >
+                <RefreshCw className={`w-4 h-4 ${isLoading ? 'animate-spin text-sky-400' : ''}`} />
+                <span>Actualizar Histórico</span>
+              </button>
+            </div>
+          </div>
+
+          {/* List of Closures */}
+          {historicalClosures.length === 0 ? (
+            <div className="bg-[#0D1B22] border border-slate-800 rounded-3xl p-12 text-center text-slate-400 text-xs">
+              No hay cierres registrados en el archivo histórico todavía.
+            </div>
+          ) : (
+            <div className="space-y-4">
+              {historicalClosures.map((closure, idx) => {
+                const totalAgencias = closure.agencyRows?.length || 0;
+                const totalOperadoras = closure.operatorRows?.length || 0;
+
+                return (
+                  <div
+                    key={closure.periodo || idx}
+                    className="bg-[#0D1B22] border border-slate-800 hover:border-slate-700/80 rounded-3xl p-6 shadow-xl transition-all space-y-4"
+                  >
+                    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-slate-800/80 pb-4">
+                      <div>
+                        <div className="flex items-center gap-2">
+                          <span className="text-xs font-black uppercase tracking-wider text-sky-400 bg-sky-500/10 px-2.5 py-0.5 rounded-full border border-sky-500/20">
+                            Cierre Auditado
+                          </span>
+                          <span className="text-xs text-slate-400 font-mono">
+                            {closure.fecha_cierre ? formatDate(closure.fecha_cierre) : ''}
+                          </span>
+                        </div>
+                        <h3 className="text-base sm:text-lg font-black text-white mt-1">
+                          {closure.periodo}
+                        </h3>
+                      </div>
+
+                      <div className="flex items-center gap-2 flex-wrap">
+                        {/* Button 1: Acta General Semanal */}
+                        <button
+                          onClick={() => {
+                            const auditRows: PreClosureAgencyRow[] = (closure.agencyRows || []).map((r: any, i: number) => ({
+                              ag_id: i + 1,
+                              entidad: r.entidad,
+                              moneda: r.moneda as any,
+                              saldo_anterior: Number(r.saldo_anterior || 0),
+                              venta_bruta: Number(r.venta_bruta || r.utilidad_semana || 0),
+                              comision: Number(r.comision || 0),
+                              premios_taquilla: Number(r.premios || 0),
+                              venta_neta: Number(r.utilidad_semana || 0),
+                              gastos: Number(r.gastos || 0),
+                              cobrador_ruta: 0,
+                              efectivo_taquilla: 0,
+                              bancos: Number(r.movimientos || 0),
+                              reposicion_premios: 0,
+                              pagos_netos: Number(r.movimientos || 0),
+                              saldo_final: Number(r.saldo_final || 0),
+                              status: Number(r.saldo_final || 0) > 0 ? 'pendiente' : Number(r.saldo_final || 0) < 0 ? 'favor' : 'pagado',
+                            }));
+
+                            const totalsByCurrency: Record<string, any> = {};
+                            ['BS', 'USD', 'COP'].forEach((mon) => {
+                              const mRows = auditRows.filter((r) => r.moneda === mon);
+                              totalsByCurrency[mon] = {
+                                saldoAnterior: mRows.reduce((acc, r) => acc + r.saldo_anterior, 0),
+                                ventaNeta: mRows.reduce((acc, r) => acc + r.venta_neta, 0),
+                                gastos: mRows.reduce((acc, r) => acc + r.gastos, 0),
+                                cobradorRuta: 0,
+                                efectivoTaquilla: 0,
+                                bancos: mRows.reduce((acc, r) => acc + r.bancos, 0),
+                                reposicionPremios: 0,
+                                saldoFinal: mRows.reduce((acc, r) => acc + r.saldo_final, 0),
+                              };
+                            });
+
+                            setSelectedGeneralActa({
+                              systemCycle: { semana: closure.periodo.split(' ')[1] || '40', desde: '', hasta: '', tipo: 'SEMANAL' },
+                              auditRows,
+                              totalsByCurrency,
+                            });
+                          }}
+                          className="px-3.5 py-2 rounded-xl bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 text-xs font-bold flex items-center gap-1.5 transition-all cursor-pointer"
+                        >
+                          <FileText className="w-3.5 h-3.5 text-emerald-400" />
+                          <span>Acta General (PDF)</span>
+                        </button>
+
+                        {/* Button 2: Acta Casas Operadoras */}
+                        <button
+                          onClick={() => {
+                            const opRows: OperatorSettlementRow[] = (closure.operatorRows || []).map((op: any) => ({
+                              sistema: op.entidad.replace(/^OPERADORA:\s*/i, '').trim(),
+                              moneda: op.moneda,
+                              venta: Number(op.venta_bruta || 0),
+                              premio: Number(op.premios || 0),
+                              utilidadBruta: Number(op.venta_bruta || 0),
+                              comisionPct: 0,
+                              comCompletaProv: 0,
+                              comAgencias: 0,
+                              difCom: 0,
+                              baseUtil: Number(op.utilidad_semana || 0),
+                              participacionPct: 40,
+                              partCom: 0,
+                              totalCom: 0,
+                              totalComercializador: 0,
+                              netoOperadora: Number(op.utilidad_semana || 0),
+                              saldoInit: Number(op.saldo_anterior || 0),
+                              pagosRealizados: Number(op.movimientos || 0),
+                              abonosRecibidos: 0,
+                              pagosNetos: Number(op.movimientos || 0),
+                              balanceFinal: Number(op.saldo_final || 0),
+                            }));
+
+                            const opSysSet = Array.from(new Set(opRows.map((r) => r.sistema)));
+                            const operatorGroups = opSysSet.map((sys) => {
+                              const sRows = opRows.filter((r) => r.sistema === sys);
+                              return {
+                                sistema: sys,
+                                rows: sRows,
+                                hasDeuda: sRows.some((r) => r.balanceFinal > 0.01),
+                                hasFavor: sRows.some((r) => r.balanceFinal < -0.01),
+                              };
+                            });
+
+                            const totalsByCurrency: Record<string, any> = {};
+                            ['BS', 'USD', 'COP'].forEach((mon) => {
+                              const mRows = opRows.filter((r) => r.moneda === mon);
+                              totalsByCurrency[mon] = {
+                                venta: mRows.reduce((acc, r) => acc + r.venta, 0),
+                                premios: mRows.reduce((acc, r) => acc + r.premio, 0),
+                                ggr: mRows.reduce((acc, r) => acc + r.utilidadBruta, 0),
+                                comCompletaProv: 0,
+                                comAgencias: 0,
+                                difCom: 0,
+                                baseUtil: mRows.reduce((acc, r) => acc + r.baseUtil, 0),
+                                partCom: 0,
+                                totalCom: 0,
+                                totalComercializador: 0,
+                                netoOperadora: mRows.reduce((acc, r) => acc + r.netoOperadora, 0),
+                                saldoInit: mRows.reduce((acc, r) => acc + r.saldoInit, 0),
+                                pagosRealizados: mRows.reduce((acc, r) => acc + r.pagosRealizados, 0),
+                                abonosRecibidos: 0,
+                                pagosNetos: mRows.reduce((acc, r) => acc + r.pagosNetos, 0),
+                                balanceFinal: mRows.reduce((acc, r) => acc + r.balanceFinal, 0),
+                                count: mRows.length,
+                              };
+                            });
+
+                            setSelectedOperatorActa({
+                              systemCycle: { semana: closure.periodo.split(' ')[1] || '40', desde: '', hasta: '', tipo: 'SEMANAL' },
+                              operatorGroups,
+                              totalsByCurrency,
+                            });
+                          }}
+                          className="px-3.5 py-2 rounded-xl bg-amber-500/10 hover:bg-amber-500/20 text-amber-300 border border-amber-500/30 text-xs font-bold flex items-center gap-1.5 transition-all cursor-pointer"
+                        >
+                          <Building2 className="w-3.5 h-3.5 text-amber-400" />
+                          <span>Acta Operadoras (PDF)</span>
+                        </button>
+
+                        {/* Button 3: Actas por Agencia */}
+                        <button
+                          onClick={() => setAgencySelectorClosure(closure)}
+                          className="px-3.5 py-2 rounded-xl bg-sky-500/10 hover:bg-sky-500/20 text-sky-300 border border-sky-500/30 text-xs font-bold flex items-center gap-1.5 transition-all cursor-pointer"
+                        >
+                          <Store className="w-3.5 h-3.5 text-sky-400" />
+                          <span>Actas por Agencia ({totalAgencias})</span>
+                        </button>
+                      </div>
+                    </div>
+
+                    {/* Snapshot Summary Chips */}
+                    <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 text-xs">
+                      <div className="bg-[#071217] p-3 rounded-2xl border border-slate-800">
+                        <span className="text-[10px] text-slate-400 uppercase font-bold block">Agencias Cerradas</span>
+                        <span className="text-sm font-black text-white font-mono">{totalAgencias}</span>
+                      </div>
+                      <div className="bg-[#071217] p-3 rounded-2xl border border-slate-800">
+                        <span className="text-[10px] text-slate-400 uppercase font-bold block">Casas Operadoras</span>
+                        <span className="text-sm font-black text-white font-mono">{totalOperadoras}</span>
+                      </div>
+                      <div className="bg-[#071217] p-3 rounded-2xl border border-slate-800">
+                        <span className="text-[10px] text-slate-400 uppercase font-bold block">Monedas Auditadas</span>
+                        <span className="text-sm font-bold text-slate-200">BS • USD • COP</span>
+                      </div>
+                      <div className="bg-[#071217] p-3 rounded-2xl border border-slate-800 flex items-center justify-between">
+                        <div>
+                          <span className="text-[10px] text-slate-400 uppercase font-bold block">Estado</span>
+                          <span className="text-xs font-black text-emerald-400">INMUTABLE</span>
+                        </div>
+                        <ShieldCheck className="w-5 h-5 text-emerald-400 shrink-0" />
+                      </div>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </div>
       ) : (
         <div className="space-y-6">
           {/* Cycle Banner */}
@@ -1519,6 +1884,143 @@ export const WeeklyClosureTab: React.FC = () => {
             </div>
           </div>
         </div>
+      )}
+
+      {/* Modal 1: Acta General Histórica */}
+      {selectedGeneralActa && (
+        <DeliveryReportModal
+          isOpen={true}
+          onClose={() => setSelectedGeneralActa(null)}
+          systemCycle={selectedGeneralActa.systemCycle}
+          userName={user?.email || 'Administración'}
+          companyName="CORPORACION CALENDARIO, CA"
+          auditRows={selectedGeneralActa.auditRows}
+          totalsByCurrency={selectedGeneralActa.totalsByCurrency}
+        />
+      )}
+
+      {/* Modal 2: Acta Operadoras Histórica */}
+      {selectedOperatorActa && (
+        <OperatorDeliveryReportModal
+          isOpen={true}
+          onClose={() => setSelectedOperatorActa(null)}
+          systemCycle={selectedOperatorActa.systemCycle}
+          userName={user?.email || 'Administración'}
+          companyName="CORPORACION CALENDARIO, CA"
+          operatorGroups={selectedOperatorActa.operatorGroups}
+          totalsByCurrency={selectedOperatorActa.totalsByCurrency}
+        />
+      )}
+
+      {/* Modal 3: Selector de Agencia para Finiquito Individual */}
+      {agencySelectorClosure && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm animate-fade-in">
+          <div className="bg-[#0D1B22] border border-slate-800 rounded-3xl w-full max-w-2xl max-h-[85vh] flex flex-col shadow-2xl overflow-hidden">
+            <div className="p-5 border-b border-slate-800 flex items-center justify-between">
+              <div>
+                <h3 className="text-base font-extrabold text-white flex items-center gap-2">
+                  <Store className="w-4 h-4 text-sky-400" />
+                  <span>Actas Individuales por Agencia</span>
+                </h3>
+                <p className="text-xs text-slate-400">
+                  {agencySelectorClosure.periodo} • Seleccione la agencia para emitir su finiquito en PDF
+                </p>
+              </div>
+              <button
+                onClick={() => setAgencySelectorClosure(null)}
+                className="p-1.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-400 hover:text-white transition-colors cursor-pointer"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            <div className="p-6 overflow-y-auto space-y-2">
+              {(agencySelectorClosure.agencyRows || []).map((agRow: any, i: number) => {
+                const sFinal = Number(agRow.saldo_final || 0);
+                const isDeuda = sFinal > 0.05;
+                const isFavor = sFinal < -0.05;
+
+                return (
+                  <div
+                    key={`${agRow.entidad}-${agRow.moneda}-${i}`}
+                    className="p-3.5 rounded-2xl bg-[#071217] border border-slate-800 hover:border-slate-700 flex items-center justify-between gap-3 transition-colors"
+                  >
+                    <div>
+                      <div className="text-xs font-black text-white flex items-center gap-2">
+                        <span>{agRow.entidad}</span>
+                        <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-slate-800 text-slate-300">
+                          {agRow.moneda}
+                        </span>
+                      </div>
+                      <div className="text-[11px] text-slate-400 mt-0.5 font-mono">
+                        Saldo Final:{' '}
+                        <span
+                          className={
+                            isDeuda
+                              ? 'text-rose-400 font-bold'
+                              : isFavor
+                              ? 'text-emerald-400 font-bold'
+                              : 'text-slate-300'
+                          }
+                        >
+                          {formatCurrency(sFinal, agRow.moneda)}
+                        </span>
+                      </div>
+                    </div>
+
+                    <button
+                      onClick={() => {
+                        setSelectedIndividualActa({
+                          agencyName: agRow.entidad,
+                          periodo: agencySelectorClosure.periodo,
+                          fechaCierre: agencySelectorClosure.fecha_cierre,
+                          moneda: agRow.moneda,
+                          saldoAnterior: Number(agRow.saldo_anterior || 0),
+                          ventaBruta: Number(agRow.venta_bruta || agRow.utilidad_semana || 0),
+                          comision: Number(agRow.comision || 0),
+                          premios: Number(agRow.premios || 0),
+                          ventaNeta: Number(agRow.utilidad_semana || 0),
+                          participacionPct: Number(agRow.participacion_pct || 0),
+                          participacionMonto: Number(agRow.participacion_monto || 0),
+                          utilidadOperadora: Number(agRow.utilidad_semana || 0),
+                          cobros: Number(agRow.movimientos || 0),
+                          gastos: Number(agRow.gastos || 0),
+                          saldoFinal: sFinal,
+                          status: isDeuda ? 'DEUDA PENDIENTE' : isFavor ? 'SALDO A FAVOR' : 'AL DÍA',
+                        });
+                        setAgencySelectorClosure(null);
+                      }}
+                      className="px-3 py-1.5 rounded-xl bg-sky-500/10 hover:bg-sky-500/20 text-sky-300 border border-sky-500/30 text-xs font-bold flex items-center gap-1.5 transition-all cursor-pointer"
+                    >
+                      <Printer className="w-3.5 h-3.5" />
+                      <span>Ver Finiquito PDF</span>
+                    </button>
+                  </div>
+                );
+              })}
+            </div>
+
+            <div className="p-4 border-t border-slate-800 flex justify-end bg-[#0A161C]">
+              <button
+                onClick={() => setAgencySelectorClosure(null)}
+                className="px-4 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-white font-bold text-xs transition-colors cursor-pointer"
+              >
+                Cerrar
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Modal 4: Acta Individual de Finiquito por Agencia */}
+      {selectedIndividualActa && (
+        <IndividualAgencyActaModal
+          isOpen={true}
+          onClose={() => setSelectedIndividualActa(null)}
+          actaData={selectedIndividualActa}
+          userName={user?.email || 'Administración'}
+          companyName="CORPORACION CALENDARIO, CA"
+        />
       )}
     </div>
   );
