@@ -20,10 +20,11 @@ import {
   FileSpreadsheet,
   CheckCircle2,
   Clock,
+  Printer,
 } from 'lucide-react';
 
 export const AuditLogTab: React.FC = () => {
-  const { user, effectiveUserId } = useAuth();
+  const { user, profile, effectiveUserId } = useAuth();
   const [logs, setLogs] = useState<AuditLogEntry[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
@@ -100,6 +101,283 @@ export const AuditLogTab: React.FC = () => {
     URL.revokeObjectURL(url);
   };
 
+  // Imprimir Acta Oficial de Auditoría en formato PDF
+  const handlePrintPDF = () => {
+    if (filteredLogs.length === 0) return;
+
+    const companyName = (profile?.nombre_banca || profile?.banca || 'CORPORACION CALENDARIO, CA').toUpperCase();
+    const auditorName = user?.email || 'Administración';
+    const ahora = new Date().toLocaleString('es-VE', {
+      dateStyle: 'medium',
+      timeStyle: 'short',
+    });
+
+    const iframe = document.createElement('iframe');
+    iframe.style.position = 'fixed';
+    iframe.style.right = '0';
+    iframe.style.bottom = '0';
+    iframe.style.width = '0';
+    iframe.style.height = '0';
+    iframe.style.border = '0';
+    document.body.appendChild(iframe);
+
+    const doc = iframe.contentWindow?.document;
+    if (!doc) {
+      window.print();
+      return;
+    }
+
+    const rowsHtml = filteredLogs.map((l, idx) => {
+      const fecha = new Date(l.timestamp).toLocaleString('es-VE', {
+        day: '2-digit',
+        month: '2-digit',
+        year: 'numeric',
+        hour: '2-digit',
+        minute: '2-digit',
+        hour12: true,
+      });
+
+      const impactColor =
+        l.impacto_financiero === 'ALTO'
+          ? '#e11d48'
+          : l.impacto_financiero === 'MEDIO'
+          ? '#d97706'
+          : '#2563eb';
+
+      const impactBg =
+        l.impacto_financiero === 'ALTO'
+          ? '#ffe4e6'
+          : l.impacto_financiero === 'MEDIO'
+          ? '#fef3c7'
+          : '#dbeafe';
+
+      return `
+        <tr style="background: ${idx % 2 === 0 ? '#ffffff' : '#f8fafc'}; border-bottom: 1px solid #e2e8f0;">
+          <td style="padding: 7px 8px; font-family: monospace; font-size: 8.5pt; color: #334155; white-space: nowrap;">${fecha}</td>
+          <td style="padding: 7px 8px; font-weight: bold; font-size: 8.5pt; color: #1e293b;">${l.modulo}</td>
+          <td style="padding: 7px 8px; font-weight: 600; font-size: 8.5pt; color: #0f172a;">${l.entidad_afectada}</td>
+          <td style="padding: 7px 8px; font-size: 8.5pt; color: #0f172a; line-height: 1.35;">${l.descripcion}</td>
+          <td style="padding: 7px 8px; font-size: 8pt; color: #475569; font-family: monospace;">${l.usuario}</td>
+          <td style="padding: 7px 8px; text-align: center;">
+            <span style="display: inline-block; padding: 2px 7px; border-radius: 9999px; font-size: 7.5pt; font-weight: 800; text-transform: uppercase; color: ${impactColor}; background: ${impactBg}; border: 1px solid ${impactColor}40;">
+              ${l.impacto_financiero}
+            </span>
+          </td>
+        </tr>
+      `;
+    }).join('');
+
+    doc.open();
+    doc.write(`
+      <!DOCTYPE html>
+      <html>
+        <head>
+          <title>Acta y Registro Oficial de Auditoria - ${companyName}</title>
+          <meta charset="utf-8" />
+          <style>
+            @page {
+              size: letter landscape;
+              margin: 1.2cm;
+            }
+            body {
+              font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+              color: #0f172a;
+              background: #fff;
+              font-size: 9pt;
+              line-height: 1.35;
+              margin: 0;
+              padding: 0;
+            }
+            .header {
+              border-bottom: 2px solid #0f172a;
+              padding-bottom: 10px;
+              margin-bottom: 14px;
+              display: flex;
+              justify-content: space-between;
+              align-items: flex-start;
+            }
+            .company {
+              font-size: 14pt;
+              font-weight: 900;
+              letter-spacing: -0.02em;
+              color: #0f172a;
+              margin: 0 0 2px 0;
+            }
+            .doc-title {
+              font-size: 11pt;
+              font-weight: 800;
+              color: #047857;
+              text-transform: uppercase;
+              letter-spacing: 0.04em;
+              margin: 0 0 2px 0;
+            }
+            .doc-sub {
+              font-size: 8pt;
+              color: #64748b;
+              margin: 0;
+            }
+            .kpis {
+              display: grid;
+              grid-template-columns: repeat(4, 1fr);
+              gap: 10px;
+              margin-bottom: 14px;
+            }
+            .kpi-box {
+              background: #f8fafc;
+              border: 1px solid #cbd5e1;
+              border-radius: 8px;
+              padding: 8px 10px;
+            }
+            .kpi-lbl {
+              font-size: 7pt;
+              font-weight: 700;
+              text-transform: uppercase;
+              color: #64748b;
+            }
+            .kpi-val {
+              font-size: 11pt;
+              font-weight: 900;
+              color: #0f172a;
+              margin-top: 1px;
+            }
+            table {
+              width: 100%;
+              border-collapse: collapse;
+              margin-bottom: 16px;
+            }
+            th {
+              background: #0f172a;
+              color: #fff;
+              font-size: 8pt;
+              font-weight: 800;
+              text-transform: uppercase;
+              letter-spacing: 0.03em;
+              padding: 7px 8px;
+              text-align: left;
+            }
+            .signatures {
+              margin-top: 35px;
+              display: grid;
+              grid-template-columns: 1fr 1fr 1fr;
+              gap: 40px;
+              page-break-inside: avoid;
+            }
+            .sig-line {
+              border-top: 1px solid #334155;
+              padding-top: 5px;
+              text-align: center;
+              font-size: 8pt;
+            }
+            .sig-title {
+              font-weight: 800;
+              color: #0f172a;
+            }
+            .sig-sub {
+              color: #64748b;
+              font-size: 7.5pt;
+            }
+            .footer {
+              margin-top: 18px;
+              border-top: 1px dashed #cbd5e1;
+              padding-top: 8px;
+              display: flex;
+              justify-content: space-between;
+              font-size: 7.5pt;
+              color: #64748b;
+              page-break-inside: avoid;
+            }
+          </style>
+        </head>
+        <body>
+          <div class="header">
+            <div>
+              <h1 class="company">${companyName}</h1>
+              <div class="doc-title">Bitácora Oficial de Seguridad Financiera y Auditoría</div>
+              <p class="doc-sub">Registro inmutable de trazabilidad de cambios en condiciones, comisiones, participaciones y cierres</p>
+            </div>
+            <div style="text-align: right; font-size: 8pt; color: #475569;">
+              <div><strong>Fecha de Emisión:</strong> ${ahora}</div>
+              <div><strong>Usuario Auditor:</strong> ${auditorName}</div>
+              <div><strong>Filtro Activo:</strong> Módulo: ${selectedModule} • Impacto: ${selectedImpact}</div>
+            </div>
+          </div>
+
+          <div class="kpis">
+            <div class="kpi-box">
+              <div class="kpi-lbl">Total Registros Auditados</div>
+              <div class="kpi-val">${filteredLogs.length}</div>
+            </div>
+            <div class="kpi-box">
+              <div class="kpi-lbl">Eventos de Alto Impacto</div>
+              <div class="kpi-val" style="color: #e11d48;">${filteredLogs.filter((l) => l.impacto_financiero === 'ALTO').length}</div>
+            </div>
+            <div class="kpi-box">
+              <div class="kpi-lbl">Agencias Involucradas</div>
+              <div class="kpi-val" style="color: #047857;">${new Set(filteredLogs.filter((l) => l.modulo === 'AGENCIAS').map((l) => l.entidad_afectada)).size}</div>
+            </div>
+            <div class="kpi-box">
+              <div class="kpi-lbl">Estado de Certificación</div>
+              <div class="kpi-val" style="color: #059669; font-size: 9.5pt;">AUDITADO Y SELLADO</div>
+            </div>
+          </div>
+
+          <table>
+            <thead>
+              <tr>
+                <th style="width: 14%;">Fecha / Hora</th>
+                <th style="width: 9%;">Módulo</th>
+                <th style="width: 14%;">Entidad Afectada</th>
+                <th style="width: 40%;">Descripción de la Operación / Modificación</th>
+                <th style="width: 13%;">Usuario</th>
+                <th style="width: 10%; text-align: center;">Impacto</th>
+              </tr>
+            </thead>
+            <tbody>
+              ${rowsHtml}
+            </tbody>
+          </table>
+
+          <div class="signatures">
+            <div>
+              <div class="sig-line">
+                <div class="sig-title">Auditor Contable / Administrador</div>
+                <div class="sig-sub">${auditorName}</div>
+              </div>
+            </div>
+            <div>
+              <div class="sig-line">
+                <div class="sig-title">Control de Operaciones y Sistemas</div>
+                <div class="sig-sub">Validación y Verificación Técnica</div>
+              </div>
+            </div>
+            <div>
+              <div class="sig-line">
+                <div class="sig-title">Dirección General / Gerencia</div>
+                <div class="sig-sub">${companyName}</div>
+              </div>
+            </div>
+          </div>
+
+          <div class="footer">
+            <span>Bitácora de Auditoría Oficial • Sistema Integrado Multibanca Express CMS</span>
+            <span>Documento Oficial Certificado • Trazabilidad Inmutable</span>
+          </div>
+        </body>
+      </html>
+    `);
+    doc.close();
+
+    setTimeout(() => {
+      iframe.contentWindow?.focus();
+      iframe.contentWindow?.print();
+      setTimeout(() => {
+        if (document.body.contains(iframe)) {
+          document.body.removeChild(iframe);
+        }
+      }, 2000);
+    }, 350);
+  };
+
   return (
     <div className="space-y-6">
       {/* 1. Header Banner */}
@@ -122,6 +400,15 @@ export const AuditLogTab: React.FC = () => {
           </div>
 
           <div className="flex flex-wrap items-center gap-2.5">
+            <button
+              onClick={handlePrintPDF}
+              disabled={filteredLogs.length === 0}
+              className="px-4 py-2.5 rounded-2xl bg-gradient-to-r from-sky-600 to-indigo-600 hover:from-sky-500 hover:to-indigo-500 text-white font-black text-xs uppercase tracking-wider flex items-center gap-2 transition-all cursor-pointer shadow-lg shadow-sky-600/20 disabled:opacity-50"
+              title="Imprimir Acta y Bitácora Oficial en PDF"
+            >
+              <Printer className="w-4 h-4" />
+              <span>Imprimir PDF</span>
+            </button>
             <button
               onClick={handleExportCSV}
               disabled={filteredLogs.length === 0}
