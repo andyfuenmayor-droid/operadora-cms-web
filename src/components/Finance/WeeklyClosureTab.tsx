@@ -6,8 +6,10 @@ import { getAgencyCommissionAndParticipation } from '../../utils/salesRecalculat
 import {
   getConsolidatedPayments,
   getConsolidatedExpenses,
+  getAdministrativeExpenses,
   type ConsolidatedPaymentItem,
   type ConsolidatedExpenseItem,
+  type AdministrativeExpenseItem,
 } from '../../utils/consolidations';
 import type { Agency } from '../../types';
 import { PreClosureAuditTab } from './PreClosureAuditTab';
@@ -73,7 +75,7 @@ interface CierreAgencyData {
 }
 
 export const WeeklyClosureTab: React.FC = () => {
-  const { user, effectiveUserId, systemCycle, refreshSystemCycle } = useAuth();
+  const { user, profile, effectiveUserId, systemCycle, refreshSystemCycle } = useAuth();
 
   const [activeSubTab, setActiveSubTab] = useState<'precierre' | 'cierre' | 'historico_actas' | 'auditoria'>('precierre');
   const [isLoading, setIsLoading] = useState(true);
@@ -82,6 +84,7 @@ export const WeeklyClosureTab: React.FC = () => {
   const [sales, setSales] = useState<any[]>([]);
   const [payments, setPayments] = useState<ConsolidatedPaymentItem[]>([]);
   const [expenses, setExpenses] = useState<ConsolidatedExpenseItem[]>([]);
+  const [adminExpenses, setAdminExpenses] = useState<AdministrativeExpenseItem[]>([]);
 
   // Operator Closure States
   const [registeredSystems, setRegisteredSystems] = useState<string[]>([]);
@@ -110,7 +113,7 @@ export const WeeklyClosureTab: React.FC = () => {
     setMessage(null);
 
     try {
-      const [agRes, sRes, pConsolidated, gConsolidated, sysRes, confs, payRes] = await Promise.all([
+      const [agRes, sRes, pConsolidated, gConsolidated, sysRes, confs, payRes, admExpenses] = await Promise.all([
         supabase.from('agencias').select('*').eq('user_id', effectiveUserId).order('id', { ascending: true }),
         supabase.from('carga_actual').select('*').eq('user_id', effectiveUserId),
         getConsolidatedPayments(effectiveUserId, { fechaDesde: systemCycle.desde, fechaHasta: systemCycle.hasta }),
@@ -123,6 +126,7 @@ export const WeeklyClosureTab: React.FC = () => {
           .eq('user_id', effectiveUserId)
           .or('tipo_pago.eq.PAGO_OPERADORA,tipo_pago.eq.ABONO_OPERADORA,agencia.ilike.OPERADORA:%')
           .order('id', { ascending: false }),
+        getAdministrativeExpenses(effectiveUserId, { fechaDesde: systemCycle.desde, fechaHasta: systemCycle.hasta }),
       ]);
 
       const agList = agRes.data || [];
@@ -179,6 +183,7 @@ export const WeeklyClosureTab: React.FC = () => {
       setSales(salesData);
       setPayments(pConsolidated);
       setExpenses(gConsolidated);
+      setAdminExpenses(admExpenses);
       setRegisteredSystems(sysList);
       setSystemConfigs(confs);
       setOperatorPayments(rawOperatorPayments);
@@ -749,8 +754,29 @@ export const WeeklyClosureTab: React.FC = () => {
         fecha_cierre: nowIso,
       }));
 
+      const comercializadorSnapshot = (['BS', 'USD', 'COP'] as const).map((cur) => {
+        const opTot = operatorTotalsByCurrency[cur];
+        const admGasto = adminExpenses.filter((g) => g.moneda === cur).reduce((acc, g) => acc + g.monto, 0);
+        const gananciaBruta = opTot?.totalComercializador || 0;
+        const gananciaNeta = Math.round((gananciaBruta - admGasto) * 100) / 100;
+
+        return {
+          user_id: effectiveUserId,
+          entidad: `COMERCIALIZADOR: ${(profile?.nombre_banca || profile?.banca || 'CASA CENTRAL').toUpperCase()}`,
+          moneda: cur,
+          saldo_anterior: 0,
+          utilidad_semana: gananciaBruta,
+          gastos: admGasto,
+          movimientos: -admGasto,
+          saldo_final: gananciaNeta,
+          periodo: periodoActual,
+          tipo_entidad: 'COMERCIALIZADOR',
+          fecha_cierre: nowIso,
+        };
+      }).filter((c) => c.utilidad_semana !== 0 || c.gastos !== 0);
+
       try {
-        const fullSnapshot = [...agencySnapshot, ...operatorSnapshot];
+        const fullSnapshot = [...agencySnapshot, ...operatorSnapshot, ...comercializadorSnapshot];
         if (fullSnapshot.length > 0) {
           const { error: snapErr } = await supabase.from('cierres_semanales').insert(fullSnapshot);
           if (snapErr) {

@@ -18,6 +18,7 @@ import { SalesEntryTab } from './components/Finance/SalesEntryTab';
 import { RealSalesTab } from './components/Finance/RealSalesTab';
 import { PaymentsTab } from './components/Finance/PaymentsTab';
 import { ExpensesTab } from './components/Finance/ExpensesTab';
+import { AdministrativeExpensesTab } from './components/Finance/AdministrativeExpensesTab';
 import { AccountBalancesTab } from './components/Finance/AccountBalancesTab';
 import { WeeklyClosureTab } from './components/Finance/WeeklyClosureTab';
 import { OperatorsTab } from './components/Administration/OperatorsTab';
@@ -95,8 +96,10 @@ const AppContent: React.FC = () => {
 
       case 'Gastos por Agencia':
       case 'Gastos Agencias':
-      case 'Gastos Administrativos':
         return <ExpensesTab />;
+
+      case 'Gastos Administrativos':
+        return <AdministrativeExpensesTab />;
 
       case 'Saldo Agencias':
         return <AccountBalancesTab />;

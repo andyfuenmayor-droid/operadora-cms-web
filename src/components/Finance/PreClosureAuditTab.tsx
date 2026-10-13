@@ -6,8 +6,10 @@ import { getAgencyCommissionAndParticipation } from '../../utils/salesRecalculat
 import {
   getConsolidatedPayments,
   getConsolidatedExpenses,
+  getAdministrativeExpenses,
   type ConsolidatedPaymentItem,
   type ConsolidatedExpenseItem,
+  type AdministrativeExpenseItem,
 } from '../../utils/consolidations';
 import type { Agency } from '../../types';
 import {
@@ -69,6 +71,7 @@ export const PreClosureAuditTab: React.FC = () => {
   const [sales, setSales] = useState<any[]>([]);
   const [payments, setPayments] = useState<ConsolidatedPaymentItem[]>([]);
   const [expenses, setExpenses] = useState<ConsolidatedExpenseItem[]>([]);
+  const [adminExpenses, setAdminExpenses] = useState<AdministrativeExpenseItem[]>([]);
   const [rawDailyPayments, setRawDailyPayments] = useState<any[]>([]);
   const [collectors, setCollectors] = useState<{ id: string | number; nombre: string; usuario?: string }[]>([]);
   const [bankAccounts, setBankAccounts] = useState<any[]>([]);
@@ -104,7 +107,7 @@ export const PreClosureAuditTab: React.FC = () => {
     setIsLoading(true);
 
     try {
-      const [agRes, sRes, pConsolidated, gConsolidated, pdRes, cobRes, cbRes, pbRes, sysRes, confs, payRes] = await Promise.all([
+      const [agRes, sRes, pConsolidated, gConsolidated, pdRes, cobRes, cbRes, pbRes, sysRes, confs, payRes, admExpenses] = await Promise.all([
         supabase.from('agencias').select('*').eq('user_id', effectiveUserId).order('id', { ascending: true }),
         supabase.from('carga_actual').select('*').eq('user_id', effectiveUserId),
         getConsolidatedPayments(effectiveUserId, { fechaDesde: systemCycle.desde, fechaHasta: systemCycle.hasta }),
@@ -121,6 +124,7 @@ export const PreClosureAuditTab: React.FC = () => {
           .eq('user_id', effectiveUserId)
           .or('tipo_pago.eq.PAGO_OPERADORA,tipo_pago.eq.ABONO_OPERADORA,agencia.ilike.OPERADORA:%')
           .order('id', { ascending: false }),
+        getAdministrativeExpenses(effectiveUserId, { fechaDesde: systemCycle.desde, fechaHasta: systemCycle.hasta }),
       ]);
 
       const agList = agRes.data || [];
@@ -173,6 +177,7 @@ export const PreClosureAuditTab: React.FC = () => {
       setSales(salesData);
       setPayments(pConsolidated);
       setExpenses(gConsolidated);
+      setAdminExpenses(admExpenses);
       setRawDailyPayments(pdRes.data || []);
       setCollectors(cobRes.data || []);
       setBankAccounts(cbRes.data || []);
@@ -2731,8 +2736,27 @@ export const PreClosureAuditTab: React.FC = () => {
                       <span className="text-emerald-700 dark:text-emerald-400 font-semibold">+{formatCurrency(opTot?.partCom || 0, mon as any)}</span>
                     </div>
                     <div className="flex justify-between pt-1 border-t border-slate-200/80 dark:border-slate-800">
-                      <span className="text-slate-800 dark:text-slate-300 font-bold">Ganancia Total:</span>
-                      <span className="text-emerald-700 dark:text-emerald-400 font-black">{formatCurrency(gananciaComercializador, mon as any)}</span>
+                      <span className="text-slate-800 dark:text-slate-300 font-bold">Ganancia Bruta:</span>
+                      <span className="text-emerald-700 dark:text-emerald-400 font-bold">{formatCurrency(gananciaComercializador, mon as any)}</span>
+                    </div>
+                    <div className="flex justify-between text-rose-600 dark:text-rose-400 text-xs">
+                      <span>Gastos Administrativos (-):</span>
+                      <span className="font-semibold">
+                        -{formatCurrency(adminExpenses.filter((g) => g.moneda === mon).reduce((a, b) => a + b.monto, 0), mon as any)}
+                      </span>
+                    </div>
+                    <div className="flex justify-between pt-1 border-t border-slate-200/80 dark:border-slate-800 bg-slate-100 dark:bg-slate-900/70 p-1.5 rounded-lg">
+                      <span className="text-slate-900 dark:text-white font-black text-xs">Utilidad Neta Real:</span>
+                      <span className={`font-black text-xs ${
+                        gananciaComercializador - adminExpenses.filter((g) => g.moneda === mon).reduce((a, b) => a + b.monto, 0) >= 0
+                          ? 'text-emerald-700 dark:text-emerald-400'
+                          : 'text-rose-600 dark:text-rose-400'
+                      }`}>
+                        {formatCurrency(
+                          gananciaComercializador - adminExpenses.filter((g) => g.moneda === mon).reduce((a, b) => a + b.monto, 0),
+                          mon as any
+                        )}
+                      </span>
                     </div>
                   </div>
                   <div className="pt-2 border-t border-slate-200/80 dark:border-slate-800 text-center bg-emerald-50 dark:bg-emerald-950/20 rounded-xl p-2 border border-emerald-200 dark:border-emerald-500/20">

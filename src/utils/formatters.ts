@@ -56,6 +56,7 @@ export const PLANES_MODULOS_DEFAULT: Record<PlanType, ModuleId[]> = {
     'Cargar Ventas',
     'Pagos Agencias',
     'Gastos por Agencia',
+    'Gastos Administrativos',
     'Saldo Agencias',
     'Venta Real',
     'Pagos a Operador',

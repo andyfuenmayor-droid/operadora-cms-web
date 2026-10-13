@@ -454,6 +454,9 @@ export async function getConsolidatedExpenses(
       if (!isConf || isRech) return;
 
       const agNom = String(r.agencia || '').trim().toUpperCase();
+      const isAdm = String(r.tipo || '').toUpperCase() === 'ADMINISTRATIVO' || agNom === 'COMERCIALIZADOR' || agNom === 'OFICINA / ADMINISTRACIÓN';
+      if (isAdm) return; // Administrative expenses are isolated for Comercializador
+
       const montoVal = Math.round((Number(r.monto) || 0) * 100) / 100;
       const fechaRaw = String(r.fecha || r.created_at || '').trim();
       const conceptoRaw = String(r.concepto || r.tipo || 'GASTO').trim().toUpperCase();
@@ -538,3 +541,110 @@ export async function getConsolidatedExpenses(
     return [];
   }
 }
+
+export interface AdministrativeExpenseItem {
+  id: string | number;
+  categoria: string;
+  concepto: string;
+  beneficiario: string;
+  referencia: string;
+  moneda: 'BS' | 'USD' | 'COP';
+  monto: number;
+  fecha: string;
+  confirmado: boolean;
+  confirmado_por?: string;
+  user_id?: string;
+  created_at?: string;
+}
+
+/**
+ * Obtiene los gastos administrativos exclusivos del Comercializador
+ * (Sueldos, Oficina, Internet, Computadoras/Equipos, Mantenimiento, etc.)
+ */
+export async function getAdministrativeExpenses(
+  effectiveUserId: string,
+  options: ConsolidationOptions = {}
+): Promise<AdministrativeExpenseItem[]> {
+  if (!effectiveUserId) return [];
+
+  const { fechaDesde, fechaHasta, filtrarPeriodo = true } = options;
+
+  try {
+    const { data, error } = await supabase
+      .from('gastos')
+      .select('*')
+      .eq('user_id', effectiveUserId)
+      .or('tipo.eq.ADMINISTRATIVO,agencia.eq.COMERCIALIZADOR,agencia.ilike.%ADMINISTRACION%')
+      .order('id', { ascending: false });
+
+    if (error) {
+      console.error('Error fetching administrative expenses:', error);
+      return [];
+    }
+
+    const items: AdministrativeExpenseItem[] = (data || []).map((r: any) => {
+      let rawConcepto = String(r.concepto || r.descripcion || 'Gasto Administrativo').trim();
+      let categoria = 'OTROS';
+      let beneficiario = 'N/A';
+      let referencia = 'N/A';
+
+      // Parse Category [CATEGORIA]
+      const catMatch = rawConcepto.match(/^\[([A-Z0-9_\s]+)\]/i);
+      if (catMatch) {
+        categoria = catMatch[1].trim().toUpperCase();
+        rawConcepto = rawConcepto.replace(/^\[[A-Z0-9_\s]+\]\s*/i, '').trim();
+      }
+
+      // Parse Beneficiary (Beneficiario: X)
+      const benMatch = rawConcepto.match(/\[BEN:\s*([^\]]+)\]/i);
+      if (benMatch) {
+        beneficiario = benMatch[1].trim();
+        rawConcepto = rawConcepto.replace(/\[BEN:\s*[^\]]+\]/i, '').trim();
+      }
+
+      // Parse Ref [REF: X]
+      const refMatch = rawConcepto.match(/\[REF:\s*([^\]]+)\]/i);
+      if (refMatch) {
+        referencia = refMatch[1].trim();
+        rawConcepto = rawConcepto.replace(/\[REF:\s*[^\]]+\]/i, '').trim();
+      }
+
+      return {
+        id: r.id,
+        categoria,
+        concepto: rawConcepto,
+        beneficiario,
+        referencia,
+        moneda: normalizarMoneda(r.moneda) as 'BS' | 'USD' | 'COP',
+        monto: Number(r.monto || 0),
+        fecha: String(r.fecha || r.created_at || '').slice(0, 10),
+        confirmado: Boolean(r.confirmado),
+        confirmado_por: r.confirmado_por,
+        user_id: r.user_id,
+        created_at: r.created_at,
+      };
+    });
+
+    if (filtrarPeriodo && (fechaDesde || fechaHasta)) {
+      const hoyStr = getTodayDateString();
+      const desdeIso = normalizeToIsoDate(fechaDesde);
+      const hastaIso = normalizeToIsoDate(fechaHasta || hoyStr);
+
+      return items.filter((item) => {
+        const fIso = normalizeToIsoDate(item.fecha) || normalizeToIsoDate(item.created_at);
+        if (fIso) {
+          if (desdeIso && fIso < desdeIso) return false;
+          if (hastaIso && fIso > hastaIso) return false;
+          return true;
+        }
+        return false;
+      });
+    }
+
+    return items;
+  } catch (err) {
+    console.error('Error fetching administrative expenses:', err);
+    return [];
+  }
+}
+

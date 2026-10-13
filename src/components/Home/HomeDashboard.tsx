@@ -21,7 +21,7 @@ import {
 } from 'lucide-react';
 import { formatCurrency, formatDate, normalizarMoneda, cleanAgencyName } from '../../utils/formatters';
 import { getAgencyCommissionAndParticipation } from '../../utils/salesRecalculation';
-import { getConsolidatedPayments, getConsolidatedExpenses } from '../../utils/consolidations';
+import { getConsolidatedPayments, getConsolidatedExpenses, getAdministrativeExpenses } from '../../utils/consolidations';
 import { loadSystemKeywords, type SystemKeywordsMap } from '../../utils/systemKeywords';
 import {
   calculateOperatorSettlements,
@@ -58,6 +58,7 @@ export const HomeDashboard: React.FC<HomeDashboardProps> = ({ onNavigate }) => {
   const [balancesByCurrency, setBalancesByCurrency] = useState<Record<string, CurrencyBalance>>({});
   const [operatorRows, setOperatorRows] = useState<OperatorSettlementRow[]>([]);
   const [operatorTotalsByCurrency, setOperatorTotalsByCurrency] = useState<Record<string, OperatorSettlementTotals>>({});
+  const [adminExpensesByCurrency, setAdminExpensesByCurrency] = useState<Record<string, number>>({ BS: 0, USD: 0, COP: 0 });
 
   const limiteAgencias = Number(profile?.limite_agencias || 5);
   const planName = (profile?.plan || user?.plan || 'Elite').toUpperCase();
@@ -120,7 +121,7 @@ export const HomeDashboard: React.FC<HomeDashboardProps> = ({ onNavigate }) => {
       const currencies = ['BS', 'USD', 'COP'];
       const balancesMap: Record<string, CurrencyBalance> = {};
 
-      const [resVentas, gastosList, pagosList, sysRes, confs, payRes] = await Promise.all([
+      const [resVentas, gastosList, pagosList, sysRes, confs, payRes, adminExpensesList] = await Promise.all([
         supabase.from('carga_actual').select('*').eq('user_id', effectiveUserId),
         getConsolidatedExpenses(effectiveUserId, { fechaDesde: systemCycle?.desde, fechaHasta: systemCycle?.hasta }),
         getConsolidatedPayments(effectiveUserId, { fechaDesde: systemCycle?.desde, fechaHasta: systemCycle?.hasta }),
@@ -132,7 +133,16 @@ export const HomeDashboard: React.FC<HomeDashboardProps> = ({ onNavigate }) => {
           .eq('user_id', effectiveUserId)
           .or('tipo_pago.eq.PAGO_OPERADORA,tipo_pago.eq.ABONO_OPERADORA,agencia.ilike.OPERADORA:%')
           .order('id', { ascending: false }),
+        getAdministrativeExpenses(effectiveUserId, { fechaDesde: systemCycle?.desde, fechaHasta: systemCycle?.hasta }),
       ]);
+
+      const adminTotals: Record<string, number> = { BS: 0, USD: 0, COP: 0 };
+      (adminExpensesList || []).forEach((e) => {
+        if (adminTotals[e.moneda] !== undefined) {
+          adminTotals[e.moneda] += e.monto;
+        }
+      });
+      setAdminExpensesByCurrency(adminTotals);
 
       const ventasList = resVentas.data || [];
 
@@ -590,6 +600,18 @@ export const HomeDashboard: React.FC<HomeDashboardProps> = ({ onNavigate }) => {
                       </span>
                     </div>
                     <div className="flex justify-between text-slate-400">
+                      <span className="text-rose-400/90 font-medium">Gastos Administrativos (-):</span>
+                      <span className="font-mono text-rose-400 font-bold">
+                        {(adminExpensesByCurrency[mon] || 0) > 0 ? `-${formatCurrency(adminExpensesByCurrency[mon] || 0, mon)}` : formatCurrency(0, mon)}
+                      </span>
+                    </div>
+                    <div className="flex justify-between text-slate-200 font-bold bg-slate-900/60 p-1.5 rounded-lg border border-slate-800/80">
+                      <span className="text-[11px] text-slate-300">Utilidad Neta Real:</span>
+                      <span className={`font-mono text-xs ${tot.totalComercializador - (adminExpensesByCurrency[mon] || 0) >= 0 ? 'text-emerald-300 font-black' : 'text-rose-400 font-black'}`}>
+                        {formatCurrency(tot.totalComercializador - (adminExpensesByCurrency[mon] || 0), mon)}
+                      </span>
+                    </div>
+                    <div className="flex justify-between text-slate-400 pt-1 border-t border-slate-800/60">
                       <span className="text-sky-400/90 font-medium">Utilidad Casa Matriz (60%):</span>
                       <span className="font-mono text-sky-400 font-bold">
                         {formatCurrency(tot.netoOperadora, mon)}
