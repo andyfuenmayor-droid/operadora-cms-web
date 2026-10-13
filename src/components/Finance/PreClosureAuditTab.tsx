@@ -2143,7 +2143,7 @@ export const PreClosureAuditTab: React.FC = () => {
         </div>
       </div>
 
-      {/* 2. Tarjetas de Casas Operadoras: Balances con Monedas una debajo de la otra */}
+      {/* 2. Tarjetas de Casas Operadoras: Balances Lineales Horizontales */}
       <div className="space-y-4">
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-1">
           <div className="flex items-center gap-2">
@@ -2153,7 +2153,7 @@ export const PreClosureAuditTab: React.FC = () => {
             </h4>
           </div>
           <span className="text-[11px] text-slate-500 dark:text-slate-400">
-            Monedas activas apiladas por cada proveedor
+            Tarjetas lineales horizontales por proveedor y moneda activa
           </span>
         </div>
 
@@ -2163,17 +2163,17 @@ export const PreClosureAuditTab: React.FC = () => {
             No se encontraron casas operadoras con los filtros seleccionados.
           </div>
         ) : (
-          <div className="grid grid-cols-1 xl:grid-cols-2 gap-5 items-start">
+          <div className="grid grid-cols-1 gap-4">
             {operatorGroups.map((group) => {
               return (
                 <div
                   key={`card_group_${group.sistema}`}
-                  className="bg-white dark:bg-[#0D1B22] border border-slate-200 dark:border-slate-800 rounded-3xl p-5 shadow-sm dark:shadow-xl flex flex-col space-y-4 hover:border-slate-300 dark:hover:border-slate-700 transition-all"
+                  className="bg-white dark:bg-[#0D1B22] border border-slate-200 dark:border-slate-800 rounded-3xl p-5 shadow-sm dark:shadow-xl space-y-3.5 hover:border-slate-300 dark:hover:border-slate-700 transition-all"
                 >
                   {/* Header de la Casa Operadora */}
-                  <div className="flex items-center justify-between pb-3.5 border-b border-slate-100 dark:border-slate-800">
+                  <div className="flex items-center justify-between pb-3 border-b border-slate-100 dark:border-slate-800">
                     <div className="flex items-center gap-3">
-                      <div className="w-10 h-10 rounded-2xl bg-amber-500/10 border border-amber-500/20 flex items-center justify-center text-amber-500 dark:text-amber-400 text-lg font-black">
+                      <div className="w-10 h-10 rounded-2xl bg-amber-500/10 border border-amber-500/20 flex items-center justify-center text-amber-500 dark:text-amber-400 text-lg font-black shrink-0">
                         🌐
                       </div>
                       <div>
@@ -2220,7 +2220,7 @@ export const PreClosureAuditTab: React.FC = () => {
                     </div>
                   </div>
 
-                  {/* Lista de Monedas UNA DEBAJO DE LA OTRA */}
+                  {/* Tarjetas Lineales Horizontales de Monedas */}
                   <div className="space-y-3">
                     {group.rows.map((r) => {
                       const flag = r.moneda === 'BS' ? '🇻🇪' : r.moneda === 'USD' ? '🇺🇸' : '🇨🇴';
@@ -2231,54 +2231,30 @@ export const PreClosureAuditTab: React.FC = () => {
                       return (
                         <div
                           key={`row_curr_${group.sistema}_${r.moneda}`}
-                          className="bg-slate-50/80 dark:bg-[#071318] border border-slate-200 dark:border-slate-800/80 rounded-2xl p-3.5 space-y-2.5 hover:border-slate-300 dark:hover:border-slate-700/80 transition-colors"
+                          className="bg-slate-50/80 dark:bg-[#071318] border border-slate-200 dark:border-slate-800/80 rounded-2xl p-3.5 hover:border-slate-300 dark:hover:border-slate-700/80 transition-colors"
                         >
-                          {/* Fila Cabecera de la Moneda: Moneda + Balance Final */}
-                          <div className="flex flex-col sm:flex-row sm:items-center justify-between pb-2 border-b border-slate-200/80 dark:border-slate-800/60 gap-2">
-                            <div className="flex items-center gap-2">
-                              <span className="text-base select-none font-sans leading-none">{flag}</span>
-                              <span className="text-xs font-bold text-slate-800 dark:text-slate-200 font-mono">
-                                {monLabel}
-                              </span>
-                              <span className="text-[10px] text-slate-500 font-mono">
-                                (Com: {r.comisionPct}% • Part: {r.participacionPct}%)
-                              </span>
+                          <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-12 gap-3.5 items-center">
+                            {/* 1. Moneda (xl:col-span-2) */}
+                            <div className="xl:col-span-2 flex items-center gap-2.5">
+                              <div className="w-9 h-9 rounded-xl bg-white dark:bg-[#0D1B22] border border-slate-200 dark:border-slate-800 flex items-center justify-center text-lg font-sans select-none shadow-xs shrink-0">
+                                {flag}
+                              </div>
+                              <div className="min-w-0">
+                                <div className="text-xs font-bold text-slate-900 dark:text-white font-mono tracking-tight truncate">
+                                  {monLabel}
+                                </div>
+                                <div className="text-[10px] text-slate-500 font-mono">
+                                  Moneda Activa
+                                </div>
+                              </div>
                             </div>
 
-                            <div className="flex items-center gap-2 font-mono">
-                              <span className="text-[10px] text-slate-500 dark:text-slate-400 font-sans uppercase font-medium">Balance Final:</span>
-                              <span
-                                className={`text-sm font-black px-2 py-0.5 rounded-lg border ${
-                                  isDeuda
-                                    ? 'bg-rose-50 dark:bg-rose-500/10 text-rose-700 dark:text-rose-400 border-rose-200 dark:border-rose-500/20'
-                                    : isFavor
-                                    ? 'bg-emerald-50 dark:bg-emerald-500/10 text-emerald-700 dark:text-emerald-400 border-emerald-200 dark:border-emerald-500/20'
-                                    : 'bg-slate-100 dark:bg-slate-800/60 text-slate-700 dark:text-slate-300 border-slate-200 dark:border-slate-700'
-                                }`}
-                              >
-                                {formatCurrency(r.balanceFinal, r.moneda as any)}
-                              </span>
-                              <span
-                                className={`text-[9px] font-black uppercase px-2 py-0.5 rounded-full ${
-                                  isDeuda
-                                    ? 'bg-rose-100 dark:bg-rose-500/20 text-rose-700 dark:text-rose-400'
-                                    : isFavor
-                                    ? 'bg-emerald-100 dark:bg-emerald-500/20 text-emerald-700 dark:text-emerald-400'
-                                    : 'bg-slate-200 dark:bg-slate-800 text-slate-600 dark:text-slate-400'
-                                }`}
-                              >
-                                {isDeuda ? 'A Pagar' : isFavor ? 'A Favor' : 'Al Día'}
-                              </span>
-                            </div>
-                          </div>
-
-                          {/* Desglose de 3 columnas para esta moneda: Operativo | Comercializador | Posición Casa */}
-                          <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 text-[10.5px] font-mono">
-                            {/* Columna A: Movimiento Operativo */}
-                            <div className="bg-white dark:bg-[#050D11] rounded-xl p-2.5 border border-slate-200/80 dark:border-slate-800/50 shadow-xs space-y-1">
-                              <span className="text-[9px] font-bold text-slate-600 dark:text-slate-400 uppercase tracking-wider block border-b border-slate-100 dark:border-slate-800/50 pb-0.5 font-sans">
-                                📊 Movimiento
-                              </span>
+                            {/* 2. Movimiento Operativo (xl:col-span-4) */}
+                            <div className="xl:col-span-4 bg-white dark:bg-[#050D11] rounded-xl p-2.5 border border-slate-200/80 dark:border-slate-800/50 shadow-xs text-[11px] font-mono space-y-1">
+                              <div className="text-[9.5px] font-bold text-slate-600 dark:text-slate-400 uppercase tracking-wider border-b border-slate-100 dark:border-slate-800/50 pb-0.5 font-sans flex items-center justify-between">
+                                <span>📊 Movimiento</span>
+                                <span className="text-[9px] text-slate-400 font-normal">Operación</span>
+                              </div>
                               <div className="flex justify-between">
                                 <span className="text-slate-500 dark:text-slate-400">Venta:</span>
                                 <span className="text-slate-900 dark:text-slate-200 font-semibold">{formatCurrency(r.venta, r.moneda as any)}</span>
@@ -2297,34 +2273,14 @@ export const PreClosureAuditTab: React.FC = () => {
                               </div>
                             </div>
 
-                            {/* Columna B: Comercializador */}
-                            <div className="bg-white dark:bg-[#050D11] rounded-xl p-2.5 border border-emerald-200/80 dark:border-emerald-500/15 shadow-xs space-y-1">
-                              <span className="text-[9px] font-bold text-emerald-700 dark:text-emerald-400 uppercase tracking-wider block border-b border-emerald-50 dark:border-slate-800/50 pb-0.5 font-sans">
-                                🏆 Comercializador
-                              </span>
-                              <div className="flex justify-between">
-                                <span className="text-slate-500 dark:text-slate-400">Dif. Com:</span>
-                                <span className="text-cyan-700 dark:text-cyan-400 font-semibold">{formatCurrency(r.difCom, r.moneda as any)}</span>
+                            {/* 3. Posición Casa Matriz (60%) (xl:col-span-4) */}
+                            <div className="xl:col-span-4 bg-white dark:bg-[#050D11] rounded-xl p-2.5 border border-slate-200/80 dark:border-slate-800/50 shadow-xs text-[11px] font-mono space-y-1">
+                              <div className="text-[9.5px] font-bold text-slate-600 dark:text-slate-400 uppercase tracking-wider border-b border-slate-100 dark:border-slate-800/50 pb-0.5 font-sans flex items-center justify-between">
+                                <span>🏛️ Casa Matriz (60%)</span>
+                                <span className="text-[9px] text-slate-400 font-normal">Liquidación</span>
                               </div>
                               <div className="flex justify-between">
-                                <span className="text-slate-500 dark:text-slate-400">Part. ({r.participacionPct}%):</span>
-                                <span className={`font-semibold ${r.partCom >= 0 ? 'text-emerald-700 dark:text-emerald-400' : 'text-rose-600 dark:text-rose-400'}`}>
-                                  {formatCurrency(r.partCom, r.moneda as any)}
-                                </span>
-                              </div>
-                              <div className="flex justify-between pt-0.5 border-t border-emerald-100/60 dark:border-slate-800/40">
-                                <span className="text-emerald-800 dark:text-emerald-300 font-bold">Ganancia Total:</span>
-                                <span className="text-emerald-700 dark:text-emerald-400 font-black">{formatCurrency(r.totalCom, r.moneda as any)}</span>
-                              </div>
-                            </div>
-
-                            {/* Columna C: Posición Casa Matriz */}
-                            <div className="bg-white dark:bg-[#050D11] rounded-xl p-2.5 border border-slate-200/80 dark:border-slate-800/50 shadow-xs space-y-1">
-                              <span className="text-[9px] font-bold text-slate-600 dark:text-slate-400 uppercase tracking-wider block border-b border-slate-100 dark:border-slate-800/50 pb-0.5 font-sans">
-                                🏛️ Casa Matriz (60%)
-                              </span>
-                              <div className="flex justify-between">
-                                <span className="text-slate-500 dark:text-slate-400">Arrastre:</span>
+                                <span className="text-slate-500 dark:text-slate-400">Arrastre Inicial:</span>
                                 <span className="text-slate-800 dark:text-slate-300 font-semibold">{formatCurrency(r.saldoInit, r.moneda as any)}</span>
                               </div>
                               <div className="flex justify-between">
@@ -2339,6 +2295,35 @@ export const PreClosureAuditTab: React.FC = () => {
                                   {r.pagosNetos !== 0 ? `-${formatCurrency(r.pagosNetos, r.moneda as any)}` : formatCurrency(0, r.moneda as any)}
                                 </span>
                               </div>
+                            </div>
+
+                            {/* 4. Balance Final (xl:col-span-2) */}
+                            <div className="xl:col-span-2 bg-white dark:bg-[#050D11] rounded-xl p-2.5 border border-slate-200/80 dark:border-slate-800/50 shadow-xs flex flex-col justify-center items-center text-center font-mono">
+                              <span className="text-[9.5px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider font-sans block mb-1">
+                                Balance Final
+                              </span>
+                              <div
+                                className={`text-sm font-black px-2 py-0.5 rounded-lg border w-full text-center ${
+                                  isDeuda
+                                    ? 'bg-rose-50 dark:bg-rose-500/10 text-rose-700 dark:text-rose-400 border-rose-200 dark:border-rose-500/20'
+                                    : isFavor
+                                    ? 'bg-emerald-50 dark:bg-emerald-500/10 text-emerald-700 dark:text-emerald-400 border-emerald-200 dark:border-emerald-500/20'
+                                    : 'bg-slate-100 dark:bg-slate-800/60 text-slate-700 dark:text-slate-300 border-slate-200 dark:border-slate-700'
+                                }`}
+                              >
+                                {formatCurrency(r.balanceFinal, r.moneda as any)}
+                              </div>
+                              <span
+                                className={`text-[9px] font-black uppercase px-2.5 py-0.5 rounded-full mt-1.5 inline-block ${
+                                  isDeuda
+                                    ? 'bg-rose-100 dark:bg-rose-500/20 text-rose-700 dark:text-rose-400'
+                                    : isFavor
+                                    ? 'bg-emerald-100 dark:bg-emerald-500/20 text-emerald-700 dark:text-emerald-400'
+                                    : 'bg-slate-200 dark:bg-slate-800 text-slate-600 dark:text-slate-400'
+                                }`}
+                              >
+                                {isDeuda ? '🔴 A Pagar' : isFavor ? '🟢 A Favor' : '⚪ Al Día'}
+                              </span>
                             </div>
                           </div>
                         </div>
