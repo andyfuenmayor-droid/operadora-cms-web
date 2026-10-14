@@ -347,9 +347,13 @@ export const ConfirmationsReport: React.FC = () => {
 
       // Process Pagos de Taquilla
       (pdRes.data || []).forEach((r: any) => {
+        const tipo = String(r.tipo_pago || r.metodo || 'EFECTIVO').trim().toUpperCase();
+        const concRaw = String(r.concepto || '').toUpperCase();
+        // Las entregas a supervisor son confirmaciones internas locales de la agencia/supervisor; no de administración
+        if (tipo.includes('SUPERVISOR') || concRaw.includes('SUPERVISOR')) return;
+
         const isRech = !!r.rechazado || String(r.estado || '').toUpperCase() === 'RECHAZADO';
         const isConf = (!!r.confirmado || !!r.confirmado_supervisor) && !isRech;
-        const tipo = String(r.tipo_pago || r.metodo || 'EFECTIVO').trim().toUpperCase();
         const cid = String(r.cajero_id || r.user_id || '');
         const agStr = String(r.agencia || r.nombre_agency || '').trim().toUpperCase();
         const isBanco = ['PUNTO', 'POS', 'TRANSFERENCIA', 'ZELLE', 'PAGO MOVIL', 'PAGO MÓVIL'].some((k) =>
@@ -626,9 +630,9 @@ export const ConfirmationsReport: React.FC = () => {
               <FileText className="w-6 h-6" />
             </div>
             <div>
-              <h2 className="text-xl font-black text-white tracking-tight">Rep. Confirmaciones</h2>
+              <h2 className="text-xl font-black text-white tracking-tight">Confirmados</h2>
               <p className="text-xs text-slate-400 mt-0.5">
-                Reportes históricos, auditoría de transacciones rechazadas y control de custodia de efectivo.
+                Reportes históricos, auditoría de transacciones confirmadas, rechazadas y custodia de efectivo.
               </p>
             </div>
           </div>

@@ -345,6 +345,11 @@ export const ConfirmationsBoard: React.FC = () => {
 
       // Process Pagos Diarios (Efectivo / Cobrador)
       (pdRes.data || []).forEach((r: any) => {
+        const tipo = String(r.tipo_pago || 'EFECTIVO').toUpperCase();
+        const conc = String(r.concepto || '').toUpperCase();
+        // Las entregas a supervisor son confirmaciones internas locales de la agencia/supervisor; no van a la bandeja de confirmaciones de admin
+        if (tipo.includes('SUPERVISOR') || conc.includes('SUPERVISOR')) return;
+
         const cid = String(r.cajero_id || r.user_id || '');
         const c_nom = cashierMap[cid] || (cid ? `ID ${cid}` : 'Desconocido');
         const isRech = Boolean(r.rechazado) || String(r.estado || '').toUpperCase() === 'RECHAZADO';

@@ -22,8 +22,14 @@ import {
   Award,
   Wallet,
   DollarSign,
-  Receipt
+  Receipt,
+  CheckCircle2,
 } from 'lucide-react';
+import {
+  recalculateAllCycleSales,
+  getAgencyCommissionAndParticipation,
+} from '../../utils/salesRecalculation';
+import { logAuditEvent } from '../../utils/auditLogger';
 
 interface SystemSaleDetail {
   sistema: string;
@@ -53,7 +59,7 @@ interface AgencySaleSummary {
 }
 
 export const RealSalesTab: React.FC = () => {
-  const { effectiveUserId, systemCycle } = useAuth();
+  const { user, effectiveUserId, systemCycle } = useAuth();
 
   // Date range filter (defaults to current active cycle)
   const [fechaDesde, setFechaDesde] = useState(systemCycle?.desde || '');
@@ -65,6 +71,10 @@ export const RealSalesTab: React.FC = () => {
   // Search filter
   const [searchQuery, setSearchQuery] = useState('');
   const [onlyWithMovements, setOnlyWithMovements] = useState(true);
+
+  // Recalculation state
+  const [isRecalculating, setIsRecalculating] = useState(false);
+  const [syncMessage, setSyncMessage] = useState<string | null>(null);
 
   // Expanded agencies state
   const [expandedAgencies, setExpandedAgencies] = useState<Record<string, boolean>>({});
@@ -132,6 +142,34 @@ export const RealSalesTab: React.FC = () => {
     if (systemCycle?.desde && systemCycle?.hasta) {
       setFechaDesde(systemCycle.desde);
       setFechaHasta(systemCycle.hasta);
+    }
+  };
+
+  // Recalcular y sincronizar ventas con agencias
+  const handleSyncAndRecalculate = async () => {
+    if (!effectiveUserId) return;
+    setIsRecalculating(true);
+    setSyncMessage(null);
+    try {
+      const res = await recalculateAllCycleSales(effectiveUserId);
+      await logAuditEvent({
+        user_id: effectiveUserId,
+        usuario: user?.email || 'Administración',
+        modulo: 'VENTAS',
+        tipo_accion: 'RECALCULO_VENTAS',
+        entidad_afectada: 'TODAS LAS AGENCIAS',
+        descripcion: `Sincronización y recálculo global de ventas ejecutado. Se actualizaron ${res.updatedCount} registros con comisiones y participaciones vigentes.`,
+        impacto_financiero: 'ALTO',
+      });
+      setSyncMessage(`¡Sincronización exitosa! ${res.updatedCount} ventas recalculadas.`);
+      setTimeout(() => setSyncMessage(null), 5000);
+      await loadData();
+    } catch (e) {
+      console.error('Error recalculating sales:', e);
+      setSyncMessage('Error al sincronizar ventas.');
+      setTimeout(() => setSyncMessage(null), 5000);
+    } finally {
+      setIsRecalculating(false);
     }
   };
 
@@ -216,7 +254,13 @@ export const RealSalesTab: React.FC = () => {
         if (!agName) return;
 
         const matchedAgency = agencyMap.get(agName);
-        const partPct = Number(matchedAgency?.participacion_ag || 0);
+        const { partPct: specificPartPct } = matchedAgency
+          ? getAgencyCommissionAndParticipation(matchedAgency, s.sistema, curr)
+          : { partPct: 0 };
+        const partPct =
+          specificPartPct !== undefined && !isNaN(specificPartPct) && specificPartPct > 0
+            ? specificPartPct
+            : Number(matchedAgency?.participacion_ag || 0);
 
         if (!agencyDataMap.has(agName)) {
           agencyDataMap.set(agName, {
@@ -235,20 +279,26 @@ export const RealSalesTab: React.FC = () => {
         }
 
         const entry = agencyDataMap.get(agName)!;
+        if (entry.participacionPct === 0 && partPct > 0) {
+          entry.participacionPct = partPct;
+        }
+
         const v = Number(s.venta ?? s.monto_venta ?? 0);
         const c = Number(s.comision ?? 0);
         const p = Number(s.premios ?? s.monto_premios ?? 0);
         const rowNeto = s.neto !== undefined && s.neto !== null ? Number(s.neto) : Math.round((v - c - p) * 100) / 100;
         
         let rowUtilAg = 0;
-        if (s.util_ag !== undefined && s.util_ag !== null) {
+        if (s.util_ag !== undefined && s.util_ag !== null && (Number(s.util_ag) > 0 || partPct === 0)) {
           rowUtilAg = Number(s.util_ag);
-        } else {
+        } else if (partPct > 0) {
           rowUtilAg = Math.round((rowNeto * (partPct / 100)) * 100) / 100;
+        } else {
+          rowUtilAg = 0;
         }
 
         let rowUtilOp = 0;
-        if (s.util_op !== undefined && s.util_op !== null) {
+        if (s.util_op !== undefined && s.util_op !== null && (Number(s.util_ag) > 0 || partPct === 0)) {
           rowUtilOp = Number(s.util_op);
         } else {
           rowUtilOp = Math.round((rowNeto - rowUtilAg) * 100) / 100;
@@ -479,6 +529,16 @@ export const RealSalesTab: React.FC = () => {
 
           <div className="flex flex-wrap items-center gap-2.5">
             <button
+              onClick={handleSyncAndRecalculate}
+              disabled={isRecalculating || sales.length === 0}
+              className="px-4 py-2.5 rounded-2xl bg-sky-500/10 hover:bg-sky-500/20 text-sky-400 border border-sky-500/30 font-bold text-xs flex items-center gap-2 transition-all cursor-pointer disabled:opacity-50"
+              title="Recalcula comisiones y participaciones con la configuración actual de las agencias"
+            >
+              <RefreshCw className={`w-4 h-4 ${isRecalculating ? 'animate-spin' : ''}`} />
+              <span>{isRecalculating ? 'Sincronizando...' : 'Sincronizar con Agencias'}</span>
+            </button>
+
+            <button
               onClick={handleExportExcel}
               disabled={sales.length === 0}
               className="px-4 py-2.5 rounded-2xl bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-bold text-xs flex items-center gap-2 transition-all cursor-pointer shadow-lg shadow-emerald-500/20 disabled:opacity-50"
@@ -497,6 +557,13 @@ export const RealSalesTab: React.FC = () => {
             </button>
           </div>
         </div>
+
+        {syncMessage && (
+          <div className="mt-4 p-3 rounded-2xl bg-sky-500/10 border border-sky-500/30 text-sky-300 text-xs flex items-center gap-2 animate-fade-in">
+            <CheckCircle2 className="w-4 h-4 shrink-0 text-sky-400" />
+            <span>{syncMessage}</span>
+          </div>
+        )}
 
         {/* Date Filter Strip */}
         <div className="mt-5 pt-4 border-t border-slate-800/80 flex flex-wrap items-center justify-between gap-3 text-xs relative z-10">

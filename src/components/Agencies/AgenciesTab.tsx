@@ -28,6 +28,8 @@ import {
   UserCheck,
 } from 'lucide-react';
 import confetti from 'canvas-confetti';
+import { recalculateAgencySales } from '../../utils/salesRecalculation';
+import { logAuditEvent } from '../../utils/auditLogger';
 
 /**
  * Parsea y formatea las cuentas y dispositivos bancarios al modo Ultra Compacto:
@@ -210,7 +212,7 @@ export const parseAgencySystemCombos = (ag: Agency) => {
 };
 
 export const AgenciesTab: React.FC = () => {
-  const { effectiveUserId, profile } = useAuth();
+  const { user, effectiveUserId, profile } = useAuth();
 
   const [isLoading, setIsLoading] = useState(true);
   const [isProcessing, setIsProcessing] = useState(false);
@@ -704,7 +706,46 @@ export const AgenciesTab: React.FC = () => {
 
         if (upErr) throw upErr;
         targetAgId = editModalAgency.id;
-        setMessage({ type: 'success', text: `¡Agencia ${formNombre} actualizada exitosamente!` });
+
+        // Auto-recalculate active cycle sales in carga_actual for this agency!
+        const recalcRes = await recalculateAgencySales(effectiveUserId, {
+          ...editModalAgency,
+          ...payload,
+        });
+
+        // Audit Log
+        await logAuditEvent({
+          user_id: effectiveUserId,
+          usuario: user?.email || 'Administración',
+          modulo: 'AGENCIAS',
+          tipo_accion: 'MODIFICAR_CONDICIONES_AGENCIA',
+          entidad_afectada: formNombre,
+          descripcion: `Agencia ${formNombre} actualizada. Participación global: ${formParticipacion}%, Comisión: ${formComision}%. ${
+            recalcRes.updatedCount > 0
+              ? `Se recalcularon ${recalcRes.updatedCount} ventas activas del ciclo.`
+              : 'Sin ventas activas modificadas.'
+          }`,
+          impacto_financiero: 'ALTO',
+          valor_anterior: {
+            comision: editModalAgency.comision,
+            participacion_ag: editModalAgency.participacion_ag,
+            condiciones_sistemas: editModalAgency.condiciones_sistemas,
+          },
+          valor_nuevo: {
+            comision: Number(formComision),
+            participacion_ag: Number(formParticipacion),
+            condiciones_sistemas: payload.condiciones_sistemas,
+          },
+        });
+
+        setMessage({
+          type: 'success',
+          text: `¡Agencia ${formNombre} actualizada exitosamente! ${
+            recalcRes.updatedCount > 0
+              ? `(${recalcRes.updatedCount} ventas sincronizadas y recalculadas en el ciclo activo)`
+              : ''
+          }`,
+        });
         setEditModalAgency(null);
       } else {
         // Insert new agency
@@ -716,6 +757,18 @@ export const AgenciesTab: React.FC = () => {
 
         if (insErr) throw insErr;
         targetAgId = insData.id;
+
+        await logAuditEvent({
+          user_id: effectiveUserId,
+          usuario: user?.email || 'Administración',
+          modulo: 'AGENCIAS',
+          tipo_accion: 'CREAR_AGENCIA',
+          entidad_afectada: formNombre,
+          descripcion: `Nueva agencia ${formNombre} registrada con comisión ${formComision}% y participación ${formParticipacion}%.`,
+          impacto_financiero: 'MEDIO',
+          valor_nuevo: payload,
+        });
+
         confetti({ particleCount: 50, spread: 60 });
         setMessage({ type: 'success', text: `¡Agencia ${formNombre} registrada exitosamente!` });
         setIsNewModalOpen(false);

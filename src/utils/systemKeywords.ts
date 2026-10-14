@@ -44,6 +44,26 @@ export const DEFAULT_SYSTEM_KEYWORDS: SystemKeywordsMap = {
     saldo_inicial_usd: 0,
     saldo_inicial_cop: 0,
   },
+  CDAPUESTAS: {
+    venta: 'Venta',
+    premio: 'Premio',
+    agencia: 'Agencia',
+    comision_comercializador: 0,
+    participacion_comercializador: 0,
+    saldo_inicial_bs: 0,
+    saldo_inicial_usd: 200,
+    saldo_inicial_cop: 0,
+  },
+  'GATO PESOS': {
+    venta: 'VENTA',
+    premio: 'PREMIOS',
+    agencia: 'Agencia',
+    comision_comercializador: 25,
+    participacion_comercializador: 30,
+    saldo_inicial_bs: 0,
+    saldo_inicial_usd: 0,
+    saldo_inicial_cop: 0,
+  },
 };
 
 /**

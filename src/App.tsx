@@ -18,11 +18,13 @@ import { SalesEntryTab } from './components/Finance/SalesEntryTab';
 import { RealSalesTab } from './components/Finance/RealSalesTab';
 import { PaymentsTab } from './components/Finance/PaymentsTab';
 import { ExpensesTab } from './components/Finance/ExpensesTab';
+import { AdministrativeExpensesTab } from './components/Finance/AdministrativeExpensesTab';
 import { AccountBalancesTab } from './components/Finance/AccountBalancesTab';
 import { WeeklyClosureTab } from './components/Finance/WeeklyClosureTab';
 import { OperatorsTab } from './components/Administration/OperatorsTab';
 import { CycleSettingsTab } from './components/Settings/CycleSettingsTab';
 import { UsersTab } from './components/Administration/UsersTab';
+import { AuditLogTab } from './components/Audit/AuditLogTab';
 
 const AppContent: React.FC = () => {
   const { isAuthenticated, isLoading, allowedModules } = useAuth();
@@ -60,6 +62,7 @@ const AppContent: React.FC = () => {
       case 'Pizarra Confirmaciones':
         return <ConfirmationsQuick />;
 
+      case 'Confirmados':
       case 'Rep. Confirmaciones':
         return <ConfirmationsReport />;
 
@@ -88,28 +91,31 @@ const AppContent: React.FC = () => {
       case 'Pagos Agencias':
         return <PaymentsTab />;
 
+      case 'Pagos a Proveedores':
       case 'Pagos a Operador':
         return <OperatorsTab initialSubTab="pagos" />;
 
       case 'Gastos por Agencia':
       case 'Gastos Agencias':
-      case 'Gastos Administrativos':
         return <ExpensesTab />;
+
+      case 'Gastos Administrativos':
+        return <AdministrativeExpensesTab />;
 
       case 'Saldo Agencias':
         return <AccountBalancesTab />;
 
       case 'Cierre ':
+      case 'Cierre Operadora':
         return <WeeklyClosureTab />;
 
-      case 'Venta Operadora':
-        return <OperatorsTab initialSubTab="venta" />;
+      case 'Auditoría':
+        return <AuditLogTab />;
 
+      case 'Reporte Proveedores':
       case 'Reporte Operadora':
+      case 'Venta Operadora':
         return <OperatorsTab initialSubTab="reporte" />;
-
-      case 'Cierre Operadora':
-        return <OperatorsTab initialSubTab="cierres" />;
 
       case 'Ajustes':
         return <CycleSettingsTab />;

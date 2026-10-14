@@ -31,6 +31,7 @@ import {
   Building2,
   Crown,
   Mail,
+  ShieldCheck,
 } from 'lucide-react';
 
 interface SidebarProps {
@@ -40,9 +41,18 @@ interface SidebarProps {
   onCloseMobile: () => void;
 }
 
+const HIDDEN_MENU_MODULES = new Set<string>([
+  'Venta Operadora',
+  'Cierre Operadora',
+  'Rep. Confirmaciones',
+  'Pagos a Operador',
+  'Reporte Operadora',
+]);
+
 const moduleIconMap: Record<ModuleId, React.ComponentType<{ className?: string }>> = {
   Inicio: Home,
   Confirmaciones: CheckSquare,
+  Confirmados: ClipboardList,
   'Rep. Confirmaciones': ClipboardList,
   'Pizarra Confirmaciones': CheckSquare,
   Sistemas: Layers,
@@ -56,13 +66,16 @@ const moduleIconMap: Record<ModuleId, React.ComponentType<{ className?: string }
   'Gastos por Agencia': Receipt,
   'Saldo Agencias': Wallet,
   'Venta Real': TrendingUp,
+  'Pagos a Proveedores': Handshake,
   'Pagos a Operador': Handshake,
   'Venta Operadora': BarChart3,
+  'Reporte Proveedores': FileText,
   'Reporte Operadora': FileText,
   'Cierre Operadora': Archive,
   'Config. Proveedores': SlidersHorizontal,
   'Gastos Administrativos': Calculator,
   'Cierre ': Lock,
+  Auditoría: ShieldCheck,
   Ajustes: Settings,
   Usuarios: Users,
 };
@@ -150,7 +163,9 @@ export const Sidebar: React.FC<SidebarProps> = ({
 
         {/* Middle: Navigation Items */}
         <div className="flex-1 overflow-y-auto py-2 px-2.5 space-y-0.5">
-          {allowedModules.map((modId) => {
+          {allowedModules
+            .filter((modId) => !HIDDEN_MENU_MODULES.has(modId))
+            .map((modId) => {
             const IconComp = moduleIconMap[modId] || Layers;
             const isActive = currentModule === modId;
             const buttonDomId = `menu-${modId.toLowerCase().trim().replace(/[^a-z0-9]/g, '-').replace(/-+/g, '-').replace(/^-|-$/g, '')}`;

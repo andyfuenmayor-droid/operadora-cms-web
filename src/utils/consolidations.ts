@@ -40,6 +40,21 @@ export interface ConsolidationOptions {
   filtrarPeriodo?: boolean;
 }
 
+export function normalizeToIsoDate(val?: string | null): string {
+  if (!val) return '';
+  const clean = String(val).trim().split('T')[0].split(' ')[0];
+  if (/^\d{4}-\d{2}-\d{2}$/.test(clean)) return clean;
+  const parts = clean.split('/');
+  if (parts.length === 3 && parts[2].length === 4) {
+    return `${parts[2]}-${parts[1].padStart(2, '0')}-${parts[0].padStart(2, '0')}`;
+  }
+  const dashParts = clean.split('-');
+  if (dashParts.length === 3 && dashParts[2].length === 4) {
+    return `${dashParts[2]}-${dashParts[1].padStart(2, '0')}-${dashParts[0].padStart(2, '0')}`;
+  }
+  return clean;
+}
+
 /**
  * Obtiene y consolida todos los pagos de:
  * 1. pagos_semana (manuales en CMS)
@@ -150,6 +165,16 @@ export async function getConsolidatedPayments(
       const monNorm = normalizarMoneda(r.moneda) as 'BS' | 'USD' | 'COP';
       const refRaw = String(r.referencia || 'N/A').trim().toUpperCase();
 
+      // Filtrar pagos bancarios por periodo operativo si aplica
+      if (filtrarPeriodo && (fechaDesde || fechaHasta)) {
+        const hoyStr = getTodayDateString();
+        const fIso = normalizeToIsoDate(fechaRaw) || normalizeToIsoDate(r.created_at);
+        const desdeIso = normalizeToIsoDate(fechaDesde);
+        const hastaIso = normalizeToIsoDate(fechaHasta || hoyStr);
+        if (fIso && desdeIso && fIso < desdeIso) return;
+        if (fIso && hastaIso && fIso > hastaIso) return;
+      }
+
       const pbId = r.id;
       if (pbId && pbSeenTx.has(`pb_${pbId}`)) return;
       if (pbId) pbSeenTx.add(`pb_${pbId}`);
@@ -224,19 +249,22 @@ export async function getConsolidatedPayments(
 
       // Si se filtra por periodo, restringir los pagos diarios al ciclo ANTES de calcular el balance de supervisor vs cobrador
       if (filtrarPeriodo && (fechaDesde || fechaHasta)) {
-        const enRangoFecha = (!fechaDesde || fCorta >= fechaDesde) && (!limiteHasta || fCorta <= limiteHasta);
-        const enRangoCreacion = (!fCorta || fCorta === 'N/A' || fCorta.length < 10) && cStr && (!fechaDesde || cStr >= fechaDesde) && (!limiteHasta || cStr <= limiteHasta);
+        const hoyStr = getTodayDateString();
+        const desdeIso = normalizeToIsoDate(fechaDesde);
+        const hastaIso = normalizeToIsoDate(fechaHasta || hoyStr);
+        const fIso = normalizeToIsoDate(fechaRaw) || normalizeToIsoDate(r.created_at);
 
         let enRangoCobrador = false;
         if (isCob) {
-          const fEsc = r.fecha_escaneo_cobrador ? String(r.fecha_escaneo_cobrador).slice(0, 10) : '';
-          const fLiq = r.fecha_liquidacion_admin ? String(r.fecha_liquidacion_admin).slice(0, 10) : '';
-          const enRangoEsc = fEsc && (!fechaDesde || fEsc >= fechaDesde) && (!limiteHasta || fEsc <= limiteHasta);
-          const enRangoLiq = fLiq && (!fechaDesde || fLiq >= fechaDesde) && (!limiteHasta || fLiq <= limiteHasta);
+          const fEscIso = normalizeToIsoDate(r.fecha_escaneo_cobrador);
+          const fLiqIso = normalizeToIsoDate(r.fecha_liquidacion_admin);
+          const enRangoEsc = fEscIso && (!desdeIso || fEscIso >= desdeIso) && (!hastaIso || fEscIso <= hastaIso);
+          const enRangoLiq = fLiqIso && (!desdeIso || fLiqIso >= desdeIso) && (!hastaIso || fLiqIso <= hastaIso);
           enRangoCobrador = Boolean(enRangoEsc || enRangoLiq);
         }
 
-        if (!enRangoFecha && !enRangoCreacion && !enRangoCobrador) return;
+        const enRangoFecha = Boolean(fIso && (!desdeIso || fIso >= desdeIso) && (!hastaIso || fIso <= hastaIso));
+        if (!enRangoFecha && !enRangoCobrador) return;
       }
 
       // Si es pura transferencia bancaria duplicada sin efectivo, omitir
@@ -366,7 +394,8 @@ export async function getConsolidatedPayments(
     // 4. Filtrar fechas según ciclo operativo (preservando pagos manuales del CMS del ciclo abierto)
     if (filtrarPeriodo && (fechaDesde || fechaHasta)) {
       const hoyStr = getTodayDateString();
-      const limiteHasta = fechaHasta || hoyStr;
+      const desdeIso = normalizeToIsoDate(fechaDesde);
+      const hastaIso = normalizeToIsoDate(fechaHasta || hoyStr);
 
       return listaItems.filter((item) => {
         // Los pagos ingresados directamente en pagos_semana pertenecen al ciclo abierto actual
@@ -374,17 +403,11 @@ export async function getConsolidatedPayments(
           return true;
         }
 
-        const fStr = item.fecha.slice(0, 10);
-        const cStr = item.created_at ? item.created_at.slice(0, 10) : '';
-
-        // 1. Rango estándar por fecha operativa
-        const enRangoFecha = (!fechaDesde || fStr >= fechaDesde) && (!limiteHasta || fStr <= limiteHasta);
-        if (enRangoFecha) return true;
-
-        // 2. Si no tiene fecha válida, recurrir a fecha de creación
-        if (!fStr || fStr === 'N/A' || fStr.length < 10) {
-          const enRangoCreacion = cStr && (!fechaDesde || cStr >= fechaDesde) && (!limiteHasta || cStr <= limiteHasta);
-          if (enRangoCreacion) return true;
+        const fIso = normalizeToIsoDate(item.fecha) || normalizeToIsoDate(item.created_at);
+        if (fIso) {
+          if (desdeIso && fIso < desdeIso) return false;
+          if (hastaIso && fIso > hastaIso) return false;
+          return true;
         }
 
         return false;
@@ -431,6 +454,9 @@ export async function getConsolidatedExpenses(
       if (!isConf || isRech) return;
 
       const agNom = String(r.agencia || '').trim().toUpperCase();
+      const isAdm = String(r.tipo || '').toUpperCase() === 'ADMINISTRATIVO' || agNom === 'COMERCIALIZADOR' || agNom === 'OFICINA / ADMINISTRACIÓN';
+      if (isAdm) return; // Administrative expenses are isolated for Comercializador
+
       const montoVal = Math.round((Number(r.monto) || 0) * 100) / 100;
       const fechaRaw = String(r.fecha || r.created_at || '').trim();
       const conceptoRaw = String(r.concepto || r.tipo || 'GASTO').trim().toUpperCase();
@@ -492,20 +518,17 @@ export async function getConsolidatedExpenses(
     // 3. Filtrar fechas según ciclo operativo
     if (filtrarPeriodo && (fechaDesde || fechaHasta)) {
       const hoyStr = getTodayDateString();
-      const limiteHasta = fechaHasta || hoyStr;
+      const desdeIso = normalizeToIsoDate(fechaDesde);
+      const hastaIso = normalizeToIsoDate(fechaHasta || hoyStr);
 
       return listaGastos.filter((item) => {
         if (!item.id.startsWith('gd_')) return true;
 
-        const fStr = item.fecha.slice(0, 10);
-        const cStr = item.created_at ? item.created_at.slice(0, 10) : '';
-
-        const enRangoFecha = (!fechaDesde || fStr >= fechaDesde) && (!limiteHasta || fStr <= limiteHasta);
-        if (enRangoFecha) return true;
-
-        if (!fStr || fStr === 'N/A' || fStr.length < 10) {
-          const enRangoCreacion = cStr && (!fechaDesde || cStr >= fechaDesde) && (!limiteHasta || cStr <= limiteHasta);
-          if (enRangoCreacion) return true;
+        const fIso = normalizeToIsoDate(item.fecha) || normalizeToIsoDate(item.created_at);
+        if (fIso) {
+          if (desdeIso && fIso < desdeIso) return false;
+          if (hastaIso && fIso > hastaIso) return false;
+          return true;
         }
 
         return false;
@@ -518,3 +541,110 @@ export async function getConsolidatedExpenses(
     return [];
   }
 }
+
+export interface AdministrativeExpenseItem {
+  id: string | number;
+  categoria: string;
+  concepto: string;
+  beneficiario: string;
+  referencia: string;
+  moneda: 'BS' | 'USD' | 'COP';
+  monto: number;
+  fecha: string;
+  confirmado: boolean;
+  confirmado_por?: string;
+  user_id?: string;
+  created_at?: string;
+}
+
+/**
+ * Obtiene los gastos administrativos exclusivos del Comercializador
+ * (Sueldos, Oficina, Internet, Computadoras/Equipos, Mantenimiento, etc.)
+ */
+export async function getAdministrativeExpenses(
+  effectiveUserId: string,
+  options: ConsolidationOptions = {}
+): Promise<AdministrativeExpenseItem[]> {
+  if (!effectiveUserId) return [];
+
+  const { fechaDesde, fechaHasta, filtrarPeriodo = true } = options;
+
+  try {
+    const { data, error } = await supabase
+      .from('gastos')
+      .select('*')
+      .eq('user_id', effectiveUserId)
+      .or('tipo.eq.ADMINISTRATIVO,agencia.eq.COMERCIALIZADOR,agencia.ilike.%ADMINISTRACION%')
+      .order('id', { ascending: false });
+
+    if (error) {
+      console.error('Error fetching administrative expenses:', error);
+      return [];
+    }
+
+    const items: AdministrativeExpenseItem[] = (data || []).map((r: any) => {
+      let rawConcepto = String(r.concepto || r.descripcion || 'Gasto Administrativo').trim();
+      let categoria = 'OTROS';
+      let beneficiario = 'N/A';
+      let referencia = 'N/A';
+
+      // Parse Category [CATEGORIA]
+      const catMatch = rawConcepto.match(/^\[([A-Z0-9_\s]+)\]/i);
+      if (catMatch) {
+        categoria = catMatch[1].trim().toUpperCase();
+        rawConcepto = rawConcepto.replace(/^\[[A-Z0-9_\s]+\]\s*/i, '').trim();
+      }
+
+      // Parse Beneficiary (Beneficiario: X)
+      const benMatch = rawConcepto.match(/\[BEN:\s*([^\]]+)\]/i);
+      if (benMatch) {
+        beneficiario = benMatch[1].trim();
+        rawConcepto = rawConcepto.replace(/\[BEN:\s*[^\]]+\]/i, '').trim();
+      }
+
+      // Parse Ref [REF: X]
+      const refMatch = rawConcepto.match(/\[REF:\s*([^\]]+)\]/i);
+      if (refMatch) {
+        referencia = refMatch[1].trim();
+        rawConcepto = rawConcepto.replace(/\[REF:\s*[^\]]+\]/i, '').trim();
+      }
+
+      return {
+        id: r.id,
+        categoria,
+        concepto: rawConcepto,
+        beneficiario,
+        referencia,
+        moneda: normalizarMoneda(r.moneda) as 'BS' | 'USD' | 'COP',
+        monto: Number(r.monto || 0),
+        fecha: String(r.fecha || r.created_at || '').slice(0, 10),
+        confirmado: Boolean(r.confirmado),
+        confirmado_por: r.confirmado_por,
+        user_id: r.user_id,
+        created_at: r.created_at,
+      };
+    });
+
+    if (filtrarPeriodo && (fechaDesde || fechaHasta)) {
+      const hoyStr = getTodayDateString();
+      const desdeIso = normalizeToIsoDate(fechaDesde);
+      const hastaIso = normalizeToIsoDate(fechaHasta || hoyStr);
+
+      return items.filter((item) => {
+        const fIso = normalizeToIsoDate(item.fecha) || normalizeToIsoDate(item.created_at);
+        if (fIso) {
+          if (desdeIso && fIso < desdeIso) return false;
+          if (hastaIso && fIso > hastaIso) return false;
+          return true;
+        }
+        return false;
+      });
+    }
+
+    return items;
+  } catch (err) {
+    console.error('Error fetching administrative expenses:', err);
+    return [];
+  }
+}
+

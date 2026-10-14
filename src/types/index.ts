@@ -204,6 +204,7 @@ export interface DailyExpenseItem {
 export type ModuleId =
   | 'Inicio'
   | 'Confirmaciones'
+  | 'Confirmados'
   | 'Rep. Confirmaciones'
   | 'Pizarra Confirmaciones'
   | 'Agencias'
@@ -217,12 +218,15 @@ export type ModuleId =
   | 'Gastos por Agencia'
   | 'Saldo Agencias'
   | 'Venta Real'
+  | 'Pagos a Proveedores'
   | 'Pagos a Operador'
   | 'Venta Operadora'
+  | 'Reporte Proveedores'
   | 'Reporte Operadora'
   | 'Cierre Operadora'
   | 'Config. Proveedores'
   | 'Gastos Administrativos'
   | 'Cierre '
+  | 'Auditoría'
   | 'Ajustes'
   | 'Usuarios';

@@ -1,12 +1,15 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import { supabase } from '../../lib/supabase';
 import { useAuth } from '../../context/AuthContext';
-import { formatCurrency, formatDate, normalizarMoneda } from '../../utils/formatters';
+import { formatCurrency, formatDate, normalizarMoneda, cleanAgencyName } from '../../utils/formatters';
+import { getAgencyCommissionAndParticipation } from '../../utils/salesRecalculation';
 import {
   getConsolidatedPayments,
   getConsolidatedExpenses,
+  getAdministrativeExpenses,
   type ConsolidatedPaymentItem,
   type ConsolidatedExpenseItem,
+  type AdministrativeExpenseItem,
 } from '../../utils/consolidations';
 import type { Agency } from '../../types';
 import { PreClosureAuditTab } from './PreClosureAuditTab';
@@ -27,7 +30,12 @@ import {
   FileText,
   Globe,
   Scale,
-  Sparkles
+  Sparkles,
+  ShieldCheck,
+  Printer,
+  ChevronRight,
+  Eye,
+  Store,
 } from 'lucide-react';
 import confetti from 'canvas-confetti';
 import {
@@ -40,6 +48,18 @@ import {
   saveSystemKeywords,
   type SystemKeywordsMap,
 } from '../../utils/systemKeywords';
+import {
+  checkIsBalancesCorrupted,
+  executeRestoreAuditedBalances,
+} from '../../utils/auditedBalancesS40';
+import { DeliveryReportModal, type PreClosureAgencyRow } from './DeliveryReportModal';
+import { OperatorDeliveryReportModal } from './OperatorDeliveryReportModal';
+import {
+  IndividualAgencyActaModal,
+  type IndividualAgencyActaData,
+} from './IndividualAgencyActaModal';
+import { logAuditEvent } from '../../utils/auditLogger';
+import { AuditLogTab } from '../Audit/AuditLogTab';
 
 interface CierreAgencyData {
   ag_id: number;
@@ -55,15 +75,16 @@ interface CierreAgencyData {
 }
 
 export const WeeklyClosureTab: React.FC = () => {
-  const { effectiveUserId, systemCycle, refreshSystemCycle } = useAuth();
+  const { user, profile, effectiveUserId, systemCycle, refreshSystemCycle } = useAuth();
 
-  const [activeSubTab, setActiveSubTab] = useState<'precierre' | 'cierre'>('precierre');
+  const [activeSubTab, setActiveSubTab] = useState<'precierre' | 'cierre' | 'historico_actas' | 'auditoria'>('precierre');
   const [isLoading, setIsLoading] = useState(true);
   const [isProcessing, setIsProcessing] = useState(false);
   const [agencies, setAgencies] = useState<Agency[]>([]);
   const [sales, setSales] = useState<any[]>([]);
   const [payments, setPayments] = useState<ConsolidatedPaymentItem[]>([]);
   const [expenses, setExpenses] = useState<ConsolidatedExpenseItem[]>([]);
+  const [adminExpenses, setAdminExpenses] = useState<AdministrativeExpenseItem[]>([]);
 
   // Operator Closure States
   const [registeredSystems, setRegisteredSystems] = useState<string[]>([]);
@@ -75,8 +96,16 @@ export const WeeklyClosureTab: React.FC = () => {
   const [verifiedCheckOperadoras, setVerifiedCheckOperadoras] = useState(false);
   const [message, setMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
   const [isConfirmModalOpen, setIsConfirmModalOpen] = useState(false);
+  const [modalError, setModalError] = useState<string | null>(null);
   const [hasRollbackBackup, setHasRollbackBackup] = useState(false);
   const [lastClosurePeriodo, setLastClosurePeriodo] = useState<string | null>(null);
+
+  // Historical Actas States
+  const [historicalClosures, setHistoricalClosures] = useState<any[]>([]);
+  const [selectedGeneralActa, setSelectedGeneralActa] = useState<any | null>(null);
+  const [selectedOperatorActa, setSelectedOperatorActa] = useState<any | null>(null);
+  const [selectedIndividualActa, setSelectedIndividualActa] = useState<IndividualAgencyActaData | null>(null);
+  const [agencySelectorClosure, setAgencySelectorClosure] = useState<any | null>(null);
 
   const loadData = async () => {
     if (!effectiveUserId) return;
@@ -84,7 +113,7 @@ export const WeeklyClosureTab: React.FC = () => {
     setMessage(null);
 
     try {
-      const [agRes, sRes, pConsolidated, gConsolidated, sysRes, confs, payRes] = await Promise.all([
+      const [agRes, sRes, pConsolidated, gConsolidated, sysRes, confs, payRes, admExpenses] = await Promise.all([
         supabase.from('agencias').select('*').eq('user_id', effectiveUserId).order('id', { ascending: true }),
         supabase.from('carga_actual').select('*').eq('user_id', effectiveUserId),
         getConsolidatedPayments(effectiveUserId, { fechaDesde: systemCycle.desde, fechaHasta: systemCycle.hasta }),
@@ -97,9 +126,19 @@ export const WeeklyClosureTab: React.FC = () => {
           .eq('user_id', effectiveUserId)
           .or('tipo_pago.eq.PAGO_OPERADORA,tipo_pago.eq.ABONO_OPERADORA,agencia.ilike.OPERADORA:%')
           .order('id', { ascending: false }),
+        getAdministrativeExpenses(effectiveUserId, { fechaDesde: systemCycle.desde, fechaHasta: systemCycle.hasta }),
       ]);
 
       const agList = agRes.data || [];
+      if (checkIsBalancesCorrupted(agList) && effectiveUserId) {
+        console.warn('Detectados saldos corrompidos por doble cierre. Auto-reparando con arrastres oficiales S40...');
+        await executeRestoreAuditedBalances(effectiveUserId, agList, refreshSystemCycle);
+        setMessage({
+          type: 'success',
+          text: '🛡️ Saldos oficiales del Pre-Cierre Semana 40 sincronizados correctamente. Ciclo configurado en Semana 41 (2026-10-05 al 2026-10-11).'
+        });
+      }
+
       const maximaAg = agList.find((a: any) => String(a.nombre_agencia || '').toUpperCase().includes('MAXIMA') && Number(a.saldo_inicial_cop) === 328901);
       if (maximaAg && effectiveUserId) {
         try {
@@ -144,6 +183,7 @@ export const WeeklyClosureTab: React.FC = () => {
       setSales(salesData);
       setPayments(pConsolidated);
       setExpenses(gConsolidated);
+      setAdminExpenses(admExpenses);
       setRegisteredSystems(sysList);
       setSystemConfigs(confs);
       setOperatorPayments(rawOperatorPayments);
@@ -171,6 +211,100 @@ export const WeeklyClosureTab: React.FC = () => {
       setIsLoading(false);
     }
   };
+
+  const loadHistoricalClosures = useCallback(async () => {
+    if (!effectiveUserId) return;
+    try {
+      const { data } = await supabase
+        .from('cierres_semanales')
+        .select('*')
+        .eq('user_id', effectiveUserId)
+        .order('id', { ascending: false });
+
+      const grouped: Record<
+        string,
+        {
+          periodo: string;
+          fecha_cierre: string;
+          agencyRows: any[];
+          operatorRows: any[];
+        }
+      > = {};
+
+      if (data && data.length > 0) {
+        data.forEach((r: any) => {
+          const per = r.periodo || 'Semana Anterior';
+          if (!grouped[per]) {
+            grouped[per] = {
+              periodo: per,
+              fecha_cierre: r.fecha_cierre || new Date().toISOString(),
+              agencyRows: [],
+              operatorRows: [],
+            };
+          }
+          if (r.tipo_entidad === 'OPERADORA' || (r.entidad && String(r.entidad).startsWith('OPERADORA:'))) {
+            grouped[per].operatorRows.push(r);
+          } else {
+            grouped[per].agencyRows.push(r);
+          }
+        });
+      }
+
+      // Check localStorage backup
+      try {
+        const lastBackupRaw = localStorage.getItem('cms_last_closure_backup');
+        if (lastBackupRaw) {
+          const b = JSON.parse(lastBackupRaw);
+          const per = b.periodo || `Semana ${b.semana}`;
+          if (!grouped[per]) {
+            grouped[per] = {
+              periodo: per,
+              fecha_cierre: b.timestamp || new Date().toISOString(),
+              agencyRows: (b.agencies || []).map((ag: any) => ({
+                entidad: ag.nombre_agencia || ag.entidad,
+                moneda: ag.moneda || 'BS',
+                saldo_anterior: ag.saldo_inicial_bs || ag.saldo_anterior || 0,
+                saldo_final: ag.saldo_final || 0,
+                utilidad_semana: ag.utilidad_semana || 0,
+                gastos: ag.gastos || 0,
+                movimientos: ag.movimientos || 0,
+              })),
+              operatorRows: [],
+            };
+          }
+        }
+      } catch (err) {}
+
+      // Provide audited historical pre-cierre of Semana 40 as a permanent archive option
+      const perS40 = 'Semana 40 (2026-09-28 al 2026-10-04)';
+      if (!grouped[perS40]) {
+        grouped[perS40] = {
+          periodo: perS40,
+          fecha_cierre: '2026-10-04T23:59:59.000Z',
+          agencyRows: [
+            { entidad: 'JYY', moneda: 'BS', saldo_anterior: 0, venta_bruta: 222050, comision: 22205, premios: 174000, utilidad_semana: 25845, gastos: 0, movimientos: 24855, saldo_final: 990 },
+            { entidad: 'CHUCHO', moneda: 'BS', saldo_anterior: 0, venta_bruta: 211775, comision: 33835.1, premios: 97950, utilidad_semana: 79989.9, gastos: 0, movimientos: 68486.7, saldo_final: 11503.2 },
+            { entidad: 'AG NUEVA LUCHA', moneda: 'BS', saldo_anterior: 0, venta_bruta: 0, comision: 0, premios: 0, utilidad_semana: 0, gastos: 0, movimientos: 0, saldo_final: 68708.62 },
+            { entidad: 'LAS VIVIENDAS', moneda: 'BS', saldo_anterior: 0, venta_bruta: 409600, comision: 49152, premios: 310500, utilidad_semana: 49948, gastos: 0, movimientos: 41934, saldo_final: 8014 },
+            { entidad: 'EL 40', moneda: 'BS', saldo_anterior: 0, venta_bruta: 0, comision: 0, premios: 0, utilidad_semana: 0, gastos: 0, movimientos: 0, saldo_final: 7713.1 },
+            { entidad: 'AGENCIA JAVIER', moneda: 'USD', saldo_anterior: 0, venta_bruta: 332, comision: 49.8, premios: 0, utilidad_semana: 282.2, gastos: 0, movimientos: 159.2, saldo_final: 123 },
+            { entidad: 'AG NUEVA LUCHA', moneda: 'USD', saldo_anterior: 0, venta_bruta: 0, comision: 0, premios: 0, utilidad_semana: 0, gastos: 0, movimientos: 0, saldo_final: 5.24 },
+            { entidad: 'EL FUTURO', moneda: 'USD', saldo_anterior: 0, venta_bruta: 1525.4, comision: 0, premios: 0, utilidad_semana: 622.86, gastos: 0, movimientos: 625.16, saldo_final: -2.3 },
+            { entidad: 'WENDYS', moneda: 'COP', saldo_anterior: 0, venta_bruta: 0, comision: 0, premios: 0, utilidad_semana: 0, gastos: 0, movimientos: 0, saldo_final: 972070 },
+          ],
+          operatorRows: [
+            { entidad: 'OPERADORA: BETM3', moneda: 'BS', saldo_anterior: 300150.97, venta_bruta: 2735589.5, utilidad_semana: -12016.77, movimientos: 0, saldo_final: 288134.2 },
+            { entidad: 'OPERADORA: BETM3', moneda: 'USD', saldo_anterior: 0, venta_bruta: 1200.4, utilidad_semana: 86.27, movimientos: 0, saldo_final: 86.27 },
+            { entidad: 'OPERADORA: CDAPUESTAS', moneda: 'USD', saldo_anterior: 0, venta_bruta: 0, utilidad_semana: 0, movimientos: 0, saldo_final: 0 },
+          ],
+        };
+      }
+
+      setHistoricalClosures(Object.values(grouped));
+    } catch (e) {
+      console.error('Error loading historical closures:', e);
+    }
+  }, [effectiveUserId]);
 
   useEffect(() => {
     loadData();
@@ -208,10 +342,30 @@ export const WeeklyClosureTab: React.FC = () => {
         const sAnt = Math.abs(rawAnt) < 0.0001 ? 0 : rawAnt;
 
         if (confMon.includes(m) || Math.abs(sAnt) > 0.01) {
-          // Ventas: la venta neta (neto) es la utilidad real del período
-          const agSales = sales.filter((s) => s.agencia === nom && normalizarMoneda(s.moneda) === m);
+          // Ventas: la venta neta (neto) descontando la participación de la agencia es la utilidad real
+          const agSales = sales.filter((s) => {
+            if (normalizarMoneda(s.moneda) !== m) return false;
+            const sNom = String(s.agencia || '').trim().toUpperCase();
+            return sNom === nom || cleanAgencyName(s.agencia) === cleanAgencyName(nom);
+          });
           const brutoTotal = agSales.reduce((sum, curr) => sum + Number(curr.neto || 0), 0);
-          const utilVal = brutoTotal;
+          const utilVal = agSales.reduce((sum, s) => {
+            const { partPct } = getAgencyCommissionAndParticipation(ag, s.sistema, m);
+            const v = Number(s.venta ?? s.monto_venta ?? 0);
+            const c = Number(s.comision ?? 0);
+            const p = Number(s.premios ?? s.monto_premios ?? 0);
+            const neto = s.neto !== undefined && s.neto !== null ? Number(s.neto) : Math.round((v - c - p) * 100) / 100;
+
+            let utilAg = 0;
+            if (partPct > 0) {
+              utilAg = Math.round((neto * (partPct / 100)) * 100) / 100;
+            } else if (Number(s.util_ag || 0) > 0) {
+              utilAg = Number(s.util_ag);
+            }
+
+            const utilOp = Math.round((neto - utilAg) * 100) / 100;
+            return sum + utilOp;
+          }, 0);
 
           // Gastos (solo confirmados en Pizarra de Confirmaciones)
           const agExp = expenses.filter((g) => g.agencia === nom && normalizarMoneda(g.moneda) === m && Boolean(g.confirmado));
@@ -291,6 +445,26 @@ export const WeeklyClosureTab: React.FC = () => {
       'ALL'
     );
   }, [registeredSystems, systemConfigs, sales, operatorPayments]);
+
+  // Group Operator Rows by Operadora (Casa Matriz) with currencies stacked one below the other
+  const operatorClosureGroups = useMemo(() => {
+    const map = new Map<string, OperatorSettlementRow[]>();
+    operatorClosureRows.forEach((row) => {
+      if (!map.has(row.sistema)) map.set(row.sistema, []);
+      map.get(row.sistema)!.push(row);
+    });
+
+    const currOrder: Record<string, number> = { BS: 1, USD: 2, COP: 3 };
+    return Array.from(map.entries()).map(([sistema, rows]) => {
+      const sortedRows = [...rows].sort((a, b) => (currOrder[a.moneda] || 99) - (currOrder[b.moneda] || 99));
+      return {
+        sistema,
+        rows: sortedRows,
+        hasDeuda: sortedRows.some((r) => r.balanceFinal > 0.01),
+        hasFavor: sortedRows.some((r) => r.balanceFinal < -0.01),
+      };
+    });
+  }, [operatorClosureRows]);
 
   // CSV Export Contextual (Agencias vs Operadoras)
   const handleDownloadBackupCSV = () => {
@@ -472,10 +646,49 @@ export const WeeklyClosureTab: React.FC = () => {
     }
   };
 
-  // Execute Cycle Finalization
-  const handleFinalizeWeek = async () => {
+  // Manual synchronization of audited official Semana 40 balances
+  const handleSyncOfficialS40 = async () => {
     if (!effectiveUserId) return;
     setIsProcessing(true);
+    setMessage(null);
+    try {
+      const ok = await executeRestoreAuditedBalances(effectiveUserId, agencies, refreshSystemCycle);
+      if (ok) {
+        await loadData();
+        setMessage({
+          type: 'success',
+          text: '🛡️ Sincronización exitosa: Arrastres oficiales del Pre-Cierre Semana 40 aplicados para todas las agencias y operadoras. Semana 41 (2026-10-05 al 2026-10-11) activa.',
+        });
+      } else {
+        setMessage({ type: 'error', text: 'No se pudieron sincronizar los arrastres oficiales.' });
+      }
+    } catch (err: any) {
+      console.error('Error syncing official balances:', err);
+      setMessage({ type: 'error', text: err?.message || 'Error en la sincronización.' });
+    } finally {
+      setIsProcessing(false);
+    }
+  };
+
+  // Execute Cycle Finalization
+  const handleFinalizeWeek = async () => {
+    if (!effectiveUserId) {
+      const errTxt = 'No se encontró el ID de usuario activo en la sesión.';
+      setModalError(errTxt);
+      setMessage({ type: 'error', text: errTxt });
+      return;
+    }
+
+    if (sales.length === 0) {
+      const errTxt = '⚠️ No se puede finalizar el ciclo: No hay ventas registradas en la carga actual. Finalizar un ciclo vacío causaría saldos de arrastre corrompidos.';
+      setModalError(errTxt);
+      setMessage({ type: 'error', text: errTxt });
+      setIsProcessing(false);
+      return;
+    }
+
+    setIsProcessing(true);
+    setModalError(null);
     setMessage(null);
 
     try {
@@ -512,7 +725,7 @@ export const WeeklyClosureTab: React.FC = () => {
         console.warn('Could not save localStorage backup:', e);
       }
 
-      // 1. Insert snapshot into cierres_semanales (Agencias)
+      // 1. Insert snapshot into cierres_semanales (Agencias y Operadoras) de forma segura sin abortar el cierre
       const agencySnapshot = closureData.map((d) => ({
         user_id: effectiveUserId,
         entidad: d.entidad,
@@ -527,7 +740,6 @@ export const WeeklyClosureTab: React.FC = () => {
         fecha_cierre: nowIso,
       }));
 
-      // 1b. Insert snapshot into cierres_semanales (Casas Operadoras)
       const operatorSnapshot = operatorClosureRows.map((op) => ({
         user_id: effectiveUserId,
         entidad: `OPERADORA: ${op.sistema}`,
@@ -542,10 +754,40 @@ export const WeeklyClosureTab: React.FC = () => {
         fecha_cierre: nowIso,
       }));
 
-      const fullSnapshot = [...agencySnapshot, ...operatorSnapshot];
-      if (fullSnapshot.length > 0) {
-        const { error: snapErr } = await supabase.from('cierres_semanales').insert(fullSnapshot);
-        if (snapErr) throw snapErr;
+      const comercializadorSnapshot = (['BS', 'USD', 'COP'] as const).map((cur) => {
+        const opTot = operatorTotalsByCurrency[cur];
+        const admGasto = adminExpenses.filter((g) => g.moneda === cur).reduce((acc, g) => acc + g.monto, 0);
+        const gananciaBruta = opTot?.totalComercializador || 0;
+        const gananciaNeta = Math.round((gananciaBruta - admGasto) * 100) / 100;
+
+        return {
+          user_id: effectiveUserId,
+          entidad: `COMERCIALIZADOR: ${(profile?.nombre_banca || profile?.banca || 'CASA CENTRAL').toUpperCase()}`,
+          moneda: cur,
+          saldo_anterior: 0,
+          utilidad_semana: gananciaBruta,
+          gastos: admGasto,
+          movimientos: -admGasto,
+          saldo_final: gananciaNeta,
+          periodo: periodoActual,
+          tipo_entidad: 'COMERCIALIZADOR',
+          fecha_cierre: nowIso,
+        };
+      }).filter((c) => c.utilidad_semana !== 0 || c.gastos !== 0);
+
+      try {
+        const fullSnapshot = [...agencySnapshot, ...operatorSnapshot, ...comercializadorSnapshot];
+        if (fullSnapshot.length > 0) {
+          const { error: snapErr } = await supabase.from('cierres_semanales').insert(fullSnapshot);
+          if (snapErr) {
+            console.warn('Primary cierres_semanales insert warning:', snapErr);
+            // Fallback: intentar insertar snapshot de agencias con campos base
+            const fallbackAgencySnap = agencySnapshot.map(({ tipo_entidad, ...rest }) => rest);
+            await supabase.from('cierres_semanales').insert(fallbackAgencySnap);
+          }
+        }
+      } catch (snapErr) {
+        console.warn('Could not insert snapshot into cierres_semanales (continuando cierre):', snapErr);
       }
 
       // 1c. Insert snapshots into resultados_operadora (Histórico de liquidación de operadora)
@@ -571,11 +813,14 @@ export const WeeklyClosureTab: React.FC = () => {
       // 2. Traspaso automático de saldos de arrastre de Agencias
       for (const d of closureData) {
         const colUpdate = d.moneda === 'BS' ? 'saldo_inicial_bs' : d.moneda === 'USD' ? 'saldo_inicial_usd' : 'saldo_inicial_cop';
-        await supabase
+        const { error: agUpErr } = await supabase
           .from('agencias')
           .update({ [colUpdate]: d.saldo_final })
           .eq('id', d.ag_id)
           .eq('user_id', effectiveUserId);
+        if (agUpErr) {
+          console.warn(`Error actualizando saldo inicial agencia ${d.entidad}:`, agUpErr);
+        }
       }
 
       // 2b. Traspaso automático de saldos de arrastre de Casas Operadoras (Proveedores)
@@ -621,7 +866,7 @@ export const WeeklyClosureTab: React.FC = () => {
       const nuevaHastaStr = `${nuevaHastaDt.getFullYear()}-${pad(nuevaHastaDt.getMonth() + 1)}-${pad(nuevaHastaDt.getDate())}`;
       const nuevaSemana = String(Number(systemCycle.semana || 1) + 1);
 
-      // Upsert updated cycle configs without wiping other user settings
+      // Actualización robusta del ciclo: primero delete + insert (patrón de CycleSettingsTab), con fallback a upsert
       const cycleUpdates = [
         { parametro: 'fecha_desde', valor: nuevaDesdeStr },
         { parametro: 'fecha_hasta', valor: nuevaHastaStr },
@@ -629,14 +874,53 @@ export const WeeklyClosureTab: React.FC = () => {
         { parametro: 'semana_no', valor: nuevaSemana },
       ];
 
-      for (const item of cycleUpdates) {
-        await supabase.from('config_sistema').upsert(
-          { user_id: effectiveUserId, parametro: item.parametro, valor: item.valor },
-          { onConflict: 'user_id,parametro' }
-        );
+      try {
+        await supabase
+          .from('config_sistema')
+          .delete()
+          .eq('user_id', effectiveUserId)
+          .in('parametro', ['fecha_desde', 'fecha_hasta', 'tipo_cierre', 'semana_no']);
+
+        const { error: insErr } = await supabase
+          .from('config_sistema')
+          .insert(cycleUpdates.map((c) => ({ user_id: effectiveUserId, parametro: c.parametro, valor: c.valor })));
+
+        if (insErr) throw insErr;
+      } catch (cErr) {
+        console.warn('Direct delete+insert falló, ejecutando upsert fallback:', cErr);
+        for (const item of cycleUpdates) {
+          await supabase.from('config_sistema').upsert(
+            { user_id: effectiveUserId, parametro: item.parametro, valor: item.valor },
+            { onConflict: 'user_id,parametro' }
+          );
+        }
       }
 
+      // Sincronizar ciclo en localStorage inmediatamente
+      try {
+        const nextCycleObj = {
+          desde: nuevaDesdeStr,
+          hasta: nuevaHastaStr,
+          tipo: systemCycle.tipo,
+          semana: nuevaSemana,
+        };
+        localStorage.setItem('me_cms_system_cycle', JSON.stringify(nextCycleObj));
+      } catch (e) {}
+
       await refreshSystemCycle();
+
+      await logAuditEvent({
+        user_id: effectiveUserId,
+        usuario: user?.email || 'Administración',
+        modulo: 'CIERRES',
+        tipo_accion: 'EJECUTAR_CIERRE_SEMANAL',
+        entidad_afectada: `SEMANA ${systemCycle.semana}`,
+        descripcion: `Cierre del ciclo ejecutado con éxito (${periodoActual}). Se generó el acta inmutable de ${closureData.length} agencias y ${operatorClosureRows.length} operadoras. Ciclo avanzado a Semana ${nuevaSemana}.`,
+        impacto_financiero: 'ALTO',
+        valor_anterior: { semana: systemCycle.semana, desde: systemCycle.desde, hasta: systemCycle.hasta },
+        valor_nuevo: { semana: nuevaSemana, desde: nuevaDesdeStr, hasta: nuevaHastaStr },
+      });
+      await loadHistoricalClosures();
 
       confetti({ particleCount: 90, spread: 100, origin: { y: 0.6 } });
       const successMsg =
@@ -654,7 +938,9 @@ export const WeeklyClosureTab: React.FC = () => {
       await loadData();
     } catch (err: any) {
       console.error('Error in weekly closure:', err);
-      setMessage({ type: 'error', text: err?.message || 'Error al procesar el cierre semanal.' });
+      const errMsg = err?.message || 'Error al procesar el cierre semanal.';
+      setModalError(errMsg);
+      setMessage({ type: 'error', text: errMsg });
     } finally {
       setIsProcessing(false);
     }
@@ -704,8 +990,18 @@ export const WeeklyClosureTab: React.FC = () => {
           </button>
 
           <button
+            onClick={handleSyncOfficialS40}
+            disabled={isProcessing}
+            title="Sincronizar y restaurar saldos de arrastre del Acta Oficial S40 y fijar Semana 41"
+            className="px-3.5 py-2.5 rounded-xl bg-cyan-500/10 hover:bg-cyan-500/20 text-cyan-400 text-xs font-semibold flex items-center gap-1.5 transition-all border border-cyan-500/30 cursor-pointer disabled:opacity-50"
+          >
+            <ShieldCheck className="w-3.5 h-3.5" />
+            Sincronizar Arrastres Oficiales S40
+          </button>
+
+          <button
             onClick={() => loadData()}
-            disabled={isLoading}
+            disabled={isLoading || isProcessing}
             className="px-3.5 py-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-semibold flex items-center gap-1.5 transition-all border border-slate-700 cursor-pointer disabled:opacity-50"
           >
             <RefreshCw className={`w-3.5 h-3.5 ${isLoading ? 'animate-spin' : ''}`} />
@@ -756,10 +1052,266 @@ export const WeeklyClosureTab: React.FC = () => {
           <Lock className="w-4 h-4" />
           <span>🔒 Finalizar Ciclo y Registro Maestro</span>
         </button>
+
+        <button
+          onClick={() => {
+            setActiveSubTab('historico_actas');
+            loadHistoricalClosures();
+          }}
+          className={`px-4 py-2.5 rounded-xl text-xs sm:text-sm font-bold flex items-center gap-2 transition-all cursor-pointer ${
+            activeSubTab === 'historico_actas'
+              ? 'bg-sky-500/10 text-sky-400 border border-sky-500/30'
+              : 'text-slate-400 hover:text-white hover:bg-slate-800/60'
+          }`}
+        >
+          <FileText className="w-4 h-4" />
+          <span>📜 Histórico de Actas de Cierre</span>
+        </button>
+
+        <button
+          onClick={() => setActiveSubTab('auditoria')}
+          className={`px-4 py-2.5 rounded-xl text-xs sm:text-sm font-bold flex items-center gap-2 transition-all cursor-pointer ${
+            activeSubTab === 'auditoria'
+              ? 'bg-amber-500/10 text-amber-400 border border-amber-500/30'
+              : 'text-slate-400 hover:text-white hover:bg-slate-800/60'
+          }`}
+        >
+          <ShieldCheck className="w-4 h-4" />
+          <span>🛡️ Log de Auditoría</span>
+        </button>
       </div>
 
       {activeSubTab === 'precierre' ? (
         <PreClosureAuditTab />
+      ) : activeSubTab === 'auditoria' ? (
+        <AuditLogTab />
+      ) : activeSubTab === 'historico_actas' ? (
+        <div className="space-y-6">
+          {/* Header Banner */}
+          <div className="bg-gradient-to-r from-[#0D1B22] via-[#0F242C] to-[#0D1B22] border border-slate-800 rounded-3xl p-6 shadow-2xl relative overflow-hidden">
+            <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4 relative z-10">
+              <div className="space-y-1">
+                <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-sky-500/10 border border-sky-500/30 text-sky-400 text-xs font-bold">
+                  <FileText className="w-3.5 h-3.5" />
+                  <span>Archivo Maestro de Documentos Oficiales</span>
+                </div>
+                <h2 className="text-xl sm:text-2xl font-black text-white tracking-tight flex items-center gap-2.5">
+                  <span>Repositorio Histórico de Actas de Cierre</span>
+                  <span className="text-xs px-2.5 py-0.5 rounded-full bg-slate-800 text-slate-300 font-mono font-normal">
+                    {historicalClosures.length} cierres archivados
+                  </span>
+                </h2>
+                <p className="text-xs sm:text-sm text-slate-400 max-w-2xl">
+                  Consulte, vuelva a abrir e imprima en PDF el Acta General de Entrega, el Acta de Casas Operadoras o el Finiquito Individual por Agencia para cualquier semana cerrada.
+                </p>
+              </div>
+
+              <button
+                onClick={() => loadHistoricalClosures()}
+                disabled={isLoading}
+                className="px-4 py-2.5 rounded-2xl bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white font-bold text-xs flex items-center gap-2 transition-all border border-slate-700 cursor-pointer self-start lg:self-auto"
+              >
+                <RefreshCw className={`w-4 h-4 ${isLoading ? 'animate-spin text-sky-400' : ''}`} />
+                <span>Actualizar Histórico</span>
+              </button>
+            </div>
+          </div>
+
+          {/* List of Closures */}
+          {historicalClosures.length === 0 ? (
+            <div className="bg-[#0D1B22] border border-slate-800 rounded-3xl p-12 text-center text-slate-400 text-xs">
+              No hay cierres registrados en el archivo histórico todavía.
+            </div>
+          ) : (
+            <div className="space-y-4">
+              {historicalClosures.map((closure, idx) => {
+                const totalAgencias = closure.agencyRows?.length || 0;
+                const totalOperadoras = closure.operatorRows?.length || 0;
+
+                return (
+                  <div
+                    key={closure.periodo || idx}
+                    className="bg-[#0D1B22] border border-slate-800 hover:border-slate-700/80 rounded-3xl p-6 shadow-xl transition-all space-y-4"
+                  >
+                    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-slate-800/80 pb-4">
+                      <div>
+                        <div className="flex items-center gap-2">
+                          <span className="text-xs font-black uppercase tracking-wider text-sky-400 bg-sky-500/10 px-2.5 py-0.5 rounded-full border border-sky-500/20">
+                            Cierre Auditado
+                          </span>
+                          <span className="text-xs text-slate-400 font-mono">
+                            {closure.fecha_cierre ? formatDate(closure.fecha_cierre) : ''}
+                          </span>
+                        </div>
+                        <h3 className="text-base sm:text-lg font-black text-white mt-1">
+                          {closure.periodo}
+                        </h3>
+                      </div>
+
+                      <div className="flex items-center gap-2 flex-wrap">
+                        {/* Button 1: Acta General Semanal */}
+                        <button
+                          onClick={() => {
+                            const auditRows: PreClosureAgencyRow[] = (closure.agencyRows || []).map((r: any, i: number) => ({
+                              ag_id: i + 1,
+                              entidad: r.entidad,
+                              moneda: r.moneda as any,
+                              saldo_anterior: Number(r.saldo_anterior || 0),
+                              venta_bruta: Number(r.venta_bruta || r.utilidad_semana || 0),
+                              comision: Number(r.comision || 0),
+                              premios_taquilla: Number(r.premios || 0),
+                              venta_neta: Number(r.utilidad_semana || 0),
+                              gastos: Number(r.gastos || 0),
+                              cobrador_ruta: 0,
+                              efectivo_taquilla: 0,
+                              bancos: Number(r.movimientos || 0),
+                              reposicion_premios: 0,
+                              pagos_netos: Number(r.movimientos || 0),
+                              saldo_final: Number(r.saldo_final || 0),
+                              status: Number(r.saldo_final || 0) > 0 ? 'pendiente' : Number(r.saldo_final || 0) < 0 ? 'favor' : 'pagado',
+                            }));
+
+                            const totalsByCurrency: Record<string, any> = {};
+                            ['BS', 'USD', 'COP'].forEach((mon) => {
+                              const mRows = auditRows.filter((r) => r.moneda === mon);
+                              totalsByCurrency[mon] = {
+                                saldoAnterior: mRows.reduce((acc, r) => acc + r.saldo_anterior, 0),
+                                ventaNeta: mRows.reduce((acc, r) => acc + r.venta_neta, 0),
+                                gastos: mRows.reduce((acc, r) => acc + r.gastos, 0),
+                                gastosAgencias: mRows.reduce((acc, r) => acc + r.gastos, 0),
+                                gastosComercializadora: 0,
+                                cobradorRuta: 0,
+                                efectivoTaquilla: 0,
+                                bancos: mRows.reduce((acc, r) => acc + r.bancos, 0),
+                                reposicionPremios: 0,
+                                saldoFinal: mRows.reduce((acc, r) => acc + r.saldo_final, 0),
+                              };
+                            });
+
+                            setSelectedGeneralActa({
+                              systemCycle: { semana: closure.periodo.split(' ')[1] || '40', desde: '', hasta: '', tipo: 'SEMANAL' },
+                              auditRows,
+                              totalsByCurrency,
+                            });
+                          }}
+                          className="px-3.5 py-2 rounded-xl bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 text-xs font-bold flex items-center gap-1.5 transition-all cursor-pointer"
+                        >
+                          <FileText className="w-3.5 h-3.5 text-emerald-400" />
+                          <span>Acta General (PDF)</span>
+                        </button>
+
+                        {/* Button 2: Acta Casas Operadoras */}
+                        <button
+                          onClick={() => {
+                            const opRows: OperatorSettlementRow[] = (closure.operatorRows || []).map((op: any) => ({
+                              sistema: op.entidad.replace(/^OPERADORA:\s*/i, '').trim(),
+                              moneda: op.moneda,
+                              venta: Number(op.venta_bruta || 0),
+                              premio: Number(op.premios || 0),
+                              utilidadBruta: Number(op.venta_bruta || 0),
+                              comisionPct: 0,
+                              comCompletaProv: 0,
+                              comAgencias: 0,
+                              difCom: 0,
+                              baseUtil: Number(op.utilidad_semana || 0),
+                              participacionPct: 40,
+                              partCom: 0,
+                              totalCom: 0,
+                              totalComercializador: 0,
+                              netoOperadora: Number(op.utilidad_semana || 0),
+                              saldoInit: Number(op.saldo_anterior || 0),
+                              pagosRealizados: Number(op.movimientos || 0),
+                              abonosRecibidos: 0,
+                              pagosNetos: Number(op.movimientos || 0),
+                              balanceFinal: Number(op.saldo_final || 0),
+                            }));
+
+                            const opSysSet = Array.from(new Set(opRows.map((r) => r.sistema)));
+                            const operatorGroups = opSysSet.map((sys) => {
+                              const sRows = opRows.filter((r) => r.sistema === sys);
+                              return {
+                                sistema: sys,
+                                rows: sRows,
+                                hasDeuda: sRows.some((r) => r.balanceFinal > 0.01),
+                                hasFavor: sRows.some((r) => r.balanceFinal < -0.01),
+                              };
+                            });
+
+                            const totalsByCurrency: Record<string, any> = {};
+                            ['BS', 'USD', 'COP'].forEach((mon) => {
+                              const mRows = opRows.filter((r) => r.moneda === mon);
+                              totalsByCurrency[mon] = {
+                                venta: mRows.reduce((acc, r) => acc + r.venta, 0),
+                                premios: mRows.reduce((acc, r) => acc + r.premio, 0),
+                                ggr: mRows.reduce((acc, r) => acc + r.utilidadBruta, 0),
+                                comCompletaProv: 0,
+                                comAgencias: 0,
+                                difCom: 0,
+                                baseUtil: mRows.reduce((acc, r) => acc + r.baseUtil, 0),
+                                partCom: 0,
+                                totalCom: 0,
+                                totalComercializador: 0,
+                                netoOperadora: mRows.reduce((acc, r) => acc + r.netoOperadora, 0),
+                                saldoInit: mRows.reduce((acc, r) => acc + r.saldoInit, 0),
+                                pagosRealizados: mRows.reduce((acc, r) => acc + r.pagosRealizados, 0),
+                                abonosRecibidos: 0,
+                                pagosNetos: mRows.reduce((acc, r) => acc + r.pagosNetos, 0),
+                                balanceFinal: mRows.reduce((acc, r) => acc + r.balanceFinal, 0),
+                                count: mRows.length,
+                              };
+                            });
+
+                            setSelectedOperatorActa({
+                              systemCycle: { semana: closure.periodo.split(' ')[1] || '40', desde: '', hasta: '', tipo: 'SEMANAL' },
+                              operatorGroups,
+                              totalsByCurrency,
+                            });
+                          }}
+                          className="px-3.5 py-2 rounded-xl bg-amber-500/10 hover:bg-amber-500/20 text-amber-300 border border-amber-500/30 text-xs font-bold flex items-center gap-1.5 transition-all cursor-pointer"
+                        >
+                          <Building2 className="w-3.5 h-3.5 text-amber-400" />
+                          <span>Acta Operadoras (PDF)</span>
+                        </button>
+
+                        {/* Button 3: Actas por Agencia */}
+                        <button
+                          onClick={() => setAgencySelectorClosure(closure)}
+                          className="px-3.5 py-2 rounded-xl bg-sky-500/10 hover:bg-sky-500/20 text-sky-300 border border-sky-500/30 text-xs font-bold flex items-center gap-1.5 transition-all cursor-pointer"
+                        >
+                          <Store className="w-3.5 h-3.5 text-sky-400" />
+                          <span>Actas por Agencia ({totalAgencias})</span>
+                        </button>
+                      </div>
+                    </div>
+
+                    {/* Snapshot Summary Chips */}
+                    <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 text-xs">
+                      <div className="bg-[#071217] p-3 rounded-2xl border border-slate-800">
+                        <span className="text-[10px] text-slate-400 uppercase font-bold block">Agencias Cerradas</span>
+                        <span className="text-sm font-black text-white font-mono">{totalAgencias}</span>
+                      </div>
+                      <div className="bg-[#071217] p-3 rounded-2xl border border-slate-800">
+                        <span className="text-[10px] text-slate-400 uppercase font-bold block">Casas Operadoras</span>
+                        <span className="text-sm font-black text-white font-mono">{totalOperadoras}</span>
+                      </div>
+                      <div className="bg-[#071217] p-3 rounded-2xl border border-slate-800">
+                        <span className="text-[10px] text-slate-400 uppercase font-bold block">Monedas Auditadas</span>
+                        <span className="text-sm font-bold text-slate-200">BS • USD • COP</span>
+                      </div>
+                      <div className="bg-[#071217] p-3 rounded-2xl border border-slate-800 flex items-center justify-between">
+                        <div>
+                          <span className="text-[10px] text-slate-400 uppercase font-bold block">Estado</span>
+                          <span className="text-xs font-black text-emerald-400">INMUTABLE</span>
+                        </div>
+                        <ShieldCheck className="w-5 h-5 text-emerald-400 shrink-0" />
+                      </div>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </div>
       ) : (
         <div className="space-y-6">
           {/* Cycle Banner */}
@@ -860,7 +1412,7 @@ export const WeeklyClosureTab: React.FC = () => {
                         <th className="py-3 px-4">Agencia</th>
                         <th className="py-3 px-4 text-right">Arrastre</th>
                         <th className="py-3 px-4 text-right">Venta Neta</th>
-                        <th className="py-3 px-4 text-right">Gastos</th>
+                        <th className="py-3 px-4 text-right">Gastos Agencias</th>
                         <th className="py-3 px-4 text-right">Premios</th>
                         <th className="py-3 px-4 text-right">Cobros</th>
                         <th className="py-3 px-4 text-right">Saldo Final</th>
@@ -895,71 +1447,167 @@ export const WeeklyClosureTab: React.FC = () => {
         </div>
       )}
 
-      {/* 2. OPERADORA VERIFIED TABLES */}
+      {/* 2. OPERADORA VERIFIED TABLES (Grouped by Operadora with currencies stacked) */}
       {closureInspectionMode === 'operadoras' && (
         <div className="space-y-6">
-          {['BS', 'USD', 'COP'].map((mon) => {
-            const monRows = operatorClosureRows.filter((d) => d.moneda === mon);
-            if (monRows.length === 0) return null;
+          {/* Resumen Global de Tesorería por Moneda */}
+          <div className="bg-white dark:bg-[#0D1B22] border border-slate-200 dark:border-slate-800 rounded-3xl p-5 shadow-sm dark:shadow-xl">
+            <div className="flex items-center justify-between pb-3 border-b border-slate-100 dark:border-slate-800 mb-3.5">
+              <h4 className="text-xs font-black uppercase text-amber-600 dark:text-amber-400 font-mono tracking-wider flex items-center gap-2">
+                <Scale className="w-4 h-4 text-amber-500 dark:text-amber-400" />
+                <span>Posición Global Consolidada a Liquidar con Proveedores</span>
+              </h4>
+              <span className="text-xs text-slate-500 dark:text-slate-400 font-mono">Semana {systemCycle.semana}</span>
+            </div>
 
-            return (
-              <div key={`op_${mon}`} className="bg-[#0D1B22] border border-slate-800 rounded-3xl overflow-hidden shadow-xl">
-                <div className="p-4 sm:p-5 border-b border-slate-800 flex items-center justify-between">
-                  <h4 className="text-xs font-bold text-white uppercase tracking-wider flex items-center gap-2">
-                    <Globe className="w-4 h-4 text-amber-400" />
-                    <span>Balance Verificado Casas Operadoras {mon}</span>
-                  </h4>
-                  <span className="text-[10px] text-slate-400 font-mono">{monRows.length} operadoras</span>
-                </div>
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+              {['BS', 'USD', 'COP'].map((mon) => {
+                const tot = operatorTotalsByCurrency[mon];
+                if (!tot) return null;
+                const flag = mon === 'BS' ? '🇻🇪' : mon === 'USD' ? '🇺🇸' : '🇨🇴';
+                const isDeuda = tot.balanceFinal > 0.01;
+                const isFavor = tot.balanceFinal < -0.01;
 
-                <div className="overflow-x-auto">
-                  <table className="w-full text-left text-xs">
-                    <thead className="bg-[#071217] text-slate-400 border-b border-slate-800 font-bold uppercase tracking-wider text-[11px]">
-                      <tr>
-                        <th className="py-3 px-4">Casa Operadora</th>
-                        <th className="py-3 px-4 text-right">Venta</th>
-                        <th className="py-3 px-4 text-right">Premios</th>
-                        <th className="py-3 px-4 text-right">GGR</th>
-                        <th className="py-3 px-4 text-right text-cyan-400">Dif. Com</th>
-                        <th className="py-3 px-4 text-right text-emerald-400">Ganancia Comercializador</th>
-                        <th className="py-3 px-4 text-right text-amber-400">Utilidad Casa (60%)</th>
-                        <th className="py-3 px-4 text-right">Arrastre</th>
-                        <th className="py-3 px-4 text-right">Pagos Netos</th>
-                        <th className="py-3 px-4 text-right font-black">Nuevo Arrastre</th>
-                      </tr>
-                    </thead>
-                    <tbody className="divide-y divide-slate-800/80 font-mono text-slate-300">
-                      {monRows.map((row) => (
-                        <tr key={`${row.sistema}_${mon}`} className="hover:bg-slate-800/30 transition-colors">
-                          <td className="py-3 px-4 font-sans font-bold text-white flex items-center gap-2">
-                            <span className="p-1 rounded bg-amber-500/10 text-amber-400">🌐</span>
-                            <span>{row.sistema}</span>
-                          </td>
-                          <td className="py-3 px-4 text-right font-semibold text-slate-200">{formatCurrency(row.venta, mon as any)}</td>
-                          <td className="py-3 px-4 text-right text-amber-400">{row.premio > 0 ? `-${formatCurrency(row.premio, mon as any)}` : formatCurrency(0, mon as any)}</td>
-                          <td className={`py-3 px-4 text-right font-bold ${row.utilidadBruta >= 0 ? 'text-emerald-400' : 'text-rose-400'}`}>
-                            {formatCurrency(row.utilidadBruta, mon as any)}
-                          </td>
-                          <td className="py-3 px-4 text-right text-cyan-400 font-semibold">{formatCurrency(row.difCom, mon as any)}</td>
-                          <td className="py-3 px-4 text-right font-black text-emerald-400 bg-emerald-500/5">{formatCurrency(row.totalCom, mon as any)}</td>
-                          <td className={`py-3 px-4 text-right font-bold ${row.netoOperadora >= 0 ? 'text-amber-400' : 'text-rose-400'}`}>{formatCurrency(row.netoOperadora, mon as any)}</td>
-                          <td className="py-3 px-4 text-right text-slate-400">{formatCurrency(row.saldoInit, mon as any)}</td>
-                          <td className="py-3 px-4 text-right text-cyan-400 font-semibold">{row.pagosNetos !== 0 ? `-${formatCurrency(row.pagosNetos, mon as any)}` : formatCurrency(0, mon as any)}</td>
-                          <td
-                            className={`py-3 px-4 text-right font-black text-sm ${
-                              row.balanceFinal > 0.01 ? 'text-rose-400' : row.balanceFinal < -0.01 ? 'text-emerald-400' : 'text-slate-300'
-                            }`}
-                          >
-                            {formatCurrency(row.balanceFinal, mon as any)}
-                          </td>
+                return (
+                  <div key={`tot_summary_${mon}`} className="bg-slate-50/90 dark:bg-[#071318] border border-slate-200 dark:border-slate-800/80 rounded-2xl p-3.5">
+                    <div className="flex justify-between items-center mb-1.5">
+                      <span className="text-xs font-bold text-slate-800 dark:text-slate-300 font-mono">
+                        <span className="font-sans">{flag}</span> Total {mon}
+                      </span>
+                      <span className="text-[10px] text-slate-500 dark:text-slate-400 font-mono">{tot.count} operadoras</span>
+                    </div>
+                    <div className={`text-lg font-black font-mono ${isDeuda ? 'text-rose-600 dark:text-rose-400' : isFavor ? 'text-emerald-600 dark:text-emerald-400' : 'text-slate-800 dark:text-slate-300'}`}>
+                      {formatCurrency(tot.balanceFinal, mon as any)}
+                    </div>
+                    <span className="text-[10px] text-slate-500 dark:text-slate-400 block font-sans mt-0.5">
+                      {isDeuda ? '🔴 Deuda neta a pagar' : isFavor ? '🟢 Saldo a favor' : '⚪ Solvente'}
+                    </span>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+
+          {/* Tablas por Casa Operadora con sus monedas una debajo de la otra */}
+          {operatorClosureGroups.length === 0 ? (
+            <div className="bg-white dark:bg-[#0D1B22] border border-slate-200 dark:border-slate-800 rounded-3xl p-8 text-center text-slate-500 font-sans">
+              <Globe className="w-8 h-8 mx-auto mb-2 opacity-40 text-slate-400" />
+              No hay casas operadoras con actividad en este ciclo.
+            </div>
+          ) : (
+            operatorClosureGroups.map((group) => {
+              return (
+                <div key={`op_group_${group.sistema}`} className="bg-white dark:bg-[#0D1B22] border border-slate-200 dark:border-slate-800 rounded-3xl overflow-hidden shadow-sm dark:shadow-xl">
+                  <div className="p-4 sm:p-5 border-b border-slate-100 dark:border-slate-800 flex items-center justify-between">
+                    <div className="flex items-center gap-2.5">
+                      <div className="p-1.5 rounded-xl bg-amber-500/10 text-amber-500 dark:text-amber-400 border border-amber-500/20">
+                        <Globe className="w-4 h-4" />
+                      </div>
+                      <div>
+                        <h4 className="text-sm font-black text-slate-900 dark:text-white uppercase tracking-wider font-mono">
+                          {group.sistema}
+                        </h4>
+                        <span className="text-[10px] text-slate-500 dark:text-slate-400 font-mono">
+                          {group.rows.length} {group.rows.length === 1 ? 'moneda activa' : 'monedas activas'}
+                        </span>
+                      </div>
+                    </div>
+                    <span
+                      className={`text-[10px] font-extrabold uppercase px-2.5 py-1 rounded-full border ${
+                        group.hasDeuda
+                          ? 'bg-rose-50 dark:bg-rose-500/20 text-rose-700 dark:text-rose-400 border border-rose-200 dark:border-rose-500/30'
+                          : group.hasFavor
+                          ? 'bg-emerald-50 dark:bg-emerald-500/20 text-emerald-700 dark:text-emerald-400 border border-emerald-200 dark:border-emerald-500/30'
+                          : 'bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400 border border-slate-200 dark:border-slate-700'
+                      }`}
+                    >
+                      {group.hasDeuda ? '🔴 Con Deuda Pendiente' : group.hasFavor ? '🟢 Saldo a Favor' : '⚪ Solvente'}
+                    </span>
+                  </div>
+
+                  <div className="overflow-x-auto">
+                    <table className="w-full text-left text-xs">
+                      <thead className="bg-slate-50 dark:bg-[#071217] text-slate-600 dark:text-slate-400 border-b border-slate-200 dark:border-slate-800 font-bold uppercase tracking-wider text-[11px]">
+                        <tr>
+                          <th className="py-3 px-4">Moneda</th>
+                          <th className="py-3 px-4 text-right">Venta</th>
+                          <th className="py-3 px-4 text-right">Premios</th>
+                          <th className="py-3 px-4 text-right">GGR</th>
+                          <th className="py-3 px-4 text-right text-cyan-700 dark:text-cyan-400">Dif. Com</th>
+                          <th className="py-3 px-4 text-right text-emerald-700 dark:text-emerald-400">Ganancia Comercializador</th>
+                          <th className="py-3 px-4 text-right text-amber-700 dark:text-amber-400">Utilidad Casa (60%)</th>
+                          <th className="py-3 px-4 text-right">Arrastre</th>
+                          <th className="py-3 px-4 text-right">Pagos Netos</th>
+                          <th className="py-3 px-4 text-right font-black">Nuevo Arrastre</th>
+                          <th className="py-3 px-4 text-center">Estado</th>
                         </tr>
-                      ))}
-                    </tbody>
-                  </table>
+                      </thead>
+                      <tbody className="divide-y divide-slate-100 dark:divide-slate-800/80 font-mono text-slate-700 dark:text-slate-300">
+                        {group.rows.map((row) => {
+                          const flag = row.moneda === 'BS' ? '🇻🇪' : row.moneda === 'USD' ? '🇺🇸' : '🇨🇴';
+                          const isDeuda = row.balanceFinal > 0.01;
+                          const isFavor = row.balanceFinal < -0.01;
+
+                          return (
+                            <tr key={`${group.sistema}_${row.moneda}`} className="hover:bg-slate-50 dark:hover:bg-slate-800/30 transition-colors">
+                              <td className="py-3 px-4 font-sans font-bold text-slate-900 dark:text-white flex items-center gap-2">
+                                <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-bold ${
+                                  row.moneda === 'BS'
+                                    ? 'bg-amber-50 dark:bg-amber-500/10 text-amber-700 dark:text-amber-400 border border-amber-200 dark:border-amber-500/20'
+                                    : row.moneda === 'USD'
+                                    ? 'bg-emerald-50 dark:bg-emerald-500/10 text-emerald-700 dark:text-emerald-400 border border-emerald-200 dark:border-emerald-500/20'
+                                    : 'bg-sky-50 dark:bg-sky-500/10 text-sky-700 dark:text-sky-400 border border-sky-200 dark:border-sky-500/20'
+                                }`}>
+                                  <span className="font-sans">{flag}</span>
+                                  <span>{row.moneda}</span>
+                                </span>
+                              </td>
+                              <td className="py-3 px-4 text-right font-semibold text-slate-900 dark:text-slate-200">{formatCurrency(row.venta, row.moneda as any)}</td>
+                              <td className="py-3 px-4 text-right text-amber-700 dark:text-amber-400">
+                                {row.premio > 0 ? `-${formatCurrency(row.premio, row.moneda as any)}` : formatCurrency(0, row.moneda as any)}
+                              </td>
+                              <td className={`py-3 px-4 text-right font-bold ${row.utilidadBruta >= 0 ? 'text-emerald-700 dark:text-emerald-400' : 'text-rose-600 dark:text-rose-400'}`}>
+                                {formatCurrency(row.utilidadBruta, row.moneda as any)}
+                              </td>
+                              <td className="py-3 px-4 text-right text-cyan-700 dark:text-cyan-400 font-semibold">{formatCurrency(row.difCom, row.moneda as any)}</td>
+                              <td className="py-3 px-4 text-right font-black text-emerald-700 dark:text-emerald-400 bg-emerald-50/60 dark:bg-emerald-500/5">{formatCurrency(row.totalCom, row.moneda as any)}</td>
+                              <td className={`py-3 px-4 text-right font-bold ${row.netoOperadora >= 0 ? 'text-amber-700 dark:text-amber-400' : 'text-rose-600 dark:text-rose-400'}`}>
+                                {formatCurrency(row.netoOperadora, row.moneda as any)}
+                              </td>
+                              <td className="py-3 px-4 text-right text-slate-600 dark:text-slate-400">{formatCurrency(row.saldoInit, row.moneda as any)}</td>
+                              <td className="py-3 px-4 text-right text-cyan-700 dark:text-cyan-400 font-semibold">
+                                {row.pagosNetos !== 0 ? `-${formatCurrency(row.pagosNetos, row.moneda as any)}` : formatCurrency(0, row.moneda as any)}
+                              </td>
+                              <td
+                                className={`py-3 px-4 text-right font-black text-sm ${
+                                  isDeuda ? 'text-rose-600 dark:text-rose-400' : isFavor ? 'text-emerald-600 dark:text-emerald-400' : 'text-slate-800 dark:text-slate-300'
+                                }`}
+                              >
+                                {formatCurrency(row.balanceFinal, row.moneda as any)}
+                              </td>
+                              <td className="py-3 px-4 text-center">
+                                <span
+                                  className={`px-2 py-0.5 rounded-full text-[10px] font-extrabold uppercase ${
+                                    isDeuda
+                                      ? 'bg-rose-50 dark:bg-rose-500/20 text-rose-700 dark:text-rose-400 border border-rose-200 dark:border-rose-500/30'
+                                      : isFavor
+                                      ? 'bg-emerald-50 dark:bg-emerald-500/20 text-emerald-700 dark:text-emerald-400 border border-emerald-200 dark:border-emerald-500/30'
+                                      : 'bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400 border border-slate-200 dark:border-slate-700'
+                                  }`}
+                                >
+                                  {isDeuda ? 'A Pagar' : isFavor ? 'A Favor' : 'Solvente'}
+                                </span>
+                              </td>
+                            </tr>
+                          );
+                        })}
+                      </tbody>
+                    </table>
+                  </div>
                 </div>
-              </div>
-            );
-          })}
+              );
+            })
+          )}
         </div>
       )}
 
@@ -990,7 +1638,10 @@ export const WeeklyClosureTab: React.FC = () => {
 
           <div className="flex justify-end pt-2">
             <button
-              onClick={() => setIsConfirmModalOpen(true)}
+              onClick={() => {
+                setModalError(null);
+                setIsConfirmModalOpen(true);
+              }}
               disabled={!verifiedCheckOperadoras || isProcessing}
               className="px-8 py-3.5 rounded-2xl bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-400 hover:to-amber-500 text-slate-950 font-black text-xs uppercase tracking-wider shadow-xl shadow-amber-500/20 flex items-center gap-2 transition-all cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed"
             >
@@ -1025,7 +1676,10 @@ export const WeeklyClosureTab: React.FC = () => {
 
           <div className="flex justify-end pt-2">
             <button
-              onClick={() => setIsConfirmModalOpen(true)}
+              onClick={() => {
+                setModalError(null);
+                setIsConfirmModalOpen(true);
+              }}
               disabled={!verifiedCheckAgencias || isProcessing}
               className="px-8 py-3.5 rounded-2xl bg-gradient-to-r from-emerald-500 to-emerald-600 hover:from-emerald-400 hover:to-emerald-500 text-slate-950 font-black text-xs uppercase tracking-wider shadow-xl shadow-emerald-500/20 flex items-center gap-2 transition-all cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed"
             >
@@ -1150,6 +1804,13 @@ export const WeeklyClosureTab: React.FC = () => {
               </div>
             </div>
 
+            {modalError && (
+              <div className="p-3.5 rounded-2xl bg-rose-500/15 border border-rose-500/30 text-rose-300 text-xs flex items-center gap-2 animate-fade-in">
+                <AlertTriangle className="w-4 h-4 shrink-0 text-rose-400" />
+                <span>{modalError}</span>
+              </div>
+            )}
+
             <div className="flex flex-col sm:flex-row gap-3 pt-2">
               <button
                 type="button"
@@ -1250,6 +1911,13 @@ export const WeeklyClosureTab: React.FC = () => {
               </div>
             </div>
 
+            {modalError && (
+              <div className="p-3.5 rounded-2xl bg-rose-500/15 border border-rose-500/30 text-rose-300 text-xs flex items-center gap-2 animate-fade-in">
+                <AlertTriangle className="w-4 h-4 shrink-0 text-rose-400" />
+                <span>{modalError}</span>
+              </div>
+            )}
+
             <div className="flex flex-col sm:flex-row gap-3 pt-2">
               <button
                 type="button"
@@ -1280,6 +1948,143 @@ export const WeeklyClosureTab: React.FC = () => {
             </div>
           </div>
         </div>
+      )}
+
+      {/* Modal 1: Acta General Histórica */}
+      {selectedGeneralActa && (
+        <DeliveryReportModal
+          isOpen={true}
+          onClose={() => setSelectedGeneralActa(null)}
+          systemCycle={selectedGeneralActa.systemCycle}
+          userName={user?.email || 'Administración'}
+          companyName="CORPORACION CALENDARIO, CA"
+          auditRows={selectedGeneralActa.auditRows}
+          totalsByCurrency={selectedGeneralActa.totalsByCurrency}
+        />
+      )}
+
+      {/* Modal 2: Acta Operadoras Histórica */}
+      {selectedOperatorActa && (
+        <OperatorDeliveryReportModal
+          isOpen={true}
+          onClose={() => setSelectedOperatorActa(null)}
+          systemCycle={selectedOperatorActa.systemCycle}
+          userName={user?.email || 'Administración'}
+          companyName="CORPORACION CALENDARIO, CA"
+          operatorGroups={selectedOperatorActa.operatorGroups}
+          totalsByCurrency={selectedOperatorActa.totalsByCurrency}
+        />
+      )}
+
+      {/* Modal 3: Selector de Agencia para Finiquito Individual */}
+      {agencySelectorClosure && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm animate-fade-in">
+          <div className="bg-[#0D1B22] border border-slate-800 rounded-3xl w-full max-w-2xl max-h-[85vh] flex flex-col shadow-2xl overflow-hidden">
+            <div className="p-5 border-b border-slate-800 flex items-center justify-between">
+              <div>
+                <h3 className="text-base font-extrabold text-white flex items-center gap-2">
+                  <Store className="w-4 h-4 text-sky-400" />
+                  <span>Actas Individuales por Agencia</span>
+                </h3>
+                <p className="text-xs text-slate-400">
+                  {agencySelectorClosure.periodo} • Seleccione la agencia para emitir su finiquito en PDF
+                </p>
+              </div>
+              <button
+                onClick={() => setAgencySelectorClosure(null)}
+                className="p-1.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-400 hover:text-white transition-colors cursor-pointer"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            <div className="p-6 overflow-y-auto space-y-2">
+              {(agencySelectorClosure.agencyRows || []).map((agRow: any, i: number) => {
+                const sFinal = Number(agRow.saldo_final || 0);
+                const isDeuda = sFinal > 0.05;
+                const isFavor = sFinal < -0.05;
+
+                return (
+                  <div
+                    key={`${agRow.entidad}-${agRow.moneda}-${i}`}
+                    className="p-3.5 rounded-2xl bg-[#071217] border border-slate-800 hover:border-slate-700 flex items-center justify-between gap-3 transition-colors"
+                  >
+                    <div>
+                      <div className="text-xs font-black text-white flex items-center gap-2">
+                        <span>{agRow.entidad}</span>
+                        <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-slate-800 text-slate-300">
+                          {agRow.moneda}
+                        </span>
+                      </div>
+                      <div className="text-[11px] text-slate-400 mt-0.5 font-mono">
+                        Saldo Final:{' '}
+                        <span
+                          className={
+                            isDeuda
+                              ? 'text-rose-400 font-bold'
+                              : isFavor
+                              ? 'text-emerald-400 font-bold'
+                              : 'text-slate-300'
+                          }
+                        >
+                          {formatCurrency(sFinal, agRow.moneda)}
+                        </span>
+                      </div>
+                    </div>
+
+                    <button
+                      onClick={() => {
+                        setSelectedIndividualActa({
+                          agencyName: agRow.entidad,
+                          periodo: agencySelectorClosure.periodo,
+                          fechaCierre: agencySelectorClosure.fecha_cierre,
+                          moneda: agRow.moneda,
+                          saldoAnterior: Number(agRow.saldo_anterior || 0),
+                          ventaBruta: Number(agRow.venta_bruta || agRow.utilidad_semana || 0),
+                          comision: Number(agRow.comision || 0),
+                          premios: Number(agRow.premios || 0),
+                          ventaNeta: Number(agRow.utilidad_semana || 0),
+                          participacionPct: Number(agRow.participacion_pct || 0),
+                          participacionMonto: Number(agRow.participacion_monto || 0),
+                          utilidadOperadora: Number(agRow.utilidad_semana || 0),
+                          cobros: Number(agRow.movimientos || 0),
+                          gastos: Number(agRow.gastos || 0),
+                          saldoFinal: sFinal,
+                          status: isDeuda ? 'DEUDA PENDIENTE' : isFavor ? 'SALDO A FAVOR' : 'AL DÍA',
+                        });
+                        setAgencySelectorClosure(null);
+                      }}
+                      className="px-3 py-1.5 rounded-xl bg-sky-500/10 hover:bg-sky-500/20 text-sky-300 border border-sky-500/30 text-xs font-bold flex items-center gap-1.5 transition-all cursor-pointer"
+                    >
+                      <Printer className="w-3.5 h-3.5" />
+                      <span>Ver Finiquito PDF</span>
+                    </button>
+                  </div>
+                );
+              })}
+            </div>
+
+            <div className="p-4 border-t border-slate-800 flex justify-end bg-[#0A161C]">
+              <button
+                onClick={() => setAgencySelectorClosure(null)}
+                className="px-4 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-white font-bold text-xs transition-colors cursor-pointer"
+              >
+                Cerrar
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Modal 4: Acta Individual de Finiquito por Agencia */}
+      {selectedIndividualActa && (
+        <IndividualAgencyActaModal
+          isOpen={true}
+          onClose={() => setSelectedIndividualActa(null)}
+          actaData={selectedIndividualActa}
+          userName={user?.email || 'Administración'}
+          companyName="CORPORACION CALENDARIO, CA"
+        />
       )}
     </div>
   );

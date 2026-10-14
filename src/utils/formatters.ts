@@ -3,7 +3,7 @@ import type { PlanType, ModuleId } from '../types';
 export const TODOS_LOS_MODULOS_CMS: ModuleId[] = [
   'Inicio',
   'Confirmaciones',
-  'Rep. Confirmaciones',
+  'Confirmados',
   'Sistemas',
   'Monedas',
   'Cuentas Bancarias',
@@ -14,13 +14,12 @@ export const TODOS_LOS_MODULOS_CMS: ModuleId[] = [
   'Gastos por Agencia',
   'Saldo Agencias',
   'Venta Real',
-  'Pagos a Operador',
-  'Venta Operadora',
-  'Reporte Operadora',
-  'Cierre Operadora',
+  'Pagos a Proveedores',
+  'Reporte Proveedores',
   'Config. Proveedores',
   'Gastos Administrativos',
   'Cierre ',
+  'Auditoría',
   'Ajustes',
 ];
 
@@ -30,7 +29,7 @@ export const PLANES_MODULOS_DEFAULT: Record<PlanType, ModuleId[]> = {
   basico: [
     'Inicio',
     'Confirmaciones',
-    'Rep. Confirmaciones',
+    'Confirmados',
     'Sistemas',
     'Monedas',
     'Cuentas Bancarias',
@@ -42,12 +41,13 @@ export const PLANES_MODULOS_DEFAULT: Record<PlanType, ModuleId[]> = {
     'Saldo Agencias',
     'Venta Real',
     'Cierre ',
+    'Auditoría',
     'Ajustes',
   ],
   profesional: [
     'Inicio',
     'Confirmaciones',
-    'Rep. Confirmaciones',
+    'Confirmados',
     'Sistemas',
     'Monedas',
     'Cuentas Bancarias',
@@ -56,14 +56,14 @@ export const PLANES_MODULOS_DEFAULT: Record<PlanType, ModuleId[]> = {
     'Cargar Ventas',
     'Pagos Agencias',
     'Gastos por Agencia',
+    'Gastos Administrativos',
     'Saldo Agencias',
     'Venta Real',
-    'Pagos a Operador',
-    'Venta Operadora',
-    'Reporte Operadora',
-    'Cierre Operadora',
+    'Pagos a Proveedores',
+    'Reporte Proveedores',
     'Config. Proveedores',
     'Cierre ',
+    'Auditoría',
     'Ajustes',
   ],
   elite: [...TODOS_LOS_MODULOS_CMS],
@@ -152,4 +152,57 @@ export function formatDateTime(dateTimeVal?: string | null): string {
   } catch {
     return String(dateTimeVal);
   }
+}
+
+export function montoEnLetras(monto: number, moneda = 'BS'): string {
+  const unidades = ['', 'UN', 'DOS', 'TRES', 'CUATRO', 'CINCO', 'SEIS', 'SIETE', 'OCHO', 'NUEVE'];
+  const especiales = ['DIEZ', 'ONCE', 'DOCE', 'TRECE', 'CATORCE', 'QUINCE', 'DIECISÉIS', 'DIECISIETE', 'DIECIOCHO', 'DIECINUEVE'];
+  const decenas = ['', 'DIEZ', 'VEINTE', 'TREINTA', 'CUARENTA', 'CINCUENTA', 'SESENTA', 'SETENTA', 'OCHENTA', 'NOVENTA'];
+  const centenas = ['', 'CIENTO', 'DOSCIENTOS', 'TRESCIENTOS', 'CUATROCIENTOS', 'QUINIENTOS', 'SEISCIENTOS', 'SETECIENTOS', 'OCHOCIENTOS', 'NOVECIENTOS'];
+
+  function convertirGrupo(n: number): string {
+    let salida = '';
+    const c = Math.floor(n / 100);
+    const d = Math.floor((n % 100) / 10);
+    const u = n % 10;
+
+    if (n === 100) return 'CIEN';
+    if (c > 0) salida += centenas[c] + ' ';
+
+    if (d === 1 && u >= 0 && u <= 9) {
+      salida += especiales[u];
+    } else if (d === 2 && u > 0) {
+      salida += 'VEINTI' + unidades[u];
+    } else {
+      if (d > 0) salida += decenas[d] + (u > 0 ? ' Y ' : '');
+      if (u > 0) salida += unidades[u];
+    }
+    return salida.trim();
+  }
+
+  const entero = Math.floor(Math.abs(monto));
+  const centavos = Math.round((Math.abs(monto) - entero) * 100);
+  const centavosStr = String(centavos).padStart(2, '0') + '/100';
+
+  const cleanMoneda = normalizarMoneda(moneda);
+  let monedaNombre = 'BOLÍVARES';
+  if (cleanMoneda === 'USD') monedaNombre = 'DÓLARES';
+  if (cleanMoneda === 'COP') monedaNombre = 'PESOS';
+
+  if (entero === 0) return `CERO ${monedaNombre} CON ${centavosStr}`;
+
+  const millones = Math.floor(entero / 1000000);
+  const miles = Math.floor((entero % 1000000) / 1000);
+  const cientos = entero % 1000;
+
+  let resultado = '';
+  if (millones === 1) resultado += 'UN MILLÓN ';
+  else if (millones > 1) resultado += convertirGrupo(millones) + ' MILLONES ';
+
+  if (miles === 1) resultado += 'MIL ';
+  else if (miles > 1) resultado += convertirGrupo(miles) + ' MIL ';
+
+  if (cientos > 0) resultado += convertirGrupo(cientos);
+
+  return `${resultado.trim()} ${monedaNombre} CON ${centavosStr}`;
 }

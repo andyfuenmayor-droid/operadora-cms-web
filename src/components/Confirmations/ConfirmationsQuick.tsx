@@ -326,6 +326,10 @@ export const ConfirmationsQuick: React.FC = () => {
         const isConf = (!!r.confirmado || !!r.confirmado_supervisor) && !isRech;
         if (!isConf && !isRech) {
           const tipo = String(r.tipo_pago || r.metodo || 'EFECTIVO').trim().toUpperCase();
+          const conc = String(r.concepto || '').toUpperCase();
+          // Las entregas a supervisor son confirmaciones internas locales de la agencia/supervisor; no van a confirmaciones de admin
+          if (tipo.includes('SUPERVISOR') || conc.includes('SUPERVISOR')) return;
+
           const cid = String(r.cajero_id || r.user_id || '');
           const agStr = String(r.agencia || r.nombre_agency || '').trim().toUpperCase();
           const isBanco = ['PUNTO', 'POS', 'TRANSFERENCIA', 'ZELLE', 'PAGO MOVIL', 'PAGO MÓVIL'].some((k) =>

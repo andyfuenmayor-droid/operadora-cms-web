@@ -55,7 +55,7 @@ interface OperatorsTabProps {
   initialSubTab?: 'venta' | 'reporte' | 'pagos' | 'cierres';
 }
 
-export const OperatorsTab: React.FC<OperatorsTabProps> = ({ initialSubTab = 'venta' }) => {
+export const OperatorsTab: React.FC<OperatorsTabProps> = ({ initialSubTab = 'reporte' }) => {
   const { effectiveUserId, systemCycle } = useAuth();
   const { isLight } = useTheme();
 
@@ -617,18 +617,6 @@ export const OperatorsTab: React.FC<OperatorsTabProps> = ({ initialSubTab = 'ven
       {/* Main Navigation Sub-Tabs */}
       <div className="flex items-center gap-2 overflow-x-auto pb-1 no-scrollbar">
         <button
-          onClick={() => setActiveSubTab('venta')}
-          className={`px-4 py-2 rounded-xl text-xs font-bold flex items-center gap-2 transition-all cursor-pointer ${
-            activeSubTab === 'venta'
-              ? 'bg-amber-500 text-slate-950 font-black shadow-md'
-              : 'bg-[#0D1B22] text-slate-400 hover:text-white border border-slate-800'
-          }`}
-        >
-          <TrendingUp className="w-4 h-4" />
-          <span>Venta Operadora</span>
-        </button>
-
-        <button
           onClick={() => setActiveSubTab('reporte')}
           className={`px-4 py-2 rounded-xl text-xs font-bold flex items-center gap-2 transition-all cursor-pointer ${
             activeSubTab === 'reporte'
@@ -637,7 +625,7 @@ export const OperatorsTab: React.FC<OperatorsTabProps> = ({ initialSubTab = 'ven
           }`}
         >
           <FileText className="w-4 h-4" />
-          <span>Reporte Operadora</span>
+          <span>Reporte Proveedores</span>
         </button>
 
         <button
@@ -649,7 +637,7 @@ export const OperatorsTab: React.FC<OperatorsTabProps> = ({ initialSubTab = 'ven
           }`}
         >
           <CreditCard className="w-4 h-4" />
-          <span>Pagos a Operador ({operatorPayments.length})</span>
+          <span>Pagos a Proveedores ({operatorPayments.length})</span>
         </button>
 
         <button
@@ -662,6 +650,18 @@ export const OperatorsTab: React.FC<OperatorsTabProps> = ({ initialSubTab = 'ven
         >
           <History className="w-4 h-4" />
           <span>Historial de Cierres ({history.length})</span>
+        </button>
+
+        <button
+          onClick={() => setActiveSubTab('venta')}
+          className={`px-4 py-2 rounded-xl text-xs font-bold flex items-center gap-2 transition-all cursor-pointer ${
+            activeSubTab === 'venta'
+              ? 'bg-amber-500 text-slate-950 font-black shadow-md'
+              : 'bg-[#0D1B22] text-slate-400 hover:text-white border border-slate-800'
+          }`}
+        >
+          <TrendingUp className="w-4 h-4" />
+          <span>Liquidación por Sistema</span>
         </button>
       </div>
 
@@ -1021,7 +1021,7 @@ export const OperatorsTab: React.FC<OperatorsTabProps> = ({ initialSubTab = 'ven
       )}
 
       {/* ==============================================================
-          TAB 2: REPORTE OPERADORA (CONSOLIDADO GENERAL)
+          TAB 2: REPORTE PROVEEDORES (CONSOLIDADO GENERAL)
           ============================================================== */}
       {activeSubTab === 'reporte' && (
         <div className="space-y-6">
@@ -1277,7 +1277,7 @@ export const OperatorsTab: React.FC<OperatorsTabProps> = ({ initialSubTab = 'ven
       )}
 
       {/* ==============================================================
-          TAB 3: PAGOS A OPERADOR (REGISTRO Y CUENTA CORRIENTE)
+          TAB 3: PAGOS A PROVEEDORES (REGISTRO Y CUENTA CORRIENTE)
           ============================================================== */}
       {activeSubTab === 'pagos' && (
         <div className="space-y-6">
