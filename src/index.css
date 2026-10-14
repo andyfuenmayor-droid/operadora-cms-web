@@ -539,3 +539,146 @@ html.light ::-webkit-scrollbar-thumb:hover {
     padding: 2mm !important;
   }
 }
+
+/* ==========================================================================
+   DRIVER.JS ONBOARDING TOUR - PREMIUM SAAS STYLING
+   ========================================================================== */
+.driver-popover.me-driver-theme {
+  background-color: #0D1B22 !important;
+  color: #f1f5f9 !important;
+  border: 1px solid rgba(16, 185, 129, 0.45) !important;
+  border-radius: 20px !important;
+  box-shadow: 0 25px 60px -15px rgba(0, 0, 0, 0.9), 0 0 30px rgba(16, 185, 129, 0.18) !important;
+  padding: 18px 20px !important;
+  min-width: 290px !important;
+  max-width: 360px !important;
+  backdrop-filter: blur(12px) !important;
+}
+
+.driver-popover.me-driver-theme .driver-popover-title {
+  color: #ffffff !important;
+  font-size: 15px !important;
+  font-weight: 900 !important;
+  letter-spacing: -0.02em !important;
+  line-height: 1.35 !important;
+  margin-bottom: 6px !important;
+}
+
+.driver-popover.me-driver-theme .driver-popover-description {
+  color: #94a3b8 !important;
+  font-size: 12px !important;
+  line-height: 1.55 !important;
+  font-weight: 500 !important;
+}
+
+.driver-popover.me-driver-theme .driver-popover-close-btn {
+  color: #64748b !important;
+  top: 10px !important;
+  right: 12px !important;
+  transition: all 0.15s ease !important;
+}
+
+.driver-popover.me-driver-theme .driver-popover-close-btn:hover {
+  color: #ffffff !important;
+  transform: scale(1.1) !important;
+}
+
+.driver-popover.me-driver-theme .driver-popover-footer {
+  margin-top: 16px !important;
+  padding-top: 12px !important;
+  border-top: 1px solid rgba(51, 65, 85, 0.4) !important;
+  display: flex !important;
+  align-items: center !important;
+  justify-content: space-between !important;
+}
+
+.driver-popover.me-driver-theme .driver-popover-progress-text {
+  color: #10b981 !important;
+  font-size: 11px !important;
+  font-weight: 800 !important;
+  font-family: var(--font-mono), monospace !important;
+  background: rgba(16, 185, 129, 0.12) !important;
+  border: 1px solid rgba(16, 185, 129, 0.25) !important;
+  padding: 3px 8px !important;
+  border-radius: 8px !important;
+}
+
+.driver-popover.me-driver-theme .driver-popover-navigation-btns {
+  display: flex !important;
+  gap: 6px !important;
+}
+
+.driver-popover.me-driver-theme .driver-popover-prev-btn {
+  background: #1e293b !important;
+  color: #cbd5e1 !important;
+  border: 1px solid rgba(148, 163, 184, 0.25) !important;
+  border-radius: 10px !important;
+  padding: 6px 12px !important;
+  font-size: 11px !important;
+  font-weight: 700 !important;
+  cursor: pointer !important;
+  transition: all 0.15s ease !important;
+}
+
+.driver-popover.me-driver-theme .driver-popover-prev-btn:hover {
+  background: #334155 !important;
+  color: #ffffff !important;
+}
+
+.driver-popover.me-driver-theme .driver-popover-next-btn {
+  background: linear-gradient(135deg, #10b981 0%, #059669 100%) !important;
+  color: #071217 !important;
+  border: none !important;
+  border-radius: 10px !important;
+  padding: 6px 14px !important;
+  font-size: 11px !important;
+  font-weight: 900 !important;
+  cursor: pointer !important;
+  box-shadow: 0 4px 12px rgba(16, 185, 129, 0.35) !important;
+  transition: all 0.15s ease !important;
+}
+
+.driver-popover.me-driver-theme .driver-popover-next-btn:hover {
+  filter: brightness(1.1) !important;
+  transform: translateY(-1px) !important;
+}
+
+.driver-popover.me-driver-theme .driver-popover-arrow-side-left {
+  border-left-color: #0D1B22 !important;
+}
+.driver-popover.me-driver-theme .driver-popover-arrow-side-right {
+  border-right-color: #0D1B22 !important;
+}
+.driver-popover.me-driver-theme .driver-popover-arrow-side-top {
+  border-top-color: #0D1B22 !important;
+}
+.driver-popover.me-driver-theme .driver-popover-arrow-side-bottom {
+  border-bottom-color: #0D1B22 !important;
+}
+
+/* Light mode support */
+html.light .driver-popover.me-driver-theme {
+  background-color: #ffffff !important;
+  color: #0f172a !important;
+  border-color: #cbd5e1 !important;
+  box-shadow: 0 20px 40px -10px rgba(0, 0, 0, 0.15) !important;
+}
+html.light .driver-popover.me-driver-theme .driver-popover-title {
+  color: #0f172a !important;
+}
+html.light .driver-popover.me-driver-theme .driver-popover-description {
+  color: #475569 !important;
+}
+html.light .driver-popover.me-driver-theme .driver-popover-arrow-side-left {
+  border-left-color: #ffffff !important;
+}
+html.light .driver-popover.me-driver-theme .driver-popover-arrow-side-right {
+  border-right-color: #ffffff !important;
+}
+html.light .driver-popover.me-driver-theme .driver-popover-arrow-side-top {
+  border-top-color: #ffffff !important;
+}
+html.light .driver-popover.me-driver-theme .driver-popover-arrow-side-bottom {
+  border-bottom-color: #ffffff !important;
+}
+

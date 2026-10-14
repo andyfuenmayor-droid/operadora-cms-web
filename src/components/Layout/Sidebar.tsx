@@ -1,6 +1,7 @@
 import React from 'react';
 import { useAuth } from '../../context/AuthContext';
 import type { ModuleId } from '../../types';
+import { normalizarNombrePlan } from '../../utils/formatters';
 import { Logo } from '../Common/Logo';
 import {
   Home,
@@ -75,7 +76,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
   const { user, profile, allowedModules } = useAuth();
 
   const bancaNombre = (profile?.nombre_banca || profile?.banca || 'BANCA Y OPERADORA').toUpperCase();
-  const planRaw = user?.plan || 'elite';
+  const planRaw = normalizarNombrePlan(profile?.plan || user?.plan);
   const planDisplay =
     planRaw === 'basico'
       ? 'PLAN BÁSICO (SAAS)'
@@ -115,7 +116,10 @@ export const Sidebar: React.FC<SidebarProps> = ({
           </div>
 
           {/* Subscriber & Plan Card (Modern SaaS Aesthetics, Full Readability) */}
-          <div className="mt-3.5 p-3 rounded-2xl bg-gradient-to-b from-[#0F242C]/90 to-[#071217]/95 border border-slate-700/60 shadow-lg shadow-black/20 space-y-2">
+          <div
+            id="sidebar-subscriber-card"
+            className="mt-3.5 p-3 rounded-2xl bg-gradient-to-b from-[#0F242C]/90 to-[#071217]/95 border border-slate-700/60 shadow-lg shadow-black/20 space-y-2"
+          >
             {/* Organization / Company Name */}
             <div className="flex items-start gap-2">
               <div className="p-1 rounded-lg bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 shrink-0 mt-0.5">
@@ -149,10 +153,12 @@ export const Sidebar: React.FC<SidebarProps> = ({
           {allowedModules.map((modId) => {
             const IconComp = moduleIconMap[modId] || Layers;
             const isActive = currentModule === modId;
+            const buttonDomId = `menu-${modId.toLowerCase().trim().replace(/[^a-z0-9]/g, '-').replace(/-+/g, '-').replace(/^-|-$/g, '')}`;
 
             return (
               <button
                 key={modId}
+                id={buttonDomId}
                 onClick={() => {
                   onSelectModule(modId);
                   onCloseMobile();

@@ -1,13 +1,14 @@
 import React from 'react';
 import { useAuth } from '../../context/AuthContext';
 import type { ModuleId } from '../../types';
-import { Menu, Calendar, RefreshCw, Bell, LogOut } from 'lucide-react';
+import { Menu, Calendar, RefreshCw, Bell, LogOut, HelpCircle } from 'lucide-react';
 import { formatDate, formatCurrency } from '../../utils/formatters';
 import { supabase } from '../../lib/supabase';
 import { notificationService } from '../../utils/notificationService';
 import { realtimeBroadcast } from '../../utils/realtimeBroadcast';
 import { ThemeToggle } from '../Common/ThemeToggle';
 import { Logo } from '../Common/Logo';
+import { startOnboardingTour } from '../../utils/onboardingTour';
 
 interface HeaderProps {
   currentModule: ModuleId;
@@ -20,6 +21,14 @@ export const Header: React.FC<HeaderProps> = ({ currentModule, onOpenMobile }) =
   const [hasNotificationPerm, setHasNotificationPerm] = React.useState(
     notificationService.getPermissionStatus() === 'granted'
   );
+
+  // Auto-iniciar el tour guiado en la primera visita
+  React.useEffect(() => {
+    const timer = setTimeout(() => {
+      startOnboardingTour(false);
+    }, 1200);
+    return () => clearTimeout(timer);
+  }, []);
 
   const handleRefresh = async () => {
     setRefreshing(true);
@@ -231,6 +240,18 @@ export const Header: React.FC<HeaderProps> = ({ currentModule, onOpenMobile }) =
             </button>
           </div>
         )}
+
+        {/* Botón de Demo / Tour Guiado */}
+        <button
+          id="header-tour-btn"
+          type="button"
+          onClick={() => startOnboardingTour(true)}
+          className="px-2.5 py-1.5 rounded-xl border border-emerald-500/30 bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-400 text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer shadow-sm hover:scale-[1.02] active:scale-[0.98]"
+          title="Ver Demo interactivo de cada módulo"
+        >
+          <HelpCircle className="w-3.5 h-3.5 text-emerald-400" />
+          <span className="hidden sm:inline">Tour Demo</span>
+        </button>
 
         {/* Selector de Tema Claro / Oscuro */}
         <ThemeToggle />

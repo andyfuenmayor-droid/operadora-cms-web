@@ -275,9 +275,22 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         .maybeSingle();
 
       if (profData) {
+        const freshPlan = normalizarNombrePlan(profData.plan);
         setProfile(profData as UserProfile);
         setSubscriptionError(validateSubscription(profData as UserProfile));
         localStorage.setItem('me_cms_profile', JSON.stringify(profData));
+
+        setUser((prev) => {
+          if (!prev) return null;
+          const updated: UserSession = {
+            ...prev,
+            plan: freshPlan,
+            profile: profData as UserProfile,
+            role: prev.isSubUser ? prev.role : (profData.rol || profData.role || 'admin'),
+          };
+          localStorage.setItem('me_cms_user', JSON.stringify(updated));
+          return updated;
+        });
       }
       await fetchSystemCycle(user.effectiveId);
     } catch (e) {
@@ -291,7 +304,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
   };
 
-  // Restore session from localStorage on mount
+  // Restore session from localStorage on mount and sync with database
   useEffect(() => {
     const initSession = async () => {
       try {
@@ -307,6 +320,32 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
             setSubscriptionError(validateSubscription(p));
           }
           await fetchSystemCycle(u.effectiveId);
+
+          // Sincronizar en segundo plano con Supabase para reflejar cambios de plan en tiempo real
+          try {
+            const { data: freshProf } = await supabase
+              .from('perfiles')
+              .select('*')
+              .eq('id', u.effectiveId)
+              .maybeSingle();
+
+            if (freshProf) {
+              const freshPlan = normalizarNombrePlan(freshProf.plan);
+              const updatedSession: UserSession = {
+                ...u,
+                plan: freshPlan,
+                profile: freshProf as UserProfile,
+                role: u.isSubUser ? u.role : (freshProf.rol || freshProf.role || 'admin'),
+              };
+              setUser(updatedSession);
+              setProfile(freshProf as UserProfile);
+              setSubscriptionError(validateSubscription(freshProf as UserProfile));
+              localStorage.setItem('me_cms_user', JSON.stringify(updatedSession));
+              localStorage.setItem('me_cms_profile', JSON.stringify(freshProf));
+            }
+          } catch (syncErr) {
+            console.warn('Error sincronizando perfil con Supabase:', syncErr);
+          }
         }
       } catch (err) {
         console.error('Failed to restore session:', err);
@@ -315,6 +354,15 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       }
     };
     initSession();
+
+    // Re-sincronizar cuando la ventana vuelve a tener foco
+    const handleFocus = () => {
+      refreshSession();
+    };
+    window.addEventListener('focus', handleFocus);
+    return () => {
+      window.removeEventListener('focus', handleFocus);
+    };
   }, [fetchSystemCycle, validateSubscription]);
 
   return (
