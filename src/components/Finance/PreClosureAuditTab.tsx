@@ -871,7 +871,9 @@ export const PreClosureAuditTab: React.FC = () => {
   const cashDeliveryItems = useMemo<CashDeliveryAuditItem[]>(() => {
     const list: CashDeliveryAuditItem[] = [];
 
-    // 1. Recaudaciones en físico de cda_pagos_diarios
+    // 1. Recaudaciones en físico de cda_pagos_diarios (deduplicando entregas a supervisor que pasaron a cobrador)
+    const pdByAgMon = new Map<string, { cobrador: any[]; supervisor: any[] }>();
+
     rawDailyPayments.forEach((pd) => {
       const isRech = Boolean(pd.rechazado) || String(pd.estado || '').toUpperCase() === 'RECHAZADO';
       const isConf = Boolean(pd.confirmado) || Boolean(pd.confirmado_supervisor) || Boolean(pd.fecha_escaneo_cobrador);
@@ -890,21 +892,70 @@ export const PreClosureAuditTab: React.FC = () => {
       if (!inCycle) return;
 
       const agNom = (pd.agencia || pd.nombre_agency || 'Agencia').trim().toUpperCase();
+      const monNorm = normalizarMoneda(pd.moneda) as 'BS' | 'USD' | 'COP';
+      const key = `${agNom}_${monNorm}`;
+      if (!pdByAgMon.has(key)) {
+        pdByAgMon.set(key, { cobrador: [], supervisor: [] });
+      }
 
-      list.push({
-        id: String(pd.id),
-        fecha: fOperativa,
-        agencia: agNom,
-        modalidad: isCob ? 'COBRADOR_RUTA' : 'TAQUILLA',
-        tipo: 'ENTRADA',
-        referencia: pd.qr_token || pd.referencia || (isCob ? 'Token QR Cobrador' : 'Entrega Supervisor Taquilla'),
-        concepto: pd.concepto || (isCob ? 'Recaudación en Ruta QR' : 'Efectivo Entregado en Taquilla'),
-        custodio: pd.cobrador_nombre || pd.supervisor_nombre || (isCob ? `Cobrador #${pd.cobrador_id || ''}` : 'Supervisor de Taquilla'),
-        moneda: normalizarMoneda(pd.moneda) as 'BS' | 'USD' | 'COP',
-        monto: Number(pd.monto) || 0,
-        confirmado_supervisor: Boolean(pd.confirmado_supervisor || pd.confirmado),
-        liquidado_admin: Boolean(pd.liquidado_admin),
+      if (isCob) {
+        pdByAgMon.get(key)!.cobrador.push(pd);
+      } else {
+        pdByAgMon.get(key)!.supervisor.push(pd);
+      }
+    });
+
+    pdByAgMon.forEach((group) => {
+      const cobradorSum = group.cobrador.reduce((sum, r) => sum + (Number(r.monto) || 0), 0);
+      const supervisorSum = group.supervisor.reduce((sum, r) => sum + (Number(r.monto) || 0), 0);
+
+      // A. Cobradores de ruta (entregas físicas oficiales en tránsito o liquidadas a bóveda)
+      group.cobrador.forEach((pd) => {
+        const agNom = (pd.agencia || pd.nombre_agency || 'Agencia').trim().toUpperCase();
+        const fOperativa = String(pd.fecha || pd.created_at || '').slice(0, 10);
+        list.push({
+          id: String(pd.id),
+          fecha: fOperativa,
+          agencia: agNom,
+          modalidad: 'COBRADOR_RUTA',
+          tipo: 'ENTRADA',
+          referencia: pd.qr_token || pd.referencia || 'Token QR Cobrador',
+          concepto: pd.concepto || 'Recaudación en Ruta QR',
+          custodio: pd.cobrador_nombre || `Cobrador #${pd.cobrador_id || ''}`,
+          moneda: normalizarMoneda(pd.moneda) as 'BS' | 'USD' | 'COP',
+          monto: Number(pd.monto) || 0,
+          confirmado_supervisor: Boolean(pd.confirmado_supervisor || pd.confirmado),
+          liquidado_admin: Boolean(pd.liquidado_admin),
+        });
       });
+
+      // B. Entregas a supervisor: Solo el remanente físico que NO fue traspasado al cobrador
+      let excess = Math.max(0, supervisorSum - cobradorSum);
+      if (excess > 0) {
+        group.supervisor.forEach((pd) => {
+          if (excess <= 0) return;
+          const agNom = (pd.agencia || pd.nombre_agency || 'Agencia').trim().toUpperCase();
+          const fOperativa = String(pd.fecha || pd.created_at || '').slice(0, 10);
+          const mVal = Number(pd.monto) || 0;
+          const toAdd = Math.min(mVal, excess);
+          excess -= toAdd;
+
+          list.push({
+            id: String(pd.id),
+            fecha: fOperativa,
+            agencia: agNom,
+            modalidad: 'TAQUILLA',
+            tipo: 'ENTRADA',
+            referencia: pd.referencia || 'Entrega Supervisor Taquilla',
+            concepto: pd.concepto || 'Efectivo Entregado en Taquilla',
+            custodio: pd.supervisor_nombre || 'Supervisor de Taquilla',
+            moneda: normalizarMoneda(pd.moneda) as 'BS' | 'USD' | 'COP',
+            monto: toAdd,
+            confirmado_supervisor: Boolean(pd.confirmado_supervisor || pd.confirmado),
+            liquidado_admin: Boolean(pd.liquidado_admin),
+          });
+        });
+      }
     });
 
     // 2. Gastos pagados en efectivo físico (salidas de efectivo)
