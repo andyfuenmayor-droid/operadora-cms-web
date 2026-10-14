@@ -1410,7 +1410,7 @@ export const WeeklyClosureTab: React.FC = () => {
                         <th className="py-3 px-4">Agencia</th>
                         <th className="py-3 px-4 text-right">Arrastre</th>
                         <th className="py-3 px-4 text-right">Venta Neta</th>
-                        <th className="py-3 px-4 text-right">Gastos</th>
+                        <th className="py-3 px-4 text-right">Gastos Agencias</th>
                         <th className="py-3 px-4 text-right">Premios</th>
                         <th className="py-3 px-4 text-right">Cobros</th>
                         <th className="py-3 px-4 text-right">Saldo Final</th>

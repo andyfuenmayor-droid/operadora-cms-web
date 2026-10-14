@@ -39,6 +39,8 @@ interface CurrencyBalance {
   saldoAnterior: number;
   ventasSemana: number;
   gastosSemana: number;
+  gastosAgencias: number;
+  gastosComercializadora: number;
   totalCobros: number;
   reposicionPremios: number;
   pagosSemana: number;
@@ -180,14 +182,17 @@ export const HomeDashboard: React.FC<HomeDashboardProps> = ({ onNavigate }) => {
           .filter((p) => p.moneda === mon && Boolean(p.confirmado) && p.tipo_pago.includes('Premio'))
           .reduce((acc: number, p) => acc + Number(p.monto || 0), 0);
 
+        const gAdm = adminTotals[mon] || 0;
         const pNeto = pCobros - pPremios;
-        const bFinal = Math.round((saldoAnt + vTot - gTot - pCobros + pPremios) * 100) / 100;
+        const bFinal = Math.round((saldoAnt + vTot - gTot - gAdm - pCobros + pPremios) * 100) / 100;
 
         balancesMap[mon] = {
           moneda: mon,
           saldoAnterior: saldoAnt,
           ventasSemana: vTot,
-          gastosSemana: gTot,
+          gastosSemana: gTot + gAdm,
+          gastosAgencias: gTot,
+          gastosComercializadora: gAdm,
           totalCobros: pCobros,
           reposicionPremios: pPremios,
           pagosSemana: pNeto,
@@ -394,7 +399,7 @@ export const HomeDashboard: React.FC<HomeDashboardProps> = ({ onNavigate }) => {
               <span>Estado Financiero Consolidado por Moneda</span>
             </h3>
             <p className="text-xs text-slate-400 mt-0.5">
-              Fórmula: Saldo Arrastre + Utilidad Ciclo - Gastos - Cobros + Reposición Premios = Balance Final
+              Fórmula: Saldo Arrastre + Utilidad Ciclo - Gastos Agencias - Gastos Comercializadora - Cobros + Reposición Premios = Balance Final
             </p>
           </div>
           <button
@@ -413,6 +418,8 @@ export const HomeDashboard: React.FC<HomeDashboardProps> = ({ onNavigate }) => {
               saldoAnterior: 0,
               ventasSemana: 0,
               gastosSemana: 0,
+              gastosAgencias: 0,
+              gastosComercializadora: 0,
               totalCobros: 0,
               reposicionPremios: 0,
               pagosSemana: 0,
@@ -456,8 +463,12 @@ export const HomeDashboard: React.FC<HomeDashboardProps> = ({ onNavigate }) => {
                     </span>
                   </div>
                   <div className="flex justify-between text-slate-400">
-                    <span>Gastos Operativos (-):</span>
-                    <span className="font-mono text-rose-400">{formatCurrency(b.gastosSemana, mon)}</span>
+                    <span>Gastos Agencias (-):</span>
+                    <span className="font-mono text-rose-400">{formatCurrency(b.gastosAgencias ?? b.gastosSemana, mon)}</span>
+                  </div>
+                  <div className="flex justify-between text-slate-400">
+                    <span>Gastos Comercializadora (-):</span>
+                    <span className="font-mono text-rose-400">{formatCurrency(b.gastosComercializadora || 0, mon)}</span>
                   </div>
                   <div className="flex justify-between text-slate-400">
                     <span>Cobros Ordinarios (-):</span>

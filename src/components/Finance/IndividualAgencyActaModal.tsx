@@ -285,7 +285,7 @@ export const IndividualAgencyActaModal: React.FC<IndividualAgencyActaModalProps>
                 <td class="mono" style="color: #0284c7;">-${formatCurrency(cobros, moneda)}</td>
               </tr>
               <tr>
-                <td>Gastos Operativos Deductibles (-)</td>
+                <td>Gastos de Agencia Deductibles (-)</td>
                 <td style="text-align: center;">Gasto Aprobado</td>
                 <td class="mono" style="color: #b91c1c;">-${formatCurrency(gastos, moneda)}</td>
               </tr>
@@ -401,7 +401,7 @@ export const IndividualAgencyActaModal: React.FC<IndividualAgencyActaModalProps>
               <span className="text-sky-400">-{formatCurrency(actaData.cobros, actaData.moneda)}</span>
             </div>
             <div className="flex justify-between text-slate-400">
-              <span>Gastos Operativos (-):</span>
+              <span>Gastos de Agencia (-):</span>
               <span className="text-rose-400">-{formatCurrency(actaData.gastos, actaData.moneda)}</span>
             </div>
             <div className="flex justify-between items-center text-sm font-black border-t border-slate-700 pt-2 text-white">

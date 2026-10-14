@@ -109,7 +109,7 @@ export const DeliveryReportModal: React.FC<DeliveryReportModalProps> = ({
           <div style="font-size: 9.5px; font-family: monospace; line-height: 1.4;">
             <div style="display: flex; justify-content: space-between;"><span style="color: #64748b;">Arrastre:</span><span>${formatCurrency(d.saldoAnterior, mon as any)}</span></div>
             <div style="display: flex; justify-content: space-between;"><span style="color: #64748b;">Venta Neta:</span><span>${formatCurrency(d.ventaNeta, mon as any)}</span></div>
-            <div style="display: flex; justify-content: space-between;"><span style="color: #64748b;">Gastos:</span><span style="color: #b91c1c;">${formatCurrency(d.gastos, mon as any)}</span></div>
+            <div style="display: flex; justify-content: space-between;"><span style="color: #64748b;">Gastos Agencias:</span><span style="color: #b91c1c;">${formatCurrency(d.gastos, mon as any)}</span></div>
             ${(d.cobradorEnRuta || 0) > 0 ? `<div style="display: flex; justify-content: space-between;"><span style="color: #d97706;">En Ruta:</span><span style="color: #d97706; font-weight: bold;">${formatCurrency(d.cobradorEnRuta || 0, mon as any)}</span></div>` : ''}
             ${(d.cobradorLiquidado || 0) > 0 ? `<div style="display: flex; justify-content: space-between;"><span style="color: #059669;">Liquidado Admin:</span><span style="color: #059669; font-weight: bold;">${formatCurrency(d.cobradorLiquidado || 0, mon as any)}</span></div>` : ''}
             ${d.efectivoTaquilla > 0 ? `<div style="display: flex; justify-content: space-between;"><span style="color: #64748b;">Efec Taquilla:</span><span style="color: #0284c7;">${formatCurrency(d.efectivoTaquilla, mon as any)}</span></div>` : ''}
@@ -278,7 +278,7 @@ export const DeliveryReportModal: React.FC<DeliveryReportModalProps> = ({
                 <th style="text-align: center;">Mon</th>
                 <th style="text-align: right;">Arrastre</th>
                 <th style="text-align: right;">Vta Neta</th>
-                <th style="text-align: right;">Gastos</th>
+                <th style="text-align: right;">Gastos Agencias</th>
                 <th style="text-align: right; color: #d97706;">🛵 En Ruta</th>
                 <th style="text-align: right; color: #059669;">🏛️ Liquidado Admin</th>
                 <th style="text-align: right;">💵 Efectivo</th>
@@ -427,7 +427,7 @@ export const DeliveryReportModal: React.FC<DeliveryReportModalProps> = ({
                         </span>
                       </div>
                       <div className="flex justify-between">
-                        <span className="text-slate-400">Gastos:</span>
+                        <span className="text-slate-400">Gastos Agencias:</span>
                         <span className="text-rose-400">{formatCurrency(data.gastos, mon as any)}</span>
                       </div>
                       {(data.cobradorEnRuta || 0) > 0 && (
@@ -487,7 +487,7 @@ export const DeliveryReportModal: React.FC<DeliveryReportModalProps> = ({
                     <th className="py-2 px-1 text-center">Mon</th>
                     <th className="py-2 px-2 text-right">Arrastre</th>
                     <th className="py-2 px-2 text-right">Vta Neta</th>
-                    <th className="py-2 px-2 text-right">Gastos</th>
+                    <th className="py-2 px-2 text-right">Gastos Agencias</th>
                     <th className="py-2 px-2 text-right text-amber-400">🛵 En Ruta</th>
                     <th className="py-2 px-2 text-right text-emerald-400">🏛️ Liq. Admin</th>
                     <th className="py-2 px-2 text-right text-sky-300">💵 Efectivo</th>

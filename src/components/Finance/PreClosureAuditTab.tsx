@@ -1284,11 +1284,22 @@ export const PreClosureAuditTab: React.FC = () => {
                       </span>
                     </div>
                     <div className="flex justify-between items-center">
-                      <span className="text-slate-400">Gastos Operativos:</span>
+                      <span className="text-slate-400">Gastos Agencias:</span>
                       <span className={`font-semibold ${tot.gastos > 0 ? 'text-rose-400' : 'text-slate-500'}`}>
                         {tot.gastos > 0 ? `-${formatCurrency(tot.gastos, mon as any)}` : formatCurrency(0, mon as any)}
                       </span>
                     </div>
+                    {(() => {
+                      const admG = adminExpenses.filter((g) => g.moneda === mon).reduce((a, b) => a + b.monto, 0);
+                      return (
+                        <div className="flex justify-between items-center">
+                          <span className="text-slate-400">Gastos Comercializadora:</span>
+                          <span className={`font-semibold ${admG > 0 ? 'text-rose-400' : 'text-slate-500'}`}>
+                            {admG > 0 ? `-${formatCurrency(admG, mon as any)}` : formatCurrency(0, mon as any)}
+                          </span>
+                        </div>
+                      );
+                    })()}
                   </div>
                 </div>
 
@@ -1783,7 +1794,7 @@ export const PreClosureAuditTab: React.FC = () => {
                                 }`}
                               >
                                 <Receipt className="w-3.5 h-3.5" />
-                                <span>📉 Gastos Operativos ({agencyExpensesList.length})</span>
+                                <span>📉 Gastos Agencias ({agencyExpensesList.length})</span>
                               </button>
 
                               <button
@@ -2004,7 +2015,7 @@ export const PreClosureAuditTab: React.FC = () => {
                                 <div className="flex items-center justify-between">
                                   <h6 className="text-xs font-black uppercase text-rose-400 flex items-center gap-1.5">
                                     <Receipt className="w-4 h-4" />
-                                    <span>Gastos Operativos Confirmados ({agencyExpensesList.length})</span>
+                                    <span>Gastos Agencias Confirmados ({agencyExpensesList.length})</span>
                                   </h6>
                                   <span className="text-rose-400 font-bold font-mono text-xs">
                                     -{formatCurrency(row.gastos, row.moneda)}
@@ -2664,7 +2675,7 @@ export const PreClosureAuditTab: React.FC = () => {
                       <span className="text-emerald-700 dark:text-emerald-400 font-semibold">+{formatCurrency(agTot?.ventaNeta || 0, mon as any)}</span>
                     </div>
                     <div className="flex justify-between">
-                      <span className="text-slate-500 dark:text-slate-400">Gastos Confirmados:</span>
+                      <span className="text-slate-500 dark:text-slate-400">Gastos Agencias:</span>
                       <span className="text-rose-600 dark:text-rose-400 font-semibold">-{formatCurrency(agTot?.gastos || 0, mon as any)}</span>
                     </div>
                     <div className="flex justify-between">
@@ -2740,7 +2751,7 @@ export const PreClosureAuditTab: React.FC = () => {
                       <span className="text-emerald-700 dark:text-emerald-400 font-bold">{formatCurrency(gananciaComercializador, mon as any)}</span>
                     </div>
                     <div className="flex justify-between text-rose-600 dark:text-rose-400 text-xs">
-                      <span>Gastos Administrativos (-):</span>
+                      <span>Gastos Comercializadora (-):</span>
                       <span className="font-semibold">
                         -{formatCurrency(adminExpenses.filter((g) => g.moneda === mon).reduce((a, b) => a + b.monto, 0), mon as any)}
                       </span>
