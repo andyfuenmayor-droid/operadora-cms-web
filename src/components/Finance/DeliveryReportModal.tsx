@@ -35,6 +35,8 @@ interface DeliveryReportModalProps {
     saldoAnterior: number;
     ventaNeta: number;
     gastos: number;
+    gastosAgencias?: number;
+    gastosComercializadora?: number;
     cobradorRuta: number;
     cobradorLiquidado?: number;
     cobradorEnRuta?: number;
@@ -43,6 +45,7 @@ interface DeliveryReportModalProps {
     reposicionPremios: number;
     saldoFinal: number;
   }>;
+  adminExpensesByCurrency?: Record<string, number>;
 }
 
 export const DeliveryReportModal: React.FC<DeliveryReportModalProps> = ({
@@ -53,6 +56,7 @@ export const DeliveryReportModal: React.FC<DeliveryReportModalProps> = ({
   companyName = 'CORPORACION CALENDARIO, CA',
   auditRows,
   totalsByCurrency,
+  adminExpensesByCurrency,
 }) => {
   const todayFormatted = new Date().toLocaleDateString('es-VE', {
     day: '2-digit',
@@ -100,6 +104,8 @@ export const DeliveryReportModal: React.FC<DeliveryReportModalProps> = ({
       .map((mon) => {
         const d = totalsByCurrency[mon];
         if (!d) return '';
+        const admGasto = (adminExpensesByCurrency && adminExpensesByCurrency[mon]) || (d.gastosComercializadora || 0);
+        const saldoFinalConsolidado = Math.round((d.saldoFinal - (d.gastosComercializadora ? 0 : admGasto)) * 100) / 100;
         return `
         <div style="border: 1px solid #cbd5e1; border-radius: 6px; padding: 6px 8px; background: #f8fafc;">
           <div style="display: flex; justify-content: space-between; border-bottom: 1px solid #e2e8f0; padding-bottom: 3px; margin-bottom: 4px; font-weight: bold;">
@@ -107,9 +113,10 @@ export const DeliveryReportModal: React.FC<DeliveryReportModalProps> = ({
             <span style="font-size: 9px; color: #64748b;">Consolidado</span>
           </div>
           <div style="font-size: 9.5px; font-family: monospace; line-height: 1.4;">
-            <div style="display: flex; justify-content: space-between;"><span style="color: #64748b;">Arrastre:</span><span>${formatCurrency(d.saldoAnterior, mon as any)}</span></div>
+            <div style="display: flex; justify-content: space-between;"><span style="color: #64748b;">Arrastre Inicial:</span><span>${formatCurrency(d.saldoAnterior, mon as any)}</span></div>
             <div style="display: flex; justify-content: space-between;"><span style="color: #64748b;">Venta Neta:</span><span>${formatCurrency(d.ventaNeta, mon as any)}</span></div>
-            <div style="display: flex; justify-content: space-between;"><span style="color: #64748b;">Gastos Agencias:</span><span style="color: #b91c1c;">${formatCurrency(d.gastos, mon as any)}</span></div>
+            <div style="display: flex; justify-content: space-between;"><span style="color: #64748b;">Gastos Agencias:</span><span style="color: #b91c1c;">${formatCurrency(d.gastosAgencias ?? d.gastos, mon as any)}</span></div>
+            <div style="display: flex; justify-content: space-between;"><span style="color: #64748b;">Gastos Comercializadora:</span><span style="color: #b91c1c;">${formatCurrency(admGasto, mon as any)}</span></div>
             ${(d.cobradorEnRuta || 0) > 0 ? `<div style="display: flex; justify-content: space-between;"><span style="color: #d97706;">En Ruta:</span><span style="color: #d97706; font-weight: bold;">${formatCurrency(d.cobradorEnRuta || 0, mon as any)}</span></div>` : ''}
             ${(d.cobradorLiquidado || 0) > 0 ? `<div style="display: flex; justify-content: space-between;"><span style="color: #059669;">Liquidado Admin:</span><span style="color: #059669; font-weight: bold;">${formatCurrency(d.cobradorLiquidado || 0, mon as any)}</span></div>` : ''}
             ${d.efectivoTaquilla > 0 ? `<div style="display: flex; justify-content: space-between;"><span style="color: #64748b;">Efec Taquilla:</span><span style="color: #0284c7;">${formatCurrency(d.efectivoTaquilla, mon as any)}</span></div>` : ''}
@@ -117,7 +124,7 @@ export const DeliveryReportModal: React.FC<DeliveryReportModalProps> = ({
             ${d.reposicionPremios > 0 ? `<div style="display: flex; justify-content: space-between;"><span style="color: #64748b;">Reposición:</span><span style="color: #b45309; font-weight: bold;">+${formatCurrency(d.reposicionPremios, mon as any)}</span></div>` : ''}
             <div style="display: flex; justify-content: space-between; border-top: 1px solid #cbd5e1; padding-top: 2px; margin-top: 2px; font-weight: bold;">
               <span>Saldo Final:</span>
-              <span style="color: ${d.saldoFinal >= 0 ? '#047857' : '#b91c1c'};">${formatCurrency(d.saldoFinal, mon as any)}</span>
+              <span style="color: ${saldoFinalConsolidado >= 0 ? '#047857' : '#b91c1c'};">${formatCurrency(saldoFinalConsolidado, mon as any)}</span>
             </div>
           </div>
         </div>
@@ -404,6 +411,8 @@ export const DeliveryReportModal: React.FC<DeliveryReportModalProps> = ({
               {['BS', 'USD', 'COP'].map((mon) => {
                 const data = totalsByCurrency[mon];
                 if (!data) return null;
+                const admGasto = (adminExpensesByCurrency && adminExpensesByCurrency[mon]) || (data.gastosComercializadora || 0);
+                const saldoFinalConsolidado = Math.round((data.saldoFinal - (data.gastosComercializadora ? 0 : admGasto)) * 100) / 100;
 
                 return (
                   <div
@@ -428,7 +437,11 @@ export const DeliveryReportModal: React.FC<DeliveryReportModalProps> = ({
                       </div>
                       <div className="flex justify-between">
                         <span className="text-slate-400">Gastos Agencias:</span>
-                        <span className="text-rose-400">{formatCurrency(data.gastos, mon as any)}</span>
+                        <span className="text-rose-400">{formatCurrency(data.gastosAgencias ?? data.gastos, mon as any)}</span>
+                      </div>
+                      <div className="flex justify-between">
+                        <span className="text-slate-400">Gastos Comercializadora:</span>
+                        <span className="text-rose-400">{formatCurrency(admGasto, mon as any)}</span>
                       </div>
                       {(data.cobradorEnRuta || 0) > 0 && (
                         <div className="flex justify-between">
@@ -462,8 +475,8 @@ export const DeliveryReportModal: React.FC<DeliveryReportModalProps> = ({
                       )}
                       <div className="flex justify-between pt-1 border-t border-slate-800 font-bold">
                         <span className="text-slate-300">Saldo Final:</span>
-                        <span className={data.saldoFinal >= 0 ? 'text-emerald-400' : 'text-rose-400'}>
-                          {formatCurrency(data.saldoFinal, mon as any)}
+                        <span className={saldoFinalConsolidado >= 0 ? 'text-emerald-400' : 'text-rose-400'}>
+                          {formatCurrency(saldoFinalConsolidado, mon as any)}
                         </span>
                       </div>
                     </div>

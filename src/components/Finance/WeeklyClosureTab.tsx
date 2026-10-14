@@ -1178,6 +1178,8 @@ export const WeeklyClosureTab: React.FC = () => {
                                 saldoAnterior: mRows.reduce((acc, r) => acc + r.saldo_anterior, 0),
                                 ventaNeta: mRows.reduce((acc, r) => acc + r.venta_neta, 0),
                                 gastos: mRows.reduce((acc, r) => acc + r.gastos, 0),
+                                gastosAgencias: mRows.reduce((acc, r) => acc + r.gastos, 0),
+                                gastosComercializadora: 0,
                                 cobradorRuta: 0,
                                 efectivoTaquilla: 0,
                                 bancos: mRows.reduce((acc, r) => acc + r.bancos, 0),

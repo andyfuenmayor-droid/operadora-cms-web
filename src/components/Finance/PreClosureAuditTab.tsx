@@ -43,7 +43,8 @@ import {
   Scale,
   Copy,
   Sparkles,
-  Printer
+  Printer,
+  X
 } from 'lucide-react';
 import { DeliveryReportModal, type PreClosureAgencyRow } from './DeliveryReportModal';
 import { OperatorDeliveryReportModal } from './OperatorDeliveryReportModal';
@@ -100,6 +101,7 @@ export const PreClosureAuditTab: React.FC = () => {
   const [isCollectorActaOpen, setIsCollectorActaOpen] = useState(false);
   const [isBankIncomeActaOpen, setIsBankIncomeActaOpen] = useState(false);
   const [isCashDeliveryActaOpen, setIsCashDeliveryActaOpen] = useState(false);
+  const [isAdminExpensesModalOpen, setIsAdminExpensesModalOpen] = useState(false);
 
   // Load database data
   const loadData = async () => {
@@ -412,6 +414,8 @@ export const PreClosureAuditTab: React.FC = () => {
       saldoAnterior: number;
       ventaNeta: number;
       gastos: number;
+      gastosAgencias?: number;
+      gastosComercializadora?: number;
       cobradorRuta: number;
       cobradorLiquidado: number;
       cobradorEnRuta: number;
@@ -423,10 +427,13 @@ export const PreClosureAuditTab: React.FC = () => {
     }> = {};
 
     ['BS', 'USD', 'COP'].forEach((m) => {
+      const admG = adminExpenses.filter((g) => g.moneda === m).reduce((a, b) => a + b.monto, 0);
       res[m] = {
         saldoAnterior: 0,
         ventaNeta: 0,
         gastos: 0,
+        gastosAgencias: 0,
+        gastosComercializadora: admG,
         cobradorRuta: 0,
         cobradorLiquidado: 0,
         cobradorEnRuta: 0,
@@ -443,6 +450,7 @@ export const PreClosureAuditTab: React.FC = () => {
         res[r.moneda].saldoAnterior += r.saldo_anterior;
         res[r.moneda].ventaNeta += r.venta_neta;
         res[r.moneda].gastos += r.gastos;
+        res[r.moneda].gastosAgencias = (res[r.moneda].gastosAgencias || 0) + r.gastos;
         res[r.moneda].cobradorRuta += r.cobrador_ruta;
         res[r.moneda].cobradorLiquidado += r.cobrador_liquidado || 0;
         res[r.moneda].cobradorEnRuta += r.cobrador_en_ruta || 0;
@@ -455,7 +463,20 @@ export const PreClosureAuditTab: React.FC = () => {
     });
 
     return res;
-  }, [auditRows]);
+  }, [auditRows, adminExpenses]);
+
+  // Consolidated Admin Expenses by Currency
+  const adminExpensesByCurrency = useMemo(() => {
+    const map: Record<string, number> = { BS: 0, USD: 0, COP: 0 };
+    adminExpenses.forEach((g) => {
+      if (map[g.moneda] !== undefined) {
+        map[g.moneda] += Number(g.monto) || 0;
+      } else {
+        map[g.moneda] = Number(g.monto) || 0;
+      }
+    });
+    return map;
+  }, [adminExpenses]);
 
   // Filtered rows for the table view
   const filteredRows = useMemo(() => {
@@ -919,7 +940,7 @@ export const PreClosureAuditTab: React.FC = () => {
       'Moneda',
       'Arrastre Inicial',
       'Venta Neta',
-      'Gastos',
+      'Gastos Agencias',
       'Cobrador en Ruta',
       'Liquidado a Admin',
       'Efectivo Taquilla',
@@ -1052,6 +1073,16 @@ export const PreClosureAuditTab: React.FC = () => {
               >
                 <FileText className="w-4 h-4" />
                 <span>📜 Acta General</span>
+              </button>
+
+              {/* 1b. Gastos Comercializadora */}
+              <button
+                onClick={() => setIsAdminExpensesModalOpen(true)}
+                className="px-3.5 py-2.5 rounded-xl bg-gradient-to-r from-rose-600 to-red-600 hover:from-rose-500 hover:to-red-500 text-white font-black text-xs shadow-lg shadow-rose-500/20 flex items-center gap-1.5 transition-all cursor-pointer"
+                title="Desglose Oficial de Gastos de Comercializadora del Ciclo"
+              >
+                <Receipt className="w-4 h-4" />
+                <span>🏢 Gastos Comercializadora ({adminExpenses.length})</span>
               </button>
 
               {/* 2. Acta Cuentas Bancarias (Entradas, Salidas y Total por Banco) */}
@@ -1243,23 +1274,36 @@ export const PreClosureAuditTab: React.FC = () => {
                 </span>
               </div>
 
-              {/* Big Hero: Saldo Final */}
-              <div className="bg-[#071318] border border-slate-800/90 rounded-2xl p-3.5 mb-3.5 text-center shadow-inner">
-                <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block mb-1">
-                  Saldo Final Consolidado
-                </span>
-                <div
-                  className={`text-2xl sm:text-3xl font-black font-mono tracking-tight ${
-                    tot.saldoFinal > 0
-                      ? 'text-amber-400'
-                      : tot.saldoFinal < 0
-                      ? 'text-rose-400'
-                      : 'text-emerald-400'
-                  }`}
-                >
-                  {formatCurrency(tot.saldoFinal, mon as any)}
-                </div>
-              </div>
+              {/* Big Hero: Saldo Final Consolidado */}
+              {(() => {
+                const admG = adminExpenses.filter((g) => g.moneda === mon).reduce((a, b) => a + b.monto, 0);
+                const saldoFinalConsolidado = Math.round((tot.saldoFinal - admG) * 100) / 100;
+                return (
+                  <div className="bg-[#071318] border border-slate-800/90 rounded-2xl p-3.5 mb-3.5 text-center shadow-inner">
+                    <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block mb-1">
+                      Saldo Final Consolidado
+                    </span>
+                    <div
+                      className={`text-2xl sm:text-3xl font-black font-mono tracking-tight ${
+                        saldoFinalConsolidado > 0
+                          ? 'text-amber-400'
+                          : saldoFinalConsolidado < 0
+                          ? 'text-rose-400'
+                          : 'text-emerald-400'
+                      }`}
+                    >
+                      {formatCurrency(saldoFinalConsolidado, mon as any)}
+                    </div>
+                    {admG > 0 && (
+                      <div className="flex items-center justify-center gap-2 mt-1.5 text-[10px] font-mono text-slate-400">
+                        <span>Cartera Agencias: <strong className="text-slate-300">{formatCurrency(tot.saldoFinal, mon as any)}</strong></span>
+                        <span>•</span>
+                        <span>Gto. Comer.: <strong className="text-rose-400">-{formatCurrency(admG, mon as any)}</strong></span>
+                      </div>
+                    )}
+                  </div>
+                );
+              })()}
 
               {/* Two Clean Sections: Operativo + Canales */}
               <div className="space-y-3 font-mono text-xs">
@@ -1292,9 +1336,13 @@ export const PreClosureAuditTab: React.FC = () => {
                     {(() => {
                       const admG = adminExpenses.filter((g) => g.moneda === mon).reduce((a, b) => a + b.monto, 0);
                       return (
-                        <div className="flex justify-between items-center">
-                          <span className="text-slate-400">Gastos Comercializadora:</span>
-                          <span className={`font-semibold ${admG > 0 ? 'text-rose-400' : 'text-slate-500'}`}>
+                        <div
+                          onClick={() => setIsAdminExpensesModalOpen(true)}
+                          className="flex justify-between items-center cursor-pointer hover:bg-slate-800/40 p-1 -m-1 rounded-lg transition-colors group"
+                          title="Click para ver detalle de Gastos de Comercializadora"
+                        >
+                          <span className="text-slate-400 group-hover:text-rose-300 transition-colors">Gastos Comercializadora:</span>
+                          <span className={`font-semibold ${admG > 0 ? 'text-rose-400 group-hover:underline' : 'text-slate-500'}`}>
                             {admG > 0 ? `-${formatCurrency(admG, mon as any)}` : formatCurrency(0, mon as any)}
                           </span>
                         </div>
@@ -1457,7 +1505,7 @@ export const PreClosureAuditTab: React.FC = () => {
               Matriz de Arqueo Detallada por Caja y Agencia ({filteredRows.length})
             </h4>
             <p className="text-[11px] text-slate-400 mt-0.5">
-              Fórmula: Saldo Anterior + Venta Neta - Gastos - Cobros (Efectivo/Cobradores/Bancos) + Reposición de Premios = Saldo Final
+              Fórmula: Saldo Anterior + Venta Neta - Gastos Agencias - Cobros (Efectivo/Cobradores/Bancos) + Reposición de Premios = Saldo Final
             </p>
           </div>
         </div>
@@ -1470,7 +1518,7 @@ export const PreClosureAuditTab: React.FC = () => {
                 <th className="py-3 px-2 text-center">Moneda</th>
                 <th className="py-3 px-3 text-right">Arrastre Inicial</th>
                 <th className="py-3 px-3 text-right">Venta Neta</th>
-                <th className="py-3 px-3 text-right">Gastos</th>
+                <th className="py-3 px-3 text-right">Gastos Agencias</th>
                 <th className="py-3 px-3 text-right text-amber-400">🛵 En Ruta</th>
                 <th className="py-3 px-3 text-right text-emerald-400">🏛️ Liquidado Admin</th>
                 <th className="py-3 px-3 text-right text-sky-300">💵 Efec Taquilla</th>
@@ -1718,7 +1766,7 @@ export const PreClosureAuditTab: React.FC = () => {
                                 <span className="text-slate-400">Venta Neta:</span>
                                 <span className="text-emerald-400 font-bold">{formatCurrency(row.venta_neta, row.moneda)}</span>
                                 <span className="text-slate-500">-</span>
-                                <span className="text-slate-400">Gastos:</span>
+                                <span className="text-slate-400">Gastos Agencias:</span>
                                 <span className="text-rose-400 font-bold">{formatCurrency(row.gastos, row.moneda)}</span>
                                 <span className="text-slate-500">-</span>
                                 <span className="text-slate-400">Cobros Totales:</span>
@@ -2797,6 +2845,7 @@ export const PreClosureAuditTab: React.FC = () => {
           companyName="CORPORACION CALENDARIO, CA"
           auditRows={auditRows}
           totalsByCurrency={totalsByCurrency}
+          adminExpensesByCurrency={adminExpensesByCurrency}
         />
       )}
 
@@ -2858,6 +2907,117 @@ export const PreClosureAuditTab: React.FC = () => {
           companyName="CORPORACION CALENDARIO, CA"
           items={cashDeliveryItems}
         />
+      )}
+
+      {/* Modal 6: Desglose Oficial de Gastos de Comercializadora */}
+      {isAdminExpensesModalOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-black/80 backdrop-blur-sm animate-fade-in">
+          <div className="bg-[#0D1B22] border border-slate-800 rounded-3xl w-full max-w-4xl max-h-[90vh] flex flex-col shadow-2xl overflow-hidden">
+            {/* Modal Header */}
+            <div className="p-4 sm:p-5 border-b border-slate-800 flex items-center justify-between bg-gradient-to-r from-rose-950/40 to-slate-900/60">
+              <div className="flex items-center gap-3">
+                <div className="p-2.5 rounded-2xl bg-rose-500/20 text-rose-400 border border-rose-500/30">
+                  <Receipt className="w-5 h-5" />
+                </div>
+                <div>
+                  <h3 className="text-base font-black text-white flex items-center gap-2">
+                    <span>Gastos Administrativos / Comercializadora</span>
+                    <span className="px-2 py-0.5 rounded-full text-[10px] font-mono bg-rose-500/20 text-rose-300 border border-rose-500/30">
+                      Semana {systemCycle.semana}
+                    </span>
+                  </h3>
+                  <p className="text-xs text-slate-400">
+                    Egresos operativos de la corporación para el período del {systemCycle.desde} al {systemCycle.hasta}
+                  </p>
+                </div>
+              </div>
+
+              <button
+                type="button"
+                onClick={() => setIsAdminExpensesModalOpen(false)}
+                className="p-2 rounded-xl text-slate-400 hover:text-white hover:bg-slate-800 transition-colors cursor-pointer"
+                title="Cerrar modal"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            {/* Modal Body */}
+            <div className="p-4 sm:p-6 overflow-y-auto space-y-5">
+              {/* Resumen por moneda */}
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                {['BS', 'USD', 'COP'].map((mon) => {
+                  const items = adminExpenses.filter((g) => g.moneda === mon);
+                  const total = items.reduce((a, b) => a + Number(b.monto || 0), 0);
+                  return (
+                    <div key={mon} className="p-3 rounded-2xl bg-[#071217] border border-slate-800 space-y-1">
+                      <div className="flex justify-between items-center text-xs font-bold text-slate-300">
+                        <span className="text-amber-400">{mon}</span>
+                        <span className="text-[10px] text-slate-500 font-mono">{items.length} registro(s)</span>
+                      </div>
+                      <div className="text-xl font-black font-mono text-rose-400">
+                        {formatCurrency(total, mon as any)}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+
+              {/* Table of expenses */}
+              <div className="border border-slate-800 rounded-2xl overflow-hidden">
+                <div className="overflow-x-auto">
+                  <table className="w-full text-left text-xs border-collapse">
+                    <thead className="bg-[#071217] text-slate-400 border-b border-slate-800 font-bold uppercase tracking-wider text-[11px]">
+                      <tr>
+                        <th className="py-2.5 px-3">Fecha</th>
+                        <th className="py-2.5 px-3">Concepto / Descripción</th>
+                        <th className="py-2.5 px-3">Categoría</th>
+                        <th className="py-2.5 px-3 text-center">Moneda</th>
+                        <th className="py-2.5 px-3 text-right">Monto</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-slate-800 font-mono text-xs">
+                      {adminExpenses.length === 0 ? (
+                        <tr>
+                          <td colSpan={5} className="py-8 text-center text-slate-500 font-sans">
+                            No se registran gastos de comercializadora en este ciclo.
+                          </td>
+                        </tr>
+                      ) : (
+                        adminExpenses.map((exp, idx) => (
+                          <tr key={exp.id || idx} className="hover:bg-slate-800/30 transition-colors">
+                            <td className="py-2 px-3 text-slate-400">{exp.fecha}</td>
+                            <td className="py-2 px-3 text-slate-200 font-sans font-medium">{exp.concepto}</td>
+                            <td className="py-2 px-3 text-slate-400 font-sans">
+                              <span className="px-2 py-0.5 rounded-full text-[10px] bg-slate-800 text-slate-300 border border-slate-700">
+                                {exp.categoria || 'General'}
+                              </span>
+                            </td>
+                            <td className="py-2 px-3 text-center font-bold text-amber-400">{exp.moneda}</td>
+                            <td className="py-2 px-3 text-right font-black text-rose-400">
+                              {formatCurrency(Number(exp.monto) || 0, exp.moneda as any)}
+                            </td>
+                          </tr>
+                        ))
+                      )}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            </div>
+
+            {/* Modal Footer */}
+            <div className="p-4 border-t border-slate-800 bg-[#071217] flex justify-end">
+              <button
+                type="button"
+                onClick={() => setIsAdminExpensesModalOpen(false)}
+                className="px-4 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-white font-bold text-xs transition-colors cursor-pointer"
+              >
+                Cerrar
+              </button>
+            </div>
+          </div>
+        </div>
       )}
     </div>
   );

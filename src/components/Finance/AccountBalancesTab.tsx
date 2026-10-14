@@ -1536,6 +1536,8 @@ ${totalPartAg > 0 ? `    (-) Part. Agencia (${maxPartPct}%): ${fmtNumber(totalPa
               saldoAnterior: activeBalances.rows.reduce((sum, r) => sum + r.saldo_arrastre, 0),
               ventaNeta: activeBalances.rows.reduce((sum, r) => sum + r.utilidad_semana, 0),
               gastos: activeBalances.rows.reduce((sum, r) => sum + r.gastos, 0),
+              gastosAgencias: activeBalances.rows.reduce((sum, r) => sum + r.gastos, 0),
+              gastosComercializadora: 0,
               cobradorRuta: 0,
               efectivoTaquilla: 0,
               bancos: activeBalances.rows.reduce((sum, r) => sum + r.pagos, 0),
