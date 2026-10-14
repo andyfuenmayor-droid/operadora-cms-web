@@ -776,7 +776,7 @@ ${totalPartAg > 0 ? `    (-) Part. Agencia (${maxPartPct}%): ${fmtNumber(totalPa
       ) : (
         <>
           {/* Currency Switcher & Total Cartera Metric */}
-          <div className="bg-[#0D1B22] border border-slate-800 rounded-3xl p-4 sm:p-6 shadow-xl flex flex-col md:flex-row items-stretch md:items-center justify-between gap-4 sm:gap-6">
+          <div id="tour-saldos-summary" className="bg-[#0D1B22] border border-slate-800 rounded-3xl p-4 sm:p-6 shadow-xl flex flex-col md:flex-row items-stretch md:items-center justify-between gap-4 sm:gap-6">
         {/* Currency Tabs (3 columns on mobile, flex on desktop) */}
         <div className="grid grid-cols-3 sm:flex items-center gap-1.5 sm:gap-2 bg-[#071217] p-1.5 rounded-2xl border border-slate-800 w-full sm:w-auto">
           <button
@@ -878,7 +878,7 @@ ${totalPartAg > 0 ? `    (-) Part. Agencia (${maxPartPct}%): ${fmtNumber(totalPa
       </div>
 
       {/* Controls Bar: Search + Status Chips + View Toggle */}
-      <div className="space-y-3">
+      <div id="tour-saldos-table" className="space-y-3">
         <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3">
           {/* Search Input */}
           <div className="relative flex-1">

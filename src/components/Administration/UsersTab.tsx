@@ -302,6 +302,7 @@ export const UsersTab: React.FC = () => {
           </button>
 
           <button
+            id="tour-usuarios-btn"
             onClick={handleOpenNew}
             className="px-4 py-2.5 rounded-xl bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-500 hover:to-indigo-500 text-white font-bold text-xs shadow-lg shadow-purple-600/20 flex items-center gap-2 transition-all cursor-pointer"
           >
@@ -362,7 +363,7 @@ export const UsersTab: React.FC = () => {
           </button>
         </div>
       ) : (
-        <div className="space-y-3">
+        <div id="tour-usuarios-list" className="space-y-3">
           {filteredUsers.map((u) => {
             const accList = u.accesos || ['Inicio'];
 

@@ -363,7 +363,7 @@ export const BankAccountsTab: React.FC = () => {
       </div>
 
       {/* Subtab Navigation Pills */}
-      <div className="flex items-center gap-2 bg-[#0D1B22] p-1.5 rounded-2xl border border-slate-800 w-fit">
+      <div id="tour-cuentas-tabs" className="flex items-center gap-2 bg-[#0D1B22] p-1.5 rounded-2xl border border-slate-800 w-fit">
         <button
           onClick={() => setSubTab('cuentas')}
           className={`px-4 py-2 rounded-xl text-xs font-bold transition-all cursor-pointer flex items-center gap-2 ${
@@ -418,6 +418,7 @@ export const BankAccountsTab: React.FC = () => {
               Cuentas Registradas ({accounts.length})
             </h3>
             <button
+              id="tour-cuentas-btn"
               onClick={() => { resetAccountForm(); setShowAccountModal(true); }}
               className="px-4 py-2 rounded-xl bg-emerald-500 hover:bg-emerald-400 text-black text-xs font-extrabold flex items-center gap-1.5 shadow-md cursor-pointer"
             >
@@ -426,7 +427,7 @@ export const BankAccountsTab: React.FC = () => {
             </button>
           </div>
 
-          <div className="bg-[#0D1B22] border border-slate-800 rounded-2xl overflow-hidden shadow-lg">
+          <div id="tour-cuentas-table" className="bg-[#0D1B22] border border-slate-800 rounded-2xl overflow-hidden shadow-lg">
             <div className="overflow-x-auto">
               <table className="w-full text-left border-collapse text-xs">
                 <thead>

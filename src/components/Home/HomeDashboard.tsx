@@ -305,7 +305,7 @@ export const HomeDashboard: React.FC<HomeDashboardProps> = ({ onNavigate }) => {
       </div>
 
       {/* 4 KPI Top Cards */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+      <div id="tour-inicio-kpi" className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
         {/* Card 1: Agencias y Límite */}
         <div
           onClick={() => onNavigate('Agencias')}
@@ -391,7 +391,7 @@ export const HomeDashboard: React.FC<HomeDashboardProps> = ({ onNavigate }) => {
       </div>
 
       {/* Multicurrency Balances Section */}
-      <div className="bg-[#0D1B22] border border-slate-800 rounded-3xl p-6 shadow-xl space-y-4">
+      <div id="tour-inicio-balances" className="bg-[#0D1B22] border border-slate-800 rounded-3xl p-6 shadow-xl space-y-4">
         <div className="flex items-center justify-between">
           <div>
             <h3 className="text-base font-extrabold text-white flex items-center gap-2">

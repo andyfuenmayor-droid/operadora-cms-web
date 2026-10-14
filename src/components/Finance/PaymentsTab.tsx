@@ -870,7 +870,7 @@ export const PaymentsTab: React.FC = () => {
       </div>
 
       {/* Redesigned Payment Entry Form matching Streamlit pagos_gastos.py */}
-      <div className="bg-[#0D1B22] border border-slate-800 rounded-3xl p-5 sm:p-6 shadow-2xl space-y-5">
+      <div id="tour-pagos-form" className="bg-[#0D1B22] border border-slate-800 rounded-3xl p-5 sm:p-6 shadow-2xl space-y-5">
         {/* Header & Agency Picker with Neutral Initial Option */}
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-2 border-b border-slate-800">
           <div>
@@ -1160,7 +1160,7 @@ export const PaymentsTab: React.FC = () => {
       </div>
 
       {/* Payments Table */}
-      <div className="bg-[#0D1B22] border border-slate-800 rounded-3xl overflow-hidden shadow-xl">
+      <div id="tour-pagos-table" className="bg-[#0D1B22] border border-slate-800 rounded-3xl overflow-hidden shadow-xl">
         <div className="p-4 sm:p-6 border-b border-slate-800 flex flex-col gap-4">
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
             <div className="flex items-center gap-2">

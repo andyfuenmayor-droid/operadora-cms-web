@@ -615,7 +615,7 @@ export const OperatorsTab: React.FC<OperatorsTabProps> = ({ initialSubTab = 'rep
       </div>
 
       {/* Main Navigation Sub-Tabs */}
-      <div className="flex items-center gap-2 overflow-x-auto pb-1 no-scrollbar">
+      <div id="tour-proveedores-tabs" className="flex items-center gap-2 overflow-x-auto pb-1 no-scrollbar">
         <button
           onClick={() => setActiveSubTab('reporte')}
           className={`px-4 py-2 rounded-xl text-xs font-bold flex items-center gap-2 transition-all cursor-pointer ${
@@ -1164,7 +1164,7 @@ export const OperatorsTab: React.FC<OperatorsTabProps> = ({ initialSubTab = 'rep
           )}
 
           {/* Consolidate Table */}
-          <div className="bg-[#0D1B22] border border-slate-800 rounded-3xl overflow-hidden shadow-xl">
+          <div id="tour-reporteprov-table" className="bg-[#0D1B22] border border-slate-800 rounded-3xl overflow-hidden shadow-xl">
             <div className="p-4 border-b border-slate-800 flex flex-col sm:flex-row sm:items-center justify-between gap-2">
               <h4 className="text-xs font-black uppercase tracking-wider text-slate-300">
                 Liquidación General Dual por Proveedor y Moneda ({reportRows.length})
@@ -1282,7 +1282,7 @@ export const OperatorsTab: React.FC<OperatorsTabProps> = ({ initialSubTab = 'rep
       {activeSubTab === 'pagos' && (
         <div className="space-y-6">
           {/* Add Payment Form */}
-          <div className="bg-[#0D1B22] border border-cyan-500/30 rounded-3xl p-6 shadow-xl space-y-4">
+          <div id="tour-pagosprov-form" className="bg-[#0D1B22] border border-cyan-500/30 rounded-3xl p-6 shadow-xl space-y-4">
             <h3 className="text-xs font-extrabold uppercase tracking-wider text-cyan-400 flex items-center gap-2">
               <Plus className="w-4 h-4" />
               <span>Registrar Pago / Abono a Proveedor u Operadora</span>

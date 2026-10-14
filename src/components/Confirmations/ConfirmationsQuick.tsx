@@ -847,7 +847,7 @@ export const ConfirmationsQuick: React.FC = () => {
   return (
     <div className="space-y-6">
       {/* Header & Actions */}
-      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 bg-[#0D1B22] p-5 rounded-2xl border border-slate-800/80 shadow-lg">
+      <div id="tour-confirmaciones-header" className="flex flex-col md:flex-row md:items-center justify-between gap-4 bg-[#0D1B22] p-5 rounded-2xl border border-slate-800/80 shadow-lg">
         <div>
           <div className="flex items-center gap-3">
             <div className="p-2.5 rounded-xl bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">
@@ -966,7 +966,7 @@ export const ConfirmationsQuick: React.FC = () => {
       )}
 
       {/* Metrics Row */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3.5">
+      <div id="tour-confirmaciones-metrics" className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3.5">
         <div className="p-4 rounded-2xl bg-[#0D1B22] border border-slate-800/80 shadow-xs flex items-center gap-3.5">
           <div className="p-3 rounded-xl bg-amber-500/10 text-amber-400 border border-amber-500/20 shrink-0">
             <Clock className="w-5 h-5" />
@@ -1060,7 +1060,7 @@ export const ConfirmationsQuick: React.FC = () => {
           </p>
         </div>
       ) : (
-        <div className="space-y-3">
+        <div id="tour-confirmaciones-board" className="space-y-3">
           <div className="flex items-center justify-between text-xs font-bold text-slate-400 px-1">
             <span>Mostrando {filteredTransactions.length} registros pendientes:</span>
           </div>

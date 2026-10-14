@@ -123,7 +123,7 @@ export const CycleSettingsTab: React.FC = () => {
           </div>
         )}
 
-        <form onSubmit={handleSave} className="space-y-6">
+        <form id="tour-ajustes-ciclo" onSubmit={handleSave} className="space-y-6">
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-5">
             {/* Tipo de Cierre */}
             <div className="space-y-2">
@@ -202,7 +202,7 @@ export const CycleSettingsTab: React.FC = () => {
           </div>
 
           {/* Selector de Apariencia y Tema */}
-          <div className="pt-4 border-t border-slate-800/80 space-y-3">
+          <div id="tour-ajustes-apariencia" className="pt-4 border-t border-slate-800/80 space-y-3">
             <label className="text-xs font-bold uppercase tracking-wider text-slate-300 flex items-center gap-1.5">
               <Palette className="w-4 h-4 text-emerald-400" />
               <span>Apariencia y Tema Visual</span>
@@ -309,6 +309,7 @@ export const CycleSettingsTab: React.FC = () => {
 
           <div className="pt-4 border-t border-slate-800/80 flex justify-end">
             <button
+              id="tour-ajustes-btn"
               type="submit"
               disabled={isSaving}
               className="w-full sm:w-auto px-6 py-3 rounded-2xl bg-emerald-500 hover:bg-emerald-400 text-black font-black text-sm transition-all shadow-lg shadow-emerald-500/20 flex items-center justify-center gap-2 cursor-pointer disabled:opacity-50"

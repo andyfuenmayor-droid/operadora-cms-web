@@ -1125,7 +1125,7 @@ export const PreClosureAuditTab: React.FC = () => {
           </p>
         </div>
 
-        <div className="flex flex-wrap items-center gap-2">
+        <div id="tour-cierre-actas" className="flex flex-wrap items-center gap-2">
           {auditMode === 'agencias' && (
             <>
               {/* 1. Acta General de Arqueo */}
@@ -1303,7 +1303,7 @@ export const PreClosureAuditTab: React.FC = () => {
       {auditMode === 'agencias' && (
         <>
           {/* KPI Cards Multi-Moneda */}
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-5">
+      <div id="tour-cierre-cajas" className="grid grid-cols-1 lg:grid-cols-3 gap-5">
         {['BS', 'USD', 'COP'].map((mon) => {
           const tot = totalsByCurrency[mon];
           if (!tot) return null;

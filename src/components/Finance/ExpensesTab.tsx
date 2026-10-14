@@ -446,7 +446,7 @@ export const ExpensesTab: React.FC = () => {
       </div>
 
       {/* Manual Expense Form */}
-      <div className="bg-[#0D1B22] border border-slate-800 rounded-3xl p-6 shadow-xl space-y-4">
+      <div id="tour-gastos-form" className="bg-[#0D1B22] border border-slate-800 rounded-3xl p-6 shadow-xl space-y-4">
         <h3 className="text-sm font-bold text-white flex items-center gap-2">
           <Plus className="w-4 h-4 text-emerald-400" />
           Registrar Gasto por Agencia
@@ -565,7 +565,7 @@ export const ExpensesTab: React.FC = () => {
       </div>
 
       {/* Expenses Table */}
-      <div className="bg-[#0D1B22] border border-slate-800 rounded-3xl overflow-hidden shadow-xl">
+      <div id="tour-gastos-table" className="bg-[#0D1B22] border border-slate-800 rounded-3xl overflow-hidden shadow-xl">
         <div className="p-4 sm:p-6 border-b border-slate-800 flex flex-col gap-4">
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
             <div className="flex items-center gap-2">

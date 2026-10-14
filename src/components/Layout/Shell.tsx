@@ -23,8 +23,8 @@ export const Shell: React.FC<ShellProps> = ({
 
   // Registrar navegador interactivo para el tour explicativo
   useEffect(() => {
-    registerTourNavigator(onSelectModule);
-  }, [onSelectModule]);
+    registerTourNavigator(onSelectModule, currentModule);
+  }, [onSelectModule, currentModule]);
 
   return (
     <div className="min-h-screen bg-[#071217] text-slate-100 flex flex-col">

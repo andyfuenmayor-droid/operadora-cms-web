@@ -527,7 +527,7 @@ export const RealSalesTab: React.FC = () => {
             </p>
           </div>
 
-          <div className="flex flex-wrap items-center gap-2.5">
+          <div id="tour-ventareal-actions" className="flex flex-wrap items-center gap-2.5">
             <button
               onClick={handleSyncAndRecalculate}
               disabled={isRecalculating || sales.length === 0}
@@ -604,7 +604,7 @@ export const RealSalesTab: React.FC = () => {
       {/* 2. Currency Pills & Search Bar Strip */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
         {/* Currency Switcher */}
-        <div className="flex items-center gap-1 bg-[#0D1B22] p-1 rounded-2xl border border-slate-800">
+        <div id="tour-ventareal-currency" className="flex items-center gap-1 bg-[#0D1B22] p-1 rounded-2xl border border-slate-800">
           {(['BS', 'USD', 'COP', 'TODAS'] as const).map((curr) => {
             const isSelected = activeCurrencyTab === curr;
             const count = curr === 'TODAS'
@@ -742,7 +742,7 @@ export const RealSalesTab: React.FC = () => {
         }
 
         return (
-          <div key={curr} className="bg-[#0D1B22] border border-slate-800 rounded-3xl overflow-hidden shadow-xl space-y-0">
+          <div key={curr} id="tour-ventareal-table" className="bg-[#0D1B22] border border-slate-800 rounded-3xl overflow-hidden shadow-xl space-y-0">
             {/* Currency Banner Header */}
             <div className="p-4 bg-[#071217] border-b border-slate-800 flex items-center justify-between">
               <div className="flex items-center gap-2">

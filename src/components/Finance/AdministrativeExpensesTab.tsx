@@ -860,7 +860,7 @@ export const AdministrativeExpensesTab: React.FC = () => {
       </div>
 
       {/* 3. Form: Registrar Gasto Administrativo */}
-      <div className="p-6 rounded-3xl bg-[#0D1B22] border border-slate-800 shadow-xl space-y-4">
+      <div id="tour-gastosadmin-form" className="p-6 rounded-3xl bg-[#0D1B22] border border-slate-800 shadow-xl space-y-4">
         <div className="flex items-center justify-between border-b border-slate-800/80 pb-3">
           <h3 className="text-sm font-extrabold text-white flex items-center gap-2">
             <Plus className="w-4 h-4 text-indigo-400" />
@@ -1088,7 +1088,7 @@ export const AdministrativeExpensesTab: React.FC = () => {
       </div>
 
       {/* 5. Table of Expenses */}
-      <div className="bg-[#0D1B22] border border-slate-800 rounded-3xl overflow-hidden shadow-xl">
+      <div id="tour-gastosadmin-table" className="bg-[#0D1B22] border border-slate-800 rounded-3xl overflow-hidden shadow-xl">
         <div className="overflow-x-auto">
           <table className="w-full text-left border-collapse">
             <thead>

@@ -1310,7 +1310,7 @@ export const SalesEntryTab: React.FC = () => {
           </p>
         </div>
 
-        <div className="flex items-center gap-2">
+        <div id="tour-cargar-ventas-actions" className="flex items-center gap-2">
           <button
             onClick={() => loadData()}
             disabled={isLoading}
@@ -1321,6 +1321,7 @@ export const SalesEntryTab: React.FC = () => {
           </button>
 
           <button
+            id="tour-cargar-ventas-btn"
             onClick={() => {
               if (!isBulkOpen) loadData();
               setIsBulkOpen(!isBulkOpen);

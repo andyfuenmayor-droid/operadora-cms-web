@@ -584,7 +584,7 @@ export const CollectorsTab: React.FC = () => {
       )}
 
       {/* Sub-tabs Bar */}
-      <div className="flex flex-wrap items-center gap-2 border-b border-slate-800 pb-3">
+      <div id="tour-cobradores-tabs" className="flex flex-wrap items-center gap-2 border-b border-slate-800 pb-3">
         <button
           onClick={() => setActiveTab('list')}
           className={`px-4 py-2.5 rounded-xl text-xs sm:text-sm font-bold flex items-center gap-2 transition-all cursor-pointer ${
@@ -648,9 +648,9 @@ export const CollectorsTab: React.FC = () => {
           TAB 1: COBRADORES REGISTRADOS
       ========================================================================= */}
       {activeTab === 'list' && (
-        <div className="space-y-6">
+        <div id="tour-cobradores-list" className="space-y-6">
           {/* KPI Cards */}
-          <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
+          <div id="tour-cobradores-kpi" className="grid grid-cols-2 sm:grid-cols-4 gap-4">
             <div className="bg-[#0D1B22] border border-slate-800 rounded-2xl p-4 text-center">
               <div className="text-[11px] font-bold uppercase tracking-wider text-slate-400">Total Cobradores</div>
               <div className="text-xl font-black text-sky-400 mt-1 flex items-center justify-center gap-1">

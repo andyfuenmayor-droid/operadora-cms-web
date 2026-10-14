@@ -640,7 +640,7 @@ export const ConfirmationsReport: React.FC = () => {
 
         {/* Sub Tabs & Manual Refresh */}
         <div className="flex items-center gap-2">
-          <div className="flex items-center gap-1.5 p-1 bg-slate-900/90 border border-slate-800 rounded-xl">
+          <div id="tour-confirmados-tabs" className="flex items-center gap-1.5 p-1 bg-slate-900/90 border border-slate-800 rounded-xl">
             <button
               onClick={() => setActiveTab('reporte')}
               className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer ${
@@ -696,7 +696,7 @@ export const ConfirmationsReport: React.FC = () => {
 
       {/* Filters Bar (Common for Tab 1 & Tab 2) */}
       {activeTab !== 'arqueo' && (
-        <div className="p-4 rounded-2xl bg-[#0D1B22] border border-slate-800/80 space-y-3">
+        <div id="tour-confirmados-filters" className="p-4 rounded-2xl bg-[#0D1B22] border border-slate-800/80 space-y-3">
           <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-3">
             <div>
               <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1">Desde</label>
@@ -936,7 +936,7 @@ export const ConfirmationsReport: React.FC = () => {
               <p className="text-xs text-slate-500 mt-1">Intente ajustar los filtros de fecha o estado.</p>
             </div>
           ) : (
-            <div className="overflow-x-auto bg-[#0D1B22] rounded-2xl border border-slate-800/80 shadow-sm">
+            <div id="tour-confirmados-table" className="overflow-x-auto bg-[#0D1B22] rounded-2xl border border-slate-800/80 shadow-sm">
               <table className="w-full text-left text-xs">
                 <thead className="bg-slate-900/90 text-[10px] font-black text-slate-400 uppercase tracking-wider border-b border-slate-800">
                   <tr>

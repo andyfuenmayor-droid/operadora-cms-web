@@ -119,7 +119,7 @@ export const CurrenciesTab: React.FC = () => {
       </div>
 
       {/* Form: Add Currency */}
-      <div className="bg-[#0D1B22] border border-slate-800 rounded-2xl p-5 shadow-lg">
+      <div id="tour-monedas-form" className="bg-[#0D1B22] border border-slate-800 rounded-2xl p-5 shadow-lg">
         <h3 className="text-xs font-extrabold uppercase tracking-wider text-slate-300 mb-3 flex items-center gap-2">
           <Plus className="w-4 h-4 text-emerald-400" />
           <span>Añadir Nueva Moneda</span>
@@ -166,7 +166,7 @@ export const CurrenciesTab: React.FC = () => {
       </div>
 
       {/* Currencies Table */}
-      <div className="bg-[#0D1B22] border border-slate-800 rounded-2xl overflow-hidden shadow-lg">
+      <div id="tour-monedas-table" className="bg-[#0D1B22] border border-slate-800 rounded-2xl overflow-hidden shadow-lg">
         <div className="p-4 border-b border-slate-800 flex items-center justify-between">
           <h4 className="text-xs font-extrabold uppercase tracking-wider text-slate-300">
             Monedas Habilitadas ({currencies.length})

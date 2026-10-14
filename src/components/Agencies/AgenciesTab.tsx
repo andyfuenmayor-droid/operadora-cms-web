@@ -909,7 +909,7 @@ export const AgenciesTab: React.FC = () => {
           </p>
         </div>
 
-        <div className="flex items-center gap-3">
+        <div id="tour-agencias-actions" className="flex items-center gap-3">
           <button
             onClick={() => loadData()}
             disabled={isLoading}
@@ -931,7 +931,7 @@ export const AgenciesTab: React.FC = () => {
       </div>
 
       {/* Plan Quota Banner */}
-      <div className="bg-[#0D1B22] border border-slate-800 rounded-2xl p-4 flex flex-col sm:flex-row items-center justify-between gap-3">
+      <div id="tour-agencias-quota" className="bg-[#0D1B22] border border-slate-800 rounded-2xl p-4 flex flex-col sm:flex-row items-center justify-between gap-3">
         <div className="flex items-center gap-3">
           <div className="p-2 rounded-xl bg-cyan-500/10 text-cyan-400 border border-cyan-500/20">
             <Building2 className="w-5 h-5" />
@@ -1048,7 +1048,7 @@ export const AgenciesTab: React.FC = () => {
         </div>
       ) : viewMode === 'linear' ? (
         /* Tabla de Agencias */
-        <div className="bg-[#0D1B22] border border-slate-800 rounded-3xl overflow-hidden shadow-xl">
+        <div id="tour-agencias-table" className="bg-[#0D1B22] border border-slate-800 rounded-3xl overflow-hidden shadow-xl">
           <div className="p-4 sm:p-5 border-b border-slate-800 flex items-center justify-between">
             <div className="flex items-center gap-2.5">
               <span className="p-2 rounded-xl bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">
