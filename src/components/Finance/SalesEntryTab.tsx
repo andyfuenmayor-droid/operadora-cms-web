@@ -928,7 +928,7 @@ export const SalesEntryTab: React.FC = () => {
           const rawCell = String(row[colNombre] ?? '').trim();
           const upperCell = rawCell.toUpperCase();
 
-          if (!rawCell || upperCell.startsWith('TOTAL') || upperCell.startsWith('CUENTA CON') || upperCell === 'NAN') {
+          if (!rawCell || upperCell.startsWith('TOTAL') || upperCell.startsWith('CUENTA CON') || upperCell === 'NAN' || upperCell === 'ESTADO' || upperCell === 'LIQUIDADO') {
             if (upperCell.startsWith('TOTAL')) break;
             continue;
           }

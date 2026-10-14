@@ -183,9 +183,9 @@ export function detectAndParseThermalTicket(
   for (const line of lines) {
     const lineUpper = line.toUpperCase();
 
-    // TOTAL VENTA or VENTA +
-    if (lineUpper.includes('TOTAL VENTA') || (!venta && lineUpper.startsWith('VENTA +'))) {
-      const match = line.match(/(?:TOTAL\s+VENTA|VENTA)\s*[\+\$]*\s*([\-]?[\d\.,]+)/i);
+    // TOTAL VENTA or VENTA (+)
+    if (lineUpper.includes('TOTAL VENTA') || lineUpper.includes('VENTA +') || lineUpper.includes('VENTA (+)')) {
+      const match = line.match(/(?:TOTAL\s+VENTA|VENTA)\s*[\(\)\+\$]*\s*([\-]?[\d\.,]+)/i);
       if (match?.[1]) {
         venta = parseTicketNumber(match[1]);
       } else {
@@ -196,9 +196,9 @@ export function detectAndParseThermalTicket(
       }
     }
 
-    // TOTAL PREMIO or PREMIO -
-    if (lineUpper.includes('TOTAL PREMIO') || (!premio && lineUpper.startsWith('PREMIO -'))) {
-      const match = line.match(/(?:TOTAL\s+PREMIO|PREMIO)\s*[\-\$]*\s*([\-]?[\d\.,]+)/i);
+    // TOTAL PREMIO or PREMIO (-)
+    if (lineUpper.includes('TOTAL PREMIO') || lineUpper.includes('PREMIO -') || lineUpper.includes('PREMIO (-)')) {
+      const match = line.match(/(?:TOTAL\s+PREMIO|PREMIO)\s*[\(\)\-\$]*\s*([\-]?[\d\.,]+)/i);
       if (match?.[1]) {
         premio = parseTicketNumber(match[1]);
       } else {
@@ -209,19 +209,24 @@ export function detectAndParseThermalTicket(
       }
     }
 
-    // TOTAL COMIS or COMIS -
-    if (lineUpper.includes('TOTAL COMIS') || lineUpper.includes('COMIS -')) {
-      const match = line.match(/(?:TOTAL\s+COMIS|COMIS)\s*[\-\$]*\s*([\-]?[\d\.,]+)/i);
+    // TOTAL COMIS or COMIS (-)
+    if (lineUpper.includes('TOTAL COMIS') || lineUpper.includes('COMIS -') || lineUpper.includes('COMIS (-)')) {
+      const match = line.match(/(?:TOTAL\s+COMIS|COMIS)\s*[\(\)\-\$]*\s*([\-]?[\d\.,]+)/i);
       if (match?.[1]) {
         comision = parseTicketNumber(match[1]);
       }
     }
 
     // PAGAR or SALDO
-    if (lineUpper.includes('PAGAR +') || lineUpper.includes('SALDO +')) {
-      const match = line.match(/(?:PAGAR|SALDO)\s*[\+\$]*\s*([\-]?[\d\.,]+)/i);
+    if (lineUpper.includes('PAGAR') || lineUpper.includes('SALDO')) {
+      const match = line.match(/(?:TOTAL\s+A\s+PAGAR|PAGAR|SUBTOTAL\s*\/\s*SALDO|SALDO)\s*[\(\)\+\$]*\s*([\-]?[\d\.,]+)/i);
       if (match?.[1]) {
         saldo = parseTicketNumber(match[1]);
+      } else {
+        const nums = line.match(/[\-]?\d[\d\.,]*/g);
+        if (nums && nums.length > 0) {
+          saldo = parseTicketNumber(nums[nums.length - 1]);
+        }
       }
     }
   }
