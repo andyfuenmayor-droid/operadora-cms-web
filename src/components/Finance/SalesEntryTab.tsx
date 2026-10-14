@@ -1586,7 +1586,7 @@ export const SalesEntryTab: React.FC = () => {
             No hay movimientos de venta registrados para este ciclo.
           </div>
         ) : (
-          <div className="space-y-2.5">
+          <div id="tour-cargar-ventas-table" className="space-y-2.5">
             {groupedMetrics.map((gm) => (
               <div
                 key={gm.key}

@@ -268,7 +268,7 @@ export const SystemsTab: React.FC = () => {
 
         <form onSubmit={handleAddSystem} className="space-y-4">
           {/* Row 1: Identificación y Columnas de Archivo */}
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+          <div id="tour-sistemas-form-inputs" className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
             <div className="space-y-1">
               <label className="text-xs font-bold text-white flex items-center gap-1">
                 <span>Nombre del Sistema *</span>
@@ -326,7 +326,7 @@ export const SystemsTab: React.FC = () => {
           </div>
 
           {/* Row 2: Comisión y Participación Comercializador + Saldos Iniciales de Arrastre */}
-          <div className="p-3.5 rounded-xl bg-[#071217]/80 border border-slate-800/80 space-y-3">
+          <div id="tour-sistemas-form-conditions" className="p-3.5 rounded-xl bg-[#071217]/80 border border-slate-800/80 space-y-3">
             <div className="text-[11px] font-bold uppercase tracking-wider text-slate-400 flex items-center gap-2">
               <TrendingUp className="w-3.5 h-3.5 text-amber-400" />
               <span>Condiciones del Comercializador y Saldos Iniciales con el Proveedor</span>

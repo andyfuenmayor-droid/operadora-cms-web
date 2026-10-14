@@ -841,7 +841,7 @@ export const ConfirmationsReport: React.FC = () => {
       {activeTab === 'reporte' && (
         <div className="space-y-4">
           {/* Metrics Overview */}
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3.5">
+          <div id="tour-confirmados-metrics" className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3.5">
             <div className="p-4 rounded-2xl bg-[#0D1B22] border border-slate-800/80 shadow-xs">
               <div className="text-[11px] font-bold text-slate-400 uppercase tracking-wider">Estado de Registros</div>
               <div className="mt-2 space-y-1">

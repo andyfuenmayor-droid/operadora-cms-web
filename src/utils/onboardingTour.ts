@@ -58,7 +58,9 @@ function resolveModuleStep(selector: string, moduleId: ModuleId, menuDomId: stri
 }
 
 export const tourSteps: TourStepExtended[] = [
-  // 1. Operadora & Suscriptor
+  // =========================================================================
+  // 0. SUSCRIPTOR & PLAN CONTRATADO
+  // =========================================================================
   {
     element: '#sidebar-subscriber-card',
     popover: {
@@ -70,7 +72,9 @@ export const tourSteps: TourStepExtended[] = [
     },
   },
 
-  // 2. Menú Inicio
+  // =========================================================================
+  // 1. INICIO (DASHBOARD EJECUTIVO)
+  // =========================================================================
   {
     element: '#menu-inicio',
     popover: {
@@ -81,76 +85,96 @@ export const tourSteps: TourStepExtended[] = [
       align: 'start',
     },
   },
-
-  // 3. Módulo Inicio: KPIs
+  {
+    moduleId: 'Inicio',
+    menuDomId: 'menu-inicio',
+    element: resolveModuleStep('#tour-inicio-header', 'Inicio', 'menu-inicio'),
+    popover: {
+      title: '📊 Inicio: Encabezado y Ciclo Activo',
+      description:
+        'Cómo usarlo: Muestra el estado de conexión del SaaS, el nombre oficial de la operadora y el ciclo operativo activo (Semana, Tipo de Corte y rango de fechas Desde / Hasta). El botón circular permite refrescar todas las métricas al instante.',
+      side: 'bottom',
+      align: 'start',
+    },
+  },
   {
     moduleId: 'Inicio',
     menuDomId: 'menu-inicio',
     element: resolveModuleStep('#tour-inicio-kpi', 'Inicio', 'menu-inicio'),
     popover: {
-      title: '📊 Módulo Inicio: Indicadores en Tiempo Real',
+      title: '📈 Inicio: Indicadores en Tiempo Real (KPIs)',
       description:
-        'Cómo usarlo: Monitorea 4 métricas críticas: 1. Agencias activas vs cupo contratado. 2. Pagos por validar en la Pizarra de Confirmaciones. 3. Cobradores en calle. 4. Efectivo total circulante en ruta antes de ingresar a caja central.',
+        'Cómo usarlo: Supervisa 4 métricas críticas: 1. Agencias activas frente al límite contratado. 2. Pagos pendientes de validar en la Pizarra de Confirmaciones. 3. Cobradores activos en ruta. 4. Efectivo total circulando en calle antes de entrar a caja central.',
       side: 'bottom',
       align: 'start',
     },
   },
-
-  // 4. Módulo Inicio: Balances Multidivisa
   {
     moduleId: 'Inicio',
     menuDomId: 'menu-inicio',
     element: resolveModuleStep('#tour-inicio-balances', 'Inicio', 'menu-inicio'),
     popover: {
-      title: '💰 Módulo Inicio: Balance Maestro por Moneda',
+      title: '💰 Inicio: Balance Multidivisa Consolidado',
       description:
-        'Cómo usarlo: Consulta la salud financiera en Bolívares (BS), Dólares (USD) y Pesos (COP). Aplica la fórmula certificada: Saldo Anterior + Utilidad Ciclo - Gastos Agencias - Gastos Comercializadora - Cobros + Premios = Balance Final Neto.',
+        'Cómo usarlo: Consulta la salud financiera en Bolívares (BS), Dólares (USD) y Pesos (COP). Aplica la fórmula: Saldo Anterior + Utilidad Ciclo - Gastos Agencias - Gastos Comercializadora - Cobros + Premios = Balance Final Neto. Pulsa "Ver Detalle" para auditar cada taquilla.',
       side: 'top',
       align: 'start',
     },
   },
 
-  // 5. Menú Confirmaciones
+  // =========================================================================
+  // 2. CONFIRMACIONES (PIZARRA EN TIEMPO REAL)
+  // =========================================================================
   {
     element: '#menu-confirmaciones',
     popover: {
       title: '📌 Menú Confirmaciones',
       description:
-        'Desde este acceso ingresas a la Pizarra de Validación en tiempo real (0 ms) para procesar los reportes de pago emitidos por los cajeros desde la Taquilla Web.',
+        'Accede a la Pizarra de Validación en tiempo real (0 ms) para procesar los reportes de pago emitidos por los cajeros desde la Taquilla Web.',
       side: 'right',
       align: 'start',
     },
   },
-
-  // 6. Módulo Confirmaciones: Acciones Rápidas
   {
     moduleId: 'Confirmaciones',
     menuDomId: 'menu-confirmaciones',
     element: resolveModuleStep('#tour-confirmaciones-header', 'Confirmaciones', 'menu-confirmaciones'),
     popover: {
-      title: '⚡ Módulo Confirmaciones: Acciones y Control',
+      title: '⚡ Confirmaciones: Barra de Acciones',
       description:
-        'Cómo usarlo: Usa "Sincronización Rápida" para refrescar pagos entrantes al instante o "Confirmar Todo" para validar en lote transferencias verificadas por tesorería.',
+        'Cómo usarlo: Usa "Sincronización Rápida" para refrescar nuevas transferencias entrantes o "Confirmar Todo" para validar en bloque pagos previamente verificados por tesorería en tus cuentas bancarias.',
       side: 'bottom',
       align: 'start',
     },
   },
-
-  // 7. Módulo Confirmaciones: Validación con OCR
+  {
+    moduleId: 'Confirmaciones',
+    menuDomId: 'menu-confirmaciones',
+    element: resolveModuleStep('#tour-confirmaciones-metrics', 'Confirmaciones', 'menu-confirmaciones'),
+    popover: {
+      title: '📊 Confirmaciones: Métricas de Pagos por Validar',
+      description:
+        'Cómo usarlo: Monitorea cuántas transacciones están en espera y el monto total acumulado por moneda (BS, USD, COP). Te permite priorizar las aprobaciones de mayor importe.',
+      side: 'bottom',
+      align: 'start',
+    },
+  },
   {
     moduleId: 'Confirmaciones',
     menuDomId: 'menu-confirmaciones',
     element: resolveModuleStep('#tour-confirmaciones-board', 'Confirmaciones', 'menu-confirmaciones'),
     popover: {
-      title: '🔍 Módulo Confirmaciones: Validación con OCR',
+      title: '🔍 Confirmaciones: Tarjetas y Escaneo OCR',
       description:
-        'Cómo usarlo: Cada tarjeta muestra agencia, monto y captura. Haz clic en ella para ampliar el comprobante y usar el escaneo OCR de referencia bancaria. Pulsa "Aprobar" para acreditar el saldo o "Rechazar" indicando el motivo al cajero.',
+        'Cómo usarlo: Cada tarjeta representa un pago pendiente con su comprobante adjunto. Haz clic para ampliar y activar el escaneo OCR del número de referencia bancaria. Pulsa "Aprobar" para acreditar el saldo o "Rechazar" indicando el motivo al cajero.',
       side: 'top',
       align: 'start',
     },
   },
 
-  // 8. Menú Confirmados
+  // =========================================================================
+  // 3. CONFIRMADOS (HISTORIAL & CUSTODIA)
+  // =========================================================================
   {
     element: '#menu-confirmados',
     popover: {
@@ -161,36 +185,46 @@ export const tourSteps: TourStepExtended[] = [
       align: 'start',
     },
   },
-
-  // 9. Módulo Confirmados: Pestañas de Rendición
   {
     moduleId: 'Confirmados',
     menuDomId: 'menu-confirmados',
     element: resolveModuleStep('#tour-confirmados-tabs', 'Confirmados', 'menu-confirmados'),
     popover: {
-      title: '📑 Módulo Confirmados: Pestañas de Rendición y Arqueo',
+      title: '📑 Confirmados: Vistas de Rendición y Arqueo',
       description:
-        'Cómo usarlo: 1. "Reporte General" para consultar todas las operaciones aprobadas. 2. "Auditoría Rechazados" para fiscalizar pagos denegados y sus causas. 3. "Arqueo y Efectivo" para conciliar el dinero físico bajo custodia de cada taquilla.',
+        'Cómo usarlo: 1. "Reporte General" para ver todas las operaciones aprobadas. 2. "Auditoría Rechazados" para fiscalizar pagos denegados y sus causas. 3. "Arqueo y Efectivo" para conciliar el dinero físico bajo custodia en cada taquilla.',
       side: 'bottom',
       align: 'start',
     },
   },
-
-  // 10. Módulo Confirmados: Filtros y Exportación CSV
   {
     moduleId: 'Confirmados',
     menuDomId: 'menu-confirmados',
     element: resolveModuleStep('#tour-confirmados-filters', 'Confirmados', 'menu-confirmados'),
     popover: {
-      title: '🔎 Módulo Confirmados: Filtros y Planilla CSV',
+      title: '🔎 Confirmados: Filtros y Exportación CSV',
       description:
         'Cómo usarlo: Filtra por rango de fechas (Desde / Hasta), agencia o banco. Pulsa "Exportar CSV" para descargar la planilla oficial de transacciones y conciliarla directamente contra tus extractos bancarios.',
       side: 'bottom',
       align: 'start',
     },
   },
+  {
+    moduleId: 'Confirmados',
+    menuDomId: 'menu-confirmados',
+    element: resolveModuleStep('#tour-confirmados-table', 'Confirmados', 'menu-confirmados'),
+    popover: {
+      title: '📋 Confirmados: Detalle Cronológico de Transacciones',
+      description:
+        'Cómo usarlo: Tabla de auditoría que detalla fecha, agencia, cajero responsable, banco receptor, número de referencia, concepto y monto verificado.',
+      side: 'top',
+      align: 'start',
+    },
+  },
 
-  // 11. Menú Sistemas
+  // =========================================================================
+  // 4. SISTEMAS Y PROVEEDORES
+  // =========================================================================
   {
     element: '#menu-sistemas',
     popover: {
@@ -201,28 +235,36 @@ export const tourSteps: TourStepExtended[] = [
       align: 'start',
     },
   },
-
-  // 12. Módulo Sistemas: Formulario de Alta y Mapeo
   {
     moduleId: 'Sistemas',
     menuDomId: 'menu-sistemas',
-    element: resolveModuleStep('#tour-sistemas-form', 'Sistemas', 'menu-sistemas'),
+    element: resolveModuleStep('#tour-sistemas-form-inputs', 'Sistemas', 'menu-sistemas'),
     popover: {
-      title: '🎰 Módulo Sistemas: Alta y Mapeo de Columnas',
+      title: '🎰 Sistemas: Identificación y Mapeo de Archivos',
       description:
-        'Cómo usarlo: 1. Escribe el nombre del sistema (ej. CDAPUESTAS, BETM3, KENO). 2. Define las palabras clave de las columnas en tus archivos Excel/PDF (ID Agencia, Ventas, Premios). 3. Fija la comisión comercializadora, % de participación y saldos iniciales en BS, USD y COP. 4. Guarda para automatizar las ventas.',
+        'Cómo usarlo: 1. Ingresa el nombre del proveedor (ej. CDAPUESTAS, BETM3, KENO). 2. Define las palabras clave de las columnas de tus planillas Excel/PDF (ID Agencia, Venta, Premios) para que el lector inteligente las reconozca automáticamente.',
       side: 'bottom',
       align: 'start',
     },
   },
-
-  // 13. Módulo Sistemas: Catálogo de Proveedores Activos
+  {
+    moduleId: 'Sistemas',
+    menuDomId: 'menu-sistemas',
+    element: resolveModuleStep('#tour-sistemas-form-conditions', 'Sistemas', 'menu-sistemas'),
+    popover: {
+      title: '⚙️ Sistemas: Comisiones y Saldos de Arrastre',
+      description:
+        'Cómo usarlo: Fija el % de comisión del comercializador, % de participación sobre utilidades y saldos iniciales de arrastre por divisa (BS, USD, COP). Pulsa "Guardar Sistema" para que los cálculos de venta se automaticen.',
+      side: 'bottom',
+      align: 'start',
+    },
+  },
   {
     moduleId: 'Sistemas',
     menuDomId: 'menu-sistemas',
     element: resolveModuleStep('#tour-sistemas-table', 'Sistemas', 'menu-sistemas'),
     popover: {
-      title: '📋 Módulo Sistemas: Catálogo de Proveedores Activos',
+      title: '📋 Sistemas: Catálogo de Proveedores Activos',
       description:
         'Cómo usarlo: Revisa todas las casas habilitadas. Usa los botones de acción para editar comisiones contractuales, ajustar saldos de arrastre iniciales o eliminar sistemas que no operen en tu banca.',
       side: 'top',
@@ -230,7 +272,9 @@ export const tourSteps: TourStepExtended[] = [
     },
   },
 
-  // 14. Menú Monedas
+  // =========================================================================
+  // 5. MONEDAS Y DIVISAS
+  // =========================================================================
   {
     element: '#menu-monedas',
     popover: {
@@ -241,22 +285,34 @@ export const tourSteps: TourStepExtended[] = [
       align: 'start',
     },
   },
-
-  // 15. Módulo Monedas: Configuración Multidivisa
   {
     moduleId: 'Monedas',
     menuDomId: 'menu-monedas',
     element: resolveModuleStep('#tour-monedas-form', 'Monedas', 'menu-monedas'),
     popover: {
-      title: '💵 Módulo Monedas: Configuración Multidivisa',
+      title: '💵 Monedas: Alta de Nuevas Divisas',
       description:
-        'Cómo usarlo: Da de alta las monedas oficiales de tu banca (BS, USD, COP, USDT). En Multibanca Express cada moneda opera de forma 100% independiente en ventas, gastos, cobros y arqueos, garantizando cero distorsión cambiaria.',
+        'Cómo usarlo: Escribe el código de la divisa (ej. BS, USD, COP, USDT) y pulsa "GUARDAR MONEDA". Cada divisa opera de forma 100% independiente en ventas, gastos, cobros y arqueos, garantizando cero distorsión cambiaria.',
       side: 'bottom',
       align: 'start',
     },
   },
+  {
+    moduleId: 'Monedas',
+    menuDomId: 'menu-monedas',
+    element: resolveModuleStep('#tour-monedas-table', 'Monedas', 'menu-monedas'),
+    popover: {
+      title: '🪙 Monedas: Divisas Habilitadas en el SaaS',
+      description:
+        'Cómo usarlo: Catálogo de monedas configuradas. Puedes eliminar divisas que tu banca ya no comercialice o auditar los símbolos oficiales que rigen los balances del sistema.',
+      side: 'top',
+      align: 'start',
+    },
+  },
 
-  // 16. Menú Cuentas Bancarias
+  // =========================================================================
+  // 6. CUENTAS BANCARIAS & POS
+  // =========================================================================
   {
     element: '#menu-cuentas-bancarias',
     popover: {
@@ -267,36 +323,46 @@ export const tourSteps: TourStepExtended[] = [
       align: 'start',
     },
   },
-
-  // 17. Módulo Cuentas y POS: Gestión Receptora
   {
     moduleId: 'Cuentas Bancarias',
     menuDomId: 'menu-cuentas-bancarias',
     element: resolveModuleStep('#tour-cuentas-tabs', 'Cuentas Bancarias', 'menu-cuentas-bancarias'),
     popover: {
-      title: '🏦 Módulo Cuentas y POS: Gestión Receptora',
+      title: '🏦 Cuentas y POS: Gestión Receptora',
       description:
         'Cómo usarlo: Alterna entre "Cuentas Bancarias" (para administrar cuentas receptoras de transferencias y Pago Móvil) y "Puntos de Venta (POS)" (para controlar terminales BioPago o dispositivos inalámbricos asignados a taquillas).',
       side: 'bottom',
       align: 'start',
     },
   },
-
-  // 18. Módulo Cuentas: Alta de Cuentas y Terminales
   {
     moduleId: 'Cuentas Bancarias',
     menuDomId: 'menu-cuentas-bancarias',
     element: resolveModuleStep('#tour-cuentas-btn', 'Cuentas Bancarias', 'menu-cuentas-bancarias'),
     popover: {
-      title: '➕ Módulo Cuentas: Alta de Cuentas y Terminales',
+      title: '➕ Cuentas: Alta de Cuentas y Terminales',
       description:
         'Cómo usarlo: Pulsa "+ NUEVA CUENTA" para registrar banco, número de cuenta de 20 dígitos, titular, moneda y agencias autorizadas a depositar en ella. En la sección POS, vincula el serial TID para habilitar cobros con tarjeta en taquilla.',
       side: 'bottom',
       align: 'start',
     },
   },
+  {
+    moduleId: 'Cuentas Bancarias',
+    menuDomId: 'menu-cuentas-bancarias',
+    element: resolveModuleStep('#tour-cuentas-table', 'Cuentas Bancarias', 'menu-cuentas-bancarias'),
+    popover: {
+      title: '📋 Cuentas: Monitoreo de Cuentas Receptoras',
+      description:
+        'Cómo usarlo: Lista de cuentas bancarias activas con sus métodos aceptados (Pago Móvil, Transferencias), saldo inicial y agencias autorizadas a reportar depósitos.',
+      side: 'top',
+      align: 'start',
+    },
+  },
 
-  // 19. Menú Agencias
+  // =========================================================================
+  // 7. AGENCIAS Y TAQUILLAS
+  // =========================================================================
   {
     element: '#menu-agencias',
     popover: {
@@ -307,28 +373,36 @@ export const tourSteps: TourStepExtended[] = [
       align: 'start',
     },
   },
-
-  // 20. Módulo Agencias: Alta de Nuevos Puntos
   {
     moduleId: 'Agencias',
     menuDomId: 'menu-agencias',
     element: resolveModuleStep('#tour-agencias-actions', 'Agencias', 'menu-agencias'),
     popover: {
-      title: '🏪 Módulo Agencias: Alta de Nuevos Puntos',
+      title: '🏪 Agencias: Alta de Nuevos Puntos',
       description:
         'Cómo usarlo: Haz clic en "+ NUEVA AGENCIA" para registrar un punto de venta. Configura su nombre comercial, comisión asignada, sistemas autorizados y genera las credenciales de acceso para que el cajero opere en Taquilla Web.',
       side: 'bottom',
       align: 'start',
     },
   },
-
-  // 21. Módulo Agencias: Directorio y Credenciales
+  {
+    moduleId: 'Agencias',
+    menuDomId: 'menu-agencias',
+    element: resolveModuleStep('#tour-agencias-quota', 'Agencias', 'menu-agencias'),
+    popover: {
+      title: '📈 Agencias: Cupo y Capacidad de Plan',
+      description:
+        'Cómo usarlo: Monitorea en vivo la cantidad de taquillas activas respecto a tu cuota contratada. Con tu Plan Elite cuentas con hasta 1.000 agencias para expandir tu red comercial sin límites técnicos.',
+      side: 'bottom',
+      align: 'start',
+    },
+  },
   {
     moduleId: 'Agencias',
     menuDomId: 'menu-agencias',
     element: resolveModuleStep('#tour-agencias-table', 'Agencias', 'menu-agencias'),
     popover: {
-      title: '🔑 Módulo Agencias: Directorio y Credenciales',
+      title: '🔑 Agencias: Directorio y Credenciales',
       description:
         'Cómo usarlo: Administra cada agencia: visualiza su usuario y clave de taquilla, edita comisiones individuales, asigna cobradores de ruta o abre directamente su estado de cuenta semanal con un solo clic.',
       side: 'top',
@@ -336,7 +410,9 @@ export const tourSteps: TourStepExtended[] = [
     },
   },
 
-  // 22. Menú Cobradores
+  // =========================================================================
+  // 8. COBRADORES EN RUTA & TOKEN QR
+  // =========================================================================
   {
     element: '#menu-cobradores',
     popover: {
@@ -347,28 +423,36 @@ export const tourSteps: TourStepExtended[] = [
       align: 'start',
     },
   },
-
-  // 23. Módulo Cobradores: Rutas de Calle y Cobranza
   {
     moduleId: 'Cobradores',
     menuDomId: 'menu-cobradores',
     element: resolveModuleStep('#tour-cobradores-tabs', 'Cobradores', 'menu-cobradores'),
     popover: {
-      title: '🛵 Módulo Cobradores: Rutas de Calle y Cobranza',
+      title: '🛵 Cobradores: Rutas de Calle y Cobranza',
       description:
         'Cómo usarlo: Gestiona tu personal de cobranza: "Lista de Cobradores" para ver el directorio, "Nuevo Cobrador" para crearlo con clave y teléfono, "Asignación de Rutas" para vincular agencias y "Descargar PDF" para imprimir la ruta diaria.',
       side: 'bottom',
       align: 'start',
     },
   },
-
-  // 24. Módulo Cobradores: Token QR (10 Minutos)
+  {
+    moduleId: 'Cobradores',
+    menuDomId: 'menu-cobradores',
+    element: resolveModuleStep('#tour-cobradores-kpi', 'Cobradores', 'menu-cobradores'),
+    popover: {
+      title: '📊 Cobradores: Métricas de Recaudación',
+      description:
+        'Cómo usarlo: Indicadores en vivo que detallan la cantidad de cobradores en ruta, agencias visitadas y el efectivo total recaudado que viaja en calle.',
+      side: 'bottom',
+      align: 'start',
+    },
+  },
   {
     moduleId: 'Cobradores',
     menuDomId: 'menu-cobradores',
     element: resolveModuleStep('#tour-cobradores-list', 'Cobradores', 'menu-cobradores'),
     popover: {
-      title: '🔐 Módulo Cobradores: Token QR de Liquidación (10 Min)',
+      title: '🔐 Cobradores: Token QR de Liquidación (10 Min)',
       description:
         'Cómo usarlo: Al momento de recibir efectivo de un cobrador, el sistema genera un Token QR dinámico con validez de 10 minutos. Al escanear el QR desde la taquilla o caja central, el dinero queda descargado y auditado al instante con máxima seguridad.',
       side: 'top',
@@ -376,7 +460,9 @@ export const tourSteps: TourStepExtended[] = [
     },
   },
 
-  // 25. Menú Cargar Ventas
+  // =========================================================================
+  // 9. CARGAR VENTAS (IMPORTACIÓN MASIVA)
+  // =========================================================================
   {
     element: '#menu-cargar-ventas',
     popover: {
@@ -387,22 +473,46 @@ export const tourSteps: TourStepExtended[] = [
       align: 'start',
     },
   },
-
-  // 26. Módulo Cargar Ventas: Importación Masiva
+  {
+    moduleId: 'Cargar Ventas',
+    menuDomId: 'menu-cargar-ventas',
+    element: resolveModuleStep('#tour-cargar-ventas-actions', 'Cargar Ventas', 'menu-cargar-ventas'),
+    popover: {
+      title: '📥 Cargar Ventas: Herramientas de Carga',
+      description:
+        'Cómo usarlo: Selecciona la fecha de operación y el sistema de apuestas. Usa el botón "Actualizar" para recalcular las ventas cargadas en el ciclo activo.',
+      side: 'bottom',
+      align: 'start',
+    },
+  },
   {
     moduleId: 'Cargar Ventas',
     menuDomId: 'menu-cargar-ventas',
     element: resolveModuleStep('#tour-cargar-ventas-btn', 'Cargar Ventas', 'menu-cargar-ventas'),
     popover: {
-      title: '📥 Módulo Cargar Ventas: Importación Masiva',
+      title: '📂 Cargar Ventas: Importación Excel y PDF',
       description:
-        'Cómo usarlo: 1. Pulsa "Carga Masiva (Excel / CSV / PDF)". 2. Arrastra las planillas descargadas de los proveedores o comprobantes térmicos en PDF. 3. Selecciona la fecha y el sistema. 4. El motor calcula venta bruta, comisiones y premios automáticamente.',
+        'Cómo usarlo: Pulsa "Carga Masiva (Excel / CSV / PDF)". Arrastra los archivos descargados de los proveedores o comprobantes térmicos en PDF. El motor inteligente calcula ventas brutas, comisiones y premios automáticamente.',
       side: 'bottom',
       align: 'start',
     },
   },
+  {
+    moduleId: 'Cargar Ventas',
+    menuDomId: 'menu-cargar-ventas',
+    element: resolveModuleStep('#tour-cargar-ventas-table', 'Cargar Ventas', 'menu-cargar-ventas'),
+    popover: {
+      title: '📊 Cargar Ventas: Resumen Consolidado por Sistema',
+      description:
+        'Cómo usarlo: Muestra el total vendido, comisiones retenidas, premios asignados, venta neta y la utilidad estimada para la operadora y agencias en cada combinación sistema-moneda.',
+      side: 'top',
+      align: 'start',
+    },
+  },
 
-  // 27. Menú Pagos Agencias
+  // =========================================================================
+  // 10. PAGOS AGENCIAS (ABONOS)
+  // =========================================================================
   {
     element: '#menu-pagos-agencias',
     popover: {
@@ -413,22 +523,34 @@ export const tourSteps: TourStepExtended[] = [
       align: 'start',
     },
   },
-
-  // 28. Módulo Pagos Agencias: Registro de Abonos
   {
     moduleId: 'Pagos Agencias',
     menuDomId: 'menu-pagos-agencias',
     element: resolveModuleStep('#tour-pagos-form', 'Pagos Agencias', 'menu-pagos-agencias'),
     popover: {
-      title: '💳 Módulo Pagos Agencias: Registro de Abonos',
+      title: '💳 Pagos Agencias: Registro de Abonos',
       description:
         'Cómo usarlo: 1. Selecciona la agencia en el menú (el sistema te muestra en vivo su saldo adeudado). 2. Indica la moneda y el monto a pagar. 3. Elige el método (Transferencia, Pago Móvil o Efectivo) y banco. 4. Guarda para descontar la deuda de inmediato.',
       side: 'bottom',
       align: 'start',
     },
   },
+  {
+    moduleId: 'Pagos Agencias',
+    menuDomId: 'menu-pagos-agencias',
+    element: resolveModuleStep('#tour-pagos-table', 'Pagos Agencias', 'menu-pagos-agencias'),
+    popover: {
+      title: '📋 Pagos Agencias: Historial Semanal y Recibos',
+      description:
+        'Cómo usarlo: Revisa la relación cronológica de abonos realizados en el ciclo. Puedes verificar números de referencia bancaria, corregir o anular cobros erróneos y generar recibos de entrega para las agencias.',
+      side: 'top',
+      align: 'start',
+    },
+  },
 
-  // 29. Menú Gastos por Agencia
+  // =========================================================================
+  // 11. GASTOS POR AGENCIA
+  // =========================================================================
   {
     element: '#menu-gastos-por-agencia',
     popover: {
@@ -439,22 +561,34 @@ export const tourSteps: TourStepExtended[] = [
       align: 'start',
     },
   },
-
-  // 30. Módulo Gastos Agencia: Deducciones Operativas
   {
     moduleId: 'Gastos por Agencia',
     menuDomId: 'menu-gastos-por-agencia',
     element: resolveModuleStep('#tour-gastos-form', 'Gastos por Agencia', 'menu-gastos-por-agencia'),
     popover: {
-      title: '🧾 Módulo Gastos Agencia: Deducciones Operativas',
+      title: '🧾 Gastos Agencia: Deducciones Operativas',
       description:
         'Cómo usarlo: Registra los gastos operativos directos de cada punto (alquiler de local, internet, luz, papelería, mantenimiento). Selecciona la agencia, el concepto y el monto para que se deduzca automáticamente en su estado de cuenta semanal.',
       side: 'bottom',
       align: 'start',
     },
   },
+  {
+    moduleId: 'Gastos por Agencia',
+    menuDomId: 'menu-gastos-por-agencia',
+    element: resolveModuleStep('#tour-gastos-table', 'Gastos por Agencia', 'menu-gastos-por-agencia'),
+    popover: {
+      title: '📑 Gastos Agencia: Control y Comprobantes',
+      description:
+        'Cómo usarlo: Consulta la lista de gastos autorizados por agencia. Permite visualizar los soportes adjuntos, totalizar por moneda y asegurar que los egresos cuenten con el debido respaldo contable.',
+      side: 'top',
+      align: 'start',
+    },
+  },
 
-  // 31. Menú Saldo Agencias
+  // =========================================================================
+  // 12. SALDO AGENCIAS (ESTADOS DE CUENTA)
+  // =========================================================================
   {
     element: '#menu-saldo-agencias',
     popover: {
@@ -465,28 +599,24 @@ export const tourSteps: TourStepExtended[] = [
       align: 'start',
     },
   },
-
-  // 32. Módulo Saldo Agencias: Cartera Total por Divisa
   {
     moduleId: 'Saldo Agencias',
     menuDomId: 'menu-saldo-agencias',
     element: resolveModuleStep('#tour-saldos-summary', 'Saldo Agencias', 'menu-saldo-agencias'),
     popover: {
-      title: '⚖️ Módulo Saldo Agencias: Cartera Total por Divisa',
+      title: '⚖️ Saldo Agencias: Cartera Total por Divisa',
       description:
         'Cómo usarlo: Consulta la cartera total exigible o por cobrar de toda tu red en Bolívares (BS), Dólares (USD) y Pesos (COP). Alterna entre las pestañas de moneda para conocer la posición financiera global de tu banca.',
       side: 'bottom',
       align: 'start',
     },
   },
-
-  // 33. Módulo Saldo Agencias: Liquidación por Taquilla
   {
     moduleId: 'Saldo Agencias',
     menuDomId: 'menu-saldo-agencias',
     element: resolveModuleStep('#tour-saldos-table', 'Saldo Agencias', 'menu-saldo-agencias'),
     popover: {
-      title: '📊 Módulo Saldo Agencias: Liquidación por Taquilla',
+      title: '📊 Saldo Agencias: Liquidación por Taquilla',
       description:
         'Cómo usarlo: Tabla de estado de cuenta cruzado por agencia: Saldo Anterior + Utilidad Ciclo - Gastos - Cobros + Premios = Balance Final. Emite estados de cuenta individuales en PDF o compártelos por WhatsApp con cada encargado.',
       side: 'top',
@@ -494,7 +624,9 @@ export const tourSteps: TourStepExtended[] = [
     },
   },
 
-  // 34. Menú Venta Real
+  // =========================================================================
+  // 13. VENTA REAL DE TERMINALES
+  // =========================================================================
   {
     element: '#menu-venta-real',
     popover: {
@@ -505,22 +637,46 @@ export const tourSteps: TourStepExtended[] = [
       align: 'start',
     },
   },
-
-  // 35. Módulo Venta Real: Sincronización y Recálculo
   {
     moduleId: 'Venta Real',
     menuDomId: 'menu-venta-real',
     element: resolveModuleStep('#tour-ventareal-actions', 'Venta Real', 'menu-venta-real'),
     popover: {
-      title: '📈 Módulo Venta Real: Sincronización y Recálculo',
+      title: '📈 Venta Real: Sincronización y Recálculo',
       description:
         'Cómo usarlo: Si ajustaste comisiones de alguna agencia a mitad de semana, usa "Sincronizar con Agencias" para recalcular retroactivamente toda la venta del ciclo con las nuevas tasas. Pulsa "Exportar Excel" para respaldar los datos.',
       side: 'bottom',
       align: 'start',
     },
   },
+  {
+    moduleId: 'Venta Real',
+    menuDomId: 'menu-venta-real',
+    element: resolveModuleStep('#tour-ventareal-currency', 'Venta Real', 'menu-venta-real'),
+    popover: {
+      title: '🪙 Venta Real: Filtro por Divisa y Búsqueda',
+      description:
+        'Cómo usarlo: Alterna entre BS, USD, COP o Todas las monedas, y busca cualquier punto de venta o sistema para auditar rápidamente los registros.',
+      side: 'bottom',
+      align: 'start',
+    },
+  },
+  {
+    moduleId: 'Venta Real',
+    menuDomId: 'menu-venta-real',
+    element: resolveModuleStep('#tour-ventareal-table', 'Venta Real', 'menu-venta-real'),
+    popover: {
+      title: '📊 Venta Real: Análisis de Rentabilidad',
+      description:
+        'Cómo usarlo: Inspecciona por divisa (BS, USD, COP) el rendimiento de cada punto de venta: volumen jugado, premios totales pagados, comisión retenida por la agencia y la utilidad neta correspondiente a la comercializadora.',
+      side: 'top',
+      align: 'start',
+    },
+  },
 
-  // 36. Menú Pagos a Proveedores
+  // =========================================================================
+  // 14. PAGOS A PROVEEDORES
+  // =========================================================================
   {
     element: '#menu-pagos-a-proveedores',
     popover: {
@@ -531,14 +687,12 @@ export const tourSteps: TourStepExtended[] = [
       align: 'start',
     },
   },
-
-  // 37. Módulo Pagos Proveedor: Liquidación Casa Matriz
   {
     moduleId: 'Pagos a Proveedores',
     menuDomId: 'menu-pagos-a-proveedores',
     element: resolveModuleStep('#tour-pagosprov-form', 'Pagos a Proveedores', 'menu-pagos-a-proveedores'),
     popover: {
-      title: '🤝 Módulo Pagos Proveedor: Liquidación Casa Matriz',
+      title: '🤝 Pagos Proveedor: Liquidación Casa Matriz',
       description:
         'Cómo usarlo: Registra los pagos y liquidaciones efectuadas hacia las casas matrices u operadoras de lotería (ej. Betm3, Keno). Asienta el proveedor, moneda, banco emisor y referencia para mantener al día tus cuentas por pagar mayoristas.',
       side: 'bottom',
@@ -546,7 +700,9 @@ export const tourSteps: TourStepExtended[] = [
     },
   },
 
-  // 38. Menú Reporte Proveedores
+  // =========================================================================
+  // 15. REPORTE PROVEEDORES (RENDICIÓN GGR)
+  // =========================================================================
   {
     element: '#menu-reporte-proveedores',
     popover: {
@@ -557,14 +713,24 @@ export const tourSteps: TourStepExtended[] = [
       align: 'start',
     },
   },
-
-  // 39. Módulo Reporte Proveedores: Rendición GGR
+  {
+    moduleId: 'Reporte Proveedores',
+    menuDomId: 'menu-reporte-proveedores',
+    element: resolveModuleStep('#tour-reporteprov-cards', 'Reporte Proveedores', 'menu-reporte-proveedores'),
+    popover: {
+      title: '📊 Reporte Proveedores: Resumen de Totales',
+      description:
+        'Cómo usarlo: Tarjetas de control financiero por divisa: Venta Global, Premios Pagados, Total Comisión Comercializador y Neto correspondiente a las Casas Operadoras.',
+      side: 'bottom',
+      align: 'start',
+    },
+  },
   {
     moduleId: 'Reporte Proveedores',
     menuDomId: 'menu-reporte-proveedores',
     element: resolveModuleStep('#tour-reporteprov-table', 'Reporte Proveedores', 'menu-reporte-proveedores'),
     popover: {
-      title: '📋 Módulo Reporte Proveedores: Rendición GGR',
+      title: '📋 Reporte Proveedores: Rendición GGR y Diferencial',
       description:
         'Cómo usarlo: Cuadro de conciliación mayorista: audita venta bruta, premios pagados, GGR (Gross Gaming Revenue), comisión completa del proveedor, comisión de agencias, diferencial a favor del comercializador y balance final neto.',
       side: 'top',
@@ -572,7 +738,9 @@ export const tourSteps: TourStepExtended[] = [
     },
   },
 
-  // 40. Menú Gastos Administrativos
+  // =========================================================================
+  // 16. GASTOS ADMINISTRATIVOS CENTRALES
+  // =========================================================================
   {
     element: '#menu-gastos-administrativos',
     popover: {
@@ -583,22 +751,46 @@ export const tourSteps: TourStepExtended[] = [
       align: 'start',
     },
   },
-
-  // 41. Módulo Gastos Administrativos: Egresos Centrales
+  {
+    moduleId: 'Gastos Administrativos',
+    menuDomId: 'menu-gastos-administrativos',
+    element: resolveModuleStep('#tour-gastosadmin-kpis', 'Gastos Administrativos', 'menu-gastos-administrativos'),
+    popover: {
+      title: '💼 Gastos Admin: Egresos Centrales por Moneda',
+      description:
+        'Cómo usarlo: Muestra el gasto administrativo total acumulado en Bolívares (BS), Dólares (USD) y Pesos (COP) en el ciclo operativo actual.',
+      side: 'bottom',
+      align: 'start',
+    },
+  },
   {
     moduleId: 'Gastos Administrativos',
     menuDomId: 'menu-gastos-administrativos',
     element: resolveModuleStep('#tour-gastosadmin-form', 'Gastos Administrativos', 'menu-gastos-administrativos'),
     popover: {
-      title: '🧮 Módulo Gastos Administrativos: Egresos Centrales',
+      title: '🧮 Gastos Admin: Registro con Recibo Continuo',
       description:
         'Cómo usarlo: Registra los egresos operativos corporativos de la comercializadora (nómina de supervisores y choferes, servidores web, telecomunicaciones, insumos). Asigna categoría, moneda, beneficiario y número de recibo correlativo.',
       side: 'bottom',
       align: 'start',
     },
   },
+  {
+    moduleId: 'Gastos Administrativos',
+    menuDomId: 'menu-gastos-administrativos',
+    element: resolveModuleStep('#tour-gastosadmin-table', 'Gastos Administrativos', 'menu-gastos-administrativos'),
+    popover: {
+      title: '📑 Gastos Admin: Bitácora Histórica y Recibos',
+      description:
+        'Cómo usarlo: Bitácora histórica clasificada por categoría y moneda. Permite auditar los egresos del ciclo actual o históricos e imprimir recibos oficiales continuos de egreso de caja para soporte de contabilidad.',
+      side: 'top',
+      align: 'start',
+    },
+  },
 
-  // 42. Menú Cierre
+  // =========================================================================
+  // 17. CIERRE SEMANAL & ARQUEO DE CAJAS
+  // =========================================================================
   {
     element: '#menu-cierre',
     popover: {
@@ -609,28 +801,24 @@ export const tourSteps: TourStepExtended[] = [
       align: 'start',
     },
   },
-
-  // 43. Módulo Cierre: Actas Oficiales PDF
   {
     moduleId: 'Cierre ',
     menuDomId: 'menu-cierre',
     element: resolveModuleStep('#tour-cierre-actas', 'Cierre ', 'menu-cierre'),
     popover: {
-      title: '🔒 Módulo Cierre: Emisión de Actas Oficiales PDF',
+      title: '🔒 Cierre: Emisión de las 6 Actas Oficiales en PDF',
       description:
         'Cómo usarlo: Antes del corte de ciclo, genera las Actas Oficiales de Auditoría: 1. Acta General Consolidada, 2. Acta de Gastos Agencias, 3. Acta de Gastos Comercializadora, 4. Acta de Bancos, 5. Acta de Efectivo y 6. Acta de Cobradores en Ruta.',
       side: 'bottom',
       align: 'start',
     },
   },
-
-  // 44. Módulo Cierre: Arqueo Multi-Cajas BS / USD / COP
   {
     moduleId: 'Cierre ',
     menuDomId: 'menu-cierre',
     element: resolveModuleStep('#tour-cierre-cajas', 'Cierre ', 'menu-cierre'),
     popover: {
-      title: '📦 Módulo Cierre: Arqueo Multi-Cajas BS / USD / COP',
+      title: '📦 Cierre: Arqueo Multi-Cajas BS / USD / COP',
       description:
         'Cómo usarlo: Audita las 3 Cajas Maestras en BS, USD y COP. Al validar que el dinero físico y saldos en banco cuadran con el sistema, confirma las casillas de verificación de Agencias y Proveedores para ejecutar el cierre y avanzar de semana.',
       side: 'top',
@@ -638,7 +826,9 @@ export const tourSteps: TourStepExtended[] = [
     },
   },
 
-  // 45. Menú Auditoría
+  // =========================================================================
+  // 18. AUDITORÍA FORENSE
+  // =========================================================================
   {
     element: '#menu-auditoria',
     popover: {
@@ -649,22 +839,34 @@ export const tourSteps: TourStepExtended[] = [
       align: 'start',
     },
   },
-
-  // 46. Módulo Auditoría: Trazabilidad Inmutable
   {
     moduleId: 'Auditoría',
     menuDomId: 'menu-auditoria',
     element: resolveModuleStep('#tour-auditoria-header', 'Auditoría', 'menu-auditoria'),
     popover: {
-      title: '🛡️ Módulo Auditoría: Trazabilidad Inmutable',
+      title: '🛡️ Auditoría: Certificación Forense',
       description:
-        'Cómo usarlo: Bitácora forense de seguridad. Monitorea confirmaciones de pago, ajustes de saldo, inicios de sesión y aperturas/cierres. Puedes descargar el Acta Oficial de Auditoría en PDF para contraloría o auditoría externa.',
+        'Cómo usarlo: Centro de trazabilidad inalterable. Monitorea confirmaciones de pago, ajustes de saldo, inicios de sesión y aperturas/cierres. Pulsa "Imprimir Acta de Auditoría" para exportar el documento formal en PDF.',
       side: 'bottom',
       align: 'start',
     },
   },
+  {
+    moduleId: 'Auditoría',
+    menuDomId: 'menu-auditoria',
+    element: resolveModuleStep('#tour-auditoria-table', 'Auditoría', 'menu-auditoria'),
+    popover: {
+      title: '📋 Auditoría: Log Cronológico Certificado',
+      description:
+        'Cómo usarlo: Inspecciona cada evento en tiempo real con fecha, hora exacta, usuario responsable, dirección IP de origen, módulo afectado y la descripción detallada de la operación realizada.',
+      side: 'top',
+      align: 'start',
+    },
+  },
 
-  // 47. Menú Ajustes
+  // =========================================================================
+  // 19. AJUSTES DEL CICLO & APARIENCIA
+  // =========================================================================
   {
     element: '#menu-ajustes',
     popover: {
@@ -675,22 +877,46 @@ export const tourSteps: TourStepExtended[] = [
       align: 'start',
     },
   },
-
-  // 48. Módulo Ajustes: Ciclo Operativo y Apariencia
   {
     moduleId: 'Ajustes',
     menuDomId: 'menu-ajustes',
     element: resolveModuleStep('#tour-ajustes-ciclo', 'Ajustes', 'menu-ajustes'),
     popover: {
-      title: '⚙️ Módulo Ajustes: Ciclo Operativo y Apariencia',
+      title: '⚙️ Ajustes: Ciclo Operativo y Fechas Maestras',
       description:
-        'Cómo usarlo: Configura el tipo de corte de tu negocio (Semanal o Diario), número de semana activa y fechas maestras (Desde / Hasta). También puedes alternar el tema visual entre Modo Oscuro, Modo Claro o Automático.',
+        'Cómo usarlo: Configura el tipo de corte de tu negocio (Semanal o Diario), número de semana activa y fechas maestras (Desde / Hasta) que controlan la consolidación de ventas y pagos en toda la plataforma.',
       side: 'bottom',
       align: 'start',
     },
   },
+  {
+    moduleId: 'Ajustes',
+    menuDomId: 'menu-ajustes',
+    element: resolveModuleStep('#tour-ajustes-apariencia', 'Ajustes', 'menu-ajustes'),
+    popover: {
+      title: '🎨 Ajustes: Selector de Apariencia y Tema',
+      description:
+        'Cómo usarlo: Personaliza la interfaz según tu preferencia: Modo Oscuro (alto contraste y descanso visual), Modo Claro o Modo Automático que alterna el tema según la hora del día.',
+      side: 'top',
+      align: 'start',
+    },
+  },
+  {
+    moduleId: 'Ajustes',
+    menuDomId: 'menu-ajustes',
+    element: resolveModuleStep('#tour-ajustes-btn', 'Ajustes', 'menu-ajustes'),
+    popover: {
+      title: '💾 Ajustes: Guardar Configuración',
+      description:
+        'Cómo usarlo: Pulsa este botón para guardar las fechas y modalidad de ciclo en la base de datos central de tu suscripción.',
+      side: 'top',
+      align: 'start',
+    },
+  },
 
-  // 49. Menú Usuarios
+  // =========================================================================
+  // 20. USUARIOS & PERMISOS
+  // =========================================================================
   {
     element: '#menu-usuarios',
     popover: {
@@ -701,28 +927,40 @@ export const tourSteps: TourStepExtended[] = [
       align: 'start',
     },
   },
-
-  // 50. Módulo Usuarios: Operadores y Permisos Granulares
   {
     moduleId: 'Usuarios',
     menuDomId: 'menu-usuarios',
     element: resolveModuleStep('#tour-usuarios-btn', 'Usuarios', 'menu-usuarios'),
     popover: {
-      title: '👥 Módulo Usuarios: Operadores y Permisos Granulares',
+      title: '👥 Usuarios: Alta de Operadores y Supervisores',
       description:
-        'Cómo usarlo: Pulsa "Nuevo Usuario" para crear cuentas para supervisores o cajeros. Asigna credenciales personales y selecciona exactamente qué módulos pueden ver y cuáles permanecen bloqueados para resguardar la privacidad de tus finanzas.',
+        'Cómo usarlo: Haz clic en "Nuevo Usuario" para registrar operadores auxiliares, supervisores de ruta, cajeros o contadores. Asigna credenciales personales y selecciona exactamente qué módulos pueden ver y cuáles permanecen bloqueados.',
       side: 'bottom',
       align: 'start',
     },
   },
+  {
+    moduleId: 'Usuarios',
+    menuDomId: 'menu-usuarios',
+    element: resolveModuleStep('#tour-usuarios-list', 'Usuarios', 'menu-usuarios'),
+    popover: {
+      title: '🔐 Usuarios: Gestión Granular de Permisos',
+      description:
+        'Cómo usarlo: Administra tu equipo: modifica roles (Empleado, Auditor, Contador, Administrador), añade o remueve permisos por módulo en tiempo real o revoca accesos de inmediato cuando sea necesario.',
+      side: 'top',
+      align: 'start',
+    },
+  },
 
-  // 51. Finalización y Reinicio del Tour
+  // =========================================================================
+  // 21. FINALIZACIÓN Y REINICIO
+  // =========================================================================
   {
     element: '#header-tour-btn',
     popover: {
       title: '🎓 ¡Recorrido Explicativo Completado!',
       description:
-        '¡Felicitaciones! Has completado el recorrido guiado por todas las opciones del menú lateral y el interior de cada módulo. Puedes volver a iniciar este demo explicativo en cualquier momento pulsando este botón "Tour Demo".',
+        '¡Felicitaciones! Has completado el recorrido guiado por todas las opciones del menú lateral y cada una de las secciones internas de los módulos. Puedes volver a iniciar este demo explicativo en cualquier momento pulsando este botón "Tour Demo".',
       side: 'bottom',
       align: 'end',
     },
@@ -731,7 +969,7 @@ export const tourSteps: TourStepExtended[] = [
 
 /**
  * Inicia el tour guiado interactivo de Multibanca Express CRM
- * Navega automáticamente hacia cada opción del menú lateral y hacia el interior de cada módulo.
+ * Navega automáticamente hacia cada opción del menú lateral y hacia el interior de cada sección de los módulos.
  * @param force Si es true, inicia el tour incluso si el usuario ya lo vio previamente
  */
 export function startOnboardingTour(force: boolean = false) {

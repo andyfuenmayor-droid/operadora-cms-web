@@ -1086,7 +1086,7 @@ export const OperatorsTab: React.FC<OperatorsTabProps> = ({ initialSubTab = 'rep
             </div>
           ) : (
             /* Multi-Currency KPI Cards (Separated per Currency, Never Mixed) */
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+            <div id="tour-reporteprov-cards" className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
               {/* Venta Global por Moneda */}
               <div className="bg-[#0D1B22] border border-slate-800 p-4 rounded-2xl space-y-2">
                 <div className="flex items-center justify-between border-b border-slate-800 pb-2">

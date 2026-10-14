@@ -815,7 +815,7 @@ export const AdministrativeExpensesTab: React.FC = () => {
       </div>
 
       {/* 2. KPI Cards: Total Admin Expenses by Currency */}
-      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+      <div id="tour-gastosadmin-kpis" className="grid grid-cols-1 sm:grid-cols-3 gap-4">
         {/* Card 1: BS */}
         <div className="p-5 rounded-2xl bg-[#0D1B22] border border-slate-800/80 shadow-md">
           <div className="flex items-center justify-between text-xs text-slate-400 font-bold uppercase tracking-wider mb-2">
