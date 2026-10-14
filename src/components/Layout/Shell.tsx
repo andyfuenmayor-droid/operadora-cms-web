@@ -1,10 +1,11 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useAuth } from '../../context/AuthContext';
 import type { ModuleId } from '../../types';
 import { Sidebar } from './Sidebar';
 import { Header } from './Header';
 import { ToastContainer } from '../Common/ToastContainer';
 import { AlertTriangle, LogOut } from 'lucide-react';
+import { registerTourNavigator } from '../../utils/onboardingTour';
 
 interface ShellProps {
   currentModule: ModuleId;
@@ -19,6 +20,11 @@ export const Shell: React.FC<ShellProps> = ({
 }) => {
   const { subscriptionError, logout } = useAuth();
   const [mobileOpen, setMobileOpen] = useState(false);
+
+  // Registrar navegador interactivo para el tour explicativo
+  useEffect(() => {
+    registerTourNavigator(onSelectModule);
+  }, [onSelectModule]);
 
   return (
     <div className="min-h-screen bg-[#071217] text-slate-100 flex flex-col">

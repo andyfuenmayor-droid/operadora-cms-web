@@ -168,7 +168,13 @@ export const Sidebar: React.FC<SidebarProps> = ({
             .map((modId) => {
             const IconComp = moduleIconMap[modId] || Layers;
             const isActive = currentModule === modId;
-            const buttonDomId = `menu-${modId.toLowerCase().trim().replace(/[^a-z0-9]/g, '-').replace(/-+/g, '-').replace(/^-|-$/g, '')}`;
+            const buttonDomId = `menu-${modId
+              .normalize('NFD')
+              .replace(/[\u0300-\u036f]/g, '')
+              .toLowerCase()
+              .trim()
+              .replace(/[^a-z0-9]+/g, '-')
+              .replace(/^-|-$/g, '')}`;
 
             return (
               <button
