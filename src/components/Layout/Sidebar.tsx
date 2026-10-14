@@ -40,7 +40,13 @@ interface SidebarProps {
   onCloseMobile: () => void;
 }
 
-const HIDDEN_MENU_MODULES = new Set<string>(['Venta Operadora', 'Cierre Operadora', 'Rep. Confirmaciones']);
+const HIDDEN_MENU_MODULES = new Set<string>([
+  'Venta Operadora',
+  'Cierre Operadora',
+  'Rep. Confirmaciones',
+  'Pagos a Operador',
+  'Reporte Operadora',
+]);
 
 const moduleIconMap: Record<ModuleId, React.ComponentType<{ className?: string }>> = {
   Inicio: Home,
@@ -59,8 +65,10 @@ const moduleIconMap: Record<ModuleId, React.ComponentType<{ className?: string }
   'Gastos por Agencia': Receipt,
   'Saldo Agencias': Wallet,
   'Venta Real': TrendingUp,
+  'Pagos a Proveedores': Handshake,
   'Pagos a Operador': Handshake,
   'Venta Operadora': BarChart3,
+  'Reporte Proveedores': FileText,
   'Reporte Operadora': FileText,
   'Cierre Operadora': Archive,
   'Config. Proveedores': SlidersHorizontal,

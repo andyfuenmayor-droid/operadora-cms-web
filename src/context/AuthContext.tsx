@@ -70,6 +70,10 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
           if (!migratedSubAccesos.includes('Confirmados')) migratedSubAccesos.push('Confirmados');
         } else if (m === 'Rep. Confirmaciones') {
           if (!migratedSubAccesos.includes('Confirmados')) migratedSubAccesos.push('Confirmados');
+        } else if (m === 'Pagos a Operador') {
+          if (!migratedSubAccesos.includes('Pagos a Proveedores')) migratedSubAccesos.push('Pagos a Proveedores');
+        } else if (m === 'Reporte Operadora' || m === 'Venta Operadora') {
+          if (!migratedSubAccesos.includes('Reporte Proveedores')) migratedSubAccesos.push('Reporte Proveedores');
         } else {
           migratedSubAccesos.push(m as ModuleId);
         }

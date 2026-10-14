@@ -625,7 +625,7 @@ export const OperatorsTab: React.FC<OperatorsTabProps> = ({ initialSubTab = 'rep
           }`}
         >
           <FileText className="w-4 h-4" />
-          <span>Reporte Operadora</span>
+          <span>Reporte Proveedores</span>
         </button>
 
         <button
@@ -637,7 +637,7 @@ export const OperatorsTab: React.FC<OperatorsTabProps> = ({ initialSubTab = 'rep
           }`}
         >
           <CreditCard className="w-4 h-4" />
-          <span>Pagos a Operador ({operatorPayments.length})</span>
+          <span>Pagos a Proveedores ({operatorPayments.length})</span>
         </button>
 
         <button
@@ -1021,7 +1021,7 @@ export const OperatorsTab: React.FC<OperatorsTabProps> = ({ initialSubTab = 'rep
       )}
 
       {/* ==============================================================
-          TAB 2: REPORTE OPERADORA (CONSOLIDADO GENERAL)
+          TAB 2: REPORTE PROVEEDORES (CONSOLIDADO GENERAL)
           ============================================================== */}
       {activeSubTab === 'reporte' && (
         <div className="space-y-6">
@@ -1277,7 +1277,7 @@ export const OperatorsTab: React.FC<OperatorsTabProps> = ({ initialSubTab = 'rep
       )}
 
       {/* ==============================================================
-          TAB 3: PAGOS A OPERADOR (REGISTRO Y CUENTA CORRIENTE)
+          TAB 3: PAGOS A PROVEEDORES (REGISTRO Y CUENTA CORRIENTE)
           ============================================================== */}
       {activeSubTab === 'pagos' && (
         <div className="space-y-6">

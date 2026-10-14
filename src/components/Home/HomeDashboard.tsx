@@ -512,10 +512,10 @@ export const HomeDashboard: React.FC<HomeDashboardProps> = ({ onNavigate }) => {
           </div>
           <div className="flex items-center gap-2 self-start sm:self-auto flex-wrap">
             <button
-              onClick={() => onNavigate('Reporte Operadora')}
+              onClick={() => onNavigate('Reporte Proveedores')}
               className="px-3 py-1.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-xs font-bold text-slate-200 transition-colors flex items-center gap-1.5 cursor-pointer"
             >
-              <span>Reporte Operadora</span>
+              <span>Reporte Proveedores</span>
               <ArrowRight className="w-3.5 h-3.5 text-slate-400" />
             </button>
             <button

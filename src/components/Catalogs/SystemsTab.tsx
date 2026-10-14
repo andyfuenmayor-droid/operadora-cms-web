@@ -416,7 +416,7 @@ export const SystemsTab: React.FC = () => {
 
           <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 pt-1">
             <p className="text-[11px] text-slate-400">
-              💡 La comisión y participación se aplicarán automáticamente en el módulo de <strong className="text-slate-200">Reporte Operadora</strong>.
+              💡 La comisión y participación se aplicarán automáticamente en el módulo de <strong className="text-slate-200">Reporte Proveedores</strong>.
             </p>
             <button
               type="submit"
