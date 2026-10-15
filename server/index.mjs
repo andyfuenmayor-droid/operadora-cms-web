@@ -14,6 +14,14 @@
 import http from 'http';
 import { URL } from 'url';
 import crypto from 'crypto';
+import {
+  checkDbHealth,
+  findApiKeyRecord,
+  findAgencyUserId,
+  findDuplicatePayment,
+  insertPaymentRecord,
+  findPaymentStatus,
+} from './db.mjs';
 
 // Configuration
 const PORT = process.env.PORT ? parseInt(process.env.PORT, 10) : 3001;
@@ -155,8 +163,18 @@ async function authenticateRequest(req, parsedUrl) {
   }
 
   // 2. Check if key is formatted as tenant key (e.g. mbe_live_...)
-  // We can query Supabase config or perfiles if custom api_keys table exists
+  // Query native PostgreSQL config_sistema
   try {
+    const pgKeyRow = await findApiKeyRecord(apiKey);
+    if (pgKeyRow && pgKeyRow.user_id) {
+      return {
+        authenticated: true,
+        keyType: 'tenant',
+        userId: pgKeyRow.user_id,
+        permissions: ['read', 'write'],
+      };
+    }
+    // Fallback de consulta si está en transición Supabase
     const configRows = await supabaseFetch(`config_sistema?select=user_id,api_key&api_key=eq.${encodeURIComponent(apiKey)}&limit=1`);
     if (configRows && configRows.length > 0) {
       return {
@@ -167,7 +185,7 @@ async function authenticateRequest(req, parsedUrl) {
       };
     }
   } catch (_) {
-    // If table config_sistema doesn't have api_key column yet, fallback to default key check
+    // Si la tabla aún no tiene la clave, continúa al siguiente método
   }
 
   // If apiKey starts with 'mbe_live_' or matches 32+ hex, permit as valid tenant sandbox key
@@ -241,22 +259,24 @@ async function handleReceivePayment(req, res, auth, body) {
   let effectiveUserId = auth.userId || requestedUserId;
   if (!effectiveUserId) {
     try {
-      const agencies = await supabaseFetch(`agencias?select=user_id&nombre_agencia=ilike.${encodeURIComponent(cleanAgencia)}&limit=1`);
-      if (agencies && agencies.length > 0 && agencies[0].user_id) {
-        effectiveUserId = agencies[0].user_id;
+      // 1. Intentar resolver tenant user_id en PostgreSQL
+      const pgUserId = await findAgencyUserId(cleanAgencia);
+      if (pgUserId) {
+        effectiveUserId = pgUserId;
+      } else {
+        const agencies = await supabaseFetch(`agencias?select=user_id&nombre_agencia=ilike.${encodeURIComponent(cleanAgencia)}&limit=1`);
+        if (agencies && agencies.length > 0 && agencies[0].user_id) {
+          effectiveUserId = agencies[0].user_id;
+        }
       }
     } catch (_) {}
   }
 
   // 2. Deduplication check: check if same reference & agency & currency exists in last 7 days
-  const sevenDaysAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString();
   try {
-    const existing = await supabaseFetch(
-      `cda_pagos_bancarios?select=id,referencia,monto,moneda,agencia,confirmado,estado,created_at&referencia=eq.${encodeURIComponent(cleanRef)}&moneda=eq.${encodeURIComponent(normMoneda)}&created_at=gte.${encodeURIComponent(sevenDaysAgo)}&limit=1`
-    );
-
-    if (existing && existing.length > 0) {
-      const dup = existing[0];
+    // Verificar duplicado en PostgreSQL nativo
+    const dup = await findDuplicatePayment(cleanRef, normMoneda, 7);
+    if (dup) {
       return sendJson(res, 409, {
         success: false,
         error: 'PAGO_DUPLICADO',
@@ -269,6 +289,30 @@ async function handleReceivePayment(req, res, auth, body) {
           agencia: dup.agencia,
           estado: dup.confirmado ? 'CONFIRMADO' : dup.estado || 'PENDIENTE',
           fecha_registro: dup.created_at,
+        },
+      });
+    }
+
+    // Fallback a Supabase si no se encontró en PostgreSQL
+    const sevenDaysAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString();
+    const existing = await supabaseFetch(
+      `cda_pagos_bancarios?select=id,referencia,monto,moneda,agencia,confirmado,estado,created_at&referencia=eq.${encodeURIComponent(cleanRef)}&moneda=eq.${encodeURIComponent(normMoneda)}&created_at=gte.${encodeURIComponent(sevenDaysAgo)}&limit=1`
+    );
+
+    if (existing && existing.length > 0) {
+      const dupSb = existing[0];
+      return sendJson(res, 409, {
+        success: false,
+        error: 'PAGO_DUPLICADO',
+        message: `El pago con referencia '${cleanRef}' (${normMoneda} ${numMonto}) ya fue recibido previamente.`,
+        transaccion_existente: {
+          id: dupSb.id,
+          referencia: dupSb.referencia,
+          monto: dupSb.monto,
+          moneda: dupSb.moneda,
+          agencia: dupSb.agencia,
+          estado: dupSb.confirmado ? 'CONFIRMADO' : dupSb.estado || 'PENDIENTE',
+          fecha_registro: dupSb.created_at,
         },
       });
     }
@@ -307,21 +351,26 @@ async function handleReceivePayment(req, res, auth, body) {
     cdaPayload.user_id = effectiveUserId;
   }
 
-  // 4. Insert into cda_pagos_bancarios (aparecerá en tiempo real en Confirmaciones)
+  // 4. Insert into cda_pagos_bancarios (PostgreSQL nativo con fallback)
   let inserted = null;
   try {
-    const resInsert = await supabaseFetch('cda_pagos_bancarios', {
-      method: 'POST',
-      body: JSON.stringify(cdaPayload),
-    });
-    inserted = Array.isArray(resInsert) ? resInsert[0] : resInsert;
-  } catch (insertErr) {
-    console.error('[API] Error inserting into cda_pagos_bancarios:', insertErr);
-    return sendJson(res, 500, {
-      success: false,
-      error: 'ERROR_INSERCION',
-      message: 'No se pudo registrar el pago en la base de datos: ' + insertErr.message,
-    });
+    inserted = await insertPaymentRecord(cdaPayload);
+  } catch (pgInsertErr) {
+    console.warn('[API] Postgres insert failed, trying Supabase fallback:', pgInsertErr.message);
+    try {
+      const resInsert = await supabaseFetch('cda_pagos_bancarios', {
+        method: 'POST',
+        body: JSON.stringify(cdaPayload),
+      });
+      inserted = Array.isArray(resInsert) ? resInsert[0] : resInsert;
+    } catch (insertErr) {
+      console.error('[API] Error inserting into cda_pagos_bancarios:', insertErr);
+      return sendJson(res, 500, {
+        success: false,
+        error: 'ERROR_INSERCION',
+        message: 'No se pudo registrar el pago en la base de datos: ' + insertErr.message,
+      });
+    }
   }
 
   // 5. Response: Confirming receipt in Confirmations queue
@@ -431,23 +480,34 @@ async function handleVerifyPayment(req, res, auth, parsedUrl) {
   }
 
   try {
-    let query = 'cda_pagos_bancarios?select=id,agencia,monto,moneda,referencia,metodo_pago,concepto,datos_pagador,confirmado,estado,rechazado,motivo_rechazo,fecha,created_at';
-    if (id) {
-      query += `&id=eq.${encodeURIComponent(id)}`;
-    } else {
-      query += `&referencia=eq.${encodeURIComponent(ref.toUpperCase().trim())}&order=id.desc&limit=1`;
+    let p = null;
+    try {
+      p = await findPaymentStatus(id, ref);
+    } catch (pgErr) {
+      console.warn('[API] Postgres verify failed, trying Supabase fallback:', pgErr.message);
     }
 
-    const rows = await supabaseFetch(query);
-    if (!rows || rows.length === 0) {
+    if (!p) {
+      let queryStr = 'cda_pagos_bancarios?select=id,agencia,monto,moneda,referencia,metodo_pago,concepto,datos_pagador,confirmado,estado,rechazado,motivo_rechazo,fecha,created_at';
+      if (id) {
+        queryStr += `&id=eq.${encodeURIComponent(id)}`;
+      } else {
+        queryStr += `&referencia=eq.${encodeURIComponent(ref.toUpperCase().trim())}&order=id.desc&limit=1`;
+      }
+
+      const rows = await supabaseFetch(queryStr);
+      if (rows && rows.length > 0) {
+        p = rows[0];
+      }
+    }
+
+    if (!p) {
       return sendJson(res, 404, {
         success: false,
         error: 'PAGO_NO_ENCONTRADO',
         message: `No se encontró ningún pago con los criterios suministrados (${id ? `ID: ${id}` : `Ref: ${ref}`}).`,
       });
     }
-
-    const p = rows[0];
     const isRech = Boolean(p.rechazado) || String(p.estado || '').toUpperCase() === 'RECHAZADO';
     const isConf = Boolean(p.confirmado) && !isRech;
     const estado = isRech ? 'RECHAZADO' : isConf ? 'CONFIRMADO' : 'PENDIENTE';
@@ -591,12 +651,14 @@ const server = http.createServer(async (req, res) => {
 
   // 2. Health check (No auth required)
   if (pathname === '/api/v1/health' || pathname === '/health' || pathname === '/api/health') {
+    const dbStatus = await checkDbHealth();
     return sendJson(res, 200, {
       status: 'UP',
       servicio: 'Multibanca Express Payments API',
+      database: dbStatus,
       timestamp: new Date().toISOString(),
       uptime_seconds: Math.floor(process.uptime()),
-      version: '1.0.0',
+      version: '1.1.0-postgres-native',
     });
   }
 

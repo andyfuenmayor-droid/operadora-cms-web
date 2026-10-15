@@ -1,0 +1,18 @@
+# Microservicio API REST de Pagos - Operadora CMS
+FROM node:22-alpine
+
+WORKDIR /app
+
+# Copiar dependencias e instalar modo producción
+COPY package*.json ./
+RUN npm install --omit=dev
+
+# Copiar código del servidor
+COPY server ./server
+
+EXPOSE 8531
+
+ENV NODE_ENV=production
+ENV PORT=8531
+
+CMD ["node", "server/index.mjs"]

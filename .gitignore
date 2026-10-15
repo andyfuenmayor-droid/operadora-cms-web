@@ -12,7 +12,13 @@ dist
 dist-ssr
 *.local
 .env
-.env.local
+.env.*
+.env.production
+supabase_dump*.sql
+dump*.sql
+*.backup
+# Permitir scripts de inicialización de esquemas
+!docker-init/*.sql
 
 # Editor directories and files
 .vscode/*
