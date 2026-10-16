@@ -25,3 +25,8 @@ $$;
 CREATE OR REPLACE FUNCTION auth.role() RETURNS text LANGUAGE sql STABLE AS $$
     SELECT 'authenticated'::text;
 $$;
+
+-- Flexibilizar tipos de pago para soportar pagos a Operadora/Proveedores
+ALTER TABLE IF EXISTS public.pagos_semana DROP CONSTRAINT IF EXISTS check_tipo_pago;
+ALTER TABLE IF EXISTS public.pagos_semana DROP CONSTRAINT IF EXISTS check_metodo_pago;
+
