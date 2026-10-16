@@ -421,6 +421,59 @@ export const OperatorsTab: React.FC<OperatorsTabProps> = ({ initialSubTab = 'rep
     });
   }, [totalsByCurrency, reportCurrencyFilter]);
 
+  // Saldo actual adeudado al proveedor/sistema en la moneda seleccionada en el formulario de pagos
+  const currentPayBalance = useMemo(() => {
+    if (!paySistema || !payMoneda) return 0;
+
+    const sysUpper = String(paySistema).trim().toUpperCase();
+    const currUpper = String(payMoneda).trim().toUpperCase();
+
+    // 1. Buscar en reportRows
+    const match = reportRows.find(
+      (r) => String(r.sistema).toUpperCase() === sysUpper && String(r.moneda).toUpperCase() === currUpper
+    );
+    if (match) {
+      return match.balanceFinal;
+    }
+
+    // 2. Si no estuviera en reportRows, calcularlo al vuelo
+    const conf = systemConfigs[sysUpper] || {
+      comision_comercializador: 0,
+      participacion_comercializador: 0,
+      saldo_inicial_bs: 0,
+      saldo_inicial_usd: 0,
+      saldo_inicial_cop: 0,
+    };
+
+    let saldoInit = 0;
+    if (currUpper === 'BS') saldoInit = Number(conf.saldo_inicial_bs || 0);
+    else if (currUpper === 'USD') saldoInit = Number(conf.saldo_inicial_usd || 0);
+    else if (currUpper === 'COP') saldoInit = Number(conf.saldo_inicial_cop || 0);
+
+    const matchingSales = sales.filter(
+      (s) => String(s.sistema || '').toUpperCase() === sysUpper && String(s.moneda || '').toUpperCase() === currUpper
+    );
+    const venta = matchingSales.reduce((sum, currItem) => sum + Number(currItem.venta || 0), 0);
+    const premio = matchingSales.reduce((sum, currItem) => sum + Number(currItem.premios || 0), 0);
+    const uBruta = venta - premio;
+    const comAgencias = Math.round(matchingSales.reduce((sum, currItem) => sum + Number(currItem.comision || 0), 0) * 100) / 100;
+    const cPct = Number(conf.comision_comercializador || 0);
+    const pPct = Number(conf.participacion_comercializador || 0);
+
+    const comCompletaProv = Math.round(venta * (cPct / 100) * 100) / 100;
+    const baseUtil = Math.round((uBruta - comCompletaProv) * 100) / 100;
+    const netoOperadora = Math.round(baseUtil * ((100 - pPct) / 100) * 100) / 100;
+
+    const sysPayments = operatorPayments.filter(
+      (p) => String(p.sistema).toUpperCase() === sysUpper && String(p.moneda).toUpperCase() === currUpper
+    );
+    const pagosRealizados = sysPayments.filter((p) => p.tipo_pago === 'PAGO_OPERADORA').reduce((sum, p) => sum + p.monto, 0);
+    const abonosRecibidos = sysPayments.filter((p) => p.tipo_pago === 'ABONO_OPERADORA').reduce((sum, p) => sum + p.monto, 0);
+    const pagosNetos = Math.round((pagosRealizados - abonosRecibidos) * 100) / 100;
+
+    return Math.round((saldoInit + netoOperadora - pagosNetos) * 100) / 100;
+  }, [reportRows, paySistema, payMoneda, systemConfigs, sales, operatorPayments]);
+
   // Save Settlement with Commercializer
   const handleSaveSettlement = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -1283,10 +1336,92 @@ export const OperatorsTab: React.FC<OperatorsTabProps> = ({ initialSubTab = 'rep
         <div className="space-y-6">
           {/* Add Payment Form */}
           <div id="tour-pagosprov-form" className="bg-[#0D1B22] border border-cyan-500/30 rounded-3xl p-6 shadow-xl space-y-4">
-            <h3 className="text-xs font-extrabold uppercase tracking-wider text-cyan-400 flex items-center gap-2">
-              <Plus className="w-4 h-4" />
-              <span>Registrar Pago / Abono a Proveedor u Operadora</span>
-            </h3>
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <h3 className="text-xs font-extrabold uppercase tracking-wider text-cyan-400 flex items-center gap-2">
+                <Plus className="w-4 h-4" />
+                <span>Registrar Pago / Abono a Proveedor u Operadora</span>
+              </h3>
+
+              {/* Tag rápido de Saldo Actual */}
+              <div className="flex items-center gap-2">
+                <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400">
+                  Saldo Actual ({paySistema || 'Proveedor'} - {payMoneda}):
+                </span>
+                <span className={`text-xs font-mono font-black px-2.5 py-0.5 rounded-lg border ${
+                  currentPayBalance > 0
+                    ? 'bg-rose-500/10 text-rose-400 border-rose-500/30'
+                    : currentPayBalance < 0
+                    ? 'bg-cyan-500/10 text-cyan-400 border-cyan-500/30'
+                    : 'bg-emerald-500/10 text-emerald-400 border-emerald-500/30'
+                }`}>
+                  {formatCurrency(currentPayBalance, payMoneda)}
+                </span>
+              </div>
+            </div>
+
+            {/* Banner Dinámico de Cuenta Corriente del Proveedor Seleccionado */}
+            <div className={`p-4 rounded-2xl border transition-all flex flex-wrap items-center justify-between gap-3 ${
+              currentPayBalance > 0
+                ? 'bg-rose-950/20 border-rose-500/30'
+                : currentPayBalance < 0
+                ? 'bg-cyan-950/20 border-cyan-500/30'
+                : 'bg-emerald-950/20 border-emerald-500/30'
+            }`}>
+              <div className="flex items-center gap-3">
+                <div className={`w-10 h-10 rounded-2xl flex items-center justify-center font-bold text-sm shadow-inner ${
+                  currentPayBalance > 0
+                    ? 'bg-rose-500/20 text-rose-400 border border-rose-500/30'
+                    : currentPayBalance < 0
+                    ? 'bg-cyan-500/20 text-cyan-400 border border-cyan-500/30'
+                    : 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/30'
+                }`}>
+                  <Wallet className="w-5 h-5" />
+                </div>
+                <div>
+                  <div className="text-[11px] font-bold uppercase tracking-wider text-slate-400 flex items-center gap-2">
+                    <span>Cuenta Corriente</span>
+                    <span className="text-white font-extrabold px-1.5 py-0.5 rounded bg-slate-800 text-[10px]">
+                      🎰 {paySistema || 'Proveedor'}
+                    </span>
+                    <span className="text-cyan-400 font-extrabold text-[10px]">
+                      {payMoneda}
+                    </span>
+                  </div>
+                  <div className="flex flex-wrap items-baseline gap-2 mt-0.5">
+                    <span className={`text-lg font-black font-mono tracking-tight ${
+                      currentPayBalance > 0
+                        ? 'text-rose-400'
+                        : currentPayBalance < 0
+                        ? 'text-cyan-400'
+                        : 'text-emerald-400'
+                    }`}>
+                      {formatCurrency(currentPayBalance, payMoneda)}
+                    </span>
+                    <span className="text-xs font-medium text-slate-400">
+                      {currentPayBalance > 0
+                        ? '• Deuda pendiente a favor de la Operadora'
+                        : currentPayBalance < 0
+                        ? '• Saldo a favor del Comercializador (Anticipo / Excedente)'
+                        : '• Cuenta al día / Sin saldo pendiente'}
+                    </span>
+                  </div>
+                </div>
+              </div>
+
+              {/* Botón de Autocompletado si hay deuda */}
+              {currentPayBalance > 0 && (
+                <button
+                  type="button"
+                  onClick={() => setPayMonto(String(currentPayBalance))}
+                  className="px-3.5 py-2 rounded-xl text-xs font-bold bg-rose-500/20 hover:bg-rose-500/30 text-rose-300 border border-rose-500/40 transition-all flex items-center gap-2 shadow-sm active:scale-95 cursor-pointer"
+                  title="Cargar saldo exacto en el campo Monto"
+                >
+                  <DollarSign className="w-4 h-4" />
+                  <span>Cargar Saldo Pendiente:</span>
+                  <span className="font-mono font-black">{formatCurrency(currentPayBalance, payMoneda)}</span>
+                </button>
+              )}
+            </div>
 
             <form onSubmit={handleAddPayment} className="space-y-4">
               <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
@@ -1331,7 +1466,20 @@ export const OperatorsTab: React.FC<OperatorsTabProps> = ({ initialSubTab = 'rep
                 </div>
 
                 <div className="space-y-1">
-                  <label className="text-xs font-semibold text-slate-300">Monto *</label>
+                  <div className="flex items-center justify-between">
+                    <label className="text-xs font-semibold text-slate-300">Monto *</label>
+                    <span
+                      onClick={() => currentPayBalance > 0 && setPayMonto(String(currentPayBalance))}
+                      className={`text-[10px] font-bold font-mono transition-colors ${
+                        currentPayBalance > 0
+                          ? 'text-rose-400 hover:text-rose-300 cursor-pointer underline'
+                          : 'text-slate-400'
+                      }`}
+                      title={currentPayBalance > 0 ? "Haz clic para cargar este monto" : "Saldo actual"}
+                    >
+                      Saldo: {formatCurrency(currentPayBalance, payMoneda)}
+                    </span>
+                  </div>
                   <input
                     type="number"
                     step="0.01"
