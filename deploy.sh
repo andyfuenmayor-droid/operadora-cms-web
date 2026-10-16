@@ -5,25 +5,32 @@
 set -e
 
 PORT=8530
+API_PORT=8531
 DOMAIN="crm.multibancaexpress.com"
 
 echo "🚀 Iniciando despliegue de Operadora CMS Web ($DOMAIN)..."
 systemctl enable --now docker || true
 systemctl enable --now nginx || true
 
-echo "📦 Construyendo la imagen de Docker para operadora-cms-web..."
-docker build -t operadora-cms-web-app .
-
-echo "🛑 Deteniendo y limpiando contenedor anterior..."
+# Limpieza de contenedor huérfano anterior si existiera fuera de Docker Compose
 docker rm -f operadora-cms-web-container 2>/dev/null || true
-sleep 2
 
-echo "▶️ Iniciando nuevo contenedor en puerto dedicado $PORT..."
-docker run -d \
-  --name operadora-cms-web-container \
-  -p 127.0.0.1:$PORT:80 \
-  --restart always \
-  operadora-cms-web-app
+# Asegurar archivo de variables de entorno .env
+if [ ! -f .env ]; then
+  if [ -f .env.production ]; then
+    echo "📄 Creando .env desde .env.production..."
+    cp .env.production .env
+  elif [ -f .env.example ]; then
+    echo "⚠️ Creando .env desde .env.example..."
+    cp .env.example .env
+  fi
+fi
+
+echo "📦 Construyendo y levantando servicios con Docker Compose..."
+docker compose up -d --build postgres api web
+
+echo "🧹 Limpiando imágenes residuales de Docker..."
+docker image prune -f || true
 
 echo "⚙️ Configurando Nginx para $DOMAIN..."
 SITE_NAME="crm"
@@ -35,7 +42,7 @@ SSL_DH=""
 [ -f /etc/letsencrypt/ssl-dhparams.pem ] && SSL_DH="    ssl_dhparam /etc/letsencrypt/ssl-dhparams.pem;"
 
 if [ -f "$CERT_DIR/fullchain.pem" ] && [ -f "$CERT_DIR/privkey.pem" ]; then
-    echo "🔒 Certificados SSL detectados en $CERT_DIR. Configurando HTTPS directo..."
+    echo "🔒 Certificados SSL detectados en $CERT_DIR. Configurando HTTPS..."
     cat << EOF > /etc/nginx/sites-available/$SITE_NAME
 server {
     listen 80;
@@ -68,7 +75,7 @@ $SSL_DH
     }
 
     location /api/ {
-        proxy_pass http://127.0.0.1:3001;
+        proxy_pass http://127.0.0.1:$API_PORT;
         proxy_http_version 1.1;
         proxy_set_header Upgrade \$http_upgrade;
         proxy_set_header Connection "upgrade";
@@ -148,7 +155,7 @@ $SSL_DH
     }
 
     location /api/ {
-        proxy_pass http://127.0.0.1:3001;
+        proxy_pass http://127.0.0.1:$API_PORT;
         proxy_http_version 1.1;
         proxy_set_header Upgrade \$http_upgrade;
         proxy_set_header Connection "upgrade";
@@ -174,5 +181,9 @@ ln -sf /etc/nginx/sites-available/$SITE_NAME /etc/nginx/sites-enabled/$SITE_NAME
 nginx -t
 systemctl reload nginx
 
-echo "✅ Despliegue de Operadora CMS Web completado con éxito en https://$DOMAIN"
+echo "🔍 Verificando salud de los servicios..."
+sleep 2
+curl -fsS http://127.0.0.1:$API_PORT/api/v1/health || echo "⚠️ Advertencia: API healthcheck no respondió en loopback"
+curl -fsS http://127.0.0.1:$PORT > /dev/null && echo "✅ Frontend web Nginx respondiendo correctamente" || echo "⚠️ Advertencia: Web frontend no respondió en loopback"
 
+echo "✅ Despliegue de Operadora CMS Web completado con éxito en https://$DOMAIN"
