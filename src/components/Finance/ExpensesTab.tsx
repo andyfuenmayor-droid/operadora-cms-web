@@ -18,6 +18,7 @@ import {
   AlertTriangle
 } from 'lucide-react';
 import confetti from 'canvas-confetti';
+import { logAuditEvent } from '../../utils/auditLogger';
 
 interface ExpenseItem {
   id: number;
@@ -166,7 +167,7 @@ export const ExpensesTab: React.FC = () => {
 
   useEffect(() => {
     loadData();
-  }, [effectiveUserId]);
+  }, [effectiveUserId, systemCycle?.desde, systemCycle?.hasta, systemCycle?.semana]);
 
   // Expenses totals by currency (scoped to current view filter)
   const currencyTotals = useMemo(() => {
@@ -332,7 +333,36 @@ export const ExpensesTab: React.FC = () => {
       const { error } = await supabase.from(item.tabla).delete().eq('id', item.id).eq('user_id', effectiveUserId);
       if (error) throw error;
 
-      setMessage({ type: 'success', text: 'Gasto eliminado correctamente.' });
+      // Registrar evento inmutable de auditoría con la semana ciclo activa
+      try {
+        await logAuditEvent({
+          user_id: effectiveUserId,
+          usuario: user?.email || user?.nombre || 'ADMIN',
+          modulo: 'GASTOS',
+          tipo_accion: 'ELIMINAR_GASTO_AGENCIA',
+          entidad_afectada: item.agencia,
+          descripcion: `Eliminación de Gasto por ${formatCurrency(item.monto, item.moneda as any)} [Concepto: ${item.concepto}] (Ref: ${item.referencia}, Estado: ${item.confirmado ? 'Confirmado' : 'Pendiente'}) de la agencia ${item.agencia}.`,
+          impacto_financiero: item.monto > 500 ? 'ALTO' : 'MEDIO',
+          semana_ciclo: String(systemCycle?.semana || ''),
+          ciclo_periodo: systemCycle?.desde && systemCycle?.hasta ? `${systemCycle.desde} al ${systemCycle.hasta}` : undefined,
+          valor_anterior: {
+            id: item.id,
+            tabla: item.tabla,
+            agencia: item.agencia,
+            moneda: item.moneda,
+            monto: item.monto,
+            concepto: item.concepto,
+            referencia: item.referencia,
+            confirmado: item.confirmado,
+            fecha: item.fecha,
+          },
+          valor_nuevo: { eliminado: true, fecha_eliminacion: new Date().toISOString() },
+        });
+      } catch (auditErr) {
+        console.warn('Could not register audit event for deleted expense:', auditErr);
+      }
+
+      setMessage({ type: 'success', text: 'Gasto eliminado y registrado en la bitácora de auditoría correctamente.' });
       await loadData();
     } catch (err: any) {
       console.error('Error deleting expense:', err);

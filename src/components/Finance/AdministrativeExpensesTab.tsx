@@ -302,6 +302,8 @@ export const AdministrativeExpensesTab: React.FC = () => {
         entidad_afectada: `COMERCIALIZADOR (${formMoneda})`,
         descripcion: `Registro de Gasto Administrativo [${CATEGORIAS_CONFIG[formCategoria]?.label || formCategoria}]: ${formConcepto.trim()} por ${formatCurrency(montoNum, formMoneda)} (Recibo Cont.: #${finalReferencia}, Beneficiario: ${formBeneficiario || 'N/A'})`,
         impacto_financiero: montoNum > 50000 ? 'ALTO' : 'MEDIO',
+        semana_ciclo: String(systemCycle?.semana || ''),
+        ciclo_periodo: systemCycle?.desde && systemCycle?.hasta ? `${systemCycle.desde} al ${systemCycle.hasta}` : undefined,
       });
 
       confetti({ particleCount: 40, spread: 60, origin: { y: 0.8 } });
@@ -364,6 +366,8 @@ export const AdministrativeExpensesTab: React.FC = () => {
         entidad_afectada: `COMERCIALIZADOR (${deleteTarget.moneda})`,
         descripcion: `Eliminación de Gasto Administrativo [${deleteTarget.categoria}]: ${deleteTarget.concepto} por ${formatCurrency(deleteTarget.monto, deleteTarget.moneda)} (Recibo: ${deleteTarget.referencia})`,
         impacto_financiero: 'MEDIO',
+        semana_ciclo: String(systemCycle?.semana || ''),
+        ciclo_periodo: systemCycle?.desde && systemCycle?.hasta ? `${systemCycle.desde} al ${systemCycle.hasta}` : undefined,
       });
 
       setMessage({ type: 'success', text: 'Gasto administrativo eliminado correctamente.' });

@@ -160,6 +160,8 @@ export const RealSalesTab: React.FC = () => {
         entidad_afectada: 'TODAS LAS AGENCIAS',
         descripcion: `Sincronización y recálculo global de ventas ejecutado. Se actualizaron ${res.updatedCount} registros con comisiones y participaciones vigentes.`,
         impacto_financiero: 'ALTO',
+        semana_ciclo: String(systemCycle?.semana || ''),
+        ciclo_periodo: systemCycle?.desde && systemCycle?.hasta ? `${systemCycle.desde} al ${systemCycle.hasta}` : undefined,
       });
       setSyncMessage(`¡Sincronización exitosa! ${res.updatedCount} ventas recalculadas.`);
       setTimeout(() => setSyncMessage(null), 5000);

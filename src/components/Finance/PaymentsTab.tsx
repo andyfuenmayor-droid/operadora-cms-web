@@ -31,6 +31,7 @@ import {
 } from 'lucide-react';
 import confetti from 'canvas-confetti';
 import { ApiDocsModal } from '../Common/ApiDocsModal';
+import { logAuditEvent } from '../../utils/auditLogger';
 
 interface PaymentItem {
   id: number;
@@ -637,7 +638,38 @@ export const PaymentsTab: React.FC = () => {
       const { error } = await supabase.from(item.tabla).delete().eq('id', item.id).eq('user_id', effectiveUserId);
       if (error) throw error;
 
-      setMessage({ type: 'success', text: 'Pago eliminado correctamente.' });
+      // Registrar evento inmutable de auditoría con la semana ciclo activa
+      try {
+        await logAuditEvent({
+          user_id: effectiveUserId,
+          usuario: user?.email || user?.nombre || 'ADMIN',
+          modulo: 'PAGOS',
+          tipo_accion: 'ELIMINAR_PAGO_AGENCIA',
+          entidad_afectada: item.agencia,
+          descripcion: `Eliminación de Pago [${item.metodo}] por ${formatCurrency(item.monto, item.moneda as any)} (Ref: ${item.referencia}, Tipo: ${item.tipo_pago}, Estado: ${item.confirmado ? 'Confirmado' : item.rechazado ? 'Rechazado' : 'En Tránsito'}) de la agencia ${item.agencia}.`,
+          impacto_financiero: 'ALTO',
+          semana_ciclo: String(systemCycle?.semana || ''),
+          ciclo_periodo: systemCycle?.desde && systemCycle?.hasta ? `${systemCycle.desde} al ${systemCycle.hasta}` : undefined,
+          valor_anterior: {
+            id: item.id,
+            tabla: item.tabla,
+            agencia: item.agencia,
+            moneda: item.moneda,
+            monto: item.monto,
+            tipo_pago: item.tipo_pago,
+            metodo: item.metodo,
+            referencia: item.referencia,
+            confirmado: item.confirmado,
+            rechazado: item.rechazado,
+            fecha: item.fecha,
+          },
+          valor_nuevo: { eliminado: true, fecha_eliminacion: new Date().toISOString() },
+        });
+      } catch (auditErr) {
+        console.warn('Could not register audit event for deleted payment:', auditErr);
+      }
+
+      setMessage({ type: 'success', text: 'Pago eliminado y registrado en la bitácora de auditoría correctamente.' });
       await loadData();
     } catch (err: any) {
       console.error('Error deleting payment:', err);

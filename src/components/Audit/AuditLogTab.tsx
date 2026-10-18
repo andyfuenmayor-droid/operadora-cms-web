@@ -24,10 +24,11 @@ import {
 } from 'lucide-react';
 
 export const AuditLogTab: React.FC = () => {
-  const { user, profile, effectiveUserId } = useAuth();
+  const { user, profile, effectiveUserId, systemCycle } = useAuth();
   const [logs, setLogs] = useState<AuditLogEntry[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
+  const [selectedCycle, setSelectedCycle] = useState<string>('CICLO_ACTUAL');
   const [selectedModule, setSelectedModule] = useState<string>('TODOS');
   const [selectedImpact, setSelectedImpact] = useState<string>('TODOS');
   const [selectedEntry, setSelectedEntry] = useState<AuditLogEntry | null>(null);
@@ -49,22 +50,47 @@ export const AuditLogTab: React.FC = () => {
     loadLogs();
   }, [effectiveUserId]);
 
+  // Distinct weeks detected in audit logs
+  const distinctWeeks = useMemo(() => {
+    const s = new Set<string>();
+    logs.forEach((l) => {
+      if (l.semana_ciclo) s.add(String(l.semana_ciclo));
+    });
+    if (systemCycle?.semana) s.add(String(systemCycle.semana));
+    return Array.from(s).sort((a, b) => Number(b) - Number(a));
+  }, [logs, systemCycle?.semana]);
+
   const filteredLogs = useMemo(() => {
     return logs.filter((l) => {
+      // 1. Cycle / Semana filter
+      if (selectedCycle === 'CICLO_ACTUAL') {
+        const activeSem = String(systemCycle?.semana || '');
+        if (activeSem && l.semana_ciclo && String(l.semana_ciclo) !== activeSem) {
+          return false;
+        }
+      } else if (selectedCycle !== 'TODOS') {
+        if (String(l.semana_ciclo || '') !== selectedCycle) return false;
+      }
+
+      // 2. Module filter
       if (selectedModule !== 'TODOS' && l.modulo !== selectedModule) return false;
+
+      // 3. Impact filter
       if (selectedImpact !== 'TODOS' && l.impacto_financiero !== selectedImpact) return false;
 
+      // 4. Search query
       if (searchTerm.trim()) {
         const q = searchTerm.toLowerCase();
         const inDesc = (l.descripcion || '').toLowerCase().includes(q);
         const inEnt = (l.entidad_afectada || '').toLowerCase().includes(q);
         const inUser = (l.usuario || '').toLowerCase().includes(q);
         const inAction = (l.tipo_accion || '').toLowerCase().includes(q);
-        return inDesc || inEnt || inUser || inAction;
+        const inSem = (l.semana_ciclo || '').toLowerCase().includes(q);
+        return inDesc || inEnt || inUser || inAction || inSem;
       }
       return true;
     });
-  }, [logs, selectedModule, selectedImpact, searchTerm]);
+  }, [logs, selectedCycle, systemCycle?.semana, selectedModule, selectedImpact, searchTerm]);
 
   // KPIs
   const highImpactCount = useMemo(
@@ -80,9 +106,10 @@ export const AuditLogTab: React.FC = () => {
 
   const handleExportCSV = () => {
     if (filteredLogs.length === 0) return;
-    const headers = ['Fecha/Hora', 'Usuario', 'Modulo', 'Accion', 'Entidad Afectada', 'Impacto', 'Descripcion'];
+    const headers = ['Fecha/Hora', 'Semana Ciclo', 'Usuario', 'Modulo', 'Accion', 'Entidad Afectada', 'Impacto', 'Descripcion'];
     const rows = filteredLogs.map((l) => [
       `"${new Date(l.timestamp).toLocaleString('es-VE')}"`,
+      `"${l.semana_ciclo ? `Semana ${l.semana_ciclo}` : 'N/A'}"`,
       `"${l.usuario}"`,
       `"${l.modulo}"`,
       `"${l.tipo_accion}"`,
@@ -96,7 +123,7 @@ export const AuditLogTab: React.FC = () => {
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
-    a.download = `Log_Auditoria_${new Date().toISOString().slice(0, 10)}.csv`;
+    a.download = `Log_Auditoria_Semana_${selectedCycle}_${new Date().toISOString().slice(0, 10)}.csv`;
     a.click();
     URL.revokeObjectURL(url);
   };
@@ -154,6 +181,7 @@ export const AuditLogTab: React.FC = () => {
       return `
         <tr style="background: ${idx % 2 === 0 ? '#ffffff' : '#f8fafc'}; border-bottom: 1px solid #e2e8f0;">
           <td style="padding: 7px 8px; font-family: monospace; font-size: 8.5pt; color: #334155; white-space: nowrap;">${fecha}</td>
+          <td style="padding: 7px 8px; font-weight: bold; font-size: 8pt; color: #0284c7; text-align: center;">${l.semana_ciclo ? `Sem. ${l.semana_ciclo}` : '-'}</td>
           <td style="padding: 7px 8px; font-weight: bold; font-size: 8.5pt; color: #1e293b;">${l.modulo}</td>
           <td style="padding: 7px 8px; font-weight: 600; font-size: 8.5pt; color: #0f172a;">${l.entidad_afectada}</td>
           <td style="padding: 7px 8px; font-size: 8.5pt; color: #0f172a; line-height: 1.35;">${l.descripcion}</td>
@@ -324,12 +352,13 @@ export const AuditLogTab: React.FC = () => {
           <table>
             <thead>
               <tr>
-                <th style="width: 14%;">Fecha / Hora</th>
+                <th style="width: 13%;">Fecha / Hora</th>
+                <th style="width: 8%; text-align: center;">Semana</th>
                 <th style="width: 9%;">Módulo</th>
                 <th style="width: 14%;">Entidad Afectada</th>
-                <th style="width: 40%;">Descripción de la Operación / Modificación</th>
-                <th style="width: 13%;">Usuario</th>
-                <th style="width: 10%; text-align: center;">Impacto</th>
+                <th style="width: 36%;">Descripción de la Operación / Modificación</th>
+                <th style="width: 11%;">Usuario</th>
+                <th style="width: 9%; text-align: center;">Impacto</th>
               </tr>
             </thead>
             <tbody>
@@ -460,7 +489,61 @@ export const AuditLogTab: React.FC = () => {
         </div>
       </div>
 
-      {/* 2. Filter Bar */}
+      {/* 2. Cycle / Period Filter Selector */}
+      <div className="bg-[#0D1B22] border border-slate-800 rounded-3xl p-4 shadow-xl flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs">
+        <div className="flex items-center gap-2 flex-wrap">
+          <span className="text-xs font-bold text-slate-400 flex items-center gap-1 mr-1">
+            <Calendar className="w-4 h-4 text-emerald-400" />
+            <span>Ciclo Auditado:</span>
+          </span>
+
+          <button
+            onClick={() => setSelectedCycle('CICLO_ACTUAL')}
+            className={`px-3 py-1.5 rounded-xl font-bold transition-all cursor-pointer flex items-center gap-1.5 ${
+              selectedCycle === 'CICLO_ACTUAL'
+                ? 'bg-emerald-500 text-slate-950 shadow-md shadow-emerald-500/20'
+                : 'bg-[#071217] text-slate-400 hover:text-white border border-slate-800'
+            }`}
+          >
+            <span>🎯</span>
+            <span>Ciclo Actual (Semana {systemCycle?.semana})</span>
+          </button>
+
+          <button
+            onClick={() => setSelectedCycle('TODOS')}
+            className={`px-3 py-1.5 rounded-xl font-bold transition-all cursor-pointer flex items-center gap-1.5 ${
+              selectedCycle === 'TODOS'
+                ? 'bg-sky-500 text-slate-950 shadow-md shadow-sky-500/20'
+                : 'bg-[#071217] text-slate-400 hover:text-white border border-slate-800'
+            }`}
+          >
+            <span>📜</span>
+            <span>Histórico Completo ({logs.length})</span>
+          </button>
+
+          {distinctWeeks
+            .filter((w) => w !== String(systemCycle?.semana))
+            .map((w) => (
+              <button
+                key={w}
+                onClick={() => setSelectedCycle(w)}
+                className={`px-3 py-1.5 rounded-xl font-bold transition-all cursor-pointer ${
+                  selectedCycle === w
+                    ? 'bg-amber-500 text-slate-950 shadow-md shadow-amber-500/20'
+                    : 'bg-[#071217] text-slate-400 hover:text-white border border-slate-800'
+                }`}
+              >
+                Semana {w}
+              </button>
+            ))}
+        </div>
+
+        <div className="text-xs text-slate-400 font-mono">
+          Eventos en vista: <strong className="text-emerald-400">{filteredLogs.length}</strong>
+        </div>
+      </div>
+
+      {/* 3. Search & Module Filter Bar */}
       <div className="bg-[#0D1B22] border border-slate-800 rounded-3xl p-4 shadow-xl flex flex-col md:flex-row md:items-center justify-between gap-3 text-xs">
         {/* Search */}
         <div className="relative flex-1">
@@ -509,13 +592,13 @@ export const AuditLogTab: React.FC = () => {
         </div>
       </div>
 
-      {/* 3. Table of Events */}
+      {/* 4. Table of Events */}
       <div id="tour-auditoria-table" className="bg-[#0D1B22] border border-slate-800 rounded-3xl p-6 shadow-xl space-y-4">
         {filteredLogs.length === 0 ? (
           <div className="py-12 text-center text-slate-400 text-xs">
             {isLoading
               ? 'Cargando eventos de auditoría...'
-              : 'No se encontraron registros de auditoría con los filtros aplicados.'}
+              : 'No se encontraron registros de auditoría para este ciclo o filtros aplicados.'}
           </div>
         ) : (
           <div className="overflow-x-auto rounded-2xl border border-slate-800/80 bg-[#071217]">
@@ -523,6 +606,7 @@ export const AuditLogTab: React.FC = () => {
               <thead>
                 <tr className="border-b border-slate-800 text-[11px] uppercase tracking-wider text-slate-400 bg-slate-900/60">
                   <th className="py-3 px-3.5 font-bold">Fecha / Hora</th>
+                  <th className="py-3 px-3 font-bold text-center">Semana</th>
                   <th className="py-3 px-3 font-bold">Módulo</th>
                   <th className="py-3 px-3 font-bold">Entidad Afectada</th>
                   <th className="py-3 px-3 font-bold">Descripción</th>
@@ -544,6 +628,11 @@ export const AuditLogTab: React.FC = () => {
                         second: '2-digit',
                       })}
                     </td>
+                    <td className="py-2.5 px-3 text-center">
+                      <span className="text-[10px] font-black px-2 py-0.5 rounded bg-slate-800/90 text-sky-400 border border-slate-700 font-mono">
+                        {l.semana_ciclo ? `Sem. ${l.semana_ciclo}` : '-'}
+                      </span>
+                    </td>
                     <td className="py-2.5 px-3">
                       <span className={`text-[10px] font-black px-2 py-0.5 rounded font-sans ${
                         l.modulo === 'AGENCIAS'
@@ -552,6 +641,8 @@ export const AuditLogTab: React.FC = () => {
                           ? 'bg-emerald-500/10 text-emerald-300 border border-emerald-500/20'
                           : l.modulo === 'PAGOS'
                           ? 'bg-sky-500/10 text-sky-300 border border-sky-500/20'
+                          : l.modulo === 'GASTOS'
+                          ? 'bg-rose-500/10 text-rose-300 border border-rose-500/20'
                           : l.modulo === 'CIERRES'
                           ? 'bg-amber-500/10 text-amber-300 border border-amber-500/20'
                           : 'bg-slate-700/30 text-slate-300 border border-slate-700/50'

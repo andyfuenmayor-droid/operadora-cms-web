@@ -212,7 +212,7 @@ export const parseAgencySystemCombos = (ag: Agency) => {
 };
 
 export const AgenciesTab: React.FC = () => {
-  const { user, effectiveUserId, profile } = useAuth();
+  const { user, effectiveUserId, profile, systemCycle } = useAuth();
 
   const [isLoading, setIsLoading] = useState(true);
   const [isProcessing, setIsProcessing] = useState(false);
@@ -726,6 +726,8 @@ export const AgenciesTab: React.FC = () => {
               : 'Sin ventas activas modificadas.'
           }`,
           impacto_financiero: 'ALTO',
+          semana_ciclo: String(systemCycle?.semana || ''),
+          ciclo_periodo: systemCycle?.desde && systemCycle?.hasta ? `${systemCycle.desde} al ${systemCycle.hasta}` : undefined,
           valor_anterior: {
             comision: editModalAgency.comision,
             participacion_ag: editModalAgency.participacion_ag,
@@ -766,6 +768,8 @@ export const AgenciesTab: React.FC = () => {
           entidad_afectada: formNombre,
           descripcion: `Nueva agencia ${formNombre} registrada con comisión ${formComision}% y participación ${formParticipacion}%.`,
           impacto_financiero: 'MEDIO',
+          semana_ciclo: String(systemCycle?.semana || ''),
+          ciclo_periodo: systemCycle?.desde && systemCycle?.hasta ? `${systemCycle.desde} al ${systemCycle.hasta}` : undefined,
           valor_nuevo: payload,
         });
 

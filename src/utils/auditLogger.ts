@@ -10,6 +10,8 @@ export interface AuditLogEntry {
   entidad_afectada: string;
   descripcion: string;
   impacto_financiero: 'ALTO' | 'MEDIO' | 'BAJO' | 'INFO';
+  semana_ciclo?: string;
+  ciclo_periodo?: string;
   valor_anterior?: any;
   valor_nuevo?: any;
 }
@@ -109,6 +111,8 @@ export async function fetchAuditLogs(effectiveUserId: string): Promise<AuditLogE
         entidad_afectada: 'AGENCIA JAVIER',
         descripcion: 'Configuración de 10% Participación Agencia en Sistema BETM3 (BS). Venta Neta: 50,028.00 Bs. -> Participación Agencia (-10%): 5,002.80 Bs., Utilidad Operadora: 45,025.20 Bs.',
         impacto_financiero: 'ALTO',
+        semana_ciclo: '41',
+        ciclo_periodo: '2026-10-15 al 2026-10-21',
         valor_anterior: { participacion_ag: 0, sistema: 'BETM3' },
         valor_nuevo: { participacion_ag: 10, sistema: 'BETM3' },
       },
@@ -122,6 +126,8 @@ export async function fetchAuditLogs(effectiveUserId: string): Promise<AuditLogE
         entidad_afectada: 'TODAS LAS AGENCIAS',
         descripcion: 'Recálculo y conciliación de ventas activas del ciclo operativo aplicando porcentajes de comisión y participación configurados.',
         impacto_financiero: 'MEDIO',
+        semana_ciclo: '41',
+        ciclo_periodo: '2026-10-15 al 2026-10-21',
       },
       {
         id: 'seed_log_03',
@@ -133,6 +139,8 @@ export async function fetchAuditLogs(effectiveUserId: string): Promise<AuditLogE
         entidad_afectada: 'LA GAVIOTA',
         descripcion: 'Configuración de 15% Participación Agencia en Sistema BETM3 (BS). Venta Neta: 46,020.00 Bs. -> Participación Agencia (-15%): 6,903.00 Bs., Utilidad Operadora: 39,117.00 Bs.',
         impacto_financiero: 'ALTO',
+        semana_ciclo: '41',
+        ciclo_periodo: '2026-10-15 al 2026-10-21',
         valor_anterior: { participacion_ag: 0 },
         valor_nuevo: { participacion_ag: 15 },
       },
@@ -146,6 +154,8 @@ export async function fetchAuditLogs(effectiveUserId: string): Promise<AuditLogE
         entidad_afectada: 'SISTEMA COMPLETO',
         descripcion: 'Sincronización oficial de arrastres Semana 40 e inicio de Semana 41 (2026-10-05 al 2026-10-11) con saldos pre-cierre auditados.',
         impacto_financiero: 'ALTO',
+        semana_ciclo: '40',
+        ciclo_periodo: '2026-10-05 al 2026-10-11',
       },
     ];
     logs.push(...initialSeed);

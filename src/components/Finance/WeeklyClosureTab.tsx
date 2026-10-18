@@ -58,7 +58,8 @@ import {
   IndividualAgencyActaModal,
   type IndividualAgencyActaData,
 } from './IndividualAgencyActaModal';
-import { logAuditEvent } from '../../utils/auditLogger';
+import { AuditClosureActaModal } from './AuditClosureActaModal';
+import { logAuditEvent, fetchAuditLogs } from '../../utils/auditLogger';
 import { AuditLogTab } from '../Audit/AuditLogTab';
 
 interface CierreAgencyData {
@@ -106,6 +107,60 @@ export const WeeklyClosureTab: React.FC = () => {
   const [selectedOperatorActa, setSelectedOperatorActa] = useState<any | null>(null);
   const [selectedIndividualActa, setSelectedIndividualActa] = useState<IndividualAgencyActaData | null>(null);
   const [agencySelectorClosure, setAgencySelectorClosure] = useState<any | null>(null);
+  const [selectedAuditActa, setSelectedAuditActa] = useState<any | null>(null);
+
+  // Open Audit Acta for historical closure
+  const handleOpenAuditActa = async (closure: any) => {
+    const semanaStr = closure.semana_no || closure.periodo?.match(/Semana\s*(\d+)/i)?.[1] || '';
+    let logs: any[] = [];
+
+    // 1. Check if stored in localStorage
+    try {
+      const stored = localStorage.getItem(`acta_auditoria_semana_${semanaStr}`);
+      if (stored) logs = JSON.parse(stored);
+    } catch (e) {}
+
+    // 2. Fallback to Supabase config_sistema
+    if (!logs || logs.length === 0) {
+      if (effectiveUserId) {
+        try {
+          const { data } = await supabase
+            .from('config_sistema')
+            .select('valor')
+            .eq('user_id', effectiveUserId)
+            .eq('parametro', `acta_auditoria_semana_${semanaStr}`)
+            .single();
+          if (data?.valor) {
+            logs = JSON.parse(data.valor);
+          }
+        } catch (e) {}
+      }
+    }
+
+    // 3. Fallback to fetchAuditLogs
+    if (!logs || logs.length === 0) {
+      try {
+        const allLogs = await fetchAuditLogs(effectiveUserId);
+        logs = allLogs.filter((l) => {
+          if (semanaStr && l.semana_ciclo) {
+            return String(l.semana_ciclo) === String(semanaStr);
+          }
+          return false;
+        });
+      } catch (e) {}
+    }
+
+    setSelectedAuditActa({
+      systemCycle: {
+        semana: semanaStr || systemCycle.semana,
+        desde: closure.desde || systemCycle.desde,
+        hasta: closure.hasta || systemCycle.hasta,
+        tipo: 'SEMANAL',
+      },
+      auditLogs: logs,
+      fechaCierre: closure.fecha_cierre,
+    });
+  };
 
   const loadData = async () => {
     if (!effectiveUserId) return;
@@ -695,7 +750,26 @@ export const WeeklyClosureTab: React.FC = () => {
       const periodoActual = `${systemCycle.desde} al ${systemCycle.hasta}`;
       const nowIso = new Date().toISOString();
 
-      // 0. AUTO-BACKUP PRE-CIERRE (Incluyendo Agencias y Casas Operadoras)
+      // 0a. Recopilar y respaldar eventos de auditoría para el Acta Oficial de Auditoría del Ciclo
+      let closingAuditLogs: any[] = [];
+      try {
+        const allLogs = await fetchAuditLogs(effectiveUserId);
+        closingAuditLogs = allLogs.filter((l) => {
+          if (l.semana_ciclo) return String(l.semana_ciclo) === String(systemCycle.semana);
+          const fStr = l.timestamp ? l.timestamp.slice(0, 10) : '';
+          return (!systemCycle.desde || fStr >= systemCycle.desde) && (!systemCycle.hasta || fStr <= systemCycle.hasta);
+        });
+        localStorage.setItem(`acta_auditoria_semana_${systemCycle.semana}`, JSON.stringify(closingAuditLogs));
+        await supabase.from('config_sistema').upsert({
+          user_id: effectiveUserId,
+          parametro: `acta_auditoria_semana_${systemCycle.semana}`,
+          valor: JSON.stringify(closingAuditLogs),
+        }, { onConflict: 'user_id,parametro' });
+      } catch (audErr) {
+        console.warn('Could not snapshot closing audit logs:', audErr);
+      }
+
+      // 0b. AUTO-BACKUP PRE-CIERRE (Incluyendo Agencias, Casas Operadoras y Auditoría)
       const preClosureBackup = {
         timestamp: nowIso,
         periodo: periodoActual,
@@ -716,6 +790,7 @@ export const WeeklyClosureTab: React.FC = () => {
         salesBackup: sales,
         paymentsBackup: payments,
         expensesBackup: expenses,
+        auditBackup: closingAuditLogs,
       };
 
       try {
@@ -915,8 +990,10 @@ export const WeeklyClosureTab: React.FC = () => {
         modulo: 'CIERRES',
         tipo_accion: 'EJECUTAR_CIERRE_SEMANAL',
         entidad_afectada: `SEMANA ${systemCycle.semana}`,
-        descripcion: `Cierre del ciclo ejecutado con éxito (${periodoActual}). Se generó el acta inmutable de ${closureData.length} agencias y ${operatorClosureRows.length} operadoras. Ciclo avanzado a Semana ${nuevaSemana}.`,
+        descripcion: `Cierre del ciclo ejecutado con éxito (${periodoActual}). Se emitió el Acta Oficial de Auditoría (${closingAuditLogs.length} eventos auditados) y las actas inmutables de ${closureData.length} agencias y ${operatorClosureRows.length} operadoras. Módulos de Pagos y Gastos restablecidos para la Semana ${nuevaSemana}.`,
         impacto_financiero: 'ALTO',
+        semana_ciclo: String(systemCycle.semana),
+        ciclo_periodo: periodoActual,
         valor_anterior: { semana: systemCycle.semana, desde: systemCycle.desde, hasta: systemCycle.hasta },
         valor_nuevo: { semana: nuevaSemana, desde: nuevaDesdeStr, hasta: nuevaHastaStr },
       });
@@ -1280,6 +1357,16 @@ export const WeeklyClosureTab: React.FC = () => {
                         >
                           <Store className="w-3.5 h-3.5 text-sky-400" />
                           <span>Actas por Agencia ({totalAgencias})</span>
+                        </button>
+
+                        {/* Button 4: Acta de Auditoría */}
+                        <button
+                          onClick={() => handleOpenAuditActa(closure)}
+                          className="px-3.5 py-2 rounded-xl bg-purple-500/10 hover:bg-purple-500/20 text-purple-300 border border-purple-500/30 text-xs font-bold flex items-center gap-1.5 transition-all cursor-pointer"
+                          title="Ver e imprimir Acta Oficial de Auditoría y Eventos del Ciclo"
+                        >
+                          <ShieldCheck className="w-3.5 h-3.5 text-purple-400" />
+                          <span>Acta de Auditoría (PDF)</span>
                         </button>
                       </div>
                     </div>
@@ -2084,6 +2171,19 @@ export const WeeklyClosureTab: React.FC = () => {
           actaData={selectedIndividualActa}
           userName={user?.email || 'Administración'}
           companyName="CORPORACION CALENDARIO, CA"
+        />
+      )}
+
+      {/* Modal 5: Acta Oficial de Auditoría de Cierre */}
+      {selectedAuditActa && (
+        <AuditClosureActaModal
+          isOpen={true}
+          onClose={() => setSelectedAuditActa(null)}
+          systemCycle={selectedAuditActa.systemCycle}
+          userName={user?.email || 'Administración'}
+          companyName={(profile?.nombre_banca || profile?.banca || 'CORPORACION CALENDARIO, CA').toUpperCase()}
+          auditLogs={selectedAuditActa.auditLogs || []}
+          fechaCierre={selectedAuditActa.fechaCierre}
         />
       )}
     </div>
