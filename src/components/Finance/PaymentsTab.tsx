@@ -135,47 +135,94 @@ export const PaymentsTab: React.FC = () => {
 
       const list: PaymentItem[] = [];
 
-      // 1. Process pagos_semana (manuales en CMS)
+      // Mapeo inteligente para deduplicación estricta por AGENCIA
+      const psRefsByAgency = new Map<string, Set<string>>();
+      const psUnrefKeys = new Set<string>();
+
+      // 1. Process pagos_semana (manuales en CMS y confirmados sincronizados)
       (psRes.data || []).forEach((r: any) => {
+        const agUpper = String(r.agencia || '').trim().toUpperCase();
+        const monNorm = normalizarMoneda(r.moneda);
+        const mto = Math.round((Number(r.monto) || 0) * 100) / 100;
+        const refRaw = String(r.referencia || 'N/A').trim().toUpperCase();
+        const fechaRaw = String(r.fecha || r.created_at || '').trim();
+        const fCorta = fechaRaw.slice(0, 10);
+
+        if (refRaw && refRaw !== 'N/A') {
+          if (!psRefsByAgency.has(agUpper)) {
+            psRefsByAgency.set(agUpper, new Set());
+          }
+          psRefsByAgency.get(agUpper)!.add(refRaw);
+        } else if (agUpper && mto > 0) {
+          psUnrefKeys.add(`${agUpper}_${mto}_${monNorm}_${fCorta}`);
+        }
+
         list.push({
           id: r.id,
           tabla: 'pagos_semana',
-          agencia: String(r.agencia || '').trim().toUpperCase(),
-          moneda: normalizarMoneda(r.moneda),
+          agencia: agUpper,
+          moneda: monNorm,
           tipo_pago: String(r.tipo_pago || 'PAGO').toUpperCase(),
           metodo: String(r.metodo || 'BANCO').toUpperCase(),
-          monto: Number(r.monto || 0),
-          referencia: String(r.referencia || 'N/A'),
+          monto: mto,
+          referencia: refRaw,
           confirmado: Boolean(r.confirmado),
           rechazado: Boolean(r.rechazado),
           motivo_rechazo: r.motivo_rechazo,
-          fecha: String(r.fecha || r.created_at || ''),
+          fecha: fechaRaw,
         });
       });
 
-      // 2. Also include cda_pagos_bancarios if not already in pagos_semana (scoped by agency)
-      const existingKeys = new Set(list.map((p) => `${p.agencia}_${p.referencia.toUpperCase()}`));
-
+      // 2. Also include cda_pagos_bancarios SOLO si no fue ya registrado en pagos_semana
       (pbRes.data || []).forEach((r: any) => {
         const agUpper = String(r.agencia || '').trim().toUpperCase();
-        const refUpper = String(r.referencia || '').toUpperCase();
-        const k = `${agUpper}_${refUpper}`;
-        if (!existingKeys.has(k) && refUpper !== 'N/A') {
-          list.push({
-            id: r.id,
-            tabla: 'cda_pagos_bancarios',
-            agencia: agUpper,
-            moneda: normalizarMoneda(r.moneda),
-            tipo_pago: 'PAGO',
-            metodo: String(r.metodo_pago || 'TRANSFERENCIA').toUpperCase(),
-            monto: Number(r.monto || 0),
-            referencia: refUpper || 'N/A',
-            confirmado: Boolean(r.confirmado),
-            rechazado: Boolean(r.rechazado),
-            motivo_rechazo: r.motivo_rechazo,
-            fecha: String(r.fecha || r.created_at || ''),
-          });
-          existingKeys.add(k);
+        const refUpper = String(r.referencia || '').trim().toUpperCase();
+        const mto = Math.round((Number(r.monto) || 0) * 100) / 100;
+        const monNorm = normalizarMoneda(r.moneda);
+        const fechaRaw = String(r.fecha || r.created_at || '').trim();
+        const fCorta = fechaRaw.slice(0, 10);
+
+        // Deduplicar contra pagos_semana para esta misma agencia
+        let yaEnPs = false;
+        const agencyRefs = psRefsByAgency.get(agUpper);
+        if (agencyRefs && refUpper && refUpper !== 'N/A') {
+          for (const psRef of agencyRefs) {
+            if (
+              psRef === refUpper ||
+              psRef.includes(`REF: ${refUpper}`) ||
+              (refUpper.length >= 4 && psRef.includes(refUpper))
+            ) {
+              yaEnPs = true;
+              break;
+            }
+          }
+        } else if (psUnrefKeys.has(`${agUpper}_${mto}_${monNorm}_${fCorta}`)) {
+          yaEnPs = true;
+        }
+
+        if (yaEnPs) return;
+
+        list.push({
+          id: r.id,
+          tabla: 'cda_pagos_bancarios',
+          agencia: agUpper,
+          moneda: monNorm,
+          tipo_pago: 'PAGO',
+          metodo: String(r.metodo_pago || 'TRANSFERENCIA').toUpperCase(),
+          monto: mto,
+          referencia: refUpper || 'N/A',
+          confirmado: Boolean(r.confirmado),
+          rechazado: Boolean(r.rechazado),
+          motivo_rechazo: r.motivo_rechazo,
+          fecha: fechaRaw,
+        });
+
+        // Registrar en referencias vistas para evitar duplicaciones posteriores
+        if (refUpper && refUpper !== 'N/A') {
+          if (!psRefsByAgency.has(agUpper)) psRefsByAgency.set(agUpper, new Set());
+          psRefsByAgency.get(agUpper)!.add(refUpper);
+        } else if (agUpper && mto > 0) {
+          psUnrefKeys.add(`${agUpper}_${mto}_${monNorm}_${fCorta}`);
         }
       });
 
@@ -189,28 +236,55 @@ export const PaymentsTab: React.FC = () => {
           return;
         }
 
-        const refUpper = String(r.referencia || r.qr_token || 'N/A').toUpperCase();
-        const k = `${agUpper}_${refUpper}`;
-        if (!existingKeys.has(k) || refUpper === 'N/A') {
-          const isRech = Boolean(r.rechazado) || String(r.estado || '').toUpperCase() === 'RECHAZADO';
-          const isConf = (Boolean(r.confirmado) || Boolean(r.confirmado_supervisor)) && !isRech;
-          list.push({
-            id: r.id,
-            tabla: 'cda_pagos_diarios',
-            agencia: agUpper,
-            moneda: normalizarMoneda(r.moneda),
-            tipo_pago: 'PAGO',
-            metodo: tipoP,
-            monto: Number(r.monto || 0),
-            referencia: refUpper,
-            confirmado: isConf,
-            rechazado: isRech,
-            motivo_rechazo: r.motivo_rechazo,
-            fecha: String(r.fecha || r.created_at || ''),
-          });
-          if (refUpper !== 'N/A') {
-            existingKeys.add(k);
+        const mto = Math.round((Number(r.monto) || 0) * 100) / 100;
+        const monNorm = normalizarMoneda(r.moneda);
+        const refUpper = String(r.referencia || r.qr_token || 'N/A').trim().toUpperCase();
+        const fechaRaw = String(r.fecha || r.created_at || '').trim();
+        const fCorta = fechaRaw.slice(0, 10);
+
+        // Deduplicar inteligentemente contra pagos existentes
+        let yaRegistrado = false;
+        const agencyRefs = psRefsByAgency.get(agUpper);
+        if (agencyRefs && refUpper && refUpper !== 'N/A') {
+          for (const psRef of agencyRefs) {
+            if (
+              psRef === refUpper ||
+              psRef.includes(`REF: ${refUpper}`) ||
+              (refUpper.length >= 4 && psRef.includes(refUpper))
+            ) {
+              yaRegistrado = true;
+              break;
+            }
           }
+        } else if (psUnrefKeys.has(`${agUpper}_${mto}_${monNorm}_${fCorta}`)) {
+          yaRegistrado = true;
+        }
+
+        if (yaRegistrado) return;
+
+        const isRech = Boolean(r.rechazado) || String(r.estado || '').toUpperCase() === 'RECHAZADO';
+        const isConf = (Boolean(r.confirmado) || Boolean(r.confirmado_supervisor)) && !isRech;
+
+        list.push({
+          id: r.id,
+          tabla: 'cda_pagos_diarios',
+          agencia: agUpper,
+          moneda: monNorm,
+          tipo_pago: 'PAGO',
+          metodo: tipoP,
+          monto: mto,
+          referencia: refUpper,
+          confirmado: isConf,
+          rechazado: isRech,
+          motivo_rechazo: r.motivo_rechazo,
+          fecha: fechaRaw,
+        });
+
+        if (refUpper !== 'N/A') {
+          if (!psRefsByAgency.has(agUpper)) psRefsByAgency.set(agUpper, new Set());
+          psRefsByAgency.get(agUpper)!.add(refUpper);
+        } else if (agUpper && mto > 0) {
+          psUnrefKeys.add(`${agUpper}_${mto}_${monNorm}_${fCorta}`);
         }
       });
 
@@ -629,14 +703,173 @@ export const PaymentsTab: React.FC = () => {
     setMessage({ type: 'success', text: 'Pantalla de pago restablecida a opción inicial neutra.' });
   };
 
-  // Delete Payment
+  // Delete Payment with Bidirectional Cascading and Realtime Broadcast
   const handleDeletePayment = async (item: PaymentItem) => {
-    if (!window.confirm(`¿Eliminar este pago de ${item.moneda} ${item.monto} de ${item.agencia}?`)) return;
+    if (!window.confirm(`¿Eliminar este pago de ${item.moneda} ${formatCurrency(item.monto, item.moneda as any)} de la agencia ${item.agencia}?`)) return;
     setIsProcessing(true);
 
     try {
-      const { error } = await supabase.from(item.tabla).delete().eq('id', item.id).eq('user_id', effectiveUserId);
-      if (error) throw error;
+      // 1. Si el pago proviene de pagos_semana
+      if (item.tabla === 'pagos_semana') {
+        const { error: psErr } = await supabase
+          .from('pagos_semana')
+          .delete()
+          .eq('id', item.id)
+          .eq('user_id', effectiveUserId);
+        if (psErr) throw psErr;
+
+        // Extraer número de referencia si tiene formato "REF: 123456 - PAGADOR [✅ CONFIRMADO BANCO]"
+        const refMatch = item.referencia.match(/REF:\s*([A-Za-z0-9_-]+)/i);
+        const refLimpia = refMatch ? refMatch[1].trim() : (item.referencia !== 'N/A' && !item.referencia.includes(' ') ? item.referencia.trim() : '');
+
+        // Buscar y eliminar contraparte en cda_pagos_bancarios
+        try {
+          const { data: pbCandidates } = await supabase
+            .from('cda_pagos_bancarios')
+            .select('id, referencia, monto, agencia')
+            .eq('user_id', effectiveUserId)
+            .ilike('agencia', item.agencia);
+
+          if (pbCandidates && pbCandidates.length > 0) {
+            const matches = pbCandidates.filter((pb: any) => {
+              const pbMonto = Number(pb.monto || 0);
+              const mtoDiff = Math.abs(pbMonto - item.monto);
+              if (mtoDiff > 0.05) return false;
+              if (refLimpia && pb.referencia && String(pb.referencia).toUpperCase().includes(refLimpia.toUpperCase())) return true;
+              if (pb.referencia && item.referencia.toUpperCase().includes(String(pb.referencia).toUpperCase())) return true;
+              return true;
+            });
+
+            for (const match of matches) {
+              await supabase.from('cda_pagos_bancarios').delete().eq('id', match.id);
+              try {
+                await realtimeBroadcast.broadcast('PAYMENT_REJECTED', {
+                  id: match.id,
+                  tabla: 'cda_pagos_bancarios',
+                  agencia: item.agencia,
+                  monto: item.monto,
+                  moneda: item.moneda,
+                  referencia: match.referencia,
+                });
+              } catch (bErr) {
+                console.warn('Broadcast error on payment delete:', bErr);
+              }
+            }
+          }
+        } catch (pbErr) {
+          console.warn('Error cascading delete to cda_pagos_bancarios:', pbErr);
+        }
+
+        // Buscar y eliminar contraparte en cda_pagos_diarios
+        try {
+          const { data: pdCandidates } = await supabase
+            .from('cda_pagos_diarios')
+            .select('id, referencia, monto, agencia')
+            .eq('user_id', effectiveUserId)
+            .ilike('agencia', item.agencia);
+
+          if (pdCandidates && pdCandidates.length > 0) {
+            const matches = pdCandidates.filter((pd: any) => {
+              const pdMonto = Number(pd.monto || 0);
+              return Math.abs(pdMonto - item.monto) < 0.05;
+            });
+            for (const match of matches) {
+              await supabase.from('cda_pagos_diarios').delete().eq('id', match.id);
+            }
+          }
+        } catch (pdErr) {
+          console.warn('Error cascading delete to cda_pagos_diarios:', pdErr);
+        }
+      }
+      // 2. Si el pago proviene de cda_pagos_bancarios
+      else if (item.tabla === 'cda_pagos_bancarios') {
+        const { error: pbErr } = await supabase
+          .from('cda_pagos_bancarios')
+          .delete()
+          .eq('id', item.id)
+          .eq('user_id', effectiveUserId);
+        if (pbErr) throw pbErr;
+
+        // Buscar y eliminar contraparte en pagos_semana
+        try {
+          const { data: psCandidates } = await supabase
+            .from('pagos_semana')
+            .select('id, referencia, monto, agencia')
+            .eq('user_id', effectiveUserId)
+            .ilike('agencia', item.agencia);
+
+          if (psCandidates && psCandidates.length > 0) {
+            const matches = psCandidates.filter((ps: any) => {
+              const psMonto = Number(ps.monto || 0);
+              if (Math.abs(psMonto - item.monto) > 0.05) return false;
+              const psRef = String(ps.referencia || '').toUpperCase();
+              if (item.referencia !== 'N/A' && psRef.includes(item.referencia.toUpperCase())) return true;
+              return true;
+            });
+            for (const match of matches) {
+              await supabase.from('pagos_semana').delete().eq('id', match.id);
+            }
+          }
+        } catch (psErr) {
+          console.warn('Error cascading delete to pagos_semana:', psErr);
+        }
+
+        try {
+          await realtimeBroadcast.broadcast('PAYMENT_REJECTED', {
+            id: item.id,
+            tabla: 'cda_pagos_bancarios',
+            agencia: item.agencia,
+            monto: item.monto,
+            moneda: item.moneda,
+            referencia: item.referencia,
+          });
+        } catch (bErr) {
+          console.warn('Broadcast error on payment delete:', bErr);
+        }
+      }
+      // 3. Si el pago proviene de cda_pagos_diarios
+      else if (item.tabla === 'cda_pagos_diarios') {
+        const { error: pdErr } = await supabase
+          .from('cda_pagos_diarios')
+          .delete()
+          .eq('id', item.id)
+          .eq('user_id', effectiveUserId);
+        if (pdErr) throw pdErr;
+
+        // Buscar y eliminar contraparte en pagos_semana
+        try {
+          const { data: psCandidates } = await supabase
+            .from('pagos_semana')
+            .select('id, referencia, monto, agencia')
+            .eq('user_id', effectiveUserId)
+            .ilike('agencia', item.agencia);
+
+          if (psCandidates && psCandidates.length > 0) {
+            const matches = psCandidates.filter((ps: any) => {
+              const psMonto = Number(ps.monto || 0);
+              return Math.abs(psMonto - item.monto) < 0.05;
+            });
+            for (const match of matches) {
+              await supabase.from('pagos_semana').delete().eq('id', match.id);
+            }
+          }
+        } catch (psErr) {
+          console.warn('Error cascading delete to pagos_semana:', psErr);
+        }
+      }
+
+      // Notificar cambio de datos general a toda la plataforma
+      try {
+        await realtimeBroadcast.broadcast('DATA_CHANGED', {
+          modulo: 'PAGOS',
+          accion: 'DELETE',
+          agencia: item.agencia,
+          monto: item.monto,
+          moneda: item.moneda,
+        });
+      } catch (e) {
+        console.warn('DATA_CHANGED broadcast warning:', e);
+      }
 
       // Registrar evento inmutable de auditoría con la semana ciclo activa
       try {
@@ -646,7 +879,7 @@ export const PaymentsTab: React.FC = () => {
           modulo: 'PAGOS',
           tipo_accion: 'ELIMINAR_PAGO_AGENCIA',
           entidad_afectada: item.agencia,
-          descripcion: `Eliminación de Pago [${item.metodo}] por ${formatCurrency(item.monto, item.moneda as any)} (Ref: ${item.referencia}, Tipo: ${item.tipo_pago}, Estado: ${item.confirmado ? 'Confirmado' : item.rechazado ? 'Rechazado' : 'En Tránsito'}) de la agencia ${item.agencia}.`,
+          descripcion: `Eliminación bidireccional de Pago [${item.metodo}] por ${formatCurrency(item.monto, item.moneda as any)} (Ref: ${item.referencia}, Tipo: ${item.tipo_pago}, Origen: ${item.tabla}) de la agencia ${item.agencia}.`,
           impacto_financiero: 'ALTO',
           semana_ciclo: String(systemCycle?.semana || ''),
           ciclo_periodo: systemCycle?.desde && systemCycle?.hasta ? `${systemCycle.desde} al ${systemCycle.hasta}` : undefined,
@@ -663,13 +896,13 @@ export const PaymentsTab: React.FC = () => {
             rechazado: item.rechazado,
             fecha: item.fecha,
           },
-          valor_nuevo: { eliminado: true, fecha_eliminacion: new Date().toISOString() },
+          valor_nuevo: { eliminado: true, sincronizado_taquilla: true, fecha_eliminacion: new Date().toISOString() },
         });
       } catch (auditErr) {
         console.warn('Could not register audit event for deleted payment:', auditErr);
       }
 
-      setMessage({ type: 'success', text: 'Pago eliminado y registrado en la bitácora de auditoría correctamente.' });
+      setMessage({ type: 'success', text: 'Pago eliminado y sincronizado en tiempo real con Taquilla y Confirmados correctamente.' });
       await loadData();
     } catch (err: any) {
       console.error('Error deleting payment:', err);
