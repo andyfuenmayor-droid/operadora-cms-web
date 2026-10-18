@@ -538,14 +538,14 @@ export const SystemsTab: React.FC = () => {
                       {/* Palabras clave de mapeo */}
                       <td className="py-3 px-3.5 text-[11px]">
                         <div className="flex flex-col gap-1">
-                          <span className="text-amber-300/90 font-mono">
-                            ID: <span className="font-semibold text-slate-300">{conf.agencia || 'Agent / Nombre'}</span>
+                          <span className="text-amber-400 font-mono font-bold">
+                            ID: <span className="font-bold text-white">{conf.agencia || 'Agent / Nombre'}</span>
                           </span>
-                          <span className="text-cyan-300/90 font-mono">
-                            Venta: <span className="font-semibold text-slate-300">{conf.venta || 'Venta'}</span>
+                          <span className="text-cyan-400 font-mono font-bold">
+                            Venta: <span className="font-bold text-white">{conf.venta || 'Venta'}</span>
                           </span>
-                          <span className="text-rose-300/90 font-mono">
-                            Premio: <span className="font-semibold text-slate-300">{conf.premio || 'Premio'}</span>
+                          <span className="text-rose-400 font-mono font-bold">
+                            Premio: <span className="font-bold text-white">{conf.premio || 'Premio'}</span>
                           </span>
                         </div>
                       </td>

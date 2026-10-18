@@ -1170,23 +1170,23 @@ export const AgenciesTab: React.FC = () => {
                             const isUsd = combo.moneda.includes('USD') || combo.moneda.includes('$');
                             const isCop = combo.moneda.includes('COP');
                             const monBadge = isUsd
-                              ? 'bg-emerald-950/70 text-emerald-300 border-emerald-800/50'
+                              ? 'bg-emerald-500/15 text-emerald-400 border-emerald-500/30'
                               : isCop
-                              ? 'bg-sky-950/70 text-sky-300 border-sky-800/50'
-                              : 'bg-amber-950/70 text-amber-300 border-amber-800/50';
+                              ? 'bg-sky-500/15 text-sky-400 border-sky-500/30'
+                              : 'bg-amber-500/15 text-amber-400 border-amber-500/30';
 
                             return (
                               <span
                                 key={`${combo.sistema}_${combo.moneda}`}
                                 title={combo.codigo ? `Equivalencia en ${combo.sistema} (${combo.moneda}): ${combo.codigo}` : `Sistema ${combo.sistema} (${combo.moneda})`}
-                                className="px-2 py-1 rounded-md text-[10px] font-bold bg-[#071217] text-slate-300 border border-slate-800 whitespace-nowrap inline-flex items-center gap-1.5"
+                                className="px-2 py-1 rounded-md text-[10px] font-bold bg-[#071217] text-white border border-slate-800 whitespace-nowrap inline-flex items-center gap-1.5"
                               >
                                 <span className="text-emerald-400">🎰 {combo.sistema}</span>
                                 <span className={`text-[9px] font-mono px-1 py-0.2 rounded border ${monBadge}`}>
                                   {combo.moneda}
                                 </span>
                                 {combo.codigo && (
-                                  <span className="text-[9px] font-mono text-cyan-300 bg-cyan-950/70 px-1.5 py-0.2 rounded border border-cyan-800/40">
+                                  <span className="text-[9px] font-mono text-cyan-400 bg-cyan-500/15 px-1.5 py-0.2 rounded border border-cyan-500/30">
                                     {combo.codigo}
                                   </span>
                                 )}
@@ -1202,7 +1202,7 @@ export const AgenciesTab: React.FC = () => {
                           {monArr.map((m) => (
                             <span
                               key={m}
-                              className="px-2 py-0.5 rounded-md text-[10px] font-bold bg-amber-500/10 text-amber-400 border border-amber-500/20 whitespace-nowrap"
+                              className="px-2 py-0.5 rounded-md text-[10px] font-bold bg-amber-500/15 text-amber-400 border border-amber-500/30 whitespace-nowrap"
                             >
                               🪙 {m}
                             </span>
@@ -1227,13 +1227,13 @@ export const AgenciesTab: React.FC = () => {
 
                             return (
                               <div className="flex flex-col gap-0.5" title={fullTooltip}>
-                                <div className="inline-flex items-center gap-1.5 text-xs font-semibold text-cyan-300">
+                                <div className="inline-flex items-center gap-1.5 text-xs font-semibold text-cyan-400">
                                   {parsedFirst?.isPos ? (
                                     <Smartphone className="w-3.5 h-3.5 text-cyan-400 shrink-0" />
                                   ) : (
                                     <CreditCard className="w-3.5 h-3.5 text-cyan-400 shrink-0" />
                                   )}
-                                  <span className="whitespace-nowrap font-bold text-cyan-300">
+                                  <span className="whitespace-nowrap font-bold text-cyan-400">
                                     {parsedFirst?.shortTitle || accArr[0]}
                                   </span>
                                 </div>
