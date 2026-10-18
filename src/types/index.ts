@@ -146,6 +146,7 @@ export interface ConfirmationTransaction {
   cajero_id?: string;
   cajero_nombre?: string;
   metodo: string;
+  banco?: string;
   monto: number;
   moneda: string;
   referencia: string;

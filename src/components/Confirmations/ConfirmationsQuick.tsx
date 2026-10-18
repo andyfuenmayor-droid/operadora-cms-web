@@ -23,6 +23,7 @@ import {
   Bell,
   Sparkles,
   Code2,
+  Landmark,
 } from 'lucide-react';
 import confetti from 'canvas-confetti';
 import { notificationService } from '../../utils/notificationService';
@@ -86,11 +87,17 @@ export const ConfirmationsQuick: React.FC = () => {
     }
 
     try {
-      // 1. Fetch agencies
-      const { data: agData } = await supabase
-        .from('agencias')
-        .select('id, nombre_agencia')
-        .eq('user_id', effectiveUserId);
+      // 1. Fetch agencies & bank accounts
+      const [{ data: agData }, { data: cbData }] = await Promise.all([
+        supabase
+          .from('agencias')
+          .select('id, nombre_agencia, cuentas_asignadas')
+          .eq('user_id', effectiveUserId),
+        supabase
+          .from('cuentas_bancarias')
+          .select('id, banco, titular, numero_cuenta, moneda, tipo_cuenta, agencia_asignada')
+          .eq('user_id', effectiveUserId),
+      ]);
 
       const ags = (agData || [])
         .map((a: any) => String(a.nombre_agencia || '').trim().toUpperCase())
@@ -166,6 +173,26 @@ export const ConfirmationsQuick: React.FC = () => {
         return `Cajero ${cidClean}`;
       };
 
+      const resolveBanco = (r: any, agStr: string): string => {
+        const posStr = String(r.pos_o_cuenta || '').trim();
+        if (posStr && posStr !== 'N/A' && !posStr.includes('Cuenta Operadora General')) {
+          const rawB = posStr.split('|')[0].trim().replace('DISPOSITIVO: ', '');
+          if (rawB) return rawB.toUpperCase();
+        }
+        const agObj = (agData || []).find((a: any) => String(a.nombre_agencia || '').trim().toUpperCase() === agStr);
+        if (agObj?.cuentas_asignadas) {
+          const m = agObj.cuentas_asignadas.match(/\[CUENTA\]\s*([A-Za-z0-9_-]+)/i);
+          if (m && m[1]) return m[1].trim().toUpperCase();
+        }
+        const cbObj = (cbData || []).find((c: any) => String(c.agencia_asignada || '').trim().toUpperCase() === agStr);
+        if (cbObj?.banco) return String(cbObj.banco).trim().toUpperCase();
+
+        const monNorm = normalizarMoneda(r.moneda);
+        if (monNorm === 'COP') return 'BANCOLOMBIA';
+        if (monNorm === 'USD') return 'CITI BANK / ZELLE';
+        return 'BANESCO';
+      };
+
       // 3. Fetch transaction tables (only pending: confirmado === false && rechazado === false)
       const [pbRes, gdRes, gcRes, cgRes, pdRes, psRes, gsRes] = await Promise.all([
         supabase.from('cda_pagos_bancarios').select('*').eq('user_id', effectiveUserId),
@@ -195,6 +222,8 @@ export const ConfirmationsQuick: React.FC = () => {
           if (isPremio) cat = 'Pago de Premios';
           else if (met.includes('PUNTO')) cat = 'Punto de Venta';
 
+          const bancoNom = resolveBanco(r, agStr);
+
           list.push({
             id: r.id,
             tabla: 'cda_pagos_bancarios',
@@ -204,6 +233,8 @@ export const ConfirmationsQuick: React.FC = () => {
             cajero_id: cid,
             cajero_nombre: resolveCashierName(cid, agStr),
             metodo: met,
+            banco: bancoNom,
+            pos_o_cuenta: r.pos_o_cuenta || undefined,
             monto: parseFloat(r.monto) || 0,
             moneda: normalizarMoneda(r.moneda),
             referencia: String(r.referencia || 'N/A'),
@@ -250,6 +281,8 @@ export const ConfirmationsQuick: React.FC = () => {
               cat = 'Efectivo';
             }
 
+            const bancoNom = resolveBanco(r, agStr);
+
             list.push({
               id: r.id,
               tabla: 'pagos_semana',
@@ -259,6 +292,8 @@ export const ConfirmationsQuick: React.FC = () => {
               cajero_id: 'CMS',
               cajero_nombre: 'Administración (CMS)',
               metodo: metRaw,
+              banco: bancoNom,
+              pos_o_cuenta: r.pos_o_cuenta || undefined,
               monto: parseFloat(r.monto) || 0,
               moneda: normalizarMoneda(r.moneda),
               referencia: refStr,
@@ -1124,7 +1159,7 @@ export const ConfirmationsQuick: React.FC = () => {
                     </div>
 
                     {/* Metadata Grid */}
-                    <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 text-xs text-slate-300 pt-1">
+                    <div className="grid grid-cols-2 sm:grid-cols-5 gap-2 text-xs text-slate-300 pt-1">
                       <div>
                         <span className="text-[10px] text-slate-500 uppercase block font-bold">Origen / Cajero</span>
                         <span className={`font-semibold truncate block ${tx.cajero_id === 'API' || tx.cajero_nombre?.includes('API') ? 'text-purple-300 font-bold' : 'text-slate-200'}`}>
@@ -1133,8 +1168,24 @@ export const ConfirmationsQuick: React.FC = () => {
                       </div>
 
                       <div>
+                        <span className="text-[10px] text-slate-500 uppercase block font-bold">Banco Destino</span>
+                        {tx.banco ? (
+                          <div className="flex items-center gap-1 mt-0.5">
+                            <span className="px-2 py-0.5 rounded bg-sky-500/15 text-sky-300 border border-sky-500/30 text-[10px] font-black uppercase inline-flex items-center gap-1">
+                              <Landmark className="w-3 h-3 text-sky-400" />
+                              <span>{tx.banco}</span>
+                            </span>
+                          </div>
+                        ) : (
+                          <span className="font-semibold text-slate-400">
+                            {tx.categoria === 'Gastos' ? 'Caja Operativa' : 'Banco'}
+                          </span>
+                        )}
+                      </div>
+
+                      <div>
                         <span className="text-[10px] text-slate-500 uppercase block font-bold">Método</span>
-                        <span className="font-semibold text-slate-200">{tx.metodo}</span>
+                        <span className="font-semibold text-slate-200 truncate block">{tx.metodo}</span>
                       </div>
 
                       <div>

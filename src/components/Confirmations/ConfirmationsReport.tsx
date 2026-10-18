@@ -28,6 +28,7 @@ import {
   ShieldCheck,
   ChevronDown,
   Trash2,
+  Landmark,
 } from 'lucide-react';
 import { realtimeBroadcast } from '../../utils/realtimeBroadcast';
 import { logAuditEvent } from '../../utils/auditLogger';
@@ -64,6 +65,17 @@ const normalizeToISODate = (dStr: string): string => {
     }
   } catch {}
   return trimmed.slice(0, 10);
+};
+
+const getTimeString = (dateTimeVal?: string | null): string => {
+  if (!dateTimeVal) return '';
+  try {
+    const d = new Date(dateTimeVal);
+    if (isNaN(d.getTime())) return '';
+    return d.toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit', hour12: true });
+  } catch {
+    return '';
+  }
 };
 
 export const ConfirmationsReport: React.FC = () => {
@@ -112,7 +124,7 @@ export const ConfirmationsReport: React.FC = () => {
       // 1. Fetch agencies
       const { data: agData } = await supabase
         .from('agencias')
-        .select('id, nombre_agencia')
+        .select('id, nombre_agencia, cuentas_asignadas')
         .eq('user_id', effectiveUserId);
 
       const ags = (agData || [])
@@ -132,10 +144,11 @@ export const ConfirmationsReport: React.FC = () => {
         cashierMap[`AG_${a.id}`] = `${aNom} (Taquilla)`;
       });
 
-      // 2. Fetch cashiers and collectors
-      const [{ data: userData }, { data: cobData }] = await Promise.all([
+      // 2. Fetch cashiers, collectors, and bank accounts
+      const [{ data: userData }, { data: cobData }, { data: cbData }] = await Promise.all([
         supabase.from('taquilla_usuarios').select('id, usuario, nombre_cajero, rol'),
         supabase.from('cda_cobradores').select('id, usuario, nombre'),
+        supabase.from('cuentas_bancarias').select('id, banco, nombre_titular, agencia_asignada').eq('user_id', effectiveUserId),
       ]);
 
       (userData || []).forEach((u: any) => {
@@ -185,6 +198,26 @@ export const ConfirmationsReport: React.FC = () => {
         return `Cajero ${cidClean}`;
       };
 
+      const resolveBanco = (r: any, agStr: string): string => {
+        const posStr = String(r.pos_o_cuenta || '').trim();
+        if (posStr && posStr !== 'N/A' && !posStr.includes('Cuenta Operadora General')) {
+          const rawB = posStr.split('|')[0].trim().replace('DISPOSITIVO: ', '');
+          if (rawB) return rawB.toUpperCase();
+        }
+        const agObj = (agData || []).find((a: any) => String(a.nombre_agencia || '').trim().toUpperCase() === agStr);
+        if (agObj?.cuentas_asignadas) {
+          const m = agObj.cuentas_asignadas.match(/\[CUENTA\]\s*([A-Za-z0-9_-]+)/i);
+          if (m && m[1]) return m[1].trim().toUpperCase();
+        }
+        const cbObj = (cbData || []).find((c: any) => String(c.agencia_asignada || '').trim().toUpperCase() === agStr);
+        if (cbObj?.banco) return String(cbObj.banco).trim().toUpperCase();
+
+        const monNorm = normalizarMoneda(r.moneda);
+        if (monNorm === 'COP') return 'BANCOLOMBIA';
+        if (monNorm === 'USD') return 'CITI BANK / ZELLE';
+        return 'BANESCO';
+      };
+
       // 3. Parallel fetch transaction tables
       const [pbRes, gdRes, gcRes, cgRes, pdRes, psRes, gsRes, csRes] = await Promise.all([
         supabase.from('cda_pagos_bancarios').select('*').eq('user_id', effectiveUserId),
@@ -224,6 +257,8 @@ export const ConfirmationsReport: React.FC = () => {
           agencia: agStr,
           cajero_id: cid,
           cajero_nombre: resolveCashierName(cid, agStr),
+          banco: resolveBanco(r, agStr),
+          pos_o_cuenta: r.pos_o_cuenta,
           metodo: met,
           monto: parseFloat(r.monto) || 0,
           moneda: normalizarMoneda(r.moneda),
@@ -281,6 +316,8 @@ export const ConfirmationsReport: React.FC = () => {
             agencia: agStr,
             cajero_id: 'CMS',
             cajero_nombre: 'Administración (CMS)',
+            banco: resolveBanco(r, agStr),
+            pos_o_cuenta: r.pos_o_cuenta,
             metodo: metRaw,
             monto: parseFloat(r.monto) || 0,
             moneda: normalizarMoneda(r.moneda),
@@ -384,6 +421,8 @@ export const ConfirmationsReport: React.FC = () => {
           agencia: agStr,
           cajero_id: cid,
           cajero_nombre: resolveCashierName(cid, agStr),
+          banco: isBanco ? resolveBanco(r, agStr) : undefined,
+          pos_o_cuenta: r.pos_o_cuenta,
           metodo: metodoFinal,
           monto: parseFloat(r.monto) || 0,
           moneda: normalizarMoneda(r.moneda),
@@ -1087,8 +1126,9 @@ export const ConfirmationsReport: React.FC = () => {
               <table className="w-full text-left text-xs">
                 <thead className="bg-slate-900/90 text-[10px] font-black text-slate-400 uppercase tracking-wider border-b border-slate-800">
                   <tr>
-                    <th className="p-3.5">Fecha</th>
-                    <th className="p-3.5">Agencia</th>
+                    <th className="p-3.5">Fecha / Hora</th>
+                    <th className="p-3.5">Agencia / Origen</th>
+                    <th className="p-3.5">Banco Destino</th>
                     <th className="p-3.5">Categoría / Método</th>
                     <th className="p-3.5">Referencia</th>
                     <th className="p-3.5">Pagador / Concepto</th>
@@ -1101,11 +1141,41 @@ export const ConfirmationsReport: React.FC = () => {
                   {filteredTransactions.map((tx) => {
                     const isBanco = tx.categoria === 'Bancos' || tx.categoria === 'Punto de Venta';
                     const isGasto = tx.categoria === 'Gastos';
+                    const timeStr = getTimeString(tx.created_at || tx.fecha);
 
                     return (
                       <tr key={`${tx.tabla}_${tx.id}`} className="hover:bg-slate-800/30 transition-colors">
-                        <td className="p-3.5 font-mono text-slate-400 whitespace-nowrap">{formatDate(tx.fecha)}</td>
-                        <td className="p-3.5 font-bold text-white whitespace-nowrap">{tx.agencia}</td>
+                        <td className="p-3.5 whitespace-nowrap">
+                          <div className="font-mono font-bold text-slate-300">{formatDate(tx.fecha)}</div>
+                          {timeStr && (
+                            <div className="text-[10px] text-slate-500 font-mono flex items-center gap-1 mt-0.5">
+                              <Clock className="w-2.5 h-2.5 text-slate-400" />
+                              <span>{timeStr}</span>
+                            </div>
+                          )}
+                        </td>
+                        <td className="p-3.5 whitespace-nowrap">
+                          <div className="font-bold text-white flex items-center gap-1.5">
+                            <Building2 className="w-3.5 h-3.5 text-emerald-400 shrink-0" />
+                            <span>{tx.agencia}</span>
+                          </div>
+                          <div className="text-[10px] text-slate-400 flex items-center gap-1 mt-0.5">
+                            <User className="w-2.5 h-2.5 text-slate-500 shrink-0" />
+                            <span className="truncate max-w-[140px]">{tx.cajero_nombre || 'Taquilla'}</span>
+                          </div>
+                        </td>
+                        <td className="p-3.5 whitespace-nowrap">
+                          {tx.banco ? (
+                            <div className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-sky-500/10 border border-sky-500/25 text-sky-300 font-bold text-[11px]">
+                              <Landmark className="w-3 h-3 text-sky-400 shrink-0" />
+                              <span>{tx.banco}</span>
+                            </div>
+                          ) : isGasto ? (
+                            <span className="text-[11px] text-slate-500 italic">Caja / Gasto</span>
+                          ) : (
+                            <span className="text-[11px] text-slate-500 italic">Efectivo / Caja</span>
+                          )}
+                        </td>
                         <td className="p-3.5 whitespace-nowrap">
                           <span
                             className={`px-2 py-0.5 rounded-md text-[10px] font-bold ${
@@ -1120,8 +1190,15 @@ export const ConfirmationsReport: React.FC = () => {
                           </span>
                         </td>
                         <td className="p-3.5 font-mono font-bold text-amber-300 whitespace-nowrap">{tx.referencia}</td>
-                        <td className="p-3.5 text-slate-300 max-w-xs truncate">
-                          {tx.pagador !== 'N/A' ? tx.pagador : tx.concepto}
+                        <td className="p-3.5 max-w-xs">
+                          <div className="font-semibold text-slate-200 truncate">
+                            {tx.pagador && tx.pagador !== 'N/A' ? tx.pagador : tx.concepto}
+                          </div>
+                          {tx.pagador && tx.pagador !== 'N/A' && tx.concepto && tx.concepto !== tx.pagador && (
+                            <div className="text-[10px] text-slate-400 truncate mt-0.5">
+                              {tx.concepto}
+                            </div>
+                          )}
                         </td>
                         <td className="p-3.5 font-mono font-black text-right text-emerald-400 whitespace-nowrap">
                           {formatCurrency(tx.monto, tx.moneda)}
@@ -1215,10 +1292,18 @@ export const ConfirmationsReport: React.FC = () => {
                       <span className="text-[11px] text-slate-400 font-mono">{formatDate(tx.fecha)}</span>
                     </div>
 
-                    <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 text-xs text-slate-300 pt-1">
+                    <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 text-xs text-slate-300 pt-1">
                       <div>
                         <span className="text-[10px] text-slate-500 uppercase block font-bold">Método</span>
                         <span className="font-semibold text-slate-200">{tx.metodo}</span>
+                      </div>
+
+                      <div>
+                        <span className="text-[10px] text-slate-500 uppercase block font-bold">Banco Destino</span>
+                        <span className="font-semibold text-sky-300 flex items-center gap-1">
+                          <Landmark className="w-3 h-3 text-sky-400 shrink-0" />
+                          {tx.banco || 'Caja / General'}
+                        </span>
                       </div>
 
                       <div>
