@@ -389,12 +389,12 @@ export const ConfirmationsReport: React.FC = () => {
       // Process Pagos de Taquilla
       (pdRes.data || []).forEach((r: any) => {
         const tipo = String(r.tipo_pago || r.metodo || 'EFECTIVO').trim().toUpperCase();
-        const concRaw = String(r.concepto || '').toUpperCase();
-        // Las entregas a supervisor son confirmaciones internas locales de la agencia/supervisor; no de administración
-        if (tipo.includes('SUPERVISOR') || concRaw.includes('SUPERVISOR')) return;
-
+        const isSupervisor = tipo.includes('SUPERVISOR') || concRaw.includes('SUPERVISOR');
         const isRech = !!r.rechazado || String(r.estado || '').toUpperCase() === 'RECHAZADO';
         const isConf = (!!r.confirmado || !!r.confirmado_supervisor) && !isRech;
+        // Si es entrega a supervisor pero no está confirmada por el supervisor, se omite
+        if (isSupervisor && !isConf) return;
+
         const cid = String(r.cajero_id || r.user_id || '');
         const agStr = String(r.agencia || r.nombre_agency || '').trim().toUpperCase();
         const isBanco = ['PUNTO', 'POS', 'TRANSFERENCIA', 'ZELLE', 'PAGO MOVIL', 'PAGO MÓVIL'].some((k) =>
@@ -411,6 +411,11 @@ export const ConfirmationsReport: React.FC = () => {
           metodoFinal = cobNombre ? `COBRADOR (${cobNombre})` : 'COBRADOR';
           conceptoFinal = cobNombre ? `Cobrador: ${cobNombre}` : 'Entrega a Cobrador';
           pagadorFinal = cobNombre ? `Cobrador: ${cobNombre}` : 'Cobrador';
+        } else if (isSupervisor) {
+          const supNombre = r.supervisor_nombre ? String(r.supervisor_nombre) : 'Supervisor';
+          metodoFinal = `SUPERVISOR (${supNombre})`;
+          conceptoFinal = `Entregado a Supervisor: ${supNombre}`;
+          pagadorFinal = supNombre;
         }
 
         list.push({

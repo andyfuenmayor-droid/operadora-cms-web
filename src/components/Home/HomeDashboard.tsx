@@ -172,14 +172,26 @@ export const HomeDashboard: React.FC<HomeDashboardProps> = ({ onNavigate }) => {
           .filter((g) => g.moneda === mon && Boolean(g.confirmado))
           .reduce((acc: number, g) => acc + (Number(g.monto) || 0), 0);
 
-        // Cobros ordinarios (Bancos, Efectivo Taquilla, Cobradores QR)
+        // Cobros ordinarios de agencias (Bancos, Efectivo Taquilla, Cobradores QR)
         const pCobros = pagosList
-          .filter((p) => p.moneda === mon && Boolean(p.confirmado) && !p.tipo_pago.includes('Premio'))
+          .filter((p) => {
+            if (p.moneda !== mon || !Boolean(p.confirmado)) return false;
+            if (p.tipo_pago?.includes('Premio')) return false;
+            const agUpper = String(p.agencia || '').trim().toUpperCase();
+            if (agUpper.startsWith('OPERADORA:') || String(p.tipo_pago || '').toUpperCase().includes('OPERADORA')) return false;
+            return true;
+          })
           .reduce((acc: number, p) => acc + Number(p.monto || 0), 0);
 
-        // Reposición de Premios de la operadora
+        // Reposición de Premios de la operadora hacia agencias
         const pPremios = pagosList
-          .filter((p) => p.moneda === mon && Boolean(p.confirmado) && p.tipo_pago.includes('Premio'))
+          .filter((p) => {
+            if (p.moneda !== mon || !Boolean(p.confirmado)) return false;
+            if (!p.tipo_pago?.includes('Premio')) return false;
+            const agUpper = String(p.agencia || '').trim().toUpperCase();
+            if (agUpper.startsWith('OPERADORA:') || String(p.tipo_pago || '').toUpperCase().includes('OPERADORA')) return false;
+            return true;
+          })
           .reduce((acc: number, p) => acc + Number(p.monto || 0), 0);
 
         const gAdm = adminTotals[mon] || 0;

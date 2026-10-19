@@ -100,11 +100,28 @@ export async function getConsolidatedPayments(
       if (isRech) return;
 
       const ag = String(r.agencia || '').trim().toUpperCase();
+      const tRaw = String(r.tipo_pago || 'PAGO').toUpperCase();
+      const metRaw = String(r.metodo || '').toUpperCase();
+
+      // Excluir liquidaciones directas de casas operadoras de la consolidación de agencias
+      const isOperadora = ag.startsWith('OPERADORA:') || tRaw.includes('OPERADORA') || metRaw.includes('OPERADORA');
+      if (isOperadora) return;
+
       const mo = normalizarMoneda(r.moneda) as 'BS' | 'USD' | 'COP';
       const mto = Math.round((Number(r.monto) || 0) * 100) / 100;
       const fechaRaw = String(r.fecha || r.created_at || '').trim();
       const fCorta = fechaRaw.slice(0, 10);
       const refVal = String(r.referencia || '').trim().toUpperCase();
+
+      // Filtrar pagos por periodo operativo si aplica
+      if (filtrarPeriodo && (fechaDesde || fechaHasta)) {
+        const hoyStr = getTodayDateString();
+        const fIso = normalizeToIsoDate(fechaRaw) || normalizeToIsoDate(r.created_at);
+        const desdeIso = normalizeToIsoDate(fechaDesde);
+        const hastaIso = normalizeToIsoDate(fechaHasta || hoyStr);
+        if (fIso && desdeIso && fIso < desdeIso) return;
+        if (fIso && hastaIso && fIso > hastaIso) return;
+      }
 
       if (refVal && refVal !== 'N/A') {
         if (!psRefsByAgency.has(ag)) {
@@ -115,8 +132,6 @@ export async function getConsolidatedPayments(
         psUnrefKeys.add(`${ag}_${mto}_${mo}_${fCorta}`);
       }
 
-      const tRaw = String(r.tipo_pago || 'PAGO').toUpperCase();
-      const metRaw = String(r.metodo || '').toUpperCase();
       const isPremPs = ['PREMIO', 'PÉRDIDA', 'PERDIDA', 'ABONO', 'REPOSICION', 'REPOSICIÓN'].some(
         (k) => `${tRaw} ${refVal} ${metRaw}`.includes(k)
       );
@@ -391,18 +406,13 @@ export async function getConsolidatedPayments(
       }
     });
 
-    // 4. Filtrar fechas según ciclo operativo (preservando pagos manuales del CMS del ciclo abierto)
+    // 4. Filtrar fechas según ciclo operativo
     if (filtrarPeriodo && (fechaDesde || fechaHasta)) {
       const hoyStr = getTodayDateString();
       const desdeIso = normalizeToIsoDate(fechaDesde);
       const hastaIso = normalizeToIsoDate(fechaHasta || hoyStr);
 
       return listaItems.filter((item) => {
-        // Los pagos ingresados directamente en pagos_semana pertenecen al ciclo abierto actual
-        if (!item.id.startsWith('pb_') && !item.id.startsWith('pd_')) {
-          return true;
-        }
-
         const fIso = normalizeToIsoDate(item.fecha) || normalizeToIsoDate(item.created_at);
         if (fIso) {
           if (desdeIso && fIso < desdeIso) return false;
@@ -410,7 +420,7 @@ export async function getConsolidatedPayments(
           return true;
         }
 
-        return false;
+        return true;
       });
     }
 
