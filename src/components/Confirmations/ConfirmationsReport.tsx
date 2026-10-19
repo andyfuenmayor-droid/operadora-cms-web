@@ -389,6 +389,7 @@ export const ConfirmationsReport: React.FC = () => {
       // Process Pagos de Taquilla
       (pdRes.data || []).forEach((r: any) => {
         const tipo = String(r.tipo_pago || r.metodo || 'EFECTIVO').trim().toUpperCase();
+        const concRaw = String(r.concepto || '').toUpperCase();
         const isSupervisor = tipo.includes('SUPERVISOR') || concRaw.includes('SUPERVISOR');
         const isRech = !!r.rechazado || String(r.estado || '').toUpperCase() === 'RECHAZADO';
         const isConf = (!!r.confirmado || !!r.confirmado_supervisor) && !isRech;
