@@ -61,17 +61,66 @@ export const SystemsTab: React.FC = () => {
     if (!effectiveUserId) return;
     setLoading(true);
     try {
-      const [sysRes, keywordsMap] = await Promise.all([
+      const [sysRes, keywordsMap, salesRes] = await Promise.all([
         supabase
           .from('sistemas')
           .select('*')
           .eq('user_id', effectiveUserId)
           .order('id', { ascending: true }),
-        loadSystemKeywords(effectiveUserId)
+        loadSystemKeywords(effectiveUserId),
+        supabase
+          .from('carga_actual')
+          .select('sistema')
+          .eq('user_id', effectiveUserId)
       ]);
 
-      if (sysRes.error) throw sysRes.error;
-      setSystems(sysRes.data || []);
+      let loadedSystems: BetSystem[] = sysRes.data || [];
+
+      // Identificar todos los sistemas activos conocidos (desde configuración guardada en perfil y ventas)
+      const allKnownNames = Array.from(new Set([
+        ...loadedSystems.map((s) => s.nombre_sistema?.toUpperCase()),
+        ...Object.keys(keywordsMap || {}).map((k) => k.toUpperCase()),
+        ...(salesRes.data || []).map((s: any) => String(s.sistema || '').toUpperCase()).filter(Boolean),
+      ])).filter(Boolean);
+
+      // Si faltan sistemas conocidos en la tabla 'sistemas', auto-sincronizarlos
+      const missingSystems = allKnownNames.filter(
+        (name) => !loadedSystems.some((s) => s.nombre_sistema?.toUpperCase() === name)
+      );
+
+      if (missingSystems.length > 0) {
+        try {
+          const toInsert = missingSystems.map((nombre_sistema) => ({
+            nombre_sistema,
+            user_id: effectiveUserId,
+          }));
+          const { data: inserted, error: insertErr } = await supabase
+            .from('sistemas')
+            .insert(toInsert)
+            .select();
+
+          if (!insertErr && inserted && inserted.length > 0) {
+            loadedSystems = [...loadedSystems, ...inserted];
+          } else {
+            // Si la tabla SQL no devuelve o falla RLS, armar objetos con IDs virtuales
+            const synthetic: BetSystem[] = missingSystems.map((name, idx) => ({
+              id: loadedSystems.length + idx + 1,
+              nombre_sistema: name,
+              user_id: effectiveUserId,
+            }));
+            loadedSystems = [...loadedSystems, ...synthetic];
+          }
+        } catch {
+          const synthetic: BetSystem[] = missingSystems.map((name, idx) => ({
+            id: loadedSystems.length + idx + 1,
+            nombre_sistema: name,
+            user_id: effectiveUserId,
+          }));
+          loadedSystems = [...loadedSystems, ...synthetic];
+        }
+      }
+
+      setSystems(loadedSystems);
       setSystemKeywords(keywordsMap);
     } catch (err: any) {
       console.error('Error fetching systems:', err);
@@ -223,14 +272,21 @@ export const SystemsTab: React.FC = () => {
     if (!window.confirm(`¿Está seguro de eliminar el proveedor / sistema '${sysName}'?`)) return;
 
     try {
-      const { error } = await supabase
-        .from('sistemas')
-        .delete()
-        .eq('id', id)
-        .eq('user_id', effectiveUserId);
+      if (id && id > 0) {
+        await supabase
+          .from('sistemas')
+          .delete()
+          .eq('id', id)
+          .eq('user_id', effectiveUserId);
+      }
 
-      if (error) throw error;
-      setSystems((prev) => prev.filter((s) => s.id !== id));
+      // Eliminar también de las palabras clave / configuración en nube
+      const { [sysName]: _, ...remainingKeywords } = systemKeywords;
+      if (effectiveUserId) {
+        await saveSystemKeywords(effectiveUserId, remainingKeywords);
+      }
+      setSystemKeywords(remainingKeywords);
+      setSystems((prev) => prev.filter((s) => s.nombre_sistema.toUpperCase() !== sysName.toUpperCase()));
       setSuccessMsg(`Sistema '${sysName}' eliminado.`);
     } catch (err: any) {
       alert(`Error al eliminar: ${err?.message}`);
