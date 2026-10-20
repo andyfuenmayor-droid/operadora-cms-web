@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { supabase } from '../../lib/supabase';
 import { useAuth } from '../../context/AuthContext';
-import { formatCurrency, formatDate, normalizarMoneda } from '../../utils/formatters';
+import { formatCurrency, formatDate, normalizarMoneda, cleanReference } from '../../utils/formatters';
 import type { Agency, Currency } from '../../types';
 import { notificationService } from '../../utils/notificationService';
 import { realtimeBroadcast } from '../../utils/realtimeBroadcast';
@@ -335,13 +335,16 @@ export const ExpensesTab: React.FC = () => {
 
       // Registrar evento inmutable de auditoría con la semana ciclo activa
       try {
+        const cleanRef = cleanReference(item.referencia) || item.referencia || 'N/A';
         await logAuditEvent({
           user_id: effectiveUserId,
           usuario: user?.email || user?.nombre || 'ADMIN',
           modulo: 'GASTOS',
           tipo_accion: 'ELIMINAR_GASTO_AGENCIA',
           entidad_afectada: item.agencia,
-          descripcion: `Eliminación de Gasto por ${formatCurrency(item.monto, item.moneda as any)} [Concepto: ${item.concepto}] (Ref: ${item.referencia}, Estado: ${item.confirmado ? 'Confirmado' : 'Pendiente'}) de la agencia ${item.agencia}.`,
+          monto: Number(item.monto),
+          moneda: item.moneda,
+          descripcion: `Eliminación de Gasto por ${formatCurrency(item.monto, item.moneda as any)} [Concepto: ${item.concepto}] (Ref: ${cleanRef}, Estado: ${item.confirmado ? 'Confirmado' : 'Pendiente'}) de la agencia ${item.agencia}.`,
           impacto_financiero: item.monto > 500 ? 'ALTO' : 'MEDIO',
           semana_ciclo: String(systemCycle?.semana || ''),
           ciclo_periodo: systemCycle?.desde && systemCycle?.hasta ? `${systemCycle.desde} al ${systemCycle.hasta}` : undefined,

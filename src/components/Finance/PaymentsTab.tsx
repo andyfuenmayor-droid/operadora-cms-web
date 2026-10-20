@@ -872,13 +872,16 @@ export const PaymentsTab: React.FC = () => {
 
       // Registrar evento inmutable de auditoría con la semana ciclo activa
       try {
+        const cleanRef = cleanReference(item.referencia) || item.referencia || 'N/A';
         await logAuditEvent({
           user_id: effectiveUserId,
           usuario: user?.email || user?.nombre || 'ADMIN',
           modulo: 'PAGOS',
           tipo_accion: 'ELIMINAR_PAGO_AGENCIA',
           entidad_afectada: item.agencia,
-          descripcion: `Eliminación bidireccional de Pago [${item.metodo}] por ${formatCurrency(item.monto, item.moneda as any)} (Ref: ${item.referencia}, Tipo: ${item.tipo_pago}, Origen: ${item.tabla}) de la agencia ${item.agencia}.`,
+          monto: Number(item.monto),
+          moneda: item.moneda,
+          descripcion: `Eliminación bidireccional de Pago [${item.metodo}] por ${formatCurrency(item.monto, item.moneda as any)} (Ref: ${cleanRef}, Tipo: ${item.tipo_pago}, Origen: ${item.tabla}) de la agencia ${item.agencia}.`,
           impacto_financiero: 'ALTO',
           semana_ciclo: String(systemCycle?.semana || ''),
           ciclo_periodo: systemCycle?.desde && systemCycle?.hasta ? `${systemCycle.desde} al ${systemCycle.hasta}` : undefined,

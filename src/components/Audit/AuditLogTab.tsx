@@ -4,6 +4,8 @@ import {
   fetchAuditLogs,
   type AuditLogEntry,
   logAuditEvent,
+  extractAuditAmount,
+  shortenAuditDescription,
 } from '../../utils/auditLogger';
 import {
   ShieldCheck,
@@ -86,7 +88,8 @@ export const AuditLogTab: React.FC = () => {
         const inUser = (l.usuario || '').toLowerCase().includes(q);
         const inAction = (l.tipo_accion || '').toLowerCase().includes(q);
         const inSem = (l.semana_ciclo || '').toLowerCase().includes(q);
-        return inDesc || inEnt || inUser || inAction || inSem;
+        const inAmt = (extractAuditAmount(l)?.montoStr || '').toLowerCase().includes(q);
+        return inDesc || inEnt || inUser || inAction || inSem || inAmt;
       }
       return true;
     });
@@ -106,17 +109,21 @@ export const AuditLogTab: React.FC = () => {
 
   const handleExportCSV = () => {
     if (filteredLogs.length === 0) return;
-    const headers = ['Fecha/Hora', 'Semana Ciclo', 'Usuario', 'Modulo', 'Accion', 'Entidad Afectada', 'Impacto', 'Descripcion'];
-    const rows = filteredLogs.map((l) => [
-      `"${new Date(l.timestamp).toLocaleString('es-VE')}"`,
-      `"${l.semana_ciclo ? `Semana ${l.semana_ciclo}` : 'N/A'}"`,
-      `"${l.usuario}"`,
-      `"${l.modulo}"`,
-      `"${l.tipo_accion}"`,
-      `"${l.entidad_afectada}"`,
-      `"${l.impacto_financiero}"`,
-      `"${(l.descripcion || '').replace(/"/g, '""')}"`,
-    ]);
+    const headers = ['Fecha/Hora', 'Semana Ciclo', 'Usuario', 'Modulo', 'Accion', 'Entidad Afectada', 'Monto', 'Impacto', 'Descripcion'];
+    const rows = filteredLogs.map((l) => {
+      const amt = extractAuditAmount(l);
+      return [
+        `"${new Date(l.timestamp).toLocaleString('es-VE')}"`,
+        `"${l.semana_ciclo ? `Semana ${l.semana_ciclo}` : 'N/A'}"`,
+        `"${l.usuario}"`,
+        `"${l.modulo}"`,
+        `"${l.tipo_accion}"`,
+        `"${l.entidad_afectada}"`,
+        `"${amt ? amt.montoStr : '-'}"`,
+        `"${l.impacto_financiero}"`,
+        `"${(l.descripcion || '').replace(/"/g, '""')}"`,
+      ];
+    });
 
     const csvContent = '\uFEFF' + [headers.join(','), ...rows.map((r) => r.join(','))].join('\n');
     const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
@@ -178,13 +185,16 @@ export const AuditLogTab: React.FC = () => {
           ? '#fef3c7'
           : '#dbeafe';
 
+      const amt = extractAuditAmount(l);
+
       return `
         <tr style="background: ${idx % 2 === 0 ? '#ffffff' : '#f8fafc'}; border-bottom: 1px solid #e2e8f0;">
           <td style="padding: 7px 8px; font-family: monospace; font-size: 8.5pt; color: #334155; white-space: nowrap;">${fecha}</td>
           <td style="padding: 7px 8px; font-weight: bold; font-size: 8pt; color: #0284c7; text-align: center;">${l.semana_ciclo ? `Sem. ${l.semana_ciclo}` : '-'}</td>
           <td style="padding: 7px 8px; font-weight: bold; font-size: 8.5pt; color: #1e293b;">${l.modulo}</td>
           <td style="padding: 7px 8px; font-weight: 600; font-size: 8.5pt; color: #0f172a;">${l.entidad_afectada}</td>
-          <td style="padding: 7px 8px; font-size: 8.5pt; color: #0f172a; line-height: 1.35;">${l.descripcion}</td>
+          <td style="padding: 7px 8px; font-size: 8.5pt; color: #0f172a; line-height: 1.35;">${shortenAuditDescription(l.descripcion)}</td>
+          <td style="padding: 7px 8px; font-weight: bold; font-family: monospace; font-size: 8.5pt; color: #047857; text-align: right; white-space: nowrap;">${amt ? amt.montoStr : '-'}</td>
           <td style="padding: 7px 8px; font-size: 8pt; color: #475569; font-family: monospace;">${l.usuario}</td>
           <td style="padding: 7px 8px; text-align: center;">
             <span style="display: inline-block; padding: 2px 7px; border-radius: 9999px; font-size: 7.5pt; font-weight: 800; text-transform: uppercase; color: ${impactColor}; background: ${impactBg}; border: 1px solid ${impactColor}40;">
@@ -353,10 +363,11 @@ export const AuditLogTab: React.FC = () => {
             <thead>
               <tr>
                 <th style="width: 13%;">Fecha / Hora</th>
-                <th style="width: 8%; text-align: center;">Semana</th>
-                <th style="width: 9%;">Módulo</th>
-                <th style="width: 14%;">Entidad Afectada</th>
-                <th style="width: 36%;">Descripción de la Operación / Modificación</th>
+                <th style="width: 7%; text-align: center;">Semana</th>
+                <th style="width: 8%;">Módulo</th>
+                <th style="width: 13%;">Entidad Afectada</th>
+                <th style="width: 28%;">Descripción de la Operación</th>
+                <th style="width: 11%; text-align: right;">Monto</th>
                 <th style="width: 11%;">Usuario</th>
                 <th style="width: 9%; text-align: center;">Impacto</th>
               </tr>
@@ -610,6 +621,7 @@ export const AuditLogTab: React.FC = () => {
                   <th className="py-3 px-3 font-bold">Módulo</th>
                   <th className="py-3 px-3 font-bold">Entidad Afectada</th>
                   <th className="py-3 px-3 font-bold">Descripción</th>
+                  <th className="py-3 px-3 font-bold text-right text-emerald-400">Monto</th>
                   <th className="py-3 px-3 font-bold">Usuario</th>
                   <th className="py-3 px-3 font-bold text-center">Impacto</th>
                   <th className="py-3 px-3 font-bold text-right">Detalle</th>
@@ -653,8 +665,11 @@ export const AuditLogTab: React.FC = () => {
                     <td className="py-2.5 px-3 font-bold text-white font-sans truncate max-w-[150px]">
                       {l.entidad_afectada}
                     </td>
-                    <td className="py-2.5 px-3 text-slate-300 font-sans text-xs max-w-[320px] truncate" title={l.descripcion}>
-                      {l.descripcion}
+                    <td className="py-2.5 px-3 text-slate-300 font-sans text-xs max-w-[260px] truncate" title={l.descripcion}>
+                      {shortenAuditDescription(l.descripcion)}
+                    </td>
+                    <td className="py-2.5 px-3 font-mono font-bold text-right text-emerald-400 whitespace-nowrap">
+                      {extractAuditAmount(l)?.montoStr || <span className="text-slate-600 font-sans font-normal">-</span>}
                     </td>
                     <td className="py-2.5 px-3 text-slate-400 text-[11px] truncate max-w-[140px]" title={l.usuario}>
                       {l.usuario}
