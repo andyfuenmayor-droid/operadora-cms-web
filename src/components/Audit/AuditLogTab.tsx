@@ -6,7 +6,9 @@ import {
   logAuditEvent,
   extractAuditAmount,
   shortenAuditDescription,
+  clearAuditLogsCache,
 } from '../../utils/auditLogger';
+import { realtimeBroadcast } from '../../utils/realtimeBroadcast';
 import {
   ShieldCheck,
   Search,
@@ -35,11 +37,11 @@ export const AuditLogTab: React.FC = () => {
   const [selectedImpact, setSelectedImpact] = useState<string>('TODOS');
   const [selectedEntry, setSelectedEntry] = useState<AuditLogEntry | null>(null);
 
-  const loadLogs = async () => {
+  const loadLogs = async (forceRefresh = false) => {
     if (!effectiveUserId) return;
     setIsLoading(true);
     try {
-      const data = await fetchAuditLogs(effectiveUserId);
+      const data = await fetchAuditLogs(effectiveUserId, forceRefresh);
       setLogs(data);
     } catch (e) {
       console.error('Error loading audit logs:', e);
@@ -50,6 +52,17 @@ export const AuditLogTab: React.FC = () => {
 
   useEffect(() => {
     loadLogs();
+
+    // Re-sync whenever a payment, expense, or agency is modified anywhere in the platform
+    const unsub = realtimeBroadcast.subscribe('DATA_CHANGED', () => {
+      loadLogs();
+    });
+
+    return () => {
+      try {
+        unsub();
+      } catch (_) {}
+    };
   }, [effectiveUserId]);
 
   // Distinct weeks detected in audit logs
@@ -458,10 +471,10 @@ export const AuditLogTab: React.FC = () => {
               <span>Exportar CSV</span>
             </button>
             <button
-              onClick={loadLogs}
+              onClick={() => loadLogs(true)}
               disabled={isLoading}
               className="p-2.5 rounded-2xl bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white transition-all border border-slate-700 cursor-pointer"
-              title="Actualizar registro"
+              title="Actualizar y Sincronizar (Limpiar Caché)"
             >
               <RefreshCw className={`w-4 h-4 ${isLoading ? 'animate-spin text-emerald-400' : ''}`} />
             </button>
@@ -613,7 +626,7 @@ export const AuditLogTab: React.FC = () => {
           </div>
         ) : (
           <div className="overflow-x-auto rounded-2xl border border-slate-800/80 bg-[#071217]">
-            <table className="w-full text-left text-xs border-collapse">
+            <table className="w-full min-w-[760px] text-left text-xs border-collapse">
               <thead>
                 <tr className="border-b border-slate-800 text-[11px] uppercase tracking-wider text-slate-400 bg-slate-900/60">
                   <th className="py-3 px-3.5 font-bold">Fecha / Hora</th>
