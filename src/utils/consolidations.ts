@@ -1,5 +1,5 @@
 import { supabase } from '../lib/supabase';
-import { normalizarMoneda, getTodayDateString } from './formatters';
+import { normalizarMoneda, getTodayDateString, parseCleanReference, cleanReference } from './formatters';
 
 export interface ConsolidatedPaymentItem {
   id: string;
@@ -147,6 +147,9 @@ export async function getConsolidatedPayments(
         return false;
       });
 
+      const parsedRef = parseCleanReference(refVal);
+      const bancoAuto = matchPb?.banco || matchPb?.banco_destino || parsedRef.extractedBank || undefined;
+
       listaItems.push({
         id: `ps_${r.id}`,
         agencia: ag,
@@ -154,10 +157,10 @@ export async function getConsolidatedPayments(
         tipo_pago: isPremPs ? 'Pago de Premios' : 'Pago',
         metodo: metRaw || (matchPb ? String(matchPb.metodo_pago || 'BANCO').toUpperCase() : 'DIRECTO'),
         monto: mto,
-        referencia: refVal || 'PAGO CMS',
-        pos_o_cuenta: matchPb?.pos_o_cuenta || undefined,
+        referencia: parsedRef.cleanRef || 'PAGO CMS',
+        pos_o_cuenta: matchPb?.pos_o_cuenta || parsedRef.extractedBank || undefined,
         datos_pagador: matchPb?.datos_pagador || undefined,
-        banco: matchPb?.banco || matchPb?.banco_destino || undefined,
+        banco: bancoAuto,
         confirmado: true,
         confirmado_por: r.confirmado_por || 'ADMIN',
         rechazado: false,

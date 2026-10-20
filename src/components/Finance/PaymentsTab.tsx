@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import { supabase } from '../../lib/supabase';
 import { useAuth } from '../../context/AuthContext';
-import { formatCurrency, formatDate, normalizarMoneda } from '../../utils/formatters';
+import { formatCurrency, formatDate, normalizarMoneda, cleanReference } from '../../utils/formatters';
 import { getConsolidatedExpenses, getConsolidatedPayments, type ConsolidatedPaymentItem } from '../../utils/consolidations';
 import type { Agency, Currency, BankAccount } from '../../types';
 import { notificationService } from '../../utils/notificationService';
@@ -81,7 +81,7 @@ export const PaymentsTab: React.FC = () => {
   // Form State matching Streamlit pagos_gastos.py (Opción neutral por defecto)
   const [formAgencia, setFormAgencia] = useState('');
   const [formMoneda, setFormMoneda] = useState('BS');
-  const [formMetodo, setFormMetodo] = useState<'BANCO' | 'EFECTIVO' | 'OTRO'>('BANCO');
+  const [formMetodo, setFormMetodo] = useState<string>('BANCO');
   const [formTipoOperacion, setFormTipoOperacion] = useState<'Pago' | 'Pago de Premios'>('Pago');
   const [formBancoSel, setFormBancoSel] = useState('');
   const [formMonto, setFormMonto] = useState('');
@@ -597,8 +597,8 @@ export const PaymentsTab: React.FC = () => {
     setIsProcessing(true);
 
     try {
-      let metodoDb = 'BANCO';
-      let refCompleta = 'BANCO';
+      let metodoDb = formMetodo;
+      let refCompleta = formReferencia.trim().toUpperCase() || formMetodo;
 
       if (formMetodo === 'EFECTIVO') {
         metodoDb = 'EFECTIVO';
@@ -608,9 +608,8 @@ export const PaymentsTab: React.FC = () => {
         const refTxt = formReferencia.trim() ? ` - Ref: ${formReferencia.trim().toUpperCase()}` : '';
         refCompleta = `OTRO CANAL${refTxt}`;
       } else {
-        metodoDb = 'BANCO';
         const refTxt = formReferencia.trim() ? ` - Ref: ${formReferencia.trim().toUpperCase()}` : '';
-        refCompleta = formBancoSel ? `${formBancoSel}${refTxt}` : (formReferencia.trim().toUpperCase() || 'BANCO');
+        refCompleta = formBancoSel ? `${formBancoSel}${refTxt}` : (formReferencia.trim().toUpperCase() || formMetodo);
       }
 
       const tipoDb = formTipoOperacion === 'Pago de Premios' ? 'Pago de Premios' : 'Pago';
@@ -1295,6 +1294,8 @@ export const PaymentsTab: React.FC = () => {
                 className="w-full bg-[#071217] border border-slate-700 rounded-xl px-3 py-2.5 text-xs text-white font-bold focus:outline-none focus:border-cyan-500 cursor-pointer"
               >
                 <option value="BANCO">BANCO</option>
+                <option value="TRANSFERENCIA BANCARIA">TRANSFERENCIA BANCARIA</option>
+                <option value="PAGO MÓVIL">PAGO MÓVIL</option>
                 <option value="EFECTIVO">EFECTIVO</option>
                 <option value="OTRO">OTRO</option>
               </select>
@@ -1560,7 +1561,9 @@ export const PaymentsTab: React.FC = () => {
                         {p.tipo_pago}
                       </span>
                     </td>
-                    <td className="py-3.5 px-4 text-slate-400 text-xs font-mono">{p.referencia}</td>
+                    <td className="py-3.5 px-4 text-slate-400 text-xs font-mono" title={p.referencia}>
+                      {cleanReference(p.referencia)}
+                    </td>
                     <td className="py-3.5 px-4 text-right font-bold text-white">
                       {formatCurrency(p.monto, p.moneda)}
                     </td>

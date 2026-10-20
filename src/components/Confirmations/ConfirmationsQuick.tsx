@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import { supabase } from '../../lib/supabase';
 import { useAuth } from '../../context/AuthContext';
-import { normalizarMoneda, formatCurrency, formatDate } from '../../utils/formatters';
+import { normalizarMoneda, formatCurrency, formatDate, parseCleanReference, cleanReference } from '../../utils/formatters';
 import type { ConfirmationTransaction } from '../../types';
 import {
   CheckCircle2,
@@ -237,7 +237,7 @@ export const ConfirmationsQuick: React.FC = () => {
             pos_o_cuenta: r.pos_o_cuenta || undefined,
             monto: parseFloat(r.monto) || 0,
             moneda: normalizarMoneda(r.moneda),
-            referencia: String(r.referencia || 'N/A'),
+            referencia: cleanReference(r.referencia || 'N/A'),
             concepto: conc,
             pagador: String(r.datos_pagador || 'N/A'),
             confirmado: false,
@@ -252,7 +252,8 @@ export const ConfirmationsQuick: React.FC = () => {
         const isRech = !!r.rechazado || String(r.estado || '').toUpperCase() === 'RECHAZADO';
         const isConf = !!r.confirmado && !isRech;
         if (!isConf && !isRech) {
-          const refStr = String(r.referencia || 'N/A');
+          const rawRef = String(r.referencia || 'N/A');
+          const { cleanRef, extractedBank } = parseCleanReference(rawRef);
           const agStr = String(r.agencia || '').trim().toUpperCase();
           const tipoPagoStr = String(r.tipo_pago || 'PAGO').toUpperCase();
           const metRaw = String(r.metodo || 'BANCO').trim().toUpperCase();
@@ -264,10 +265,10 @@ export const ConfirmationsQuick: React.FC = () => {
             if (pbAg !== agStr || Math.abs(pbMonto - Number(r.monto || 0)) >= 0.01) {
               return false;
             }
-            if (refStr.toUpperCase().includes('CONFIRMADO BANCO')) {
+            if (rawRef.toUpperCase().includes('CONFIRMADO BANCO')) {
               return true;
             }
-            if (pbRef && pbRef !== 'N/A' && refStr.toUpperCase().includes(pbRef)) {
+            if (pbRef && pbRef !== 'N/A' && (rawRef.toUpperCase().includes(pbRef) || cleanRef.toUpperCase() === pbRef)) {
               return true;
             }
             return false;
@@ -275,13 +276,15 @@ export const ConfirmationsQuick: React.FC = () => {
 
           if (!isSyncedFromTaquilla) {
             let cat = 'Bancos';
-            if (tipoPagoStr.includes('PREMIO') || refStr.includes('PREMIO')) {
+            if (tipoPagoStr.includes('PREMIO') || rawRef.includes('PREMIO')) {
               cat = 'Pago de Premios';
             } else if (metRaw.includes('EFECTIVO')) {
               cat = 'Efectivo';
             }
 
-            const bancoNom = resolveBanco(r, agStr);
+            const bancoNom = extractedBank
+              ? extractedBank.split(' - ')[0].trim().toUpperCase()
+              : resolveBanco(r, agStr);
 
             list.push({
               id: r.id,
@@ -293,10 +296,10 @@ export const ConfirmationsQuick: React.FC = () => {
               cajero_nombre: 'Administración (CMS)',
               metodo: metRaw,
               banco: bancoNom,
-              pos_o_cuenta: r.pos_o_cuenta || undefined,
+              pos_o_cuenta: r.pos_o_cuenta || extractedBank || undefined,
               monto: parseFloat(r.monto) || 0,
               moneda: normalizarMoneda(r.moneda),
-              referencia: refStr,
+              referencia: cleanRef,
               concepto: tipoPagoStr === 'PAGO DE PREMIOS' ? 'Pago de Premios (CMS)' : 'Pago / Cobro Directo (CMS)',
               pagador: 'Operadora / CMS',
               confirmado: false,
@@ -327,11 +330,13 @@ export const ConfirmationsQuick: React.FC = () => {
           if (!refStr || refStr === 'N/A') {
             const matchRef = rawConcepto.match(/\[REF:\s*([^\]]+)\]/i);
             if (matchRef) {
-              refStr = matchRef[1].trim();
+              refStr = cleanReference(matchRef[1].trim());
               rawConcepto = rawConcepto.replace(/\[REF:\s*[^\]]+\]/i, '').trim();
             } else {
               refStr = 'N/A';
             }
+          } else {
+            refStr = cleanReference(refStr);
           }
 
           list.push({

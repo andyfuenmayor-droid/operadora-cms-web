@@ -136,6 +136,45 @@ export function formatDate(dateVal?: string | null): string {
   return clean;
 }
 
+export interface ParsedReference {
+  cleanRef: string;
+  extractedBank?: string;
+}
+
+export function parseCleanReference(rawRef?: string | null): ParsedReference {
+  if (!rawRef || rawRef === 'N/A') return { cleanRef: 'N/A' };
+  const str = String(rawRef).trim();
+
+  // Pattern 1: "CITI BANK - ANDYS FUENMAYOR [.COM] - REF: 65757" or "BANCO - Ref: 12345"
+  const dashRefMatch = str.match(/^(.*?)\s*[-–—]\s*(?:ref|referencia):\s*([A-Za-z0-9_-]+)/i);
+  if (dashRefMatch) {
+    const possibleBank = dashRefMatch[1].trim();
+    const refNum = dashRefMatch[2].trim();
+    return {
+      cleanRef: refNum,
+      extractedBank: possibleBank && !possibleBank.toUpperCase().includes('OTRO CANAL') ? possibleBank : undefined,
+    };
+  }
+
+  // Pattern 2: "REF: 121134 - YUJANA [✅ CONFIRMADO BANCO]" or "REF: 12345"
+  const syncRefMatch = str.match(/^REF:\s*([A-Za-z0-9_-]+)/i);
+  if (syncRefMatch) {
+    return { cleanRef: syncRefMatch[1].trim() };
+  }
+
+  // Pattern 3: "[REF: 123456]"
+  const bracketRefMatch = str.match(/\[REF:\s*([A-Za-z0-9_-]+)\]/i);
+  if (bracketRefMatch) {
+    return { cleanRef: bracketRefMatch[1].trim() };
+  }
+
+  return { cleanRef: str };
+}
+
+export function cleanReference(rawRef?: string | null): string {
+  return parseCleanReference(rawRef).cleanRef;
+}
+
 export function formatDateTime(dateTimeVal?: string | null): string {
   if (!dateTimeVal) return '';
   try {

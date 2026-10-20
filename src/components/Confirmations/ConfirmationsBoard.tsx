@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import { supabase } from '../../lib/supabase';
 import { useAuth } from '../../context/AuthContext';
-import { normalizarMoneda, formatCurrency, formatDate } from '../../utils/formatters';
+import { normalizarMoneda, formatCurrency, formatDate, parseCleanReference, cleanReference } from '../../utils/formatters';
 import type { ConfirmationTransaction } from '../../types';
 import {
   CheckCircle2,
@@ -223,7 +223,7 @@ export const ConfirmationsBoard: React.FC = () => {
           categoria: cat,
           metodo: metodoRaw || 'TRANSFERENCIA',
           concepto: String(r.concepto || 'Pago Bancario'),
-          referencia: String(r.referencia || 'N/A'),
+          referencia: cleanReference(r.referencia || 'N/A'),
           pagador: String(r.datos_pagador || 'N/A'),
           monto: Number(r.monto || 0),
           moneda: normalizarMoneda(r.moneda),
@@ -240,7 +240,8 @@ export const ConfirmationsBoard: React.FC = () => {
       (psRes.data || []).forEach((r: any) => {
         const isRech = Boolean(r.rechazado) || String(r.estado || '').toUpperCase() === 'RECHAZADO';
         const isConf = Boolean(r.confirmado) && !isRech;
-        const refStr = String(r.referencia || 'N/A');
+        const rawRef = String(r.referencia || 'N/A');
+        const { cleanRef, extractedBank } = parseCleanReference(rawRef);
         const agStr = String(r.agencia || '').trim().toUpperCase();
         const tipoPagoStr = String(r.tipo_pago || 'PAGO').toUpperCase();
         const metRaw = String(r.metodo || 'BANCO').trim().toUpperCase();
@@ -253,10 +254,10 @@ export const ConfirmationsBoard: React.FC = () => {
           if (pbAg !== agStr || Math.abs(pbMonto - Number(r.monto || 0)) >= 0.01) {
             return false;
           }
-          if (refStr.toUpperCase().includes('CONFIRMADO BANCO')) {
+          if (rawRef.toUpperCase().includes('CONFIRMADO BANCO')) {
             return true;
           }
-          if (pbRef && pbRef !== 'N/A' && refStr.toUpperCase().includes(pbRef)) {
+          if (pbRef && pbRef !== 'N/A' && (rawRef.toUpperCase().includes(pbRef) || cleanRef.toUpperCase() === pbRef)) {
             return true;
           }
           return false;
@@ -264,7 +265,7 @@ export const ConfirmationsBoard: React.FC = () => {
 
         if (!isSyncedFromTaquilla) {
           let cat = 'Bancos';
-          if (tipoPagoStr.includes('PREMIO') || refStr.includes('PREMIO')) {
+          if (tipoPagoStr.includes('PREMIO') || rawRef.includes('PREMIO')) {
             cat = 'Pago de Premios';
           } else if (metRaw.includes('EFECTIVO')) {
             cat = 'Efectivo';
@@ -280,7 +281,7 @@ export const ConfirmationsBoard: React.FC = () => {
             categoria: cat,
             metodo: metRaw,
             concepto: tipoPagoStr === 'PAGO DE PREMIOS' ? 'Pago de Premios (CMS)' : 'Pago / Cobro Directo (CMS)',
-            referencia: refStr,
+            referencia: cleanRef,
             pagador: 'Operadora / CMS',
             monto: Number(r.monto || 0),
             moneda: normalizarMoneda(r.moneda),
