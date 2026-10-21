@@ -639,6 +639,9 @@ export const SalesEntryTab: React.FC = () => {
     const file = e.target.files?.[0];
     if (!file) return;
 
+    // Reset input value so selecting the same file triggers change if desired
+    e.target.value = '';
+
     setBulkError(null);
     setBulkUnmatched([]);
     const reader = new FileReader();
@@ -688,7 +691,7 @@ export const SalesEntryTab: React.FC = () => {
           if (ticketParse.date) {
             setBulkFileDate(ticketParse.date);
           }
-          if (ticketParse.currency && bulkCurrency === 'AUTO') {
+          if (ticketParse.currency) {
             setBulkCurrency(ticketParse.currency);
           }
           if (ticketParse.systemName && bulkSystem === 'AUTO') {
@@ -809,39 +812,61 @@ export const SalesEntryTab: React.FC = () => {
           setBulkFileDate(fileReportDate);
         }
 
-        // Improved currency detection using word and non-alphanumeric boundaries (_USD, -USD, .USD)
-        const regUsd = /(?:^|[^A-Z0-9])(USD|DOLAR|DOLARES|USDT|\$USD)(?:[^A-Z0-9]|$)/i;
-        const regBs = /(?:^|[^A-Z0-9])(BS|VES|BOLIVAR|BOLIVARES|BSF|BSD)(?:[^A-Z0-9]|$)/i;
-        const regCop = /(?:^|[^A-Z0-9])(COP|PESO|PESOS|COLOMBIA)(?:[^A-Z0-9]|$)/i;
+        // 1. Detect intrinsic currency from file content / headers / filename (Highest Priority)
+        let fileIntrinsicCurrency = '';
 
-        let detectedMoneda = bulkCurrency !== 'AUTO' ? bulkCurrency : '';
+        // Explicit provider header signatures (e.g. BETM3: "Peso - COP", "Bolivar - VES", "Dolar - USD")
+        if (
+          headerDna.includes('PESO - COP') ||
+          headerDna.includes('PESO-COP') ||
+          headerDna.includes('PESOS - COP') ||
+          headerDna.includes('PESO COP') ||
+          /(?:^|[^A-Z0-9])COP(?:[^A-Z0-9]|$)/i.test(headerDna) ||
+          fileNameUpper.includes('COP') ||
+          (headerDna.includes('PESO') && !headerDna.includes('BOLIVAR') && !headerDna.includes('DOLAR'))
+        ) {
+          fileIntrinsicCurrency = 'COP';
+        } else if (
+          headerDna.includes('BOLIVAR - VES') ||
+          headerDna.includes('BOLIVARES - VES') ||
+          headerDna.includes('BOLIVAR - BS') ||
+          headerDna.includes('BOLIVARES - BS') ||
+          /(?:^|[^A-Z0-9])(VES|BS|BSF|BSD)(?:[^A-Z0-9]|$)/i.test(headerDna) ||
+          fileNameUpper.includes('VES') ||
+          fileNameUpper.includes('BS') ||
+          headerDna.includes('BOLIVAR') ||
+          headerDna.includes('BOLIVARES')
+        ) {
+          fileIntrinsicCurrency = 'BS';
+        } else if (
+          headerDna.includes('DOLAR - USD') ||
+          headerDna.includes('DOLARES - USD') ||
+          headerDna.includes('DOLAR-USD') ||
+          /(?:^|[^A-Z0-9])(USD|USDT|\$USD)(?:[^A-Z0-9]|$)/i.test(headerDna) ||
+          fileNameUpper.includes('USD') ||
+          headerDna.includes('DOLAR') ||
+          headerDna.includes('DOLARES')
+        ) {
+          fileIntrinsicCurrency = 'USD';
+        } else if (sistDet.toUpperCase() === 'CDAPUESTAS') {
+          fileIntrinsicCurrency = 'USD';
+        } else if (sistDet.toUpperCase() === 'KENO' || sistDet.toUpperCase() === 'GATO PESOS') {
+          fileIntrinsicCurrency = 'COP';
+        }
+
+        // When a file declares its currency, that intrinsic currency overrides residual UI state
+        // and synchronizes the dropdown selector automatically.
+        let detectedMoneda = fileIntrinsicCurrency;
+        if (!detectedMoneda && bulkCurrency !== 'AUTO') {
+          detectedMoneda = bulkCurrency;
+        }
         if (!detectedMoneda) {
-          if (regUsd.test(fileNameUpper)) {
-            detectedMoneda = 'USD';
-          } else if (regBs.test(fileNameUpper)) {
-            detectedMoneda = 'BS';
-          } else if (regCop.test(fileNameUpper) || sistDet.toUpperCase().includes('PESO')) {
-            detectedMoneda = 'COP';
-          } else {
-            if (regUsd.test(headerDna)) {
-              detectedMoneda = 'USD';
-            } else if (regBs.test(headerDna)) {
-              detectedMoneda = 'BS';
-            } else if (regCop.test(headerDna)) {
-              detectedMoneda = 'COP';
-            } else if (sistDet.toUpperCase() === 'CDAPUESTAS') {
-              detectedMoneda = 'USD';
-            } else if (sistDet.toUpperCase() === 'KENO' || sistDet.toUpperCase() === 'GATO PESOS') {
-              detectedMoneda = 'COP';
-            }
-          }
+          detectedMoneda = 'COP';
         }
 
-        // Synchronize UI dropdowns with detected values
-        if (bulkCurrency === 'AUTO' && detectedMoneda) {
-          setBulkCurrency(detectedMoneda);
-        }
-        if (bulkSystem === 'AUTO' && sistDet) {
+        // Always synchronize UI dropdown to the detected currency
+        setBulkCurrency(detectedMoneda);
+        if (sistDet) {
           setBulkSystem(sistDet);
         }
 
@@ -1095,7 +1120,7 @@ export const SalesEntryTab: React.FC = () => {
             .filter(Boolean);
           const primaryAgencyCurr = agencyCurrencies[0] || 'COP';
 
-          const fileCur = bulkCurrency !== 'AUTO' ? bulkCurrency : detectedMoneda;
+          const fileCur = detectedMoneda || (bulkCurrency !== 'AUTO' ? bulkCurrency : 'COP');
 
           let rowMoneda = 'COP';
           if (fileCur) {
