@@ -634,6 +634,16 @@ export const SalesEntryTab: React.FC = () => {
     }
   };
 
+  // Reset bulk import area and restore AUTO detection
+  const resetBulkArea = () => {
+    setBulkRows([]);
+    setBulkCurrency('AUTO');
+    setBulkSystem('AUTO');
+    setBulkError(null);
+    setBulkUnmatched([]);
+    setEditingComIndex(null);
+  };
+
   // Handle CSV/Excel/PDF bulk file parsing (Motor Universal Dinámico)
   const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -642,8 +652,8 @@ export const SalesEntryTab: React.FC = () => {
     // Reset input value so selecting the same file triggers change if desired
     e.target.value = '';
 
-    setBulkError(null);
-    setBulkUnmatched([]);
+    // Clear previous preview area and reset auto-detection on every new file load
+    resetBulkArea();
     const reader = new FileReader();
 
     reader.onload = async (event) => {
@@ -1308,7 +1318,7 @@ export const SalesEntryTab: React.FC = () => {
       confetti({ particleCount: 60, spread: 70 });
       setMessage({ type: 'success', text: `¡Se cargaron ${bulkRows.length} movimientos de agencias con éxito!` });
 
-      setBulkRows([]);
+      resetBulkArea();
       setIsBulkOpen(false);
       await loadData();
     } catch (err: any) {
@@ -1348,7 +1358,10 @@ export const SalesEntryTab: React.FC = () => {
           <button
             id="tour-cargar-ventas-btn"
             onClick={() => {
-              if (!isBulkOpen) loadData();
+              if (!isBulkOpen) {
+                loadData();
+                resetBulkArea();
+              }
               setIsBulkOpen(!isBulkOpen);
             }}
             className="px-4 py-2.5 rounded-xl bg-cyan-500/10 hover:bg-cyan-500/20 text-cyan-400 border border-cyan-500/30 font-bold text-xs flex items-center gap-2 transition-all cursor-pointer"
@@ -1385,7 +1398,10 @@ export const SalesEntryTab: React.FC = () => {
               Importar Reporte de Sistema (Excel / CSV / PDF)
             </h3>
             <button
-              onClick={() => setIsBulkOpen(false)}
+              onClick={() => {
+                setIsBulkOpen(false);
+                resetBulkArea();
+              }}
               className="text-slate-400 hover:text-white text-xs font-bold px-2 py-1"
             >
               ✕
@@ -1456,6 +1472,10 @@ export const SalesEntryTab: React.FC = () => {
               <input
                 type="file"
                 accept=".xlsx,.xls,.csv,.txt,.pdf"
+                onClick={(e) => {
+                  (e.target as HTMLInputElement).value = '';
+                  resetBulkArea();
+                }}
                 onChange={handleFileUpload}
                 className="w-full text-xs text-slate-400 file:mr-2 file:py-1.5 file:px-3 file:rounded-xl file:border-0 file:text-xs file:font-semibold file:bg-cyan-500/20 file:text-cyan-300 hover:file:bg-cyan-500/30 cursor-pointer"
               />
@@ -1576,7 +1596,7 @@ export const SalesEntryTab: React.FC = () => {
               <div className="flex justify-end gap-2">
                 <button
                   type="button"
-                  onClick={() => setBulkRows([])}
+                  onClick={resetBulkArea}
                   className="px-4 py-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 font-semibold text-xs transition-all cursor-pointer"
                 >
                   Limpiar Lista
