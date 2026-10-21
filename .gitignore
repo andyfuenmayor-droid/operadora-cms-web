@@ -34,3 +34,6 @@ dump*.sql
 # Local env files
 .env.local
 .env.*.local
+
+# Workstation identification
+.workstation
