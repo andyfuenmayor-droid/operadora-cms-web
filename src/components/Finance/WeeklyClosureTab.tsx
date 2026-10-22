@@ -1742,21 +1742,21 @@ export const WeeklyClosureTab: React.FC = () => {
                 <button
                   type="button"
                   onClick={() => document.getElementById('seccion-agencias')?.scrollIntoView({ behavior: 'smooth' })}
-                  className="px-2.5 py-1 rounded-lg bg-slate-800/80 hover:bg-slate-700 text-slate-300 font-mono transition-colors cursor-pointer"
+                  className="px-2.5 py-1 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700 dark:bg-slate-800/80 dark:hover:bg-slate-700 dark:text-slate-300 font-mono transition-colors border border-slate-200 dark:border-slate-700 cursor-pointer"
                 >
                   ↓ Agencias
                 </button>
                 <button
                   type="button"
                   onClick={() => document.getElementById('seccion-operadoras')?.scrollIntoView({ behavior: 'smooth' })}
-                  className="px-2.5 py-1 rounded-lg bg-slate-800/80 hover:bg-slate-700 text-slate-300 font-mono transition-colors cursor-pointer"
+                  className="px-2.5 py-1 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700 dark:bg-slate-800/80 dark:hover:bg-slate-700 dark:text-slate-300 font-mono transition-colors border border-slate-200 dark:border-slate-700 cursor-pointer"
                 >
                   ↓ Operadoras
                 </button>
                 <button
                   type="button"
                   onClick={() => document.getElementById('seccion-cierre-maestro')?.scrollIntoView({ behavior: 'smooth' })}
-                  className="px-2.5 py-1 rounded-lg bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 font-mono font-bold transition-colors cursor-pointer"
+                  className="px-2.5 py-1 rounded-lg bg-emerald-50 hover:bg-emerald-100 text-emerald-700 dark:bg-emerald-500/10 dark:hover:bg-emerald-500/20 dark:text-emerald-400 border border-emerald-300 dark:border-emerald-500/30 font-mono font-bold transition-colors cursor-pointer"
                 >
                   ↓ Cierre Maestro
                 </button>
@@ -1767,25 +1767,25 @@ export const WeeklyClosureTab: React.FC = () => {
           {/* 1. SECCIÓN: BALANCES DE AGENCIAS */}
           {(closureViewMode === 'todos' || closureViewMode === 'agencias') && (
             <section id="seccion-agencias" className="space-y-4">
-              <div className="bg-[#0A161C] border border-emerald-500/30 rounded-2xl p-4 sm:p-5 flex flex-col sm:flex-row sm:items-center justify-between gap-3 shadow-md">
+              <div className="bg-white dark:bg-[#0D1B22] border border-emerald-500/30 dark:border-emerald-500/30 rounded-2xl p-4 sm:p-5 flex flex-col sm:flex-row sm:items-center justify-between gap-3 shadow-sm dark:shadow-md">
                 <div className="flex items-center gap-3">
-                  <div className="p-2.5 rounded-xl bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">
+                  <div className="p-2.5 rounded-xl bg-emerald-50 dark:bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-200 dark:border-emerald-500/20">
                     <Building2 className="w-5 h-5" />
                   </div>
                   <div>
-                    <h3 className="text-sm sm:text-base font-black text-white uppercase tracking-wider flex items-center gap-2">
+                    <h3 className="text-sm sm:text-base font-black text-slate-900 dark:text-white uppercase tracking-wider flex items-center gap-2">
                       <span>1. Balances Verificados de Agencias (Puntos de Venta)</span>
-                      <span className="text-[10px] font-mono px-2 py-0.5 rounded-full bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 font-bold">
+                      <span className="text-[10px] font-mono px-2 py-0.5 rounded-full bg-emerald-50 dark:bg-emerald-500/10 text-emerald-700 dark:text-emerald-400 border border-emerald-200 dark:border-emerald-500/20 font-bold">
                         {closureData.length} registros
                       </span>
                     </h3>
-                    <p className="text-xs text-slate-400">
+                    <p className="text-xs text-slate-600 dark:text-slate-400">
                       Arrastre anterior, venta neta, gastos, premios y cobros auditados por agencia
                     </p>
                   </div>
                 </div>
                 <div className="flex items-center gap-2">
-                  <span className="text-xs text-slate-300 font-mono bg-slate-900/90 px-3 py-1.5 rounded-xl border border-slate-800">
+                  <span className="text-xs text-slate-700 dark:text-slate-300 font-mono bg-slate-50 dark:bg-slate-900/90 px-3 py-1.5 rounded-xl border border-slate-200 dark:border-slate-800">
                     🏢 {agencies.length} agencias registradas
                   </span>
                 </div>
@@ -1797,17 +1797,17 @@ export const WeeklyClosureTab: React.FC = () => {
                   if (monRows.length === 0) return null;
 
                   return (
-                    <div key={mon} className="bg-[#0D1B22] border border-slate-800 rounded-3xl overflow-hidden shadow-xl">
-                      <div className="p-4 sm:p-5 border-b border-slate-800 flex items-center justify-between">
-                        <h4 className="text-xs font-bold text-white uppercase tracking-wider flex items-center gap-2">
+                    <div key={mon} className="bg-white dark:bg-[#0D1B22] border border-slate-200 dark:border-slate-800 rounded-3xl overflow-hidden shadow-sm dark:shadow-xl">
+                      <div className="p-4 sm:p-5 border-b border-slate-100 dark:border-slate-800 flex items-center justify-between">
+                        <h4 className="text-xs font-bold text-slate-900 dark:text-white uppercase tracking-wider flex items-center gap-2">
                           <span>💰 Balance Verificado Agencias {mon}</span>
                         </h4>
-                        <span className="text-[10px] text-slate-400 font-mono">{monRows.length} agencias</span>
+                        <span className="text-[10px] text-slate-500 dark:text-slate-400 font-mono">{monRows.length} agencias</span>
                       </div>
 
                       <div className="overflow-x-auto">
                         <table className="w-full text-left text-xs">
-                          <thead className="bg-[#071217] text-slate-400 border-b border-slate-800 font-bold uppercase tracking-wider">
+                          <thead className="bg-slate-50 dark:bg-[#071217] text-slate-600 dark:text-slate-400 border-b border-slate-200 dark:border-slate-800 font-bold uppercase tracking-wider">
                             <tr>
                               <th className="py-3 px-4">Agencia</th>
                               <th className="py-3 px-4 text-right">Arrastre</th>
@@ -1818,20 +1818,20 @@ export const WeeklyClosureTab: React.FC = () => {
                               <th className="py-3 px-4 text-right">Saldo Final</th>
                             </tr>
                           </thead>
-                          <tbody className="divide-y divide-slate-800/80 font-mono">
+                          <tbody className="divide-y divide-slate-100 dark:divide-slate-800/80 font-mono">
                             {monRows.map((row) => (
-                              <tr key={`${row.entidad}_${mon}`} className="hover:bg-slate-800/30 transition-colors">
-                                <td className="py-3 px-4 font-sans font-bold text-white">{row.entidad}</td>
-                                <td className="py-3 px-4 text-right text-slate-400">{formatCurrency(row.saldo_anterior, mon as any)}</td>
-                                <td className={`py-3 px-4 text-right font-semibold ${row.venta_bruta >= 0 ? 'text-emerald-400' : 'text-rose-400'}`}>
+                              <tr key={`${row.entidad}_${mon}`} className="hover:bg-slate-50 dark:hover:bg-slate-800/30 transition-colors">
+                                <td className="py-3 px-4 font-sans font-bold text-slate-900 dark:text-white">{row.entidad}</td>
+                                <td className="py-3 px-4 text-right text-slate-600 dark:text-slate-400">{formatCurrency(row.saldo_anterior, mon as any)}</td>
+                                <td className={`py-3 px-4 text-right font-semibold ${row.venta_bruta >= 0 ? 'text-emerald-600 dark:text-emerald-400' : 'text-rose-600 dark:text-rose-400'}`}>
                                   {formatCurrency(row.venta_bruta, mon as any)}
                                 </td>
-                                <td className="py-3 px-4 text-right text-rose-400">{formatCurrency(row.gastos, mon as any)}</td>
-                                <td className="py-3 px-4 text-right text-amber-400">{formatCurrency(row.premios, mon as any)}</td>
-                                <td className="py-3 px-4 text-right text-cyan-400">{formatCurrency(row.cobros, mon as any)}</td>
+                                <td className="py-3 px-4 text-right text-rose-600 dark:text-rose-400">{formatCurrency(row.gastos, mon as any)}</td>
+                                <td className="py-3 px-4 text-right text-amber-600 dark:text-amber-400">{formatCurrency(row.premios, mon as any)}</td>
+                                <td className="py-3 px-4 text-right text-cyan-600 dark:text-cyan-400">{formatCurrency(row.cobros, mon as any)}</td>
                                 <td
                                   className={`py-3 px-4 text-right font-black ${
-                                    row.saldo_final > 0 ? 'text-rose-400' : row.saldo_final < 0 ? 'text-cyan-400' : 'text-emerald-400'
+                                    row.saldo_final > 0 ? 'text-rose-600 dark:text-rose-400' : row.saldo_final < 0 ? 'text-cyan-600 dark:text-cyan-400' : 'text-emerald-600 dark:text-emerald-400'
                                   }`}
                                 >
                                   {formatCurrency(row.saldo_final, mon as any)}
@@ -1850,26 +1850,26 @@ export const WeeklyClosureTab: React.FC = () => {
 
           {/* 2. SECCIÓN: BALANCES DE CASAS OPERADORAS */}
           {(closureViewMode === 'todos' || closureViewMode === 'operadoras') && (
-            <section id="seccion-operadoras" className="space-y-4 pt-6 border-t border-slate-800/80">
-              <div className="bg-[#0A161C] border border-amber-500/30 rounded-2xl p-4 sm:p-5 flex flex-col sm:flex-row sm:items-center justify-between gap-3 shadow-md">
+            <section id="seccion-operadoras" className="space-y-4 pt-6 border-t border-slate-200 dark:border-slate-800/80">
+              <div className="bg-white dark:bg-[#0D1B22] border border-amber-500/30 dark:border-amber-500/30 rounded-2xl p-4 sm:p-5 flex flex-col sm:flex-row sm:items-center justify-between gap-3 shadow-sm dark:shadow-md">
                 <div className="flex items-center gap-3">
-                  <div className="p-2.5 rounded-xl bg-amber-500/10 text-amber-400 border border-amber-500/20">
+                  <div className="p-2.5 rounded-xl bg-amber-50 dark:bg-amber-500/10 text-amber-600 dark:text-amber-400 border border-amber-200 dark:border-amber-500/20">
                     <Globe className="w-5 h-5" />
                   </div>
                   <div>
-                    <h3 className="text-sm sm:text-base font-black text-white uppercase tracking-wider flex items-center gap-2">
+                    <h3 className="text-sm sm:text-base font-black text-slate-900 dark:text-white uppercase tracking-wider flex items-center gap-2">
                       <span>2. Balances Verificados de Casas Operadoras (Proveedores)</span>
-                      <span className="text-[10px] font-mono px-2 py-0.5 rounded-full bg-amber-500/10 text-amber-400 border border-amber-500/20 font-bold">
+                      <span className="text-[10px] font-mono px-2 py-0.5 rounded-full bg-amber-50 dark:bg-amber-500/10 text-amber-700 dark:text-amber-400 border border-amber-200 dark:border-amber-500/20 font-bold">
                         {operatorClosureRows.length} liquidaciones
                       </span>
                     </h3>
-                    <p className="text-xs text-slate-400">
+                    <p className="text-xs text-slate-600 dark:text-slate-400">
                       Liquidación de GGR, comisión del comercializador, utilidad de casas, pagos netos y nuevos saldos de arrastre
                     </p>
                   </div>
                 </div>
                 <div className="flex items-center gap-2">
-                  <span className="text-xs text-slate-300 font-mono bg-slate-900/90 px-3 py-1.5 rounded-xl border border-slate-800">
+                  <span className="text-xs text-slate-700 dark:text-slate-300 font-mono bg-slate-50 dark:bg-slate-900/90 px-3 py-1.5 rounded-xl border border-slate-200 dark:border-slate-800">
                     🌐 {operatorClosureGroups.length} casas matrices
                   </span>
                 </div>
@@ -2039,20 +2039,20 @@ export const WeeklyClosureTab: React.FC = () => {
           )}
 
           {/* 3. SECCIÓN: CIERRE MAESTRO INTEGRAL */}
-          <section id="seccion-cierre-maestro" className="pt-6 border-t border-slate-800/80">
-            <div className="bg-[#0A161C] border border-cyan-500/30 rounded-2xl p-4 sm:p-5 mb-6 flex flex-col sm:flex-row sm:items-center justify-between gap-3 shadow-md">
+          <section id="seccion-cierre-maestro" className="pt-6 border-t border-slate-200 dark:border-slate-800/80">
+            <div className="bg-white dark:bg-[#0D1B22] border border-cyan-500/30 dark:border-cyan-500/30 rounded-2xl p-4 sm:p-5 mb-6 flex flex-col sm:flex-row sm:items-center justify-between gap-3 shadow-sm dark:shadow-md">
               <div className="flex items-center gap-3">
-                <div className="p-2.5 rounded-xl bg-cyan-500/10 text-cyan-400 border border-cyan-500/20">
+                <div className="p-2.5 rounded-xl bg-cyan-50 dark:bg-cyan-500/10 text-cyan-600 dark:text-cyan-400 border border-cyan-200 dark:border-cyan-500/20">
                   <ShieldCheck className="w-5 h-5" />
                 </div>
                 <div>
-                  <h3 className="text-sm sm:text-base font-black text-white uppercase tracking-wider flex items-center gap-2">
+                  <h3 className="text-sm sm:text-base font-black text-slate-900 dark:text-white uppercase tracking-wider flex items-center gap-2">
                     <span>3. Ejecución del Cierre Maestro Integral</span>
-                    <span className="text-[10px] font-mono px-2 py-0.5 rounded-full bg-cyan-500/10 text-cyan-400 border border-cyan-500/20 font-bold">
+                    <span className="text-[10px] font-mono px-2 py-0.5 rounded-full bg-cyan-50 dark:bg-cyan-500/10 text-cyan-700 dark:text-cyan-400 border border-cyan-200 dark:border-cyan-500/20 font-bold">
                       Sello Atómico SHA-256
                     </span>
                   </h3>
-                  <p className="text-xs text-slate-400">
+                  <p className="text-xs text-slate-600 dark:text-slate-400">
                     Cierre conjunto y definitivo de Agencias y Casas Operadoras con avance automático de ciclo
                   </p>
                 </div>
@@ -2060,61 +2060,61 @@ export const WeeklyClosureTab: React.FC = () => {
             </div>
 
       {/* Unified Master Closure Action Box */}
-      <div className="bg-[#0D1B22] border border-emerald-500/30 rounded-3xl p-6 sm:p-8 shadow-2xl space-y-6 relative overflow-hidden">
+      <div className="bg-white dark:bg-[#0D1B22] border border-emerald-500/30 dark:border-emerald-500/30 rounded-3xl p-6 sm:p-8 shadow-xl dark:shadow-2xl space-y-6 relative overflow-hidden">
         <div className="absolute top-0 right-0 w-96 h-96 bg-gradient-to-br from-emerald-500/5 via-teal-500/5 to-amber-500/5 rounded-full blur-3xl pointer-events-none" />
 
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-slate-800 pb-5">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-slate-200 dark:border-slate-800 pb-5">
           <div className="flex items-center gap-3.5">
-            <div className="p-3 rounded-2xl bg-gradient-to-br from-emerald-500/20 to-amber-500/20 border border-emerald-500/30 text-emerald-400">
+            <div className="p-3 rounded-2xl bg-gradient-to-br from-emerald-500/20 to-amber-500/20 border border-emerald-500/30 text-emerald-600 dark:text-emerald-400">
               <ShieldCheck className="w-6 h-6" />
             </div>
             <div>
               <div className="flex items-center gap-2">
-                <h3 className="text-base sm:text-lg font-black text-white">
+                <h3 className="text-base sm:text-lg font-black text-slate-900 dark:text-white">
                   CIERRE MAESTRO INTEGRAL (AGENCIAS Y CASAS OPERADORAS)
                 </h3>
-                <span className="hidden sm:inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">
+                <span className="hidden sm:inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-emerald-50 dark:bg-emerald-500/10 text-emerald-700 dark:text-emerald-400 border border-emerald-200 dark:border-emerald-500/20">
                   <Lock className="w-3 h-3" /> Snapshot SHA-256
                 </span>
               </div>
-              <p className="text-xs text-slate-400 mt-0.5">
+              <p className="text-xs text-slate-600 dark:text-slate-400 mt-0.5">
                 Liquidación atómica simultánea de puntos de venta y casas matrices
               </p>
             </div>
           </div>
 
           <div className="flex items-center gap-3">
-            <span className="text-xs text-slate-300 bg-slate-900/80 px-3 py-1.5 rounded-xl border border-slate-800 font-mono">
+            <span className="text-xs text-slate-700 dark:text-slate-300 bg-slate-50 dark:bg-slate-900/80 px-3 py-1.5 rounded-xl border border-slate-200 dark:border-slate-800 font-mono">
               🏢 {agencies.length} Agencias
             </span>
-            <span className="text-xs text-slate-300 bg-slate-900/80 px-3 py-1.5 rounded-xl border border-slate-800 font-mono">
+            <span className="text-xs text-slate-700 dark:text-slate-300 bg-slate-50 dark:bg-slate-900/80 px-3 py-1.5 rounded-xl border border-slate-200 dark:border-slate-800 font-mono">
               🌐 {operatorClosureRows.length} Operadoras
             </span>
           </div>
         </div>
 
         {/* Warning & Instructions */}
-        <div className="p-4 bg-emerald-500/10 border border-emerald-500/20 rounded-2xl text-xs text-emerald-300 space-y-1.5">
-          <div className="flex items-center gap-2 font-bold text-emerald-300">
-            <Sparkles className="w-4 h-4 text-emerald-400 shrink-0" />
+        <div className="p-4 bg-emerald-50 dark:bg-emerald-500/10 border border-emerald-200 dark:border-emerald-500/20 rounded-2xl text-xs text-emerald-900 dark:text-emerald-300 space-y-1.5">
+          <div className="flex items-center gap-2 font-bold text-emerald-700 dark:text-emerald-300">
+            <Sparkles className="w-4 h-4 text-emerald-600 dark:text-emerald-400 shrink-0" />
             <span>OPERACIÓN ATÓMICA DE CIERRE DEFINITIVO:</span>
           </div>
-          <p className="text-slate-300 leading-relaxed">
-            Al ejecutar el Cierre Maestro Integral, el sistema consolida tanto las <strong className="text-white">Agencias</strong> como las <strong className="text-white">Casas Operadoras</strong> en un solo paso:
-            sella el <strong className="text-emerald-400">Snapshot Inmutable SHA-256</strong> en Supabase y PostgreSQL,
+          <p className="text-slate-700 dark:text-slate-300 leading-relaxed">
+            Al ejecutar el Cierre Maestro Integral, el sistema consolida tanto las <strong className="text-slate-900 dark:text-white">Agencias</strong> como las <strong className="text-slate-900 dark:text-white">Casas Operadoras</strong> en un solo paso:
+            sella el <strong className="text-emerald-700 dark:text-emerald-400">Snapshot Inmutable SHA-256</strong> en Supabase y PostgreSQL,
             traspasa los balances auditados como saldos de arrastre iniciales del nuevo ciclo,
-            restablece las tablas operativas activas y avanza el ciclo operativo a la <strong className="text-amber-300">Semana {nextCyclePreview.semana} ({nextCyclePreview.desde} al {nextCyclePreview.hasta})</strong>.
+            restablece las tablas operativas activas y avanza el ciclo operativo a la <strong className="text-amber-700 dark:text-amber-300">Semana {nextCyclePreview.semana} ({nextCyclePreview.desde} al {nextCyclePreview.hasta})</strong>.
           </p>
         </div>
 
         {/* Validation Check: If sales.length === 0, show clean status instead of allowing an empty closure */}
         {sales.length === 0 ? (
-          <div className="p-4 bg-sky-500/10 border border-sky-500/20 rounded-2xl text-xs text-sky-300 space-y-2">
-            <div className="flex items-center gap-2 font-bold text-sky-200">
-              <CheckCircle2 className="w-4 h-4 text-sky-400 shrink-0" />
+          <div className="p-4 bg-sky-50 dark:bg-sky-500/10 border border-sky-200 dark:border-sky-500/20 rounded-2xl text-xs text-sky-800 dark:text-sky-300 space-y-2">
+            <div className="flex items-center gap-2 font-bold text-sky-700 dark:text-sky-200">
+              <CheckCircle2 className="w-4 h-4 text-sky-600 dark:text-sky-400 shrink-0" />
               <span>CICLO OPERATIVO AL DÍA — SIN VENTAS PENDIENTES DE LIQUIDACIÓN</span>
             </div>
-            <p className="text-slate-300">
+            <p className="text-slate-600 dark:text-slate-300">
               El ciclo activo actual ({systemCycle.tipo === 'SEMANAL' ? `Semana ${systemCycle.semana}` : `Ciclo ${systemCycle.semana}`}, {systemCycle.desde} al {systemCycle.hasta}) no registra ventas cargadas por cerrar.
               El cierre de la semana anterior fue certificado y guardado en el archivo histórico.
             </p>
@@ -2122,7 +2122,7 @@ export const WeeklyClosureTab: React.FC = () => {
               <button
                 type="button"
                 disabled
-                className="px-6 py-3 rounded-xl bg-slate-800 text-slate-500 text-xs font-bold uppercase tracking-wider flex items-center gap-2 cursor-not-allowed"
+                className="px-6 py-3 rounded-xl bg-slate-100 dark:bg-slate-800 text-slate-400 dark:text-slate-500 border border-slate-200 dark:border-slate-700 text-xs font-bold uppercase tracking-wider flex items-center gap-2 cursor-not-allowed"
               >
                 <CheckCircle2 className="w-4 h-4 text-emerald-500" />
                 Ciclo Actual al Día (Sin Ventas Pendientes)
@@ -2131,14 +2131,14 @@ export const WeeklyClosureTab: React.FC = () => {
           </div>
         ) : (
           <>
-            <label className="flex items-center gap-3 cursor-pointer p-4 rounded-2xl border border-slate-800 hover:bg-slate-800/40 transition-colors">
+            <label className="flex items-center gap-3 cursor-pointer p-4 rounded-2xl border border-slate-200 dark:border-slate-800 hover:bg-slate-50 dark:hover:bg-slate-800/40 transition-colors">
               <input
                 type="checkbox"
                 checked={verifiedCheckMaster}
                 onChange={(e) => setVerifiedCheckMaster(e.target.checked)}
-                className="w-5 h-5 rounded text-emerald-500 bg-[#071217] border-slate-700 focus:ring-0 cursor-pointer"
+                className="w-5 h-5 rounded text-emerald-500 bg-white dark:bg-[#071217] border-slate-300 dark:border-slate-700 focus:ring-0 cursor-pointer"
               />
-              <span className="text-xs font-bold text-white select-none">
+              <span className="text-xs font-bold text-slate-800 dark:text-white select-none">
                 He auditado y verificado los balances tanto de las Agencias ({agencies.length}) como de las Casas Operadoras ({operatorClosureRows.length}). Confirmo congelar el Snapshot Inmutable SHA-256, traspasar todos los saldos de arrastre y avanzar el ciclo operativo.
               </span>
             </label>
@@ -2426,10 +2426,10 @@ export const WeeklyClosureTab: React.FC = () => {
               })}
             </div>
 
-            <div className="p-4 border-t border-slate-800 flex justify-end bg-[#0A161C]">
+            <div className="p-4 border-t border-slate-200 dark:border-slate-800 flex justify-end bg-slate-50 dark:bg-[#0A161C]">
               <button
                 onClick={() => setAgencySelectorClosure(null)}
-                className="px-4 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-white font-bold text-xs transition-colors cursor-pointer"
+                className="px-4 py-2 rounded-xl bg-slate-200 hover:bg-slate-300 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-800 dark:text-white font-bold text-xs transition-colors cursor-pointer"
               >
                 Cerrar
               </button>
