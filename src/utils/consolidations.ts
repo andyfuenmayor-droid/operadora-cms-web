@@ -601,21 +601,15 @@ export async function getAdministrativeExpenses(
     const items: AdministrativeExpenseItem[] = [];
     const seenIds = new Set<string>();
 
-    const isAdminExpense = (tipo: string, agencia: string, concepto: string) => {
+    const isAdminExpense = (tipo: string, agencia: string, _concepto: string) => {
       const t = String(tipo || '').toUpperCase();
       const a = String(agencia || '').toUpperCase();
-      const c = String(concepto || '').toUpperCase();
       return (
-        t.includes('ADMIN') ||
+        t === 'ADMINISTRATIVO' ||
         t.includes('COMERCIALIZAD') ||
-        t.includes('SUELDO') ||
-        t.includes('OFICINA') ||
-        a.includes('COMERCIALIZAD') ||
-        a.includes('ADMIN') ||
-        a.includes('OFICINA') ||
-        c.includes('SUELDO') ||
-        c.includes('COMERCIALIZAD') ||
-        c.includes('ADELANTO')
+        a === 'COMERCIALIZADOR' ||
+        a.includes('ADMINISTRAC') ||
+        a.includes('OFICINA')
       );
     };
 
