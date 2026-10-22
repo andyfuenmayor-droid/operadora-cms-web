@@ -1,0 +1,11 @@
+# Antigravity Workspace Rules - Operadora CMS
+
+## Finanzas y Centro de Cierre (Regression Lock)
+- El módulo de Cierre Semanal y Pre-Cierre cuenta con un **Núcleo Contable Puro** en `src/lib/closureEngineLock.ts` y `src/utils/operatorSettlement.ts`.
+- **PROHIBIDO** modificar la lógica de cálculo o las fórmulas de cierre sin ejecutar:
+  ```bash
+  npm run test:closure
+  ```
+- **PROHIBIDO** duplicar entregas de efectivo como movimientos bancarios en Confirmaciones y Actas.
+- Consulta `CLOSURE_ARCHITECTURE_RULES.md` para ver el detalle de las invariantes matemáticas de la Semana 41.
+- Antes de finalizar cualquier tarea en este repositorio, ejecuta siempre `npm run build` para asegurar que el Golden Test y el bundler compilan con éxito.

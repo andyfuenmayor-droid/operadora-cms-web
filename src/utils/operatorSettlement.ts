@@ -1,5 +1,12 @@
-import { normalizarMoneda } from './formatters';
-import type { SystemKeywordsMap } from './systemKeywords';
+// @CRITICAL-LOCK: DO NOT MODIFY WITHOUT RUNNING CLOSURE SUITE (npm run test:closure)
+/**
+ * ==============================================================================
+ * LIQUIDACIÓN DE CASAS OPERADORAS (OPERATOR SETTLEMENT ENGINE)
+ * Proyecto: Operadora CMS / Multibanca Express
+ * ==============================================================================
+ */
+import { normalizarMoneda } from './formatters.ts';
+import type { SystemKeywordsMap } from './systemKeywords.ts';
 
 export interface OperatorPayment {
   id: number;

@@ -1,5 +1,4 @@
-import { supabase } from '../lib/supabase';
-import { saveSystemKeywords, type SystemKeywordsMap } from './systemKeywords';
+import type { SystemKeywordsMap } from './systemKeywords.ts';
 
 /**
  * Balances Oficiales Auditados de la Semana 40 (2026-09-28 al 2026-10-04)
@@ -116,6 +115,8 @@ export async function executeRestoreAuditedBalances(
   if (!userId) return false;
 
   try {
+    const { supabase } = await import('../lib/supabase.ts');
+    const { saveSystemKeywords } = await import('./systemKeywords.ts');
     // 1. Obtener agencias si no se proporcionaron
     let list = agList;
     if (!list || list.length === 0) {

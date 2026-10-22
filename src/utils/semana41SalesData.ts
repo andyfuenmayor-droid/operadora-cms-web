@@ -35,10 +35,10 @@ export const SEMANA_41_SALES_RECORDS: Semana41SaleRecord[] = [
   { agencia: 'AGENCIA JAVIER', sistema: 'CDAPUESTAS', moneda: 'USD', venta: 332, comision: 49.8, premios: 0, neto: 282.2, util_ag: 0, util_op: 282.2, fecha: '2026-10-11' },
   { agencia: 'MAXIMA CDA 02 T2', sistema: 'CDAPUESTAS', moneda: 'USD', venta: 80, comision: 0, premios: 0, neto: 80, util_ag: 0, util_op: 80, fecha: '2026-10-11' },
 
-  // 3. PESOS COLOMBIANOS (COP) [5 registros - Total Neto: 1,715,593.00 COP]
+  // 3. PESOS COLOMBIANOS (COP) [5 registros - Total Neto Conciliado: 1,490,593.00 COP]
   { agencia: 'EL FUTURO', sistema: 'BETM3', moneda: 'COP', venta: 20000, comision: 2000, premios: 0, neto: 18000, util_ag: 0, util_op: 18000, fecha: '2026-10-11' },
   { agencia: 'AG ORLANDO', sistema: 'BETM3', moneda: 'COP', venta: 500, comision: 50, premios: 0, neto: 450, util_ag: 0, util_op: 450, fecha: '2026-10-11' },
   { agencia: 'MAXIMA CDA 02 T2', sistema: 'GATO PESOS', moneda: 'COP', venta: 890500, comision: 0, premios: 25000, neto: 865500, util_ag: 0, util_op: 865500, fecha: '2026-10-11' },
-  { agencia: 'MAXIMA CDA 02 T2', sistema: 'KENO', moneda: 'COP', venta: 7447500, comision: 0, premios: 7180957, neto: 266543, util_ag: 0, util_op: 266543, fecha: '2026-10-11' },
+  { agencia: 'MAXIMA CDA 02 T2', sistema: 'KENO', moneda: 'COP', venta: 7447500, comision: 0, premios: 7405957, neto: 41543, util_ag: 0, util_op: 41543, fecha: '2026-10-11' },
   { agencia: 'MAXIMA CDA 02 T2', sistema: 'BETM3', moneda: 'COP', venta: 2395100, comision: 0, premios: 1830000, neto: 565100, util_ag: 0, util_op: 565100, fecha: '2026-10-11' },
 ];

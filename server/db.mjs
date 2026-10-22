@@ -232,8 +232,8 @@ export async function saveWeeklySnapshotRecord(snapshot) {
       user_id, semana_no, periodo, fecha_cierre,
       raw_sales_loads, consolidated_totals, agency_matrix,
       operator_matrix, all_movements, carry_over_balances,
-      integrity_hash, updated_at
-    ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, NOW())
+      integrity_hash, is_locked, updated_at
+    ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, NOW())
     ON CONFLICT (user_id, semana_no) DO UPDATE SET
       periodo = EXCLUDED.periodo,
       fecha_cierre = EXCLUDED.fecha_cierre,
@@ -244,8 +244,9 @@ export async function saveWeeklySnapshotRecord(snapshot) {
       all_movements = EXCLUDED.all_movements,
       carry_over_balances = EXCLUDED.carry_over_balances,
       integrity_hash = EXCLUDED.integrity_hash,
+      is_locked = EXCLUDED.is_locked,
       updated_at = NOW()
-    RETURNING id, user_id, semana_no, periodo, fecha_cierre, integrity_hash, created_at, updated_at;
+    RETURNING id, user_id, semana_no, periodo, fecha_cierre, integrity_hash, is_locked, created_at, updated_at;
   `;
 
   const params = [
@@ -260,6 +261,7 @@ export async function saveWeeklySnapshotRecord(snapshot) {
     JSON.stringify(snapshot.all_movements || {}),
     JSON.stringify(snapshot.carry_over_balances || []),
     snapshot.integrity_hash || '',
+    Boolean(snapshot.is_locked ?? false),
   ];
 
   const res = await query(sql, params);

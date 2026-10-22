@@ -73,6 +73,10 @@ import {
   downloadSnapshotJson,
   type WeeklyClosureSnapshot,
 } from '../../lib/snapshots';
+import {
+  computeCertifiedAgencyMatrix,
+  computeCertifiedTotals,
+} from '../../lib/closureEngineLock';
 
 export const PreClosureAuditTab: React.FC = () => {
   const { effectiveUserId, systemCycle, user, refreshSystemCycle } = useAuth();
@@ -548,219 +552,6 @@ export const PreClosureAuditTab: React.FC = () => {
     return { banco: 'BANESCO' };
   };
 
-  // Compute detailed audit rows
-  const auditRows = useMemo<PreClosureAgencyRow[]>(() => {
-    const list: PreClosureAgencyRow[] = [];
-    const currencies: ('BS' | 'USD' | 'COP')[] = ['BS', 'USD', 'COP'];
-
-    currencies.forEach((mon) => {
-      const colIni = mon === 'BS' ? 'saldo_inicial_bs' : mon === 'USD' ? 'saldo_inicial_usd' : 'saldo_inicial_cop';
-
-      agencies.forEach((ag) => {
-        const nom = String(ag.nombre_agencia || '').trim().toUpperCase();
-        const confMon = String(ag.monedas || '').toUpperCase();
-        const sAnt = Number(ag[colIni] || 0);
-
-        // Filter sales for this agency and currency
-        const agSales = sales.filter((s) => {
-          if (normalizarMoneda(s.moneda) !== mon) return false;
-          const sNom = String(s.agencia || '').trim().toUpperCase();
-          return sNom === nom || cleanAgencyName(s.agencia) === cleanAgencyName(nom);
-        });
-        const vtaBruta = agSales.reduce((sum, curr) => sum + Number(curr.venta || curr.monto_ventas || curr.neto || 0), 0);
-        const com = agSales.reduce((sum, curr) => sum + Number(curr.comision || 0), 0);
-        const premTaq = agSales.reduce((sum, curr) => sum + Number(curr.monto_premios || curr.premios || 0), 0);
-        const vtaNeta = agSales.reduce((sum, s) => {
-          const { partPct } = getAgencyCommissionAndParticipation(ag, s.sistema, mon);
-          const v = Number(s.venta ?? s.monto_venta ?? 0);
-          const c = Number(s.comision ?? 0);
-          const p = Number(s.premios ?? s.monto_premios ?? 0);
-          const neto = s.neto !== undefined && s.neto !== null ? Number(s.neto) : Math.round((v - c - p) * 100) / 100;
-
-          let utilAg = 0;
-          if (partPct > 0) {
-            utilAg = Math.round((neto * (partPct / 100)) * 100) / 100;
-          } else if (Number(s.util_ag || 0) > 0) {
-            utilAg = Number(s.util_ag);
-          }
-
-          const utilOp = Math.round((neto - utilAg) * 100) / 100;
-          return sum + utilOp;
-        }, 0);
-
-        if (confMon.includes(mon) || Math.abs(sAnt) > 0.01 || agSales.length > 0) {
-          // Gastos confirmados en el ciclo
-          const agExp = expenses.filter((g) => {
-            const matchAg = g.agencia === nom;
-            const matchMon = normalizarMoneda(g.moneda) === mon;
-            const fStr = String(g.fecha || g.created_at || '').slice(0, 10);
-            const inCycle = !systemCycle?.desde || (fStr >= systemCycle.desde && fStr <= (systemCycle.hasta || fStr));
-            return matchAg && matchMon && Boolean(g.confirmado) && inCycle && !g.rechazado;
-          });
-          const gTot = agExp.reduce((sum, curr) => sum + Number(curr.monto || 0), 0);
-
-          // Segregación de Pagos por Canal restringidos al ciclo operativo activo:
-          // 1. Cobradores de Ruta (recaudaciones QR de cda_pagos_diarios)
-          const agCobradorList = rawDailyPayments.filter((p) => {
-            const matchAg = (p.agencia || p.nombre_agency || '').trim().toUpperCase() === nom;
-            const matchMon = normalizarMoneda(p.moneda) === mon;
-            const isCob = Boolean(p.qr_token) || String(p.tipo_pago || '').toUpperCase().includes('COBRADOR');
-            const isConf = Boolean(p.confirmado) || Boolean(p.confirmado_supervisor) || Boolean(p.fecha_escaneo_cobrador);
-            if (!matchAg || !matchMon || !isCob || !isConf || p.rechazado) return false;
-
-            const fOperativa = String(p.fecha || '').slice(0, 10);
-            const fEscaneo = String(p.fecha_escaneo_cobrador || '').slice(0, 10);
-            const fLiquidacion = String(p.fecha_liquidacion_admin || '').slice(0, 10);
-
-            const inOperativa = fOperativa && (!systemCycle?.desde || fOperativa >= systemCycle.desde) && (!systemCycle?.hasta || fOperativa <= systemCycle.hasta);
-            const inEscaneo = fEscaneo && (!systemCycle?.desde || fEscaneo >= systemCycle.desde) && (!systemCycle?.hasta || fEscaneo <= systemCycle.hasta);
-            const inLiquidacion = fLiquidacion && (!systemCycle?.desde || fLiquidacion >= systemCycle.desde) && (!systemCycle?.hasta || fLiquidacion <= systemCycle.hasta);
-
-            return inOperativa || inEscaneo || inLiquidacion;
-          });
-          const cobradorRutaTot = agCobradorList.reduce((sum, curr) => sum + Number(curr.monto || 0), 0);
-          const cobradorLiquidadoTot = agCobradorList.filter((p) => Boolean(p.liquidado_admin)).reduce((sum, curr) => sum + Number(curr.monto || 0), 0);
-          const cobradorEnRutaTot = agCobradorList.filter((p) => !p.liquidado_admin).reduce((sum, curr) => sum + Number(curr.monto || 0), 0);
-
-          // 2. Efectivo Taquilla directo (Entregado a Supervisor en caja taquilla sin QR en el ciclo)
-          const agEfectivoList = rawDailyPayments.filter((p) => {
-            const matchAg = (p.agencia || p.nombre_agency || '').trim().toUpperCase() === nom;
-            const matchMon = normalizarMoneda(p.moneda) === mon;
-            const isCob = Boolean(p.qr_token) || String(p.tipo_pago || '').toUpperCase().includes('COBRADOR');
-            const isConf = Boolean(p.confirmado) || Boolean(p.confirmado_supervisor);
-            const fStr = String(p.fecha || p.created_at || '').slice(0, 10);
-            const inCycle = !systemCycle?.desde || (fStr >= systemCycle.desde && fStr <= (systemCycle.hasta || fStr));
-            return matchAg && matchMon && !isCob && isConf && inCycle && !p.rechazado;
-          });
-          const rawEfectivoTaquillaTot = agEfectivoList.reduce((sum, curr) => sum + Number(curr.monto || 0), 0);
-          // Si el efectivo entregado al supervisor ya fue despachado al cobrador / liquidado, solo se computa y muestra el remanente en taquilla
-          const efectivoTaquillaTot = Math.max(0, rawEfectivoTaquillaTot - cobradorRutaTot);
-
-          // 3. Bancos ordinarios (pagos_semana + cda_pagos_bancarios sin incluir reposición de premios ni efectivo)
-          const agBancosList = payments.filter((p) => {
-            const matchAg = p.agencia === nom;
-            const matchMon = normalizarMoneda(p.moneda) === mon;
-            const isPrem = String(p.tipo_pago || '').toUpperCase().includes('PREMIO') || String(p.referencia || '').toUpperCase().includes('PREMIO');
-            const isEfectivo = p.id.startsWith('pd_') || p.metodo === 'EFECTIVO' || String(p.referencia || '').toUpperCase().includes('EFECTIVO TAQUILLA');
-            const fStr = String(p.fecha || p.created_at || '').slice(0, 10);
-            const inCycle = !systemCycle?.desde || (fStr >= systemCycle.desde && fStr <= (systemCycle.hasta || fStr));
-            return matchAg && matchMon && !isPrem && !isEfectivo && Boolean(p.confirmado) && inCycle && !p.rechazado;
-          });
-          const bancosTot = agBancosList.reduce((sum, curr) => sum + Number(curr.monto || 0), 0);
-
-          // 4. Reposición de Premios (Abonos de la Operadora a la agencia por pérdidas / faltantes de premio)
-          const agPremiosList = payments.filter((p) => {
-            const matchAg = p.agencia === nom;
-            const matchMon = normalizarMoneda(p.moneda) === mon;
-            const isPrem = String(p.tipo_pago || '').toUpperCase().includes('PREMIO') || String(p.referencia || '').toUpperCase().includes('PREMIO');
-            const fStr = String(p.fecha || p.created_at || '').slice(0, 10);
-            const inCycle = !systemCycle?.desde || (fStr >= systemCycle.desde && fStr <= (systemCycle.hasta || fStr));
-            return matchAg && matchMon && isPrem && Boolean(p.confirmado) && inCycle && !p.rechazado;
-          });
-          const reposicionPremiosTot = agPremiosList.reduce((sum, curr) => sum + Number(curr.monto || 0), 0);
-
-          // Total cobros ordinarios que reducen saldo de la agencia en el pre-cierre:
-          // Bancos confirmados y efectivo depositado directamente en taquilla.
-          // NOTA: Las recaudaciones de cobrador son entregas de efectivo a Caja Central (custodia/traslado)
-          // y NO se vinculan al saldo semanal de la agencia, ya que el importe fue procesado en taquilla
-          // en el momento en que se le entregó al cobrador.
-          const totalCobros = efectivoTaquillaTot + bancosTot;
-
-          // Pagos netos
-          const pagosNetos = totalCobros - reposicionPremiosTot;
-
-          // Saldo Final = Arrastre + Venta Neta - Gastos - Cobros + Premios
-          const saldoFinal = Math.round((sAnt + vtaNeta - gTot - totalCobros + reposicionPremiosTot) * 100) / 100;
-
-          let status: 'pagado' | 'pendiente' | 'favor' = 'pagado';
-          if (Math.abs(saldoFinal) < 0.1) status = 'pagado';
-          else if (saldoFinal > 0) status = 'pendiente';
-          else status = 'favor';
-
-          list.push({
-            ag_id: ag.id,
-            entidad: nom,
-            moneda: mon,
-            saldo_anterior: sAnt,
-            venta_bruta: vtaBruta,
-            comision: com,
-            premios_taquilla: premTaq,
-            venta_neta: vtaNeta,
-            gastos: gTot,
-            cobrador_ruta: cobradorRutaTot,
-            cobrador_liquidado: cobradorLiquidadoTot,
-            cobrador_en_ruta: cobradorEnRutaTot,
-            efectivo_taquilla: efectivoTaquillaTot,
-            bancos: bancosTot,
-            reposicion_premios: reposicionPremiosTot,
-            pagos_netos: pagosNetos,
-            saldo_final: saldoFinal,
-            status,
-          });
-        }
-      });
-    });
-
-    return list;
-  }, [agencies, sales, payments, expenses, rawDailyPayments, systemCycle]);
-
-  // Totals by currency
-  const totalsByCurrency = useMemo(() => {
-    const res: Record<string, {
-      saldoAnterior: number;
-      ventaNeta: number;
-      gastos: number;
-      gastosAgencias?: number;
-      gastosComercializadora?: number;
-      cobradorRuta: number;
-      cobradorLiquidado: number;
-      cobradorEnRuta: number;
-      efectivoTaquilla: number;
-      bancos: number;
-      reposicionPremios: number;
-      saldoFinal: number;
-      count: number;
-    }> = {};
-
-    ['BS', 'USD', 'COP'].forEach((m) => {
-      const admG = adminExpenses.filter((g) => normalizarMoneda(g.moneda) === m).reduce((a, b) => a + Number(b.monto || 0), 0);
-      res[m] = {
-        saldoAnterior: 0,
-        ventaNeta: 0,
-        gastos: 0,
-        gastosAgencias: 0,
-        gastosComercializadora: admG,
-        cobradorRuta: 0,
-        cobradorLiquidado: 0,
-        cobradorEnRuta: 0,
-        efectivoTaquilla: 0,
-        bancos: 0,
-        reposicionPremios: 0,
-        saldoFinal: 0,
-        count: 0,
-      };
-    });
-
-    auditRows.forEach((r) => {
-      if (res[r.moneda]) {
-        res[r.moneda].saldoAnterior += r.saldo_anterior;
-        res[r.moneda].ventaNeta += r.venta_neta;
-        res[r.moneda].gastos += r.gastos;
-        res[r.moneda].gastosAgencias = (res[r.moneda].gastosAgencias || 0) + r.gastos;
-        res[r.moneda].cobradorRuta += r.cobrador_ruta;
-        res[r.moneda].cobradorLiquidado += r.cobrador_liquidado || 0;
-        res[r.moneda].cobradorEnRuta += r.cobrador_en_ruta || 0;
-        res[r.moneda].efectivoTaquilla += r.efectivo_taquilla;
-        res[r.moneda].bancos += r.bancos;
-        res[r.moneda].reposicionPremios += r.reposicion_premios;
-        res[r.moneda].saldoFinal += r.saldo_final;
-        res[r.moneda].count += 1;
-      }
-    });
-
-    return res;
-  }, [auditRows, adminExpenses]);
-
   // Consolidated Admin Expenses by Currency
   const adminExpensesByCurrency = useMemo(() => {
     const map: Record<string, number> = { BS: 0, USD: 0, COP: 0 };
@@ -774,6 +565,24 @@ export const PreClosureAuditTab: React.FC = () => {
     });
     return map;
   }, [adminExpenses]);
+
+  // Compute detailed audit rows delegando en el Motor Contable Puro
+  const auditRows = useMemo<PreClosureAgencyRow[]>(() => {
+    return computeCertifiedAgencyMatrix({
+      agencies,
+      sales,
+      payments,
+      expenses,
+      rawDailyPayments,
+      systemCycle,
+      participationCalculator: (ag, sistema, mon) => getAgencyCommissionAndParticipation(ag, sistema, mon),
+    });
+  }, [agencies, sales, payments, expenses, rawDailyPayments, systemCycle]);
+
+  // Totals by currency delegando en el Motor Contable Puro
+  const totalsByCurrency = useMemo(() => {
+    return computeCertifiedTotals(auditRows, adminExpensesByCurrency);
+  }, [auditRows, adminExpensesByCurrency]);
 
   // Filtered rows for the table view
   const filteredRows = useMemo(() => {

@@ -67,6 +67,10 @@ import {
   getWeeklySnapshot,
   downloadSnapshotJson,
 } from '../../lib/snapshots';
+import {
+  computeCertifiedAgencyMatrix,
+  computeCertifiedTotals,
+} from '../../lib/closureEngineLock';
 
 interface CierreAgencyData {
   ag_id: number;
@@ -97,7 +101,7 @@ export const WeeklyClosureTab: React.FC = () => {
   const [registeredSystems, setRegisteredSystems] = useState<string[]>([]);
   const [systemConfigs, setSystemConfigs] = useState<SystemKeywordsMap>({});
   const [operatorPayments, setOperatorPayments] = useState<OperatorPayment[]>([]);
-  const [closureInspectionMode, setClosureInspectionMode] = useState<'agencias' | 'operadoras'>('agencias');
+  const [closureViewMode, setClosureViewMode] = useState<'todos' | 'agencias' | 'operadoras'>('todos');
 
   const [verifiedCheckMaster, setVerifiedCheckMaster] = useState(false);
   const [message, setMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
@@ -380,81 +384,31 @@ export const WeeklyClosureTab: React.FC = () => {
     };
   }, [effectiveUserId]);
 
-  // Compute closure movements for all currencies
+  // Compute closure movements for all currencies delegando en el Motor Contable Puro
   const closureData = useMemo<CierreAgencyData[]>(() => {
-    const list: CierreAgencyData[] = [];
-    const currencies = ['BS', 'USD', 'COP'];
-
-    currencies.forEach((m) => {
-      const colIni = m === 'BS' ? 'saldo_inicial_bs' : m === 'USD' ? 'saldo_inicial_usd' : 'saldo_inicial_cop';
-
-      agencies.forEach((ag) => {
-        const nom = String(ag.nombre_agencia || '').trim().toUpperCase();
-        const confMon = String(ag.monedas || '').toUpperCase();
-        const rawAnt = Number(ag[colIni] || 0);
-        const sAnt = Math.abs(rawAnt) < 0.0001 ? 0 : rawAnt;
-
-        if (confMon.includes(m) || Math.abs(sAnt) > 0.01) {
-          // Ventas: la venta neta (neto) descontando la participación de la agencia es la utilidad real
-          const agSales = sales.filter((s) => {
-            if (normalizarMoneda(s.moneda) !== m) return false;
-            const sNom = String(s.agencia || '').trim().toUpperCase();
-            return sNom === nom || cleanAgencyName(s.agencia) === cleanAgencyName(nom);
-          });
-          const brutoTotal = agSales.reduce((sum, curr) => sum + Number(curr.neto || 0), 0);
-          const utilVal = agSales.reduce((sum, s) => {
-            const { partPct } = getAgencyCommissionAndParticipation(ag, s.sistema, m);
-            const v = Number(s.venta ?? s.monto_venta ?? 0);
-            const c = Number(s.comision ?? 0);
-            const p = Number(s.premios ?? s.monto_premios ?? 0);
-            const neto = s.neto !== undefined && s.neto !== null ? Number(s.neto) : Math.round((v - c - p) * 100) / 100;
-
-            let utilAg = 0;
-            if (partPct > 0) {
-              utilAg = Math.round((neto * (partPct / 100)) * 100) / 100;
-            } else if (Number(s.util_ag || 0) > 0) {
-              utilAg = Number(s.util_ag);
-            }
-
-            const utilOp = Math.round((neto - utilAg) * 100) / 100;
-            return sum + utilOp;
-          }, 0);
-
-          // Gastos (solo confirmados en Pizarra de Confirmaciones)
-          const agExp = expenses.filter((g) => g.agencia === nom && normalizarMoneda(g.moneda) === m && Boolean(g.confirmado));
-          const gastoVal = agExp.reduce((sum, curr) => sum + Number(curr.monto || 0), 0);
-
-          // Pagos & Premios (solo confirmados)
-          const agPay = payments.filter((p) => p.agencia === nom && normalizarMoneda(p.moneda) === m && Boolean(p.confirmado));
-          let premiosVal = 0, cobrosVal = 0;
-          agPay.forEach((p) => {
-            const mto = Number(p.monto || 0);
-            const tipo = String(p.tipo_pago || '').toUpperCase();
-            if (tipo.includes('PREMIO')) premiosVal += mto;
-            else cobrosVal += mto;
-          });
-
-          // Final Balance: Arrastre + Venta Neta - Gastos - Cobros + Premios
-          const sFin = Math.round((sAnt + utilVal - gastoVal - cobrosVal + premiosVal) * 100) / 100;
-
-          list.push({
-            ag_id: ag.id,
-            entidad: nom,
-            moneda: m,
-            saldo_anterior: sAnt,
-            venta_bruta: brutoTotal,
-            utilidad_semana: utilVal,
-            gastos: gastoVal,
-            premios: premiosVal,
-            cobros: cobrosVal,
-            saldo_final: sFin,
-          });
-        }
-      });
+    const rawMatrix = computeCertifiedAgencyMatrix({
+      agencies,
+      sales,
+      payments,
+      expenses,
+      rawDailyPayments: payments.filter((p) => p.id.startsWith('pd_')),
+      systemCycle: { desde: systemCycle.desde, hasta: systemCycle.hasta },
+      participationCalculator: (ag, sistema, mon) => getAgencyCommissionAndParticipation(ag, sistema, mon),
     });
 
-    return list;
-  }, [agencies, sales, payments, expenses]);
+    return rawMatrix.map((r) => ({
+      ag_id: r.ag_id,
+      entidad: r.entidad,
+      moneda: r.moneda,
+      saldo_anterior: r.saldo_anterior,
+      venta_bruta: r.venta_bruta,
+      utilidad_semana: r.venta_neta,
+      gastos: r.gastos,
+      premios: r.reposicion_premios,
+      cobros: r.bancos + r.efectivo_taquilla,
+      saldo_final: r.saldo_final,
+    }));
+  }, [agencies, sales, payments, expenses, systemCycle]);
 
   const nextCyclePreview = useMemo(() => {
     if (!systemCycle.hasta) return { semana: '?', desde: '?', hasta: '?' };
@@ -519,49 +473,48 @@ export const WeeklyClosureTab: React.FC = () => {
     });
   }, [operatorClosureRows]);
 
-  // CSV Export Contextual (Agencias vs Operadoras)
-  const handleDownloadBackupCSV = () => {
-    if (closureInspectionMode === 'operadoras') {
-      if (operatorClosureRows.length === 0) return;
-      const headers = [
-        'Casa_Operadora',
-        'Moneda',
-        'Venta',
-        'Premios',
-        'GGR_Utilidad_Bruta',
-        'Dif_Com',
-        'Ganancia_Comercializador',
-        'Utilidad_Casa_60',
-        'Arrastre_Inicial',
-        'Pagos_Netos',
-        'Nuevo_Arrastre',
-      ];
-      const operatorExportRows = operatorClosureRows.map((op) => [
-        `"${op.sistema}"`,
-        op.moneda,
-        op.venta.toFixed(2),
-        op.premio.toFixed(2),
-        op.utilidadBruta.toFixed(2),
-        op.difCom.toFixed(2),
-        op.totalCom.toFixed(2),
-        op.netoOperadora.toFixed(2),
-        op.saldoInit.toFixed(2),
-        op.pagosNetos.toFixed(2),
-        op.balanceFinal.toFixed(2),
-      ]);
-      const csvContent = '\uFEFF' + [headers.join(','), ...operatorExportRows.map((r) => r.join(','))].join('\n');
-      const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
-      const url = URL.createObjectURL(blob);
-      const link = document.createElement('a');
-      link.href = url;
-      link.setAttribute('download', `Liquidacion_Operadoras_Semana_${systemCycle.semana}_${systemCycle.desde}_al_${systemCycle.hasta}.csv`);
-      document.body.appendChild(link);
-      link.click();
-      document.body.removeChild(link);
-      URL.revokeObjectURL(url);
-      return;
-    }
+  // CSV Export Handlers
+  const handleDownloadOperatorCSV = () => {
+    if (operatorClosureRows.length === 0) return;
+    const headers = [
+      'Casa_Operadora',
+      'Moneda',
+      'Venta',
+      'Premios',
+      'GGR_Utilidad_Bruta',
+      'Dif_Com',
+      'Ganancia_Comercializador',
+      'Utilidad_Casa_60',
+      'Arrastre_Inicial',
+      'Pagos_Netos',
+      'Nuevo_Arrastre',
+    ];
+    const operatorExportRows = operatorClosureRows.map((op) => [
+      `"${op.sistema}"`,
+      op.moneda,
+      op.venta.toFixed(2),
+      op.premio.toFixed(2),
+      op.utilidadBruta.toFixed(2),
+      op.difCom.toFixed(2),
+      op.totalCom.toFixed(2),
+      op.netoOperadora.toFixed(2),
+      op.saldoInit.toFixed(2),
+      op.pagosNetos.toFixed(2),
+      op.balanceFinal.toFixed(2),
+    ]);
+    const csvContent = '\uFEFF' + [headers.join(','), ...operatorExportRows.map((r) => r.join(','))].join('\n');
+    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.setAttribute('download', `Liquidacion_Operadoras_Semana_${systemCycle.semana}_${systemCycle.desde}_al_${systemCycle.hasta}.csv`);
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(url);
+  };
 
+  const handleDownloadAgencyCSV = () => {
     if (closureData.length === 0) return;
     const headers = [
       'Agencia',
@@ -583,7 +536,7 @@ export const WeeklyClosureTab: React.FC = () => {
       d.cobros.toFixed(2),
       d.saldo_final.toFixed(2),
     ]);
-    const csvContent = '\uFEFF' + [headers.join(','), ...agencyExportRows.map((r) => r.join(',')), ].join('\n');
+    const csvContent = '\uFEFF' + [headers.join(','), ...agencyExportRows.map((r) => r.join(','))].join('\n');
     const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
     const url = URL.createObjectURL(blob);
     const link = document.createElement('a');
@@ -593,6 +546,14 @@ export const WeeklyClosureTab: React.FC = () => {
     link.click();
     document.body.removeChild(link);
     URL.revokeObjectURL(url);
+  };
+
+  const handleDownloadBackupCSV = (target?: 'agencias' | 'operadoras') => {
+    if (target === 'operadoras' || (closureViewMode === 'operadoras' && target !== 'agencias')) {
+      handleDownloadOperatorCSV();
+    } else {
+      handleDownloadAgencyCSV();
+    }
   };
 
   // Rollback Last Closure Handler
@@ -1152,6 +1113,7 @@ export const WeeklyClosureTab: React.FC = () => {
             adminExpenses,
           },
           carry_over_balances: carryOverBalances,
+          is_locked: true,
         });
       } catch (snapSaveErr) {
         console.warn('Could not save immutable weekly snapshot on closure:', snapSaveErr);
@@ -1292,10 +1254,7 @@ export const WeeklyClosureTab: React.FC = () => {
       await loadHistoricalClosures();
 
       confetti({ particleCount: 90, spread: 100, origin: { y: 0.6 } });
-      const successMsg =
-        closureInspectionMode === 'operadoras'
-          ? `¡Liquidación de Casas Operadoras finalizada con éxito! Los nuevos saldos de arrastre han sido traspasados a los proveedores y el ciclo ha avanzado a la Semana ${nuevaSemana} (${nuevaDesdeStr} al ${nuevaHastaStr}). Se ha guardado un respaldo seguro.`
-          : `¡Cierre de Agencias finalizado con éxito! Los nuevos saldos de arrastre han sido asignados y el ciclo ha avanzado a la Semana ${nuevaSemana} (${nuevaDesdeStr} al ${nuevaHastaStr}). Se ha guardado un respaldo seguro.`;
+      const successMsg = `¡Cierre Maestro Integral finalizado con éxito! Los nuevos saldos de arrastre de Agencias (${closureData.length}) y Casas Operadoras (${operatorClosureRows.length}) han sido congelados y traspasados, y el ciclo ha avanzado a la Semana ${nuevaSemana} (${nuevaDesdeStr} al ${nuevaHastaStr}). Se ha guardado un respaldo seguro inmutable.`;
       setMessage({
         type: 'success',
         text: successMsg,
@@ -1344,17 +1303,23 @@ export const WeeklyClosureTab: React.FC = () => {
           )}
 
           <button
-            onClick={handleDownloadBackupCSV}
-            disabled={closureInspectionMode === 'operadoras' ? operatorClosureRows.length === 0 : closureData.length === 0}
-            title={closureInspectionMode === 'operadoras' ? 'Descargar liquidación de operadoras en formato CSV' : 'Descargar copia de respaldo de agencias en formato CSV'}
-            className={`px-3.5 py-2.5 rounded-xl text-xs font-semibold flex items-center gap-1.5 transition-all border cursor-pointer disabled:opacity-50 ${
-              closureInspectionMode === 'operadoras'
-                ? 'bg-amber-500/10 hover:bg-amber-500/20 text-amber-400 border-amber-500/30'
-                : 'bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-400 border-emerald-500/30'
-            }`}
+            onClick={handleDownloadAgencyCSV}
+            disabled={closureData.length === 0}
+            title="Descargar copia de respaldo de agencias en formato CSV"
+            className="px-3.5 py-2.5 rounded-xl text-xs font-semibold flex items-center gap-1.5 transition-all border cursor-pointer disabled:opacity-50 bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-400 border-emerald-500/30"
           >
             <Download className="w-3.5 h-3.5" />
-            {closureInspectionMode === 'operadoras' ? 'Exportar Operadoras (CSV)' : 'Exportar Agencias (CSV)'}
+            CSV Agencias
+          </button>
+
+          <button
+            onClick={handleDownloadOperatorCSV}
+            disabled={operatorClosureRows.length === 0}
+            title="Descargar liquidación de operadoras en formato CSV"
+            className="px-3.5 py-2.5 rounded-xl text-xs font-semibold flex items-center gap-1.5 transition-all border cursor-pointer disabled:opacity-50 bg-amber-500/10 hover:bg-amber-500/20 text-amber-400 border-amber-500/30"
+          >
+            <Download className="w-3.5 h-3.5" />
+            CSV Operadoras
           </button>
 
           <button
@@ -1692,303 +1657,407 @@ export const WeeklyClosureTab: React.FC = () => {
           )}
         </div>
       ) : (
-        <div className="space-y-6">
-          {/* Cycle Banner */}
-          <div className="bg-gradient-to-r from-amber-950/30 via-slate-900 to-slate-900 border border-amber-500/20 rounded-3xl p-6 relative overflow-hidden">
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 relative z-10">
-          <div>
-            <span className="text-[11px] font-bold uppercase tracking-wider text-amber-400 bg-amber-400/10 px-2.5 py-1 rounded-full border border-amber-400/20">
-              {closureInspectionMode === 'operadoras' ? 'Liquidación de Casas Operadoras (Proveedores)' : 'Cierre de Agencias (Puntos de Venta)'}
-            </span>
-            <h3 className="text-lg font-bold text-white mt-2">
-              {systemCycle.tipo === 'SEMANAL' ? `Semana ${systemCycle.semana}` : `Operación Diaria ${systemCycle.semana}`}
-            </h3>
-            <p className="text-xs text-slate-400 font-mono mt-1">
-              Rango actual: <strong className="text-amber-300">{systemCycle.desde}</strong> al{' '}
-              <strong className="text-amber-300">{systemCycle.hasta}</strong>
-            </p>
-          </div>
-
-          <div className="flex items-center gap-4 text-right">
-            {closureInspectionMode === 'operadoras' ? (
-              <>
-                <div>
-                  <span className="text-[11px] text-slate-400 block">Casas Operadoras:</span>
-                  <span className="text-lg font-black text-amber-400 font-mono">{operatorClosureRows.length}</span>
+        <div className="space-y-8">
+          {/* Unified Cycle Banner */}
+          <div className="bg-gradient-to-r from-amber-950/30 via-[#0D1B22] to-slate-900 border border-amber-500/30 rounded-3xl p-6 relative overflow-hidden shadow-2xl">
+            <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4 relative z-10">
+              <div>
+                <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-gradient-to-r from-emerald-500/10 to-amber-500/10 border border-emerald-500/30 text-emerald-400 text-[11px] font-bold uppercase tracking-wider">
+                  <Sparkles className="w-3.5 h-3.5 text-amber-400" />
+                  <span>Auditoría de Balances y Cierre Maestro Integral</span>
                 </div>
-                <div className="border-l border-slate-800 pl-4">
-                  <span className="text-[11px] text-slate-400 block">Monedas Activas:</span>
-                  <span className="text-sm font-bold text-white font-mono">
-                    {['BS', 'USD', 'COP'].filter((m) => operatorClosureRows.some((r) => r.moneda === m)).join(' • ') || 'Sin datos'}
+                <h3 className="text-lg sm:text-xl font-black text-white mt-2 flex items-center gap-2">
+                  <span>{systemCycle.tipo === 'SEMANAL' ? `Semana ${systemCycle.semana}` : `Operación Diaria ${systemCycle.semana}`}</span>
+                  <span className="text-xs font-mono font-normal text-slate-400 bg-slate-800/80 px-2.5 py-0.5 rounded-full border border-slate-700">
+                    Ciclo Activo
                   </span>
+                </h3>
+                <p className="text-xs text-slate-400 font-mono mt-1">
+                  Rango del ciclo: <strong className="text-amber-300">{systemCycle.desde}</strong> al{' '}
+                  <strong className="text-amber-300">{systemCycle.hasta}</strong>
+                </p>
+              </div>
+
+              {/* Unified Stats Chips */}
+              <div className="flex flex-wrap items-center gap-3">
+                <div className="bg-[#071217]/90 border border-slate-800 rounded-2xl px-4 py-2.5">
+                  <span className="text-[10px] text-slate-400 block font-bold uppercase">🏢 Agencias</span>
+                  <span className="text-base font-black text-emerald-400 font-mono">{agencies.length} activas</span>
                 </div>
-              </>
-            ) : (
-              <>
-                <div>
-                  <span className="text-[11px] text-slate-400 block">Agencias Activas:</span>
-                  <span className="text-lg font-black text-emerald-400 font-mono">{agencies.length}</span>
+                <div className="bg-[#071217]/90 border border-slate-800 rounded-2xl px-4 py-2.5">
+                  <span className="text-[10px] text-slate-400 block font-bold uppercase">🌐 Operadoras</span>
+                  <span className="text-base font-black text-amber-400 font-mono">{operatorClosureGroups.length} casas ({operatorClosureRows.length} liq.)</span>
                 </div>
-                <div className="border-l border-slate-800 pl-4">
-                  <span className="text-[11px] text-slate-400 block">Monedas Activas:</span>
-                  <span className="text-sm font-bold text-white font-mono">
-                    {['BS', 'USD', 'COP'].filter((m) => closureData.some((r) => r.moneda === m)).join(' • ') || 'Sin datos'}
-                  </span>
-                </div>
-              </>
-            )}
-          </div>
-        </div>
-      </div>
-
-      {/* Inspection Mode Tabs: Agencias vs Casas Operadoras */}
-      <div className="flex items-center gap-2 border-b border-slate-800 pb-3">
-        <button
-          onClick={() => setClosureInspectionMode('agencias')}
-          className={`px-4 py-2.5 rounded-2xl text-xs sm:text-sm font-bold flex items-center gap-2 transition-all cursor-pointer ${
-            closureInspectionMode === 'agencias'
-              ? 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/40 shadow-lg shadow-emerald-500/10'
-              : 'text-slate-400 hover:text-white hover:bg-slate-800/60'
-          }`}
-        >
-          <Building2 className="w-4 h-4" />
-          <span>🏢 Balances de Agencias ({closureData.length})</span>
-        </button>
-
-        <button
-          onClick={() => setClosureInspectionMode('operadoras')}
-          className={`px-4 py-2.5 rounded-2xl text-xs sm:text-sm font-bold flex items-center gap-2 transition-all cursor-pointer ${
-            closureInspectionMode === 'operadoras'
-              ? 'bg-amber-500/20 text-amber-400 border border-amber-500/40 shadow-lg shadow-amber-500/10'
-              : 'text-slate-400 hover:text-white hover:bg-slate-800/60'
-          }`}
-        >
-          <Globe className="w-4 h-4" />
-          <span>🌐 Balances de Casas Operadoras ({operatorClosureRows.length})</span>
-        </button>
-      </div>
-
-      {/* 1. AGENCIA VERIFIED TABLES */}
-      {closureInspectionMode === 'agencias' && (
-        <div className="space-y-6">
-          {['BS', 'USD', 'COP'].map((mon) => {
-            const monRows = closureData.filter((d) => d.moneda === mon);
-            if (monRows.length === 0) return null;
-
-            return (
-              <div key={mon} className="bg-[#0D1B22] border border-slate-800 rounded-3xl overflow-hidden shadow-xl">
-                <div className="p-4 sm:p-5 border-b border-slate-800 flex items-center justify-between">
-                  <h4 className="text-xs font-bold text-white uppercase tracking-wider flex items-center gap-2">
-                    <span>💰 Balance Verificado Agencias {mon}</span>
-                  </h4>
-                  <span className="text-[10px] text-slate-400 font-mono">{monRows.length} agencias</span>
-                </div>
-
-                <div className="overflow-x-auto">
-                  <table className="w-full text-left text-xs">
-                    <thead className="bg-[#071217] text-slate-400 border-b border-slate-800 font-bold uppercase tracking-wider">
-                      <tr>
-                        <th className="py-3 px-4">Agencia</th>
-                        <th className="py-3 px-4 text-right">Arrastre</th>
-                        <th className="py-3 px-4 text-right">Venta Neta</th>
-                        <th className="py-3 px-4 text-right">Gastos Agencias</th>
-                        <th className="py-3 px-4 text-right">Premios</th>
-                        <th className="py-3 px-4 text-right">Cobros</th>
-                        <th className="py-3 px-4 text-right">Saldo Final</th>
-                      </tr>
-                    </thead>
-                    <tbody className="divide-y divide-slate-800/80 font-mono">
-                      {monRows.map((row) => (
-                        <tr key={`${row.entidad}_${mon}`} className="hover:bg-slate-800/30 transition-colors">
-                          <td className="py-3 px-4 font-sans font-bold text-white">{row.entidad}</td>
-                          <td className="py-3 px-4 text-right text-slate-400">{formatCurrency(row.saldo_anterior, mon as any)}</td>
-                          <td className={`py-3 px-4 text-right font-semibold ${row.venta_bruta >= 0 ? 'text-emerald-400' : 'text-rose-400'}`}>
-                            {formatCurrency(row.venta_bruta, mon as any)}
-                          </td>
-                          <td className="py-3 px-4 text-right text-rose-400">{formatCurrency(row.gastos, mon as any)}</td>
-                          <td className="py-3 px-4 text-right text-amber-400">{formatCurrency(row.premios, mon as any)}</td>
-                          <td className="py-3 px-4 text-right text-cyan-400">{formatCurrency(row.cobros, mon as any)}</td>
-                          <td
-                            className={`py-3 px-4 text-right font-black ${
-                              row.saldo_final > 0 ? 'text-rose-400' : row.saldo_final < 0 ? 'text-cyan-400' : 'text-emerald-400'
-                            }`}
-                          >
-                            {formatCurrency(row.saldo_final, mon as any)}
-                          </td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
+                <div className="bg-[#071217]/90 border border-slate-800 rounded-2xl px-4 py-2.5">
+                  <span className="text-[10px] text-slate-400 block font-bold uppercase">💰 Monedas</span>
+                  <span className="text-base font-black text-white font-mono">BS • USD • COP</span>
                 </div>
               </div>
-            );
-          })}
-        </div>
-      )}
-
-      {/* 2. OPERADORA VERIFIED TABLES (Grouped by Operadora with currencies stacked) */}
-      {closureInspectionMode === 'operadoras' && (
-        <div className="space-y-6">
-          {/* Resumen Global de Tesorería por Moneda */}
-          <div className="bg-white dark:bg-[#0D1B22] border border-slate-200 dark:border-slate-800 rounded-3xl p-5 shadow-sm dark:shadow-xl">
-            <div className="flex items-center justify-between pb-3 border-b border-slate-100 dark:border-slate-800 mb-3.5">
-              <h4 className="text-xs font-black uppercase text-amber-600 dark:text-amber-400 font-mono tracking-wider flex items-center gap-2">
-                <Scale className="w-4 h-4 text-amber-500 dark:text-amber-400" />
-                <span>Posición Global Consolidada a Liquidar con Proveedores</span>
-              </h4>
-              <span className="text-xs text-slate-500 dark:text-slate-400 font-mono">Semana {systemCycle.semana}</span>
-            </div>
-
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-              {['BS', 'USD', 'COP'].map((mon) => {
-                const tot = operatorTotalsByCurrency[mon];
-                if (!tot) return null;
-                const flag = mon === 'BS' ? '🇻🇪' : mon === 'USD' ? '🇺🇸' : '🇨🇴';
-                const isDeuda = tot.balanceFinal > 0.01;
-                const isFavor = tot.balanceFinal < -0.01;
-
-                return (
-                  <div key={`tot_summary_${mon}`} className="bg-slate-50/90 dark:bg-[#071318] border border-slate-200 dark:border-slate-800/80 rounded-2xl p-3.5">
-                    <div className="flex justify-between items-center mb-1.5">
-                      <span className="text-xs font-bold text-slate-800 dark:text-slate-300 font-mono">
-                        <span className="font-sans">{flag}</span> Total {mon}
-                      </span>
-                      <span className="text-[10px] text-slate-500 dark:text-slate-400 font-mono">{tot.count} operadoras</span>
-                    </div>
-                    <div className={`text-lg font-black font-mono ${isDeuda ? 'text-rose-600 dark:text-rose-400' : isFavor ? 'text-emerald-600 dark:text-emerald-400' : 'text-slate-800 dark:text-slate-300'}`}>
-                      {formatCurrency(tot.balanceFinal, mon as any)}
-                    </div>
-                    <span className="text-[10px] text-slate-500 dark:text-slate-400 block font-sans mt-0.5">
-                      {isDeuda ? '🔴 Deuda neta a pagar' : isFavor ? '🟢 Saldo a favor' : '⚪ Solvente'}
-                    </span>
-                  </div>
-                );
-              })}
             </div>
           </div>
 
-          {/* Tablas por Casa Operadora con sus monedas una debajo de la otra */}
-          {operatorClosureGroups.length === 0 ? (
-            <div className="bg-white dark:bg-[#0D1B22] border border-slate-200 dark:border-slate-800 rounded-3xl p-8 text-center text-slate-500 font-sans">
-              <Globe className="w-8 h-8 mx-auto mb-2 opacity-40 text-slate-400" />
-              No hay casas operadoras con actividad en este ciclo.
+          {/* Selector de Vista: Unificada vs Filtrada */}
+          <div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-800 pb-3">
+            <div className="flex flex-wrap items-center gap-2">
+              <button
+                onClick={() => setClosureViewMode('todos')}
+                className={`px-4 py-2.5 rounded-2xl text-xs sm:text-sm font-bold flex items-center gap-2 transition-all cursor-pointer ${
+                  closureViewMode === 'todos'
+                    ? 'bg-gradient-to-r from-emerald-500/20 to-amber-500/20 text-white border border-emerald-500/40 shadow-lg shadow-emerald-500/10'
+                    : 'text-slate-400 hover:text-white hover:bg-slate-800/60'
+                }`}
+              >
+                <Layers className="w-4 h-4 text-amber-400" />
+                <span>Vista Unificada (Ambos Balances)</span>
+              </button>
+
+              <button
+                onClick={() => setClosureViewMode('agencias')}
+                className={`px-4 py-2.5 rounded-2xl text-xs sm:text-sm font-bold flex items-center gap-2 transition-all cursor-pointer ${
+                  closureViewMode === 'agencias'
+                    ? 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/40 shadow-lg shadow-emerald-500/10'
+                    : 'text-slate-400 hover:text-white hover:bg-slate-800/60'
+                }`}
+              >
+                <Building2 className="w-4 h-4" />
+                <span>🏢 Solo Agencias ({closureData.length})</span>
+              </button>
+
+              <button
+                onClick={() => setClosureViewMode('operadoras')}
+                className={`px-4 py-2.5 rounded-2xl text-xs sm:text-sm font-bold flex items-center gap-2 transition-all cursor-pointer ${
+                  closureViewMode === 'operadoras'
+                    ? 'bg-amber-500/20 text-amber-400 border border-amber-500/40 shadow-lg shadow-amber-500/10'
+                    : 'text-slate-400 hover:text-white hover:bg-slate-800/60'
+                }`}
+              >
+                <Globe className="w-4 h-4" />
+                <span>🌐 Solo Operadoras ({operatorClosureRows.length})</span>
+              </button>
             </div>
-          ) : (
-            operatorClosureGroups.map((group) => {
-              return (
-                <div key={`op_group_${group.sistema}`} className="bg-white dark:bg-[#0D1B22] border border-slate-200 dark:border-slate-800 rounded-3xl overflow-hidden shadow-sm dark:shadow-xl">
-                  <div className="p-4 sm:p-5 border-b border-slate-100 dark:border-slate-800 flex items-center justify-between">
-                    <div className="flex items-center gap-2.5">
-                      <div className="p-1.5 rounded-xl bg-amber-500/10 text-amber-500 dark:text-amber-400 border border-amber-500/20">
-                        <Globe className="w-4 h-4" />
-                      </div>
-                      <div>
-                        <h4 className="text-sm font-black text-slate-900 dark:text-white uppercase tracking-wider font-mono">
-                          {group.sistema}
-                        </h4>
-                        <span className="text-[10px] text-slate-500 dark:text-slate-400 font-mono">
-                          {group.rows.length} {group.rows.length === 1 ? 'moneda activa' : 'monedas activas'}
-                        </span>
-                      </div>
-                    </div>
-                    <span
-                      className={`text-[10px] font-extrabold uppercase px-2.5 py-1 rounded-full border ${
-                        group.hasDeuda
-                          ? 'bg-rose-50 dark:bg-rose-500/20 text-rose-700 dark:text-rose-400 border border-rose-200 dark:border-rose-500/30'
-                          : group.hasFavor
-                          ? 'bg-emerald-50 dark:bg-emerald-500/20 text-emerald-700 dark:text-emerald-400 border border-emerald-200 dark:border-emerald-500/30'
-                          : 'bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400 border border-slate-200 dark:border-slate-700'
-                      }`}
-                    >
-                      {group.hasDeuda ? '🔴 Con Deuda Pendiente' : group.hasFavor ? '🟢 Saldo a Favor' : '⚪ Solvente'}
-                    </span>
+
+            {closureViewMode === 'todos' && (
+              <div className="flex items-center gap-2 text-xs">
+                <span className="text-slate-500 font-sans">Saltar a:</span>
+                <button
+                  type="button"
+                  onClick={() => document.getElementById('seccion-agencias')?.scrollIntoView({ behavior: 'smooth' })}
+                  className="px-2.5 py-1 rounded-lg bg-slate-800/80 hover:bg-slate-700 text-slate-300 font-mono transition-colors cursor-pointer"
+                >
+                  ↓ Agencias
+                </button>
+                <button
+                  type="button"
+                  onClick={() => document.getElementById('seccion-operadoras')?.scrollIntoView({ behavior: 'smooth' })}
+                  className="px-2.5 py-1 rounded-lg bg-slate-800/80 hover:bg-slate-700 text-slate-300 font-mono transition-colors cursor-pointer"
+                >
+                  ↓ Operadoras
+                </button>
+                <button
+                  type="button"
+                  onClick={() => document.getElementById('seccion-cierre-maestro')?.scrollIntoView({ behavior: 'smooth' })}
+                  className="px-2.5 py-1 rounded-lg bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 font-mono font-bold transition-colors cursor-pointer"
+                >
+                  ↓ Cierre Maestro
+                </button>
+              </div>
+            )}
+          </div>
+
+          {/* 1. SECCIÓN: BALANCES DE AGENCIAS */}
+          {(closureViewMode === 'todos' || closureViewMode === 'agencias') && (
+            <section id="seccion-agencias" className="space-y-4">
+              <div className="bg-[#0A161C] border border-emerald-500/30 rounded-2xl p-4 sm:p-5 flex flex-col sm:flex-row sm:items-center justify-between gap-3 shadow-md">
+                <div className="flex items-center gap-3">
+                  <div className="p-2.5 rounded-xl bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">
+                    <Building2 className="w-5 h-5" />
                   </div>
-
-                  <div className="overflow-x-auto">
-                    <table className="w-full text-left text-xs">
-                      <thead className="bg-slate-50 dark:bg-[#071217] text-slate-600 dark:text-slate-400 border-b border-slate-200 dark:border-slate-800 font-bold uppercase tracking-wider text-[11px]">
-                        <tr>
-                          <th className="py-3 px-4">Moneda</th>
-                          <th className="py-3 px-4 text-right">Venta</th>
-                          <th className="py-3 px-4 text-right">Premios</th>
-                          <th className="py-3 px-4 text-right">GGR</th>
-                          <th className="py-3 px-4 text-right text-cyan-700 dark:text-cyan-400">Dif. Com</th>
-                          <th className="py-3 px-4 text-right text-emerald-700 dark:text-emerald-400">Ganancia Comercializador</th>
-                          <th className="py-3 px-4 text-right text-amber-700 dark:text-amber-400">Utilidad Casa (60%)</th>
-                          <th className="py-3 px-4 text-right">Arrastre</th>
-                          <th className="py-3 px-4 text-right">Pagos Netos</th>
-                          <th className="py-3 px-4 text-right font-black">Nuevo Arrastre</th>
-                          <th className="py-3 px-4 text-center">Estado</th>
-                        </tr>
-                      </thead>
-                      <tbody className="divide-y divide-slate-100 dark:divide-slate-800/80 font-mono text-slate-700 dark:text-slate-300">
-                        {group.rows.map((row) => {
-                          const flag = row.moneda === 'BS' ? '🇻🇪' : row.moneda === 'USD' ? '🇺🇸' : '🇨🇴';
-                          const isDeuda = row.balanceFinal > 0.01;
-                          const isFavor = row.balanceFinal < -0.01;
-
-                          return (
-                            <tr key={`${group.sistema}_${row.moneda}`} className="hover:bg-slate-50 dark:hover:bg-slate-800/30 transition-colors">
-                              <td className="py-3 px-4 font-sans font-bold text-slate-900 dark:text-white flex items-center gap-2">
-                                <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-bold ${
-                                  row.moneda === 'BS'
-                                    ? 'bg-amber-50 dark:bg-amber-500/10 text-amber-700 dark:text-amber-400 border border-amber-200 dark:border-amber-500/20'
-                                    : row.moneda === 'USD'
-                                    ? 'bg-emerald-50 dark:bg-emerald-500/10 text-emerald-700 dark:text-emerald-400 border border-emerald-200 dark:border-emerald-500/20'
-                                    : 'bg-sky-50 dark:bg-sky-500/10 text-sky-700 dark:text-sky-400 border border-sky-200 dark:border-sky-500/20'
-                                }`}>
-                                  <span className="font-sans">{flag}</span>
-                                  <span>{row.moneda}</span>
-                                </span>
-                              </td>
-                              <td className="py-3 px-4 text-right font-semibold text-slate-900 dark:text-slate-200">{formatCurrency(row.venta, row.moneda as any)}</td>
-                              <td className="py-3 px-4 text-right text-amber-700 dark:text-amber-400">
-                                {row.premio > 0 ? `-${formatCurrency(row.premio, row.moneda as any)}` : formatCurrency(0, row.moneda as any)}
-                              </td>
-                              <td className={`py-3 px-4 text-right font-bold ${row.utilidadBruta >= 0 ? 'text-emerald-700 dark:text-emerald-400' : 'text-rose-600 dark:text-rose-400'}`}>
-                                {formatCurrency(row.utilidadBruta, row.moneda as any)}
-                              </td>
-                              <td className="py-3 px-4 text-right text-cyan-700 dark:text-cyan-400 font-semibold">{formatCurrency(row.difCom, row.moneda as any)}</td>
-                              <td className="py-3 px-4 text-right font-black text-emerald-700 dark:text-emerald-400 bg-emerald-50/60 dark:bg-emerald-500/5">{formatCurrency(row.totalCom, row.moneda as any)}</td>
-                              <td className={`py-3 px-4 text-right font-bold ${row.netoOperadora >= 0 ? 'text-amber-700 dark:text-amber-400' : 'text-rose-600 dark:text-rose-400'}`}>
-                                {formatCurrency(row.netoOperadora, row.moneda as any)}
-                              </td>
-                              <td className="py-3 px-4 text-right text-slate-600 dark:text-slate-400">{formatCurrency(row.saldoInit, row.moneda as any)}</td>
-                              <td className="py-3 px-4 text-right text-cyan-700 dark:text-cyan-400 font-semibold">
-                                {row.pagosNetos !== 0 ? `-${formatCurrency(row.pagosNetos, row.moneda as any)}` : formatCurrency(0, row.moneda as any)}
-                              </td>
-                              <td
-                                className={`py-3 px-4 text-right font-black text-sm ${
-                                  isDeuda ? 'text-rose-600 dark:text-rose-400' : isFavor ? 'text-emerald-600 dark:text-emerald-400' : 'text-slate-800 dark:text-slate-300'
-                                }`}
-                              >
-                                {formatCurrency(row.balanceFinal, row.moneda as any)}
-                              </td>
-                              <td className="py-3 px-4 text-center">
-                                <span
-                                  className={`px-2 py-0.5 rounded-full text-[10px] font-extrabold uppercase ${
-                                    isDeuda
-                                      ? 'bg-rose-50 dark:bg-rose-500/20 text-rose-700 dark:text-rose-400 border border-rose-200 dark:border-rose-500/30'
-                                      : isFavor
-                                      ? 'bg-emerald-50 dark:bg-emerald-500/20 text-emerald-700 dark:text-emerald-400 border border-emerald-200 dark:border-emerald-500/30'
-                                      : 'bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400 border border-slate-200 dark:border-slate-700'
-                                  }`}
-                                >
-                                  {isDeuda ? 'A Pagar' : isFavor ? 'A Favor' : 'Solvente'}
-                                </span>
-                              </td>
-                            </tr>
-                          );
-                        })}
-                      </tbody>
-                    </table>
+                  <div>
+                    <h3 className="text-sm sm:text-base font-black text-white uppercase tracking-wider flex items-center gap-2">
+                      <span>1. Balances Verificados de Agencias (Puntos de Venta)</span>
+                      <span className="text-[10px] font-mono px-2 py-0.5 rounded-full bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 font-bold">
+                        {closureData.length} registros
+                      </span>
+                    </h3>
+                    <p className="text-xs text-slate-400">
+                      Arrastre anterior, venta neta, gastos, premios y cobros auditados por agencia
+                    </p>
                   </div>
                 </div>
-              );
-            })
+                <div className="flex items-center gap-2">
+                  <span className="text-xs text-slate-300 font-mono bg-slate-900/90 px-3 py-1.5 rounded-xl border border-slate-800">
+                    🏢 {agencies.length} agencias registradas
+                  </span>
+                </div>
+              </div>
+
+              <div className="space-y-6">
+                {['BS', 'USD', 'COP'].map((mon) => {
+                  const monRows = closureData.filter((d) => d.moneda === mon);
+                  if (monRows.length === 0) return null;
+
+                  return (
+                    <div key={mon} className="bg-[#0D1B22] border border-slate-800 rounded-3xl overflow-hidden shadow-xl">
+                      <div className="p-4 sm:p-5 border-b border-slate-800 flex items-center justify-between">
+                        <h4 className="text-xs font-bold text-white uppercase tracking-wider flex items-center gap-2">
+                          <span>💰 Balance Verificado Agencias {mon}</span>
+                        </h4>
+                        <span className="text-[10px] text-slate-400 font-mono">{monRows.length} agencias</span>
+                      </div>
+
+                      <div className="overflow-x-auto">
+                        <table className="w-full text-left text-xs">
+                          <thead className="bg-[#071217] text-slate-400 border-b border-slate-800 font-bold uppercase tracking-wider">
+                            <tr>
+                              <th className="py-3 px-4">Agencia</th>
+                              <th className="py-3 px-4 text-right">Arrastre</th>
+                              <th className="py-3 px-4 text-right">Venta Neta</th>
+                              <th className="py-3 px-4 text-right">Gastos Agencias</th>
+                              <th className="py-3 px-4 text-right">Premios</th>
+                              <th className="py-3 px-4 text-right">Cobros</th>
+                              <th className="py-3 px-4 text-right">Saldo Final</th>
+                            </tr>
+                          </thead>
+                          <tbody className="divide-y divide-slate-800/80 font-mono">
+                            {monRows.map((row) => (
+                              <tr key={`${row.entidad}_${mon}`} className="hover:bg-slate-800/30 transition-colors">
+                                <td className="py-3 px-4 font-sans font-bold text-white">{row.entidad}</td>
+                                <td className="py-3 px-4 text-right text-slate-400">{formatCurrency(row.saldo_anterior, mon as any)}</td>
+                                <td className={`py-3 px-4 text-right font-semibold ${row.venta_bruta >= 0 ? 'text-emerald-400' : 'text-rose-400'}`}>
+                                  {formatCurrency(row.venta_bruta, mon as any)}
+                                </td>
+                                <td className="py-3 px-4 text-right text-rose-400">{formatCurrency(row.gastos, mon as any)}</td>
+                                <td className="py-3 px-4 text-right text-amber-400">{formatCurrency(row.premios, mon as any)}</td>
+                                <td className="py-3 px-4 text-right text-cyan-400">{formatCurrency(row.cobros, mon as any)}</td>
+                                <td
+                                  className={`py-3 px-4 text-right font-black ${
+                                    row.saldo_final > 0 ? 'text-rose-400' : row.saldo_final < 0 ? 'text-cyan-400' : 'text-emerald-400'
+                                  }`}
+                                >
+                                  {formatCurrency(row.saldo_final, mon as any)}
+                                </td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </section>
           )}
-        </div>
-      )}
+
+          {/* 2. SECCIÓN: BALANCES DE CASAS OPERADORAS */}
+          {(closureViewMode === 'todos' || closureViewMode === 'operadoras') && (
+            <section id="seccion-operadoras" className="space-y-4 pt-6 border-t border-slate-800/80">
+              <div className="bg-[#0A161C] border border-amber-500/30 rounded-2xl p-4 sm:p-5 flex flex-col sm:flex-row sm:items-center justify-between gap-3 shadow-md">
+                <div className="flex items-center gap-3">
+                  <div className="p-2.5 rounded-xl bg-amber-500/10 text-amber-400 border border-amber-500/20">
+                    <Globe className="w-5 h-5" />
+                  </div>
+                  <div>
+                    <h3 className="text-sm sm:text-base font-black text-white uppercase tracking-wider flex items-center gap-2">
+                      <span>2. Balances Verificados de Casas Operadoras (Proveedores)</span>
+                      <span className="text-[10px] font-mono px-2 py-0.5 rounded-full bg-amber-500/10 text-amber-400 border border-amber-500/20 font-bold">
+                        {operatorClosureRows.length} liquidaciones
+                      </span>
+                    </h3>
+                    <p className="text-xs text-slate-400">
+                      Liquidación de GGR, comisión del comercializador, utilidad de casas, pagos netos y nuevos saldos de arrastre
+                    </p>
+                  </div>
+                </div>
+                <div className="flex items-center gap-2">
+                  <span className="text-xs text-slate-300 font-mono bg-slate-900/90 px-3 py-1.5 rounded-xl border border-slate-800">
+                    🌐 {operatorClosureGroups.length} casas matrices
+                  </span>
+                </div>
+              </div>
+
+              <div className="space-y-6">
+                {/* Resumen Global de Tesorería por Moneda */}
+                <div className="bg-white dark:bg-[#0D1B22] border border-slate-200 dark:border-slate-800 rounded-3xl p-5 shadow-sm dark:shadow-xl">
+                  <div className="flex items-center justify-between pb-3 border-b border-slate-100 dark:border-slate-800 mb-3.5">
+                    <h4 className="text-xs font-black uppercase text-amber-600 dark:text-amber-400 font-mono tracking-wider flex items-center gap-2">
+                      <Scale className="w-4 h-4 text-amber-500 dark:text-amber-400" />
+                      <span>Posición Global Consolidada a Liquidar con Proveedores</span>
+                    </h4>
+                    <span className="text-xs text-slate-500 dark:text-slate-400 font-mono">Semana {systemCycle.semana}</span>
+                  </div>
+
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                    {['BS', 'USD', 'COP'].map((mon) => {
+                      const tot = operatorTotalsByCurrency[mon];
+                      if (!tot) return null;
+                      const flag = mon === 'BS' ? '🇻🇪' : mon === 'USD' ? '🇺🇸' : '🇨🇴';
+                      const isDeuda = tot.balanceFinal > 0.01;
+                      const isFavor = tot.balanceFinal < -0.01;
+
+                      return (
+                        <div key={`tot_summary_${mon}`} className="bg-slate-50/90 dark:bg-[#071318] border border-slate-200 dark:border-slate-800/80 rounded-2xl p-3.5">
+                          <div className="flex justify-between items-center mb-1.5">
+                            <span className="text-xs font-bold text-slate-800 dark:text-slate-300 font-mono">
+                              <span className="font-sans">{flag}</span> Total {mon}
+                            </span>
+                            <span className="text-[10px] text-slate-500 dark:text-slate-400 font-mono">{tot.count} operadoras</span>
+                          </div>
+                          <div className={`text-lg font-black font-mono ${isDeuda ? 'text-rose-600 dark:text-rose-400' : isFavor ? 'text-emerald-600 dark:text-emerald-400' : 'text-slate-800 dark:text-slate-300'}`}>
+                            {formatCurrency(tot.balanceFinal, mon as any)}
+                          </div>
+                          <span className="text-[10px] text-slate-500 dark:text-slate-400 block font-sans mt-0.5">
+                            {isDeuda ? '🔴 Deuda neta a pagar' : isFavor ? '🟢 Saldo a favor' : '⚪ Solvente'}
+                          </span>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+
+                {/* Tablas por Casa Operadora con sus monedas una debajo de la otra */}
+                {operatorClosureGroups.length === 0 ? (
+                  <div className="bg-white dark:bg-[#0D1B22] border border-slate-200 dark:border-slate-800 rounded-3xl p-8 text-center text-slate-500 font-sans">
+                    <Globe className="w-8 h-8 mx-auto mb-2 opacity-40 text-slate-400" />
+                    No hay casas operadoras con actividad en este ciclo.
+                  </div>
+                ) : (
+                  operatorClosureGroups.map((group) => {
+                    return (
+                      <div key={`op_group_${group.sistema}`} className="bg-white dark:bg-[#0D1B22] border border-slate-200 dark:border-slate-800 rounded-3xl overflow-hidden shadow-sm dark:shadow-xl">
+                        <div className="p-4 sm:p-5 border-b border-slate-100 dark:border-slate-800 flex items-center justify-between">
+                          <div className="flex items-center gap-2.5">
+                            <div className="p-1.5 rounded-xl bg-amber-500/10 text-amber-500 dark:text-amber-400 border border-amber-500/20">
+                              <Globe className="w-4 h-4" />
+                            </div>
+                            <div>
+                              <h4 className="text-sm font-black text-slate-900 dark:text-white uppercase tracking-wider font-mono">
+                                {group.sistema}
+                              </h4>
+                              <span className="text-[10px] text-slate-500 dark:text-slate-400 font-mono">
+                                {group.rows.length} {group.rows.length === 1 ? 'moneda activa' : 'monedas activas'}
+                              </span>
+                            </div>
+                          </div>
+                          <span
+                            className={`text-[10px] font-extrabold uppercase px-2.5 py-1 rounded-full border ${
+                              group.hasDeuda
+                                ? 'bg-rose-50 dark:bg-rose-500/20 text-rose-700 dark:text-rose-400 border border-rose-200 dark:border-rose-500/30'
+                                : group.hasFavor
+                                ? 'bg-emerald-50 dark:bg-emerald-500/20 text-emerald-700 dark:text-emerald-400 border border-emerald-200 dark:border-emerald-500/30'
+                                : 'bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400 border border-slate-200 dark:border-slate-700'
+                            }`}
+                          >
+                            {group.hasDeuda ? '🔴 Con Deuda Pendiente' : group.hasFavor ? '🟢 Saldo a Favor' : '⚪ Solvente'}
+                          </span>
+                        </div>
+
+                        <div className="overflow-x-auto">
+                          <table className="w-full text-left text-xs">
+                            <thead className="bg-slate-50 dark:bg-[#071217] text-slate-600 dark:text-slate-400 border-b border-slate-200 dark:border-slate-800 font-bold uppercase tracking-wider text-[11px]">
+                              <tr>
+                                <th className="py-3 px-4">Moneda</th>
+                                <th className="py-3 px-4 text-right">Venta</th>
+                                <th className="py-3 px-4 text-right">Premios</th>
+                                <th className="py-3 px-4 text-right">GGR</th>
+                                <th className="py-3 px-4 text-right text-cyan-700 dark:text-cyan-400">Dif. Com</th>
+                                <th className="py-3 px-4 text-right text-emerald-700 dark:text-emerald-400">Ganancia Comercializador</th>
+                                <th className="py-3 px-4 text-right text-amber-700 dark:text-amber-400">Utilidad Casa (60%)</th>
+                                <th className="py-3 px-4 text-right">Arrastre</th>
+                                <th className="py-3 px-4 text-right">Pagos Netos</th>
+                                <th className="py-3 px-4 text-right font-black">Nuevo Arrastre</th>
+                                <th className="py-3 px-4 text-center">Estado</th>
+                              </tr>
+                            </thead>
+                            <tbody className="divide-y divide-slate-100 dark:divide-slate-800/80 font-mono text-slate-700 dark:text-slate-300">
+                              {group.rows.map((row) => {
+                                const flag = row.moneda === 'BS' ? '🇻🇪' : row.moneda === 'USD' ? '🇺🇸' : '🇨🇴';
+                                const isDeuda = row.balanceFinal > 0.01;
+                                const isFavor = row.balanceFinal < -0.01;
+
+                                return (
+                                  <tr key={`${group.sistema}_${row.moneda}`} className="hover:bg-slate-50 dark:hover:bg-slate-800/30 transition-colors">
+                                    <td className="py-3 px-4 font-sans font-bold text-slate-900 dark:text-white flex items-center gap-2">
+                                      <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-bold ${
+                                        row.moneda === 'BS'
+                                          ? 'bg-amber-50 dark:bg-amber-500/10 text-amber-700 dark:text-amber-400 border border-amber-200 dark:border-amber-500/20'
+                                          : row.moneda === 'USD'
+                                          ? 'bg-emerald-50 dark:bg-emerald-500/10 text-emerald-700 dark:text-emerald-400 border border-emerald-200 dark:border-emerald-500/20'
+                                          : 'bg-sky-50 dark:bg-sky-500/10 text-sky-700 dark:text-sky-400 border border-sky-200 dark:border-sky-500/20'
+                                      }`}>
+                                        <span className="font-sans">{flag}</span>
+                                        <span>{row.moneda}</span>
+                                      </span>
+                                    </td>
+                                    <td className="py-3 px-4 text-right font-semibold text-slate-900 dark:text-slate-200">{formatCurrency(row.venta, row.moneda as any)}</td>
+                                    <td className="py-3 px-4 text-right text-amber-700 dark:text-amber-400">
+                                      {row.premio > 0 ? `-${formatCurrency(row.premio, row.moneda as any)}` : formatCurrency(0, row.moneda as any)}
+                                    </td>
+                                    <td className={`py-3 px-4 text-right font-bold ${row.utilidadBruta >= 0 ? 'text-emerald-700 dark:text-emerald-400' : 'text-rose-600 dark:text-rose-400'}`}>
+                                      {formatCurrency(row.utilidadBruta, row.moneda as any)}
+                                    </td>
+                                    <td className="py-3 px-4 text-right text-cyan-700 dark:text-cyan-400 font-semibold">{formatCurrency(row.difCom, row.moneda as any)}</td>
+                                    <td className="py-3 px-4 text-right font-black text-emerald-700 dark:text-emerald-400 bg-emerald-50/60 dark:bg-emerald-500/5">{formatCurrency(row.totalCom, row.moneda as any)}</td>
+                                    <td className={`py-3 px-4 text-right font-bold ${row.netoOperadora >= 0 ? 'text-amber-700 dark:text-amber-400' : 'text-rose-600 dark:text-rose-400'}`}>
+                                      {formatCurrency(row.netoOperadora, row.moneda as any)}
+                                    </td>
+                                    <td className="py-3 px-4 text-right text-slate-600 dark:text-slate-400">{formatCurrency(row.saldoInit, row.moneda as any)}</td>
+                                    <td className="py-3 px-4 text-right text-cyan-700 dark:text-cyan-400 font-semibold">
+                                      {row.pagosNetos !== 0 ? `-${formatCurrency(row.pagosNetos, row.moneda as any)}` : formatCurrency(0, row.moneda as any)}
+                                    </td>
+                                    <td
+                                      className={`py-3 px-4 text-right font-black text-sm ${
+                                        isDeuda ? 'text-rose-600 dark:text-rose-400' : isFavor ? 'text-emerald-600 dark:text-emerald-400' : 'text-slate-800 dark:text-slate-300'
+                                      }`}
+                                    >
+                                      {formatCurrency(row.balanceFinal, row.moneda as any)}
+                                    </td>
+                                    <td className="py-3 px-4 text-center">
+                                      <span
+                                        className={`px-2 py-0.5 rounded-full text-[10px] font-extrabold uppercase ${
+                                          isDeuda
+                                            ? 'bg-rose-50 dark:bg-rose-500/20 text-rose-700 dark:text-rose-400 border border-rose-200 dark:border-rose-500/30'
+                                            : isFavor
+                                            ? 'bg-emerald-50 dark:bg-emerald-500/20 text-emerald-700 dark:text-emerald-400 border border-emerald-200 dark:border-emerald-500/30'
+                                            : 'bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400 border border-slate-200 dark:border-slate-700'
+                                        }`}
+                                      >
+                                        {isDeuda ? 'A Pagar' : isFavor ? 'A Favor' : 'Solvente'}
+                                      </span>
+                                    </td>
+                                  </tr>
+                                );
+                              })}
+                            </tbody>
+                          </table>
+                        </div>
+                      </div>
+                    );
+                  })
+                )}
+              </div>
+            </section>
+          )}
+
+          {/* 3. SECCIÓN: CIERRE MAESTRO INTEGRAL */}
+          <section id="seccion-cierre-maestro" className="pt-6 border-t border-slate-800/80">
+            <div className="bg-[#0A161C] border border-cyan-500/30 rounded-2xl p-4 sm:p-5 mb-6 flex flex-col sm:flex-row sm:items-center justify-between gap-3 shadow-md">
+              <div className="flex items-center gap-3">
+                <div className="p-2.5 rounded-xl bg-cyan-500/10 text-cyan-400 border border-cyan-500/20">
+                  <ShieldCheck className="w-5 h-5" />
+                </div>
+                <div>
+                  <h3 className="text-sm sm:text-base font-black text-white uppercase tracking-wider flex items-center gap-2">
+                    <span>3. Ejecución del Cierre Maestro Integral</span>
+                    <span className="text-[10px] font-mono px-2 py-0.5 rounded-full bg-cyan-500/10 text-cyan-400 border border-cyan-500/20 font-bold">
+                      Sello Atómico SHA-256
+                    </span>
+                  </h3>
+                  <p className="text-xs text-slate-400">
+                    Cierre conjunto y definitivo de Agencias y Casas Operadoras con avance automático de ciclo
+                  </p>
+                </div>
+              </div>
+            </div>
 
       {/* Unified Master Closure Action Box */}
       <div className="bg-[#0D1B22] border border-emerald-500/30 rounded-3xl p-6 sm:p-8 shadow-2xl space-y-6 relative overflow-hidden">
@@ -2090,10 +2159,10 @@ export const WeeklyClosureTab: React.FC = () => {
             </div>
           </>
         )}
-      </div>
-
         </div>
-      )}
+      </section>
+    </div>
+  )}
 
       {/* Modal de Confirmación Pre-Cierre Maestro Unificado */}
       {isConfirmModalOpen && (

@@ -5,7 +5,8 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
-    "build": "tsc -b && vite build",
+    "test:closure": "node --no-warnings --experimental-strip-types scripts/verify-closure-integrity.mjs",
+    "build": "npm run test:closure && tsc -b && vite build",
     "server:api": "node server/index.mjs",
     "lint": "oxlint",
     "preview": "vite preview"

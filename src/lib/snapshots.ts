@@ -51,6 +51,7 @@ export interface WeeklyClosureSnapshot {
   
   // 7. Hash criptográfico SHA-256 de integridad
   integrity_hash: string;
+  is_locked?: boolean;
   created_at?: string;
 }
 
@@ -124,6 +125,7 @@ export async function saveWeeklySnapshot(
           all_movements: fullSnapshot.all_movements,
           carry_over_balances: fullSnapshot.carry_over_balances,
           integrity_hash: fullSnapshot.integrity_hash,
+          is_locked: Boolean(fullSnapshot.is_locked ?? false),
           updated_at: new Date().toISOString(),
         },
         { onConflict: 'user_id,semana_no' }
@@ -346,7 +348,7 @@ export function getCertifiedSemana41Snapshot(userId: string): WeeklyClosureSnaps
       },
       COP: {
         saldoAnterior: 972070.00,
-        ventaNeta: 1715593.00,
+        ventaNeta: 1490593.00,
         gastos: 462000.00,
         gastosAgencias: 462000.00,
         gastosComercializadora: 0,
@@ -354,7 +356,7 @@ export function getCertifiedSemana41Snapshot(userId: string): WeeklyClosureSnaps
         cobradorLiquidado: 0,
         cobradorEnRuta: 0,
         efectivoTaquilla: 18000.00,
-        bancos: 1235143.00,
+        bancos: 1010143.00,
         reposicionPremios: 0,
         saldoFinal: 972520.00,
         count: 4,
