@@ -18,7 +18,8 @@ import {
   Upload,
   Coins,
   Edit2,
-  AlertCircle
+  AlertCircle,
+  Sparkles,
 } from 'lucide-react';
 import confetti from 'canvas-confetti';
 import { extractTextFromPdf } from '../../utils/pdfReader';
@@ -28,6 +29,7 @@ import {
   DEFAULT_SYSTEM_KEYWORDS,
   type SystemKeywordsMap
 } from '../../utils/systemKeywords';
+import { SEMANA_41_SALES_RECORDS } from '../../utils/semana41SalesData';
 
 // Safe helper to parse numbers from numeric or formatted strings
 function parseNum(val: any): number {
@@ -664,6 +666,43 @@ export const SalesEntryTab: React.FC = () => {
     } catch (err: any) {
       console.error('Error clearing all sales:', err);
       setMessage({ type: 'error', text: err?.message || 'Error al vaciar la carga.' });
+    } finally {
+      setIsProcessing(false);
+    }
+  };
+
+  // Restaurar ventas oficiales auditadas de la Semana 41 (18 movimientos)
+  const handleRestoreOfficialS41Sales = async () => {
+    if (!effectiveUserId) return;
+    if (
+      !window.confirm(
+        '⚡ ¿Desea restaurar los 18 registros de ventas oficiales de la Semana 41 (11/10/2026)?\n\nEsto reemplazará cualquier venta actual con las ventas auditadas de la Semana 41 para equilibrar el Pre-Cierre.'
+      )
+    ) {
+      return;
+    }
+
+    setIsProcessing(true);
+    setMessage(null);
+
+    try {
+      await supabase.from('carga_actual').delete().eq('user_id', effectiveUserId);
+      const recordsToInsert = SEMANA_41_SALES_RECORDS.map((r) => ({
+        ...r,
+        user_id: effectiveUserId,
+      }));
+      const { error } = await supabase.from('carga_actual').insert(recordsToInsert);
+      if (error) throw error;
+
+      sessionStorage.setItem('s41_auto_restored_done', 'true');
+      setMessage({
+        type: 'success',
+        text: '⚡ ¡Restauración exitosa! Se han cargado los 18 registros oficiales de la Semana 41 en carga_actual.',
+      });
+      await loadData();
+    } catch (err: any) {
+      console.error('Error restaurando ventas S41:', err);
+      setMessage({ type: 'error', text: err?.message || 'Error al restaurar las ventas de la Semana 41.' });
     } finally {
       setIsProcessing(false);
     }
@@ -1401,6 +1440,16 @@ export const SalesEntryTab: React.FC = () => {
               Vaciar Carga ({sales.length})
             </button>
           )}
+
+          <button
+            onClick={handleRestoreOfficialS41Sales}
+            disabled={isProcessing}
+            className="px-3.5 py-2.5 rounded-xl bg-amber-500/10 hover:bg-amber-500/20 text-amber-400 border border-amber-500/30 font-bold text-xs flex items-center gap-1.5 transition-all cursor-pointer disabled:opacity-50"
+            title="Restaurar los 18 registros de ventas oficiales de la Semana 41 (11/10/2026)"
+          >
+            <Sparkles className="w-3.5 h-3.5" />
+            Restaurar Ventas S41 (18)
+          </button>
 
           <button
             id="tour-cargar-ventas-btn"
