@@ -37,3 +37,6 @@ dump*.sql
 
 # Workstation identification
 .workstation
+
+# Local backup snapshots
+backup_*.json

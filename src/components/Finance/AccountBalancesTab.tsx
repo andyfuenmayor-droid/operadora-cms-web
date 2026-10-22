@@ -109,10 +109,6 @@ export const AccountBalancesTab: React.FC = () => {
       ]);
 
       const agList = agRes.data || [];
-      if (checkIsBalancesCorrupted(agList) && effectiveUserId) {
-        console.warn('Detectados saldos corrompidos por doble cierre. Auto-reparando con arrastres oficiales S40...');
-        await executeRestoreAuditedBalances(effectiveUserId, agList, refreshSystemCycle);
-      }
 
       const salesList = sRes.data || [];
 

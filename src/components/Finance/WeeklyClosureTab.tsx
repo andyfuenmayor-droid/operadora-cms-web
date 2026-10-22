@@ -185,14 +185,6 @@ export const WeeklyClosureTab: React.FC = () => {
       ]);
 
       const agList = agRes.data || [];
-      if (checkIsBalancesCorrupted(agList) && effectiveUserId) {
-        console.warn('Detectados saldos corrompidos por doble cierre. Auto-reparando con arrastres oficiales S40...');
-        await executeRestoreAuditedBalances(effectiveUserId, agList, refreshSystemCycle);
-        setMessage({
-          type: 'success',
-          text: '🛡️ Saldos oficiales del Pre-Cierre Semana 40 sincronizados correctamente. Ciclo configurado en Semana 41 (2026-10-05 al 2026-10-11).'
-        });
-      }
 
       const maximaAg = agList.find((a: any) => String(a.nombre_agencia || '').toUpperCase().includes('MAXIMA') && Number(a.saldo_inicial_cop) === 328901);
       if (maximaAg && effectiveUserId) {

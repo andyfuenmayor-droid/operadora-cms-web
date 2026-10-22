@@ -634,6 +634,41 @@ export const SalesEntryTab: React.FC = () => {
     }
   };
 
+  // Delete all sales from carga_actual for effectiveUserId
+  const handleClearAllActiveSales = async () => {
+    if (!effectiveUserId) return;
+    if (
+      !window.confirm(
+        `⚠️ ¿Está seguro de VACIAR TODA LA CARGA ACTUAL (${sales.length} registros)?\n\nEsta acción eliminará todas las ventas cargadas en este ciclo para permitir corregir el cierre o subir una nueva carga limpia.`
+      )
+    ) {
+      return;
+    }
+
+    setIsProcessing(true);
+    setMessage(null);
+
+    try {
+      const { error } = await supabase
+        .from('carga_actual')
+        .delete()
+        .eq('user_id', effectiveUserId);
+
+      if (error) throw error;
+
+      setMessage({
+        type: 'success',
+        text: '✅ Se ha vaciado la carga actual de ventas con éxito.',
+      });
+      await loadData();
+    } catch (err: any) {
+      console.error('Error clearing all sales:', err);
+      setMessage({ type: 'error', text: err?.message || 'Error al vaciar la carga.' });
+    } finally {
+      setIsProcessing(false);
+    }
+  };
+
   // Reset bulk import area and restore AUTO detection
   const resetBulkArea = () => {
     setBulkRows([]);
@@ -1354,6 +1389,18 @@ export const SalesEntryTab: React.FC = () => {
             <RefreshCw className={`w-3.5 h-3.5 ${isLoading ? 'animate-spin' : ''}`} />
             Actualizar
           </button>
+
+          {sales.length > 0 && (
+            <button
+              onClick={handleClearAllActiveSales}
+              disabled={isProcessing}
+              className="px-3.5 py-2.5 rounded-xl bg-rose-500/10 hover:bg-rose-500/20 text-rose-400 border border-rose-500/30 font-bold text-xs flex items-center gap-1.5 transition-all cursor-pointer disabled:opacity-50"
+              title="Vaciar todas las ventas cargadas en el ciclo activo"
+            >
+              <Trash2 className="w-3.5 h-3.5" />
+              Vaciar Carga ({sales.length})
+            </button>
+          )}
 
           <button
             id="tour-cargar-ventas-btn"

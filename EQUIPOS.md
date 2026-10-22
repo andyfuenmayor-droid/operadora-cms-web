@@ -113,3 +113,4 @@ git push origin main
 | **20/10/2026** | 🏠 Casa | Módulos financieros (`ConfirmationsQuick`, `ConfirmationsReport`, `PaymentsTab`, `ConfirmationsBoard`), gastos administrativos y sincronización de auditoría real móvil/desktop | Commits `0072dd3`, `f95feea`, `6b887d8` |
 | **21/10/2026** | 🏠 Casa | Componente `SalesEntryTab` para gestión e importación masiva de ventas diarias (17:46) | Commits `4f24906`, `1eda444` |
 | **21/10/2026** | 🏢 Oficina | `git pull origin main` + `npm run build` exitoso. Sincronización de 8 commits desde Casa, asignación de `.workstation` (`MI-OFICINA`) y registro de control. | Sincronizado a `1eda444` (`MI-OFICINA`) |
+| **21/10/2026** | 🏢 Oficina | Fix(cierre): anular auto-rollback forzado a Semana 41 en `WeeklyClosureTab`, `PreClosureAuditTab` y `AccountBalancesTab`, incorporar botón 'Vaciar Carga' en `SalesEntryTab` y respaldar venta S42 | Pendiente Cierre S41 (`MI-OFICINA`) |

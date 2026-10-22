@@ -133,10 +133,6 @@ export const PreClosureAuditTab: React.FC = () => {
       ]);
 
       const agList = agRes.data || [];
-      if (checkIsBalancesCorrupted(agList) && effectiveUserId) {
-        console.warn('Detectados saldos corrompidos por doble cierre. Auto-reparando con arrastres oficiales S40...');
-        await executeRestoreAuditedBalances(effectiveUserId, agList, refreshSystemCycle);
-      }
 
       const maximaAg = agList.find((a: any) => String(a.nombre_agencia || '').toUpperCase().includes('MAXIMA') && Number(a.saldo_inicial_cop) === 328901);
       if (maximaAg && effectiveUserId) {
