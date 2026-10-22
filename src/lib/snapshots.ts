@@ -272,32 +272,32 @@ export function downloadSnapshotJson(snapshot: WeeklyClosureSnapshot): void {
 
 /**
  * Construye el Snapshot Certificado Oficial de la Semana 41 (11/10/2026)
- * Contiene las 20 ventas auditadas, los saldos finales auditados y las 24 agencias + 8 operadoras.
+ * Contiene las 19 ventas auditadas, los saldos finales auditados y las 24 agencias + 8 operadoras.
  */
 export function getCertifiedSemana41Snapshot(userId: string): WeeklyClosureSnapshot {
   const carryOvers = [
-    // Bolívares (BS)
-    { entidad: 'EL 40', tipo_entidad: 'AGENCIA' as const, moneda: 'BS', saldo_final: 40548.10 },
-    { entidad: 'EL CUJI', tipo_entidad: 'AGENCIA' as const, moneda: 'BS', saldo_final: 31249.00 },
-    { entidad: 'EL FUTURO', tipo_entidad: 'AGENCIA' as const, moneda: 'BS', saldo_final: -67436.40 },
-    { entidad: 'AGENCIA JAVIER', tipo_entidad: 'AGENCIA' as const, moneda: 'BS', saldo_final: 464440.50 },
+    // Bolívares (BS) - Saldo Final Total: 96,296.82 Bs.
+    { entidad: 'EL 40', tipo_entidad: 'AGENCIA' as const, moneda: 'BS', saldo_final: 7713.10 },
+    { entidad: 'EL CUJI', tipo_entidad: 'AGENCIA' as const, moneda: 'BS', saldo_final: -21581.00 },
+    { entidad: 'EL FUTURO', tipo_entidad: 'AGENCIA' as const, moneda: 'BS', saldo_final: 0.00 },
+    { entidad: 'AGENCIA JAVIER', tipo_entidad: 'AGENCIA' as const, moneda: 'BS', saldo_final: 0.00 },
     { entidad: 'LA GAVIOTA', tipo_entidad: 'AGENCIA' as const, moneda: 'BS', saldo_final: 4967.00 },
-    { entidad: 'LAS VIVIENDAS', tipo_entidad: 'AGENCIA' as const, moneda: 'BS', saldo_final: 27202.00 },
-    { entidad: 'AG ORLANDO', tipo_entidad: 'AGENCIA' as const, moneda: 'BS', saldo_final: 14310.00 },
-    { entidad: 'CENTRO GUAJIRO', tipo_entidad: 'AGENCIA' as const, moneda: 'BS', saldo_final: 17910.00 },
-    { entidad: 'CHUCHO', tipo_entidad: 'AGENCIA' as const, moneda: 'BS', saldo_final: 11638.20 },
-    { entidad: 'JYY', tipo_entidad: 'AGENCIA' as const, moneda: 'BS', saldo_final: 29610.00 },
-    { entidad: 'YERITZA', tipo_entidad: 'AGENCIA' as const, moneda: 'BS', saldo_final: 77985.00 },
+    { entidad: 'LAS VIVIENDAS', tipo_entidad: 'AGENCIA' as const, moneda: 'BS', saldo_final: 27962.00 },
+    { entidad: 'AG ORLANDO', tipo_entidad: 'AGENCIA' as const, moneda: 'BS', saldo_final: 0.00 },
+    { entidad: 'CENTRO GUAJIRO', tipo_entidad: 'AGENCIA' as const, moneda: 'BS', saldo_final: 2034.00 },
+    { entidad: 'CHUCHO', tipo_entidad: 'AGENCIA' as const, moneda: 'BS', saldo_final: 6493.10 },
+    { entidad: 'JYY', tipo_entidad: 'AGENCIA' as const, moneda: 'BS', saldo_final: 0.00 },
+    { entidad: 'YERITZA', tipo_entidad: 'AGENCIA' as const, moneda: 'BS', saldo_final: 0.00 },
     { entidad: 'AG NUEVA LUCHA', tipo_entidad: 'AGENCIA' as const, moneda: 'BS', saldo_final: 68708.62 },
-    // Dólares (USD)
-    { entidad: 'EL CUJI', tipo_entidad: 'AGENCIA' as const, moneda: 'USD', saldo_final: -138.45 },
-    { entidad: 'EL FUTURO', tipo_entidad: 'AGENCIA' as const, moneda: 'USD', saldo_final: 529.66 },
-    { entidad: 'AGENCIA JAVIER', tipo_entidad: 'AGENCIA' as const, moneda: 'USD', saldo_final: 369.50 },
-    { entidad: 'MAXIMA CDA 02 T2', tipo_entidad: 'AGENCIA' as const, moneda: 'USD', saldo_final: 85.00 },
+    // Dólares (USD) - Saldo Final Total: $33.34
+    { entidad: 'EL CUJI', tipo_entidad: 'AGENCIA' as const, moneda: 'USD', saldo_final: 9.90 },
+    { entidad: 'EL FUTURO', tipo_entidad: 'AGENCIA' as const, moneda: 'USD', saldo_final: 0.00 },
+    { entidad: 'AGENCIA JAVIER', tipo_entidad: 'AGENCIA' as const, moneda: 'USD', saldo_final: 18.20 },
+    { entidad: 'MAXIMA CDA 02 T2', tipo_entidad: 'AGENCIA' as const, moneda: 'USD', saldo_final: 0.00 },
     { entidad: 'AG NUEVA LUCHA', tipo_entidad: 'AGENCIA' as const, moneda: 'USD', saldo_final: 5.24 },
-    // Pesos (COP)
-    { entidad: 'EL FUTURO', tipo_entidad: 'AGENCIA' as const, moneda: 'COP', saldo_final: 8460.00 },
-    { entidad: 'AG ORLANDO', tipo_entidad: 'AGENCIA' as const, moneda: 'COP', saldo_final: 6900.00 },
+    // Pesos (COP) - Saldo Final Total: 972,520.00 COP
+    { entidad: 'EL FUTURO', tipo_entidad: 'AGENCIA' as const, moneda: 'COP', saldo_final: 0.00 },
+    { entidad: 'AG ORLANDO', tipo_entidad: 'AGENCIA' as const, moneda: 'COP', saldo_final: 450.00 },
     { entidad: 'MAXIMA CDA 02 T2', tipo_entidad: 'AGENCIA' as const, moneda: 'COP', saldo_final: 0.00 },
     { entidad: 'WENDYS', tipo_entidad: 'AGENCIA' as const, moneda: 'COP', saldo_final: 972070.00 },
     // Casas Operadoras
@@ -316,7 +316,7 @@ export function getCertifiedSemana41Snapshot(userId: string): WeeklyClosureSnaps
     consolidated_totals: {
       BS: {
         saldoAnterior: 96878.92,
-        ventaNeta: 695079.76,
+        ventaNeta: 564603.10,
         gastos: 16000.00,
         gastosAgencias: 16000.00,
         gastosComercializadora: 25000.00,
@@ -331,7 +331,7 @@ export function getCertifiedSemana41Snapshot(userId: string): WeeklyClosureSnaps
       },
       USD: {
         saldoAnterior: 125.94,
-        ventaNeta: 897.41,
+        ventaNeta: 994.96,
         gastos: 0,
         gastosAgencias: 0,
         gastosComercializadora: 0,
@@ -345,8 +345,8 @@ export function getCertifiedSemana41Snapshot(userId: string): WeeklyClosureSnaps
         count: 5,
       },
       COP: {
-        saldoAnterior: 1000971.00,
-        ventaNeta: 1712503.00,
+        saldoAnterior: 972070.00,
+        ventaNeta: 1715593.00,
         gastos: 462000.00,
         gastosAgencias: 462000.00,
         gastosComercializadora: 0,

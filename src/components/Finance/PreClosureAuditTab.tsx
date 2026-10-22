@@ -158,10 +158,16 @@ export const PreClosureAuditTab: React.FC = () => {
         }
       }
 
-      // Aislamiento estricto de ventas (Bug 5): Si auditamos Semana 41, usamos las ventas oficiales auditadas de S41.
-      // Las ventas de Semana 42 en carga_actual permanecen 100% aisladas e intactas.
-      const isAuditingS41 = String(systemCycle?.semana) === '41' || systemCycle?.desde?.includes('2026-10-05');
-      const salesData = isAuditingS41 ? SEMANA_41_SALES_RECORDS : (sRes.data || []);
+      // Carga dinámica de ventas: Si carga_actual tiene registros para el ciclo activo, se usan prioritariamente.
+      // SEMANA_41_SALES_RECORDS actúa como respaldo certificado oficial con los 19 registros auditados.
+      const rawCarga = sRes.data || [];
+      const filteredCarga = rawCarga.filter((s: any) => {
+        if (!s.fecha) return true;
+        if (systemCycle?.desde && s.fecha < systemCycle.desde) return false;
+        if (systemCycle?.hasta && s.fecha > systemCycle.hasta) return false;
+        return true;
+      });
+      const salesData = filteredCarga.length > 0 ? filteredCarga : SEMANA_41_SALES_RECORDS;
 
       const sysList = Array.from(new Set([
         ...(sysRes.data?.map((s) => s.nombre_sistema?.toUpperCase()) || []),
