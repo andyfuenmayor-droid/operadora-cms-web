@@ -59,7 +59,7 @@ import {
   type OperatorPayment,
   type OperatorSettlementRow,
 } from '../../utils/operatorSettlement';
-import { loadSystemKeywords, type SystemKeywordsMap } from '../../utils/systemKeywords';
+import { loadSystemKeywords, saveSystemKeywords, type SystemKeywordsMap } from '../../utils/systemKeywords';
 import {
   checkIsBalancesCorrupted,
   executeRestoreAuditedBalances,
@@ -149,34 +149,7 @@ export const PreClosureAuditTab: React.FC = () => {
         }
       }
 
-      let salesData = sRes.data || [];
-
-      // Auto-restaurar ventas de Semana 41 si la tabla carga_actual está vacía en Semana 41
-      if (
-        salesData.length === 0 &&
-        (String(systemCycle.semana) === '41' || systemCycle.desde === '2026-10-05') &&
-        !sessionStorage.getItem('s41_auto_restored_done')
-      ) {
-        try {
-          const recordsToInsert = SEMANA_41_SALES_RECORDS.map((r) => ({
-            ...r,
-            user_id: effectiveUserId,
-          }));
-          const { data: insData, error: insErr } = await supabase
-            .from('carga_actual')
-            .insert(recordsToInsert)
-            .select();
-          if (!insErr) {
-            sessionStorage.setItem('s41_auto_restored_done', 'true');
-            salesData = insData && insData.length > 0 ? insData : recordsToInsert;
-            console.log('PreClosure: Restaurados automáticamente 18 registros de Semana 41 en carga_actual');
-          } else {
-            console.warn('PreClosure: Auto-restore Semana 41 error:', insErr);
-          }
-        } catch (e) {
-          console.warn('PreClosure: Auto-restore Semana 41 exception:', e);
-        }
-      }
+      const salesData = sRes.data || [];
 
       const sysList = Array.from(new Set([
         ...(sysRes.data?.map((s) => s.nombre_sistema?.toUpperCase()) || []),
@@ -222,31 +195,144 @@ export const PreClosureAuditTab: React.FC = () => {
     }
   };
 
-  // Restauración manual de las ventas oficiales de Semana 41 (18 movimientos)
-  const handleRestoreOfficialS41Sales = async () => {
+  // Sincronizar saldos de arrastre del Acta Oficial S41 y activar Semana 42
+  const handleRestoreCycleFromS41Acta = async () => {
     if (!effectiveUserId) return;
-    if (
-      !window.confirm(
-        '⚡ ¿Desea restaurar a la tabla carga_actual los 18 registros de ventas oficiales de la Semana 41 (11/10/2026)?\n\nEsto reemplazará cualquier venta actual con las ventas auditadas de la Semana 41 para equilibrar el Pre-Cierre.'
-      )
-    ) {
-      return;
-    }
+
     setIsLoading(true);
     try {
-      await supabase.from('carga_actual').delete().eq('user_id', effectiveUserId);
-      const recordsToInsert = SEMANA_41_SALES_RECORDS.map((r) => ({
-        ...r,
-        user_id: effectiveUserId,
-      }));
-      const { error: insErr } = await supabase.from('carga_actual').insert(recordsToInsert);
-      if (insErr) throw insErr;
-      sessionStorage.setItem('s41_auto_restored_done', 'true');
-      alert('⚡ ¡Restauración exitosa! Se han cargado los 18 registros oficiales de la Semana 41 en carga_actual. El Pre-Cierre se ha recalculado y equilibrado correctamente.');
+      const { data: directData, error: dirErr } = await supabase
+        .from('cierres_semanales')
+        .select('*')
+        .eq('user_id', effectiveUserId)
+        .order('id', { ascending: false });
+
+      if (dirErr || !directData || directData.length === 0) {
+        alert('No se encontraron registros de Actas de Cierre en la base de datos.');
+        return;
+      }
+
+      // Buscar el cierre de la Semana 41 (2026-10-05 al 2026-10-11)
+      const targetRows = directData.filter(
+        (r) =>
+          r.periodo?.includes('2026-10-05') ||
+          r.periodo?.includes('Semana 41') ||
+          r.periodo?.includes('11/10/2026')
+      );
+      const rowsToUse = targetRows.length > 0 ? targetRows : directData;
+      const agRows = rowsToUse.filter((r) => r.tipo_entidad === 'AGENCIA' || !r.entidad?.startsWith('OPERADORA:'));
+      const opRows = rowsToUse.filter((r) => r.tipo_entidad === 'OPERADORA' || r.entidad?.startsWith('OPERADORA:'));
+
+      const per = rowsToUse[0]?.periodo || 'Semana 41';
+
+      if (
+        !window.confirm(
+          `⚡ ¿CONFIRMA ACTIVAR LA SEMANA 42 APLICANDO LOS ARRASTRES DEL ACTA DE CIERRE (${per})?\n\nEsta operación:\n1. Fijará los saldos iniciales de las ${agRows.length} agencias con sus saldos finales auditados.\n2. Fijará los saldos de arrastre de las ${opRows.length} casas operadoras.\n3. Establecerá el ciclo oficial en SEMANA 42 (2026-10-12 al 2026-10-18).\n4. Asignará las ventas activas a la Semana 42.`
+        )
+      ) {
+        return;
+      }
+
+      // 1. Obtener agencias vigentes de la BD para tener sus IDs
+      const { data: currentAgencies } = await supabase
+        .from('agencias')
+        .select('*')
+        .eq('user_id', effectiveUserId);
+
+      const agListToUpdate = currentAgencies || agencies;
+
+      // 2. Actualizar saldos iniciales de agencias
+      for (const r of agRows) {
+        const nom = cleanAgencyName(r.entidad);
+        const col = r.moneda === 'BS' ? 'saldo_inicial_bs' : r.moneda === 'USD' ? 'saldo_inicial_usd' : 'saldo_inicial_cop';
+        const targetAg = agListToUpdate.find((a) => cleanAgencyName(a.nombre_agencia) === nom);
+        if (targetAg) {
+          await supabase
+            .from('agencias')
+            .update({ [col]: Number(r.saldo_final || 0) })
+            .eq('id', targetAg.id)
+            .eq('user_id', effectiveUserId);
+        }
+      }
+
+      // 3. Actualizar saldos iniciales de Casas Operadoras
+      const updatedKeywords: SystemKeywordsMap = { ...systemConfigs };
+      for (const op of opRows) {
+        const sysUpper = String(op.entidad || '').replace(/^OPERADORA:\s*/i, '').trim().toUpperCase();
+        if (sysUpper) {
+          if (!updatedKeywords[sysUpper]) {
+            updatedKeywords[sysUpper] = {
+              venta: 'Venta',
+              premio: 'Premio',
+              saldo_inicial_bs: 0,
+              saldo_inicial_usd: 0,
+              saldo_inicial_cop: 0,
+            };
+          }
+          const m = String(op.moneda || 'BS').toUpperCase();
+          if (m === 'BS') updatedKeywords[sysUpper].saldo_inicial_bs = Number(op.saldo_final || 0);
+          else if (m === 'USD') updatedKeywords[sysUpper].saldo_inicial_usd = Number(op.saldo_final || 0);
+          else if (m === 'COP') updatedKeywords[sysUpper].saldo_inicial_cop = Number(op.saldo_final || 0);
+        }
+      }
+      await saveSystemKeywords(effectiveUserId, updatedKeywords);
+
+      // 4. Fijar configuración oficial del ciclo en SEMANA 42
+      const cycleUpdates = [
+        { parametro: 'fecha_desde', valor: '2026-10-12' },
+        { parametro: 'fecha_hasta', valor: '2026-10-18' },
+        { parametro: 'tipo_cierre', valor: 'SEMANAL' },
+        { parametro: 'semana_no', valor: '42' },
+      ];
+
+      try {
+        await supabase
+          .from('config_sistema')
+          .delete()
+          .eq('user_id', effectiveUserId)
+          .in('parametro', ['fecha_desde', 'fecha_hasta', 'tipo_cierre', 'semana_no']);
+        await supabase
+          .from('config_sistema')
+          .insert(cycleUpdates.map((c) => ({ user_id: effectiveUserId, parametro: c.parametro, valor: c.valor })));
+      } catch (_) {
+        for (const item of cycleUpdates) {
+          await supabase.from('config_sistema').upsert(
+            { user_id: effectiveUserId, parametro: item.parametro, valor: item.valor },
+            { onConflict: 'user_id,parametro' }
+          );
+        }
+      }
+
+      // 5. Sincronizar localStorage
+      try {
+        localStorage.setItem(
+          'me_cms_system_cycle',
+          JSON.stringify({
+            desde: '2026-10-12',
+            hasta: '2026-10-18',
+            tipo: 'SEMANAL',
+            semana: '42',
+          })
+        );
+      } catch (_) {}
+
+      // 6. Actualizar fecha de las ventas en carga_actual al rango de Semana 42 (2026-10-18)
+      try {
+        await supabase
+          .from('carga_actual')
+          .update({ fecha: '2026-10-18' })
+          .eq('user_id', effectiveUserId);
+      } catch (_) {}
+
+      alert(`⚡ ¡Operación Exitosa! Arrastres aplicados desde el Acta Oficial de Cierre (${per}). El sistema ahora opera en la SEMANA 42 (2026-10-12 al 2026-10-18) y sus ventas están correctamente ubicadas en este ciclo.`);
+
+      if (refreshSystemCycle) {
+        await refreshSystemCycle();
+      }
       await loadData();
     } catch (err: any) {
-      console.error('Error restaurando ventas S41:', err);
-      alert('Error al restaurar las ventas de la Semana 41: ' + (err?.message || err));
+      console.error('Error restaurando ciclo desde acta en PreClosure:', err);
+      alert('Error al restaurar ciclo desde el acta: ' + (err?.message || err));
     } finally {
       setIsLoading(false);
     }
@@ -1300,13 +1386,13 @@ export const PreClosureAuditTab: React.FC = () => {
           )}
 
           <button
-            onClick={handleRestoreOfficialS41Sales}
+            onClick={handleRestoreCycleFromS41Acta}
             disabled={isLoading}
             className="px-3 py-2.5 rounded-xl bg-amber-500/10 hover:bg-amber-500/20 text-amber-400 text-xs font-bold flex items-center gap-1.5 transition-all border border-amber-500/30 cursor-pointer disabled:opacity-50"
-            title="Restaurar a carga_actual los 18 registros oficiales de la Semana 41 (11/10/2026)"
+            title="Sincronizar arrastres del Acta Oficial de Semana 41 y activar Semana 42"
           >
             <Sparkles className="w-3.5 h-3.5 text-amber-400" />
-            <span>Restaurar Ventas S41 (18)</span>
+            <span>Activar Semana 42 desde Acta</span>
           </button>
 
           <button
@@ -1320,24 +1406,26 @@ export const PreClosureAuditTab: React.FC = () => {
         </div>
       </div>
 
-      {sales.length === 0 && (
-        <div className="p-4 rounded-2xl bg-amber-500/10 border border-amber-500/30 flex flex-col sm:flex-row items-center justify-between gap-3 text-amber-300">
+      {String(systemCycle.semana) === '41' && (
+        <div className="p-4 rounded-2xl bg-gradient-to-r from-amber-500/20 via-[#0D1B22] to-amber-500/10 border border-amber-500/30 flex flex-col sm:flex-row items-center justify-between gap-3 text-amber-300 shadow-xl">
           <div className="flex items-center gap-3">
             <AlertTriangle className="w-5 h-5 shrink-0 text-amber-400" />
             <div>
-              <div className="font-bold text-xs sm:text-sm text-white">Carga actual de ventas vacía (0 registros)</div>
+              <div className="font-bold text-xs sm:text-sm text-white">
+                Semana 41 cerrada previamente (Acta Inmutable disponible en el Histórico)
+              </div>
               <div className="text-xs text-amber-200/80">
-                El Pre-Cierre requiere las ventas activas para reflejar balances reales. Restaura los 18 registros oficiales de la Semana 41.
+                Las ventas cargadas en el sistema corresponden a la Semana 42. Aplica los saldos finales auditados de la Semana 41 para activar oficialmente la Semana 42 (12/10 al 18/10).
               </div>
             </div>
           </div>
           <button
-            onClick={handleRestoreOfficialS41Sales}
+            onClick={handleRestoreCycleFromS41Acta}
             disabled={isLoading}
-            className="px-3.5 py-2 rounded-xl bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold text-xs flex items-center gap-2 transition-all cursor-pointer shadow-lg shadow-amber-500/20 shrink-0"
+            className="px-4 py-2.5 rounded-xl bg-amber-500 hover:bg-amber-400 text-slate-950 font-black text-xs flex items-center gap-2 transition-all cursor-pointer shadow-lg shadow-amber-500/20 shrink-0"
           >
             <Sparkles className="w-4 h-4" />
-            Restaurar Ventas S41 (18)
+            Activar Semana 42 con Arrastres del Acta
           </button>
         </div>
       )}
