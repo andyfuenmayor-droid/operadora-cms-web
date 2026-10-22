@@ -47,6 +47,7 @@ import {
   X
 } from 'lucide-react';
 import { DeliveryReportModal, type PreClosureAgencyRow } from './DeliveryReportModal';
+import { UnifiedAuditDossierModal } from './UnifiedAuditDossierModal';
 import { OperatorDeliveryReportModal } from './OperatorDeliveryReportModal';
 import { ConfirmationOperatorActaModal, type ConfirmationAuditItem } from './ConfirmationOperatorActaModal';
 import { CollectorDeliveryActaModal, type CollectorDailyPaymentItem } from './CollectorDeliveryActaModal';
@@ -108,6 +109,7 @@ export const PreClosureAuditTab: React.FC = () => {
 
   // Modals for Actas de Entrega
   const [isActaModalOpen, setIsActaModalOpen] = useState(false);
+  const [isUnifiedDossierOpen, setIsUnifiedDossierOpen] = useState(false);
   const [isOperatorActaModalOpen, setIsOperatorActaModalOpen] = useState(false);
   const [isConfirmationActaOpen, setIsConfirmationActaOpen] = useState(false);
   const [isCollectorActaOpen, setIsCollectorActaOpen] = useState(false);
@@ -1429,74 +1431,14 @@ export const PreClosureAuditTab: React.FC = () => {
         <div id="tour-cierre-actas" className="flex flex-wrap items-center gap-2">
           {auditMode === 'agencias' && (
             <>
-              {/* 1. Acta General de Arqueo */}
+              {/* Acta Oficial Integral Unificada (Dossier Completo en un solo PDF) */}
               <button
-                onClick={() => setIsActaModalOpen(true)}
-                className="px-3.5 py-2.5 rounded-xl bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-400 hover:to-amber-500 text-slate-950 font-black text-xs shadow-lg shadow-amber-500/20 flex items-center gap-1.5 transition-all cursor-pointer"
-                title="Acta General de Arqueo y Rendición de Puntos de Venta (Imprimible en PDF)"
+                onClick={() => setIsUnifiedDossierOpen(true)}
+                className="px-4 py-2.5 rounded-xl bg-gradient-to-r from-emerald-500 to-teal-500 hover:from-emerald-400 hover:to-teal-400 text-slate-950 font-black text-xs shadow-lg shadow-emerald-500/20 flex items-center gap-2 transition-all cursor-pointer"
+                title="Abrir e imprimir el Acta Oficial Integral y Dossier Completo en un solo PDF"
               >
                 <FileText className="w-4 h-4" />
-                <span>📜 Acta General</span>
-              </button>
-
-              {/* 1b. Acta Gastos Agencias */}
-              <button
-                onClick={() => setIsAgencyExpensesActaOpen(true)}
-                className="px-3.5 py-2.5 rounded-xl bg-gradient-to-r from-rose-600 to-red-600 hover:from-rose-500 hover:to-red-500 text-white font-black text-xs shadow-lg shadow-rose-500/20 flex items-center gap-1.5 transition-all cursor-pointer"
-                title="Acta Oficial de Gastos Operativos de Agencias (Imprimible en PDF)"
-              >
-                <Receipt className="w-4 h-4" />
-                <span>📉 Acta Gastos Agencias ({cycleAgencyExpenses.length})</span>
-              </button>
-
-              {/* 1c. Acta Gastos Comercializadora */}
-              <button
-                onClick={() => setIsCommercializadoraExpensesActaOpen(true)}
-                className="px-3.5 py-2.5 rounded-xl bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-500 hover:to-indigo-500 text-white font-black text-xs shadow-lg shadow-purple-500/20 flex items-center gap-1.5 transition-all cursor-pointer"
-                title="Acta Oficial de Gastos de Comercializadora / Administración (Imprimible en PDF)"
-              >
-                <Building2 className="w-4 h-4" />
-                <span>🏢 Acta Gastos Comercializadora ({adminExpenses.length})</span>
-              </button>
-
-              {/* 2. Acta Cuentas Bancarias (Entradas, Salidas y Total por Banco) */}
-              <button
-                onClick={() => setIsBankIncomeActaOpen(true)}
-                className="px-3.5 py-2.5 rounded-xl bg-gradient-to-r from-cyan-600 to-blue-600 hover:from-cyan-500 hover:to-blue-500 text-white font-black text-xs shadow-lg shadow-cyan-500/20 flex items-center gap-1.5 transition-all cursor-pointer"
-                title="Acta Oficial de Movimientos e Ingresos en Cuentas Bancarias (Entradas, Salidas y Total por Banco)"
-              >
-                <Landmark className="w-4 h-4" />
-                <span>🏛️ Acta Bancaria ({bankTransactionItems.length})</span>
-              </button>
-
-              {/* 3. Acta Entrega de Efectivo */}
-              <button
-                onClick={() => setIsCashDeliveryActaOpen(true)}
-                className="px-3.5 py-2.5 rounded-xl bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-slate-950 font-black text-xs shadow-lg shadow-emerald-500/20 flex items-center gap-1.5 transition-all cursor-pointer"
-                title="Acta Oficial de Entrega y Rendición de Efectivo en Bóveda / Caja Central"
-              >
-                <Banknote className="w-4 h-4" />
-                <span>💵 Acta Efectivo ({cashDeliveryItems.length})</span>
-              </button>
-
-              {/* 4. Acta Operador de Confirmaciones */}
-              <button
-                onClick={() => setIsConfirmationActaOpen(true)}
-                className="px-3.5 py-2.5 rounded-xl bg-gradient-to-r from-sky-500 to-teal-500 hover:from-sky-400 hover:to-teal-400 text-slate-950 font-black text-xs shadow-lg shadow-sky-500/20 flex items-center gap-1.5 transition-all cursor-pointer"
-                title="Acta Oficial del Operador de Confirmaciones"
-              >
-                <ShieldCheck className="w-4 h-4" />
-                <span>🛡️ Confirmaciones ({confirmationAuditItems.length})</span>
-              </button>
-
-              {/* 5. Acta Cobrador de Ruta */}
-              <button
-                onClick={() => setIsCollectorActaOpen(true)}
-                className="px-3.5 py-2.5 rounded-xl bg-gradient-to-r from-purple-500 to-indigo-500 hover:from-purple-400 hover:to-indigo-400 text-white font-black text-xs shadow-lg shadow-purple-500/20 flex items-center gap-1.5 transition-all cursor-pointer"
-                title="Acta Oficial y Desglose de Recaudaciones del Cobrador de Ruta"
-              >
-                <Bike className="w-4 h-4" />
-                <span>🛵 Cobrador ({collectorDailyPayments.length})</span>
+                <span>📄 Acta Oficial Integral (PDF / Imprimir)</span>
               </button>
 
               <button
@@ -1514,23 +1456,23 @@ export const PreClosureAuditTab: React.FC = () => {
           {auditMode === 'operadoras' && (
             <>
               <button
-                onClick={handleCopyOperatorActaWhatsApp}
-                disabled={operatorRows.length === 0}
-                className="px-3.5 py-2.5 rounded-xl bg-gradient-to-r from-emerald-500 to-teal-500 hover:from-emerald-400 hover:to-teal-400 text-slate-950 font-black text-xs shadow-lg shadow-emerald-500/20 flex items-center gap-1.5 transition-all cursor-pointer disabled:opacity-50"
-                title="Copiar Acta Oficial de Casas Operadoras para WhatsApp"
-              >
-                <Copy className="w-4 h-4" />
-                <span>📋 Acta WhatsApp Operadoras</span>
-              </button>
-
-              <button
                 onClick={() => setIsOperatorActaModalOpen(true)}
                 disabled={operatorRows.length === 0}
-                className="px-3.5 py-2.5 rounded-xl bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-400 hover:to-amber-500 text-slate-950 font-black text-xs shadow-lg shadow-amber-500/20 flex items-center gap-1.5 transition-all cursor-pointer disabled:opacity-50"
+                className="px-4 py-2.5 rounded-xl bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-400 hover:to-amber-500 text-slate-950 font-black text-xs shadow-lg shadow-amber-500/20 flex items-center gap-2 transition-all cursor-pointer disabled:opacity-50"
                 title="Acta Oficial Imprimible en PDF de Casas Operadoras"
               >
                 <Printer className="w-4 h-4" />
-                <span>🖨️ Acta PDF Operadoras</span>
+                <span>📄 Acta Oficial de Liquidación de Operadoras (PDF / Imprimir)</span>
+              </button>
+
+              <button
+                onClick={handleCopyOperatorActaWhatsApp}
+                disabled={operatorRows.length === 0}
+                className="px-3.5 py-2.5 rounded-xl bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-400 text-xs font-bold flex items-center gap-1.5 transition-all border border-emerald-500/30 cursor-pointer disabled:opacity-50"
+                title="Copiar Acta Oficial de Casas Operadoras para WhatsApp"
+              >
+                <Copy className="w-3.5 h-3.5" />
+                <span>📋 WhatsApp</span>
               </button>
 
               <button
@@ -1544,26 +1486,6 @@ export const PreClosureAuditTab: React.FC = () => {
               </button>
             </>
           )}
-
-          <button
-            onClick={handleExecuteSafePreClosureAndSnapshot}
-            disabled={isLoading || isProcessing}
-            className="px-3.5 py-2.5 rounded-xl bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-slate-950 font-black text-xs shadow-lg shadow-emerald-500/20 flex items-center gap-1.5 transition-all cursor-pointer disabled:opacity-50"
-            title="Ejecutar Pre-Cierre Seguro, validar concordancia matemática al 100% y congelar Snapshot Total inmutable (Dual Supabase + PostgreSQL)"
-          >
-            <ShieldCheck className="w-4 h-4" />
-            <span>🛡️ Pre-Cierre Seguro & Snapshot</span>
-          </button>
-
-          <button
-            onClick={handleRestoreCycleFromS41Acta}
-            disabled={isLoading || isProcessing}
-            className="px-3 py-2.5 rounded-xl bg-amber-500/10 hover:bg-amber-500/20 text-amber-400 text-xs font-bold flex items-center gap-1.5 transition-all border border-amber-500/30 cursor-pointer disabled:opacity-50"
-            title="Sincronizar arrastres del Acta Oficial de Semana 41 y activar Semana 42"
-          >
-            <Sparkles className="w-3.5 h-3.5 text-amber-400" />
-            <span>Activar Semana 42 desde Acta</span>
-          </button>
 
           <button
             onClick={loadData}
@@ -1597,30 +1519,6 @@ export const PreClosureAuditTab: React.FC = () => {
           >
             <CheckCircle2 className="w-4 h-4" />
             <span>Confirmar y Conciliar ({pendingMovements.totalCount})</span>
-          </button>
-        </div>
-      )}
-
-      {String(systemCycle.semana) === '41' && (
-        <div className="p-4 rounded-2xl bg-gradient-to-r from-amber-500/20 via-[#0D1B22] to-amber-500/10 border border-amber-500/30 flex flex-col sm:flex-row items-center justify-between gap-3 text-amber-300 shadow-xl">
-          <div className="flex items-center gap-3">
-            <AlertTriangle className="w-5 h-5 shrink-0 text-amber-400" />
-            <div>
-              <div className="font-bold text-xs sm:text-sm text-white">
-                Semana 41 cerrada previamente (Acta Inmutable disponible en el Histórico)
-              </div>
-              <div className="text-xs text-amber-200/80">
-                Las ventas cargadas en el sistema corresponden a la Semana 42. Aplica los saldos finales auditados de la Semana 41 para activar oficialmente la Semana 42 (12/10 al 18/10).
-              </div>
-            </div>
-          </div>
-          <button
-            onClick={handleRestoreCycleFromS41Acta}
-            disabled={isLoading}
-            className="px-4 py-2.5 rounded-xl bg-amber-500 hover:bg-amber-400 text-slate-950 font-black text-xs flex items-center gap-2 transition-all cursor-pointer shadow-lg shadow-amber-500/20 shrink-0"
-          >
-            <Sparkles className="w-4 h-4" />
-            Activar Semana 42 con Arrastres del Acta
           </button>
         </div>
       )}
@@ -3274,6 +3172,25 @@ export const PreClosureAuditTab: React.FC = () => {
       </div>
     </div>
   )}
+
+      {/* Modal Principal: Dossier Oficial Integral de Auditoría y Cierre (Un solo PDF e Impresión) */}
+      {isUnifiedDossierOpen && (
+        <UnifiedAuditDossierModal
+          isOpen={isUnifiedDossierOpen}
+          onClose={() => setIsUnifiedDossierOpen(false)}
+          systemCycle={systemCycle}
+          userName={user?.nombre || user?.email?.split('@')[0] || 'Administración'}
+          companyName="CORPORACION CALENDARIO, CA"
+          auditRows={auditRows}
+          totalsByCurrency={totalsByCurrency}
+          adminExpensesByCurrency={adminExpensesByCurrency}
+          agencyExpenses={cycleAgencyExpenses}
+          adminExpenses={adminExpenses}
+          bankTransactions={bankTransactionItems}
+          cashDeliveries={cashDeliveryItems}
+          confirmations={confirmationAuditItems}
+        />
+      )}
 
       {/* Modal 1: Acta Oficial de Entrega General */}
       {isActaModalOpen && (

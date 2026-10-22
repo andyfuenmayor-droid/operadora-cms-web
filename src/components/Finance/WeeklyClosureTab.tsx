@@ -1360,36 +1360,6 @@ export const WeeklyClosureTab: React.FC = () => {
           </button>
 
           <button
-            onClick={handleSyncOfficialS40}
-            disabled={isProcessing}
-            title="Sincronizar y restaurar saldos de arrastre del Acta Oficial S40 y fijar Semana 41"
-            className="px-3.5 py-2.5 rounded-xl bg-cyan-500/10 hover:bg-cyan-500/20 text-cyan-400 text-xs font-semibold flex items-center gap-1.5 transition-all border border-cyan-500/30 cursor-pointer disabled:opacity-50"
-          >
-            <ShieldCheck className="w-3.5 h-3.5" />
-            Sincronizar Arrastres Oficiales S40
-          </button>
-
-          <button
-            onClick={() => handleExecuteSafePreClosureAndSnapshot()}
-            disabled={isProcessing || isLoading}
-            title="Ejecutar Pre-Cierre Seguro, validar cuadre al 100% y congelar Snapshot Total inmutable (Dual Supabase + PostgreSQL)"
-            className="px-3.5 py-2.5 rounded-xl bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-slate-950 font-black text-xs flex items-center gap-1.5 transition-all shadow-lg shadow-emerald-500/20 border border-emerald-400 cursor-pointer disabled:opacity-50"
-          >
-            <ShieldCheck className="w-3.5 h-3.5" />
-            🛡️ Pre-Cierre Seguro & Snapshot
-          </button>
-
-          <button
-            onClick={() => handleRestoreCycleFromS41Acta()}
-            disabled={isProcessing}
-            title="Sincronizar arrastres del Acta Oficial de Semana 41 y activar Semana 42"
-            className="px-3.5 py-2.5 rounded-xl bg-amber-500/10 hover:bg-amber-500/20 text-amber-400 text-xs font-semibold flex items-center gap-1.5 transition-all border border-amber-500/30 cursor-pointer disabled:opacity-50"
-          >
-            <Sparkles className="w-3.5 h-3.5" />
-            Sincronizar Arrastres y Activar Semana 42
-          </button>
-
-          <button
             onClick={() => loadData()}
             disabled={isLoading || isProcessing}
             className="px-3.5 py-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-semibold flex items-center gap-1.5 transition-all border border-slate-700 cursor-pointer disabled:opacity-50"
@@ -1414,40 +1384,6 @@ export const WeeklyClosureTab: React.FC = () => {
             <AlertTriangle className="w-5 h-5 shrink-0" />
           )}
           <span>{message.text}</span>
-        </div>
-      )}
-
-      {String(systemCycle.semana) === '41' && (
-        <div className="p-4 rounded-2xl bg-gradient-to-r from-amber-500/20 via-[#0D1B22] to-amber-500/10 border border-amber-500/30 flex flex-col sm:flex-row items-center justify-between gap-3 text-amber-300 shadow-xl">
-          <div className="flex items-center gap-3">
-            <AlertTriangle className="w-5 h-5 shrink-0 text-amber-400" />
-            <div>
-              <div className="font-bold text-xs sm:text-sm text-white">
-                Semana 41 cerrada previamente (Acta Inmutable disponible en el Histórico)
-              </div>
-              <div className="text-xs text-amber-200/80">
-                Las ventas cargadas en el sistema corresponden a la Semana 42. Aplica los saldos finales auditados de la Semana 41 para activar oficialmente la Semana 42 (12/10 al 18/10).
-              </div>
-            </div>
-          </div>
-          <div className="flex items-center gap-2">
-            <button
-              onClick={() => handleExecuteSafePreClosureAndSnapshot()}
-              disabled={isProcessing}
-              className="px-4 py-2.5 rounded-xl bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-black text-xs flex items-center gap-2 transition-all cursor-pointer shadow-lg shadow-emerald-500/20 shrink-0"
-            >
-              <ShieldCheck className="w-4 h-4" />
-              🛡️ Ejecutar Pre-Cierre Seguro y Snapshot Total
-            </button>
-            <button
-              onClick={() => handleRestoreCycleFromS41Acta()}
-              disabled={isProcessing}
-              className="px-4 py-2.5 rounded-xl bg-amber-500 hover:bg-amber-400 text-slate-950 font-black text-xs flex items-center gap-2 transition-all cursor-pointer shadow-lg shadow-amber-500/20 shrink-0"
-            >
-              <Sparkles className="w-4 h-4" />
-              Activar Semana 42 con Arrastres del Acta
-            </button>
-          </div>
         </div>
       )}
 
@@ -2062,9 +1998,9 @@ export const WeeklyClosureTab: React.FC = () => {
           <div className="flex items-start gap-3 p-4 bg-amber-500/10 border border-amber-500/20 rounded-2xl text-xs text-amber-300">
             <Globe className="w-5 h-5 shrink-0 text-amber-400 mt-0.5" />
             <div className="space-y-1">
-              <strong className="text-amber-300">ADVERTENCIA DE CIERRE Y LIQUIDACIÓN DE CASAS OPERADORAS (PROVEEDORES):</strong>
+              <strong className="text-amber-300">ADVERTENCIA DE CIERRE, LIQUIDACIÓN Y SNAPSHOT DE OPERADORAS:</strong>
               <p className="text-slate-300">
-                Al finalizar el ciclo de operadoras, los balances finales calculados (<strong className="text-white">Nuevo Arrastre</strong>) se registrarán automáticamente como los nuevos saldos de arrastre iniciales de cada <strong className="text-white">Casa Operadora (Proveedor)</strong> para el siguiente ciclo. Los resultados de comisiones, diferencial comercializador y utilidades de las operadoras se archivarán en el registro histórico y las cuentas quedarán preparadas para el nuevo período operativo.
+                Al confirmar la liquidación, el sistema ejecutará y congelará automáticamente el <strong className="text-amber-400">Snapshot Inmutable (SHA-256)</strong> en Supabase y PostgreSQL, registrará los balances de cada Casa Operadora como nuevos saldos de arrastre iniciales y archivará los resultados del ciclo.
               </p>
             </div>
           </div>
@@ -2077,7 +2013,7 @@ export const WeeklyClosureTab: React.FC = () => {
               className="w-5 h-5 rounded text-amber-500 bg-[#071217] border-slate-700 focus:ring-0 cursor-pointer"
             />
             <span className="text-xs font-bold text-white select-none">
-              He verificado la liquidación y montos de las Casas Operadoras (Venta, Premios, Ganancia Comercializador y Arrastre). Traspasar nuevos saldos de arrastre a los proveedores.
+              He verificado la liquidación y montos de las Casas Operadoras (Venta, Premios, Ganancia Comercializador y Arrastre). Congelar Snapshot, traspasar nuevos saldos y avanzar ciclo.
             </span>
           </label>
 
@@ -2100,9 +2036,9 @@ export const WeeklyClosureTab: React.FC = () => {
           <div className="flex items-start gap-3 p-4 bg-emerald-500/10 border border-emerald-500/20 rounded-2xl text-xs text-emerald-300">
             <Building2 className="w-5 h-5 shrink-0 text-emerald-400 mt-0.5" />
             <div className="space-y-1">
-              <strong className="text-emerald-300">ADVERTENCIA DE CIERRE DEFINITIVO DE AGENCIAS:</strong>
+              <strong className="text-emerald-300">ADVERTENCIA DE CIERRE DEFINITIVO Y SNAPSHOT DE AGENCIAS:</strong>
               <p className="text-slate-300">
-                Al finalizar el ciclo de agencias, los balances finales calculados se registrarán como los nuevos saldos de arrastre iniciales de las <strong className="text-white">Agencias</strong>. Las ventas, gastos y cobros del ciclo se archivarán en el registro histórico y las cuentas quedarán preparadas para el nuevo período.
+                Al confirmar el cierre, el sistema ejecutará y congelará automáticamente el <strong className="text-emerald-400">Snapshot Inmutable (SHA-256)</strong> en Supabase y PostgreSQL, registrará los balances finales como nuevos saldos de arrastre de las <strong className="text-white">Agencias</strong> y avanzará el ciclo operativo.
               </p>
             </div>
           </div>
@@ -2115,7 +2051,7 @@ export const WeeklyClosureTab: React.FC = () => {
               className="w-5 h-5 rounded text-emerald-500 bg-[#071217] border-slate-700 focus:ring-0 cursor-pointer"
             />
             <span className="text-xs font-bold text-white select-none">
-              He verificado los montos de las Agencias (Venta Neta, Gastos, Premios, Cobros y Saldo Final). Traspasar saldos de arrastre y avanzar el ciclo operativo.
+              He verificado los montos de las Agencias (Venta Neta, Gastos, Premios, Cobros y Saldo Final). Congelar Snapshot, traspasar saldos de arrastre y avanzar el ciclo operativo.
             </span>
           </label>
 
@@ -2243,9 +2179,9 @@ export const WeeklyClosureTab: React.FC = () => {
                 </p>
               </div>
 
-              <div className="text-[11px] text-emerald-400/90 flex items-center gap-1.5 pt-1">
-                <CheckCircle2 className="w-3.5 h-3.5 shrink-0" />
-                Se archivará la liquidación en el registro histórico y se guardará un respaldo de seguridad.
+              <div className="text-[11px] text-amber-400/90 flex items-center gap-1.5 pt-1">
+                <ShieldCheck className="w-3.5 h-3.5 shrink-0" />
+                Se congelará automáticamente el Snapshot Inmutable (SHA-256) en Supabase y PostgreSQL antes de aplicar los cambios.
               </div>
             </div>
 
@@ -2274,12 +2210,12 @@ export const WeeklyClosureTab: React.FC = () => {
                 {isProcessing ? (
                   <>
                     <RefreshCw className="w-4 h-4 animate-spin" />
-                    Procesando Liquidación...
+                    Procesando Liquidación y Sellando Snapshot...
                   </>
                 ) : (
                   <>
-                    <Globe className="w-4 h-4" />
-                    Confirmar y Traspasar Arrastre de Operadoras
+                    <ShieldCheck className="w-4 h-4" />
+                    Confirmar Liquidación y Congelar Snapshot
                   </>
                 )}
               </button>
@@ -2351,8 +2287,8 @@ export const WeeklyClosureTab: React.FC = () => {
               </div>
 
               <div className="text-[11px] text-emerald-400/90 flex items-center gap-1.5 pt-1">
-                <CheckCircle2 className="w-3.5 h-3.5 shrink-0" />
-                Se creará automáticamente una copia de seguridad en memoria antes de aplicar los cambios.
+                <ShieldCheck className="w-3.5 h-3.5 shrink-0" />
+                Se congelará automáticamente el Snapshot Inmutable (SHA-256) en Supabase y PostgreSQL antes de aplicar los cambios.
               </div>
             </div>
 
@@ -2381,12 +2317,12 @@ export const WeeklyClosureTab: React.FC = () => {
                 {isProcessing ? (
                   <>
                     <RefreshCw className="w-4 h-4 animate-spin" />
-                    Procesando Cierre...
+                    Procesando Cierre y Sellando Snapshot...
                   </>
                 ) : (
                   <>
-                    <Building2 className="w-4 h-4" />
-                    Confirmar y Ejecutar Cierre de Agencias
+                    <ShieldCheck className="w-4 h-4" />
+                    Confirmar Cierre y Congelar Snapshot
                   </>
                 )}
               </button>
