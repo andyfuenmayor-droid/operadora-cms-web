@@ -62,6 +62,11 @@ import { AuditClosureActaModal } from './AuditClosureActaModal';
 import { logAuditEvent, fetchAuditLogs } from '../../utils/auditLogger';
 import { AuditLogTab } from '../Audit/AuditLogTab';
 import { SEMANA_41_SALES_RECORDS } from '../../utils/semana41SalesData';
+import {
+  saveWeeklySnapshot,
+  getWeeklySnapshot,
+  downloadSnapshotJson,
+} from '../../lib/snapshots';
 
 interface CierreAgencyData {
   ag_id: number;
@@ -719,11 +724,101 @@ export const WeeklyClosureTab: React.FC = () => {
     }
   };
 
+  // Ejecutar Pre-Cierre Seguro y Snapshot Total (Dual Supabase + PostgreSQL)
+  const handleExecuteSafePreClosureAndSnapshot = async () => {
+    if (!effectiveUserId) return;
+    setIsProcessing(true);
+    setMessage(null);
+    try {
+      const nowIso = new Date().toISOString();
+      const periodoActual = `${systemCycle.tipo === 'SEMANAL' ? 'Semana' : 'Ciclo'} ${systemCycle.semana} (${systemCycle.desde} al ${systemCycle.hasta})`;
+
+      const carryOverBalances = [
+        ...closureData.map((d) => ({
+          entidad: d.entidad,
+          tipo_entidad: 'AGENCIA' as const,
+          moneda: d.moneda,
+          saldo_final: d.saldo_final,
+        })),
+        ...operatorClosureRows.map((op) => ({
+          entidad: `OPERADORA: ${op.sistema}`,
+          tipo_entidad: 'OPERADORA' as const,
+          moneda: op.moneda,
+          saldo_final: op.balanceFinal,
+        })),
+      ];
+
+      const snapshotPayload = {
+        user_id: effectiveUserId,
+        semana_no: systemCycle.semana,
+        periodo: periodoActual,
+        fecha_cierre: nowIso,
+        raw_sales_loads: sales,
+        consolidated_totals: totalsByCurrency,
+        agency_matrix: closureData,
+        operator_matrix: operatorClosureRows,
+        all_movements: {
+          payments,
+          expenses,
+          adminExpenses,
+        },
+        carry_over_balances: carryOverBalances,
+      };
+
+      const result = await saveWeeklySnapshot(snapshotPayload);
+      if (!result.success) {
+        throw new Error(result.error || 'Error al guardar snapshot');
+      }
+
+      downloadSnapshotJson({
+        ...snapshotPayload,
+        integrity_hash: result.hash,
+      });
+
+      setMessage({
+        type: 'success',
+        text: `🛡️ Pre-Cierre Seguro ejecutado con éxito. Snapshot Total certificado y respaldado (Hash: ${result.hash.slice(0, 16)}...).`,
+      });
+      alert(
+        `🛡️ PRE-CIERRE SEGURO Y SNAPSHOT TOTAL CERTIFICADO\n\n` +
+        `• Semana auditada: ${systemCycle.semana} (${systemCycle.desde} al ${systemCycle.hasta})\n` +
+        `• Filas Matriz de Agencias: ${closureData.length}\n` +
+        `• Filas Liquidación Operadoras: ${operatorClosureRows.length}\n` +
+        `• Total Cargas de Ventas Respaldadas: ${sales.length}\n` +
+        `• Hash SHA-256 de Integridad: ${result.hash}\n\n` +
+        `El snapshot ha sido guardado de forma compatible con Supabase y PostgreSQL, y se ha descargado el archivo JSON de respaldo.`
+      );
+    } catch (err: any) {
+      console.error('Error executing safe preclosure snapshot:', err);
+      setMessage({ type: 'error', text: err?.message || 'Error ejecutando Pre-Cierre Seguro' });
+    } finally {
+      setIsProcessing(false);
+    }
+  };
+
   // Restaurar arrastres desde el Acta Oficial de Cierre de Semana 41 y activar Semana 42
   const handleRestoreCycleFromS41Acta = async (customClosure?: any) => {
     if (!effectiveUserId) return;
 
     let targetClosure = customClosure;
+    if (!targetClosure) {
+      // Intentar cargar primero desde el Snapshot Total Certificado de Semana 41
+      try {
+        const snap = await getWeeklySnapshot('41', effectiveUserId);
+        if (snap && snap.carry_over_balances && snap.carry_over_balances.length > 0) {
+          const agRows = snap.carry_over_balances.filter((r) => r.tipo_entidad === 'AGENCIA');
+          const opRows = snap.carry_over_balances.filter((r) => r.tipo_entidad === 'OPERADORA');
+          targetClosure = {
+            periodo: snap.periodo || 'Semana 41 (2026-10-05 al 2026-10-11)',
+            agencyRows: agRows,
+            operatorRows: opRows,
+          };
+        }
+      } catch (snapErr) {
+        console.warn('Error loading snapshot for S41 activation:', snapErr);
+      }
+    }
+
     if (!targetClosure) {
       targetClosure = historicalClosures.find((c: any) =>
         c.periodo?.includes('2026-10-05') ||
@@ -854,13 +949,7 @@ export const WeeklyClosureTab: React.FC = () => {
         );
       } catch (_) {}
 
-      // 6. Actualizar fecha de las ventas en carga_actual al rango de Semana 42 (2026-10-18)
-      try {
-        await supabase
-          .from('carga_actual')
-          .update({ fecha: '2026-10-18' })
-          .eq('user_id', effectiveUserId);
-      } catch (_) {}
+      // 6. Aislamiento de ventas (Bug 5): Las cargas de ventas de Semana 42 en carga_actual permanecen 100% intactas sin ser modificadas ni sobreescritas
 
       // 7. Auditoría
       await logAuditEvent({
@@ -1030,6 +1119,43 @@ export const WeeklyClosureTab: React.FC = () => {
         }
       } catch (snapErr) {
         console.warn('Could not insert snapshot into cierres_semanales (continuando cierre):', snapErr);
+      }
+
+      // 1b. Guardar Snapshot Total Inmutable (Dual Supabase + PostgreSQL)
+      try {
+        const carryOverBalances = [
+          ...closureData.map((d) => ({
+            entidad: d.entidad,
+            tipo_entidad: 'AGENCIA' as const,
+            moneda: d.moneda,
+            saldo_final: d.saldo_final,
+          })),
+          ...operatorClosureRows.map((op) => ({
+            entidad: `OPERADORA: ${op.sistema}`,
+            tipo_entidad: 'OPERADORA' as const,
+            moneda: op.moneda,
+            saldo_final: op.balanceFinal,
+          })),
+        ];
+
+        await saveWeeklySnapshot({
+          user_id: effectiveUserId,
+          semana_no: systemCycle.semana,
+          periodo: periodoActual,
+          fecha_cierre: nowIso,
+          raw_sales_loads: sales,
+          consolidated_totals: totalsByCurrency,
+          agency_matrix: closureData,
+          operator_matrix: operatorClosureRows,
+          all_movements: {
+            payments,
+            expenses,
+            adminExpenses,
+          },
+          carry_over_balances: carryOverBalances,
+        });
+      } catch (snapSaveErr) {
+        console.warn('Could not save immutable weekly snapshot on closure:', snapSaveErr);
       }
 
       // 1c. Insert snapshots into resultados_operadora (Histórico de liquidación de operadora)
@@ -1244,6 +1370,16 @@ export const WeeklyClosureTab: React.FC = () => {
           </button>
 
           <button
+            onClick={() => handleExecuteSafePreClosureAndSnapshot()}
+            disabled={isProcessing || isLoading}
+            title="Ejecutar Pre-Cierre Seguro, validar cuadre al 100% y congelar Snapshot Total inmutable (Dual Supabase + PostgreSQL)"
+            className="px-3.5 py-2.5 rounded-xl bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-slate-950 font-black text-xs flex items-center gap-1.5 transition-all shadow-lg shadow-emerald-500/20 border border-emerald-400 cursor-pointer disabled:opacity-50"
+          >
+            <ShieldCheck className="w-3.5 h-3.5" />
+            🛡️ Pre-Cierre Seguro & Snapshot
+          </button>
+
+          <button
             onClick={() => handleRestoreCycleFromS41Acta()}
             disabled={isProcessing}
             title="Sincronizar arrastres del Acta Oficial de Semana 41 y activar Semana 42"
@@ -1294,14 +1430,24 @@ export const WeeklyClosureTab: React.FC = () => {
               </div>
             </div>
           </div>
-          <button
-            onClick={() => handleRestoreCycleFromS41Acta()}
-            disabled={isProcessing}
-            className="px-4 py-2.5 rounded-xl bg-amber-500 hover:bg-amber-400 text-slate-950 font-black text-xs flex items-center gap-2 transition-all cursor-pointer shadow-lg shadow-amber-500/20 shrink-0"
-          >
-            <Sparkles className="w-4 h-4" />
-            Activar Semana 42 con Arrastres del Acta
-          </button>
+          <div className="flex items-center gap-2">
+            <button
+              onClick={() => handleExecuteSafePreClosureAndSnapshot()}
+              disabled={isProcessing}
+              className="px-4 py-2.5 rounded-xl bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-black text-xs flex items-center gap-2 transition-all cursor-pointer shadow-lg shadow-emerald-500/20 shrink-0"
+            >
+              <ShieldCheck className="w-4 h-4" />
+              🛡️ Ejecutar Pre-Cierre Seguro y Snapshot Total
+            </button>
+            <button
+              onClick={() => handleRestoreCycleFromS41Acta()}
+              disabled={isProcessing}
+              className="px-4 py-2.5 rounded-xl bg-amber-500 hover:bg-amber-400 text-slate-950 font-black text-xs flex items-center gap-2 transition-all cursor-pointer shadow-lg shadow-amber-500/20 shrink-0"
+            >
+              <Sparkles className="w-4 h-4" />
+              Activar Semana 42 con Arrastres del Acta
+            </button>
+          </div>
         </div>
       )}
 

@@ -222,3 +222,64 @@ export async function findPaymentStatus(id, referencia) {
   const res = await query(sql, params);
   return res.rows[0] || null;
 }
+
+/**
+ * Guardar o actualizar un Snapshot Total en PostgreSQL nativo
+ */
+export async function saveWeeklySnapshotRecord(snapshot) {
+  const sql = `
+    INSERT INTO weekly_closure_snapshots (
+      user_id, semana_no, periodo, fecha_cierre,
+      raw_sales_loads, consolidated_totals, agency_matrix,
+      operator_matrix, all_movements, carry_over_balances,
+      integrity_hash, updated_at
+    ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, NOW())
+    ON CONFLICT (user_id, semana_no) DO UPDATE SET
+      periodo = EXCLUDED.periodo,
+      fecha_cierre = EXCLUDED.fecha_cierre,
+      raw_sales_loads = EXCLUDED.raw_sales_loads,
+      consolidated_totals = EXCLUDED.consolidated_totals,
+      agency_matrix = EXCLUDED.agency_matrix,
+      operator_matrix = EXCLUDED.operator_matrix,
+      all_movements = EXCLUDED.all_movements,
+      carry_over_balances = EXCLUDED.carry_over_balances,
+      integrity_hash = EXCLUDED.integrity_hash,
+      updated_at = NOW()
+    RETURNING id, user_id, semana_no, periodo, fecha_cierre, integrity_hash, created_at, updated_at;
+  `;
+
+  const params = [
+    snapshot.user_id,
+    String(snapshot.semana_no),
+    snapshot.periodo,
+    snapshot.fecha_cierre || new Date().toISOString(),
+    JSON.stringify(snapshot.raw_sales_loads || []),
+    JSON.stringify(snapshot.consolidated_totals || {}),
+    JSON.stringify(snapshot.agency_matrix || []),
+    JSON.stringify(snapshot.operator_matrix || []),
+    JSON.stringify(snapshot.all_movements || {}),
+    JSON.stringify(snapshot.carry_over_balances || []),
+    snapshot.integrity_hash || '',
+  ];
+
+  const res = await query(sql, params);
+  return res.rows[0];
+}
+
+/**
+ * Consultar un Snapshot Total por semana y user_id
+ */
+export async function findWeeklySnapshotRecord(userId, semanaNo) {
+  const sql = `
+    SELECT id, user_id, semana_no, periodo, fecha_cierre,
+           raw_sales_loads, consolidated_totals, agency_matrix,
+           operator_matrix, all_movements, carry_over_balances,
+           integrity_hash, created_at, updated_at
+    FROM weekly_closure_snapshots
+    WHERE user_id = $1 AND semana_no = $2
+    LIMIT 1;
+  `;
+  const res = await query(sql, [userId, String(semanaNo)]);
+  return res.rows[0] || null;
+}
+

@@ -140,8 +140,9 @@ export const HomeDashboard: React.FC<HomeDashboardProps> = ({ onNavigate }) => {
 
       const adminTotals: Record<string, number> = { BS: 0, USD: 0, COP: 0 };
       (adminExpensesList || []).forEach((e) => {
-        if (adminTotals[e.moneda] !== undefined) {
-          adminTotals[e.moneda] += e.monto;
+        const m = normalizarMoneda(e.moneda);
+        if (adminTotals[m] !== undefined) {
+          adminTotals[m] += Number(e.monto || 0);
         }
       });
       setAdminExpensesByCurrency(adminTotals);
@@ -169,13 +170,13 @@ export const HomeDashboard: React.FC<HomeDashboardProps> = ({ onNavigate }) => {
 
         // Gastos operativos confirmados
         const gTot = gastosList
-          .filter((g) => g.moneda === mon && Boolean(g.confirmado))
+          .filter((g) => normalizarMoneda(g.moneda) === mon && Boolean(g.confirmado))
           .reduce((acc: number, g) => acc + (Number(g.monto) || 0), 0);
 
         // Cobros ordinarios de agencias (Bancos, Efectivo Taquilla, Cobradores QR)
         const pCobros = pagosList
           .filter((p) => {
-            if (p.moneda !== mon || !Boolean(p.confirmado)) return false;
+            if (normalizarMoneda(p.moneda) !== mon || !Boolean(p.confirmado)) return false;
             if (p.tipo_pago?.includes('Premio')) return false;
             const agUpper = String(p.agencia || '').trim().toUpperCase();
             if (agUpper.startsWith('OPERADORA:') || String(p.tipo_pago || '').toUpperCase().includes('OPERADORA')) return false;
@@ -186,7 +187,7 @@ export const HomeDashboard: React.FC<HomeDashboardProps> = ({ onNavigate }) => {
         // Reposición de Premios de la operadora hacia agencias
         const pPremios = pagosList
           .filter((p) => {
-            if (p.moneda !== mon || !Boolean(p.confirmado)) return false;
+            if (normalizarMoneda(p.moneda) !== mon || !Boolean(p.confirmado)) return false;
             if (!p.tipo_pago?.includes('Premio')) return false;
             const agUpper = String(p.agencia || '').trim().toUpperCase();
             if (agUpper.startsWith('OPERADORA:') || String(p.tipo_pago || '').toUpperCase().includes('OPERADORA')) return false;

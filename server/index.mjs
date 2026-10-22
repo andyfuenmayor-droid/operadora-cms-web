@@ -21,6 +21,8 @@ import {
   findDuplicatePayment,
   insertPaymentRecord,
   findPaymentStatus,
+  saveWeeklySnapshotRecord,
+  findWeeklySnapshotRecord,
 } from './db.mjs';
 
 // Configuration
@@ -566,6 +568,73 @@ async function handleSimulatePayment(req, res, auth, body) {
   });
 }
 
+// Route Handler: Save Weekly Closure Snapshot (Dual PostgreSQL & Supabase)
+async function handleSaveSnapshot(req, res, auth, body) {
+  const userId = auth.userId || body.user_id;
+  if (!userId || !body.semana_no) {
+    return sendJson(res, 400, {
+      success: false,
+      error: 'PARAMETRO_REQUERIDO',
+      message: "Se requieren 'user_id' y 'semana_no' para guardar el snapshot.",
+    });
+  }
+
+  try {
+    const record = await saveWeeklySnapshotRecord({
+      ...body,
+      user_id: userId,
+    });
+    return sendJson(res, 200, {
+      success: true,
+      message: `Snapshot Total de Semana ${body.semana_no} guardado exitosamente en PostgreSQL.`,
+      snapshot: record,
+    });
+  } catch (err) {
+    console.error('[API] Error saving snapshot in PostgreSQL:', err.message);
+    return sendJson(res, 500, {
+      success: false,
+      error: 'ERROR_SNAPSHOT_PG',
+      message: err.message,
+    });
+  }
+}
+
+// Route Handler: Get Weekly Closure Snapshot
+async function handleGetSnapshot(req, res, auth, parsedUrl) {
+  const userId = auth.userId || parsedUrl.searchParams.get('user_id');
+  const semanaNo = parsedUrl.searchParams.get('semana_no');
+
+  if (!userId || !semanaNo) {
+    return sendJson(res, 400, {
+      success: false,
+      error: 'PARAMETRO_REQUERIDO',
+      message: "Parámetros requeridos: 'user_id' y 'semana_no'.",
+    });
+  }
+
+  try {
+    const record = await findWeeklySnapshotRecord(userId, semanaNo);
+    if (!record) {
+      return sendJson(res, 404, {
+        success: false,
+        error: 'SNAPSHOT_NO_ENCONTRADO',
+        message: `No se encontró snapshot para la Semana ${semanaNo}.`,
+      });
+    }
+    return sendJson(res, 200, {
+      success: true,
+      snapshot: record,
+    });
+  } catch (err) {
+    return sendJson(res, 500, {
+      success: false,
+      error: 'ERROR_CONSULTA_SNAPSHOT',
+      message: err.message,
+    });
+  }
+}
+
+
 // OpenAPI Specification JSON
 function getOpenApiSpec() {
   return {
@@ -710,6 +779,18 @@ const server = http.createServer(async (req, res) => {
         const body = await parseBody(req);
         return await handleSimulatePayment(req, res, auth, body);
       }
+
+      // POST /api/v1/snapshots (Save Weekly Closure Snapshot)
+      if (pathname === '/api/v1/snapshots' && method === 'POST') {
+        const body = await parseBody(req);
+        return await handleSaveSnapshot(req, res, auth, body);
+      }
+
+      // GET /api/v1/snapshots (Get Weekly Closure Snapshot)
+      if (pathname === '/api/v1/snapshots' && method === 'GET') {
+        return await handleGetSnapshot(req, res, auth, parsedUrl);
+      }
+
     } catch (routeErr) {
       console.error('[API Server] Unhandled route error:', routeErr);
       return sendJson(res, 500, {

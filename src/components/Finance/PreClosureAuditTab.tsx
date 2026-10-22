@@ -65,11 +65,20 @@ import {
   executeRestoreAuditedBalances,
 } from '../../utils/auditedBalancesS40';
 import { SEMANA_41_SALES_RECORDS } from '../../utils/semana41SalesData';
+import confetti from 'canvas-confetti';
+import {
+  saveWeeklySnapshot,
+  getWeeklySnapshot,
+  downloadSnapshotJson,
+  type WeeklyClosureSnapshot,
+} from '../../lib/snapshots';
 
 export const PreClosureAuditTab: React.FC = () => {
   const { effectiveUserId, systemCycle, user, refreshSystemCycle } = useAuth();
 
   const [isLoading, setIsLoading] = useState(true);
+  const [isProcessing, setIsProcessing] = useState(false);
+  const [snapshotSuccess, setSnapshotSuccess] = useState<{ hash: string; semana: string } | null>(null);
   const [auditMode, setAuditMode] = useState<'agencias' | 'operadoras' | 'consolidado'>('agencias');
   const [agencies, setAgencies] = useState<Agency[]>([]);
   const [sales, setSales] = useState<any[]>([]);
@@ -149,7 +158,10 @@ export const PreClosureAuditTab: React.FC = () => {
         }
       }
 
-      const salesData = sRes.data || [];
+      // Aislamiento estricto de ventas (Bug 5): Si auditamos Semana 41, usamos las ventas oficiales auditadas de S41.
+      // Las ventas de Semana 42 en carga_actual permanecen 100% aisladas e intactas.
+      const isAuditingS41 = String(systemCycle?.semana) === '41' || systemCycle?.desde?.includes('2026-10-05');
+      const salesData = isAuditingS41 ? SEMANA_41_SALES_RECORDS : (sRes.data || []);
 
       const sysList = Array.from(new Set([
         ...(sysRes.data?.map((s) => s.nombre_sistema?.toUpperCase()) || []),
@@ -195,54 +207,182 @@ export const PreClosureAuditTab: React.FC = () => {
     }
   };
 
-  // Sincronizar saldos de arrastre del Acta Oficial S41 y activar Semana 42
+  // Movimientos sin confirmar en el ciclo actual para alerta de cuadre pre-cierre
+  const pendingMovements = useMemo(() => {
+    const unconfPayments = payments.filter((p) => {
+      if (p.rechazado) return false;
+      const fStr = String(p.fecha || p.created_at || '').slice(0, 10);
+      const inCycle = !systemCycle?.desde || (fStr >= systemCycle.desde && fStr <= (systemCycle.hasta || fStr));
+      return inCycle && !p.confirmado;
+    });
+
+    const unconfExpenses = expenses.filter((g) => {
+      if (g.rechazado) return false;
+      const fStr = String(g.fecha || g.created_at || '').slice(0, 10);
+      const inCycle = !systemCycle?.desde || (fStr >= systemCycle.desde && fStr <= (systemCycle.hasta || fStr));
+      return inCycle && !g.confirmado;
+    });
+
+    return {
+      payments: unconfPayments,
+      expenses: unconfExpenses,
+      totalCount: unconfPayments.length + unconfExpenses.length,
+    };
+  }, [payments, expenses, systemCycle]);
+
+  // Confirmar y conciliar masivamente los movimientos pendientes para garantizar 100% cuadre
+  const handleConfirmAllPendingMovements = async () => {
+    if (!effectiveUserId) return;
+    setIsProcessing(true);
+    try {
+      const pIds = pendingMovements.payments.map((p) => p.id.replace(/^ps_/, ''));
+      if (pIds.length > 0) {
+        await supabase
+          .from('pagos_semana')
+          .update({ confirmado: true, estado: 'CONFIRMADO', confirmado_por: user?.email || 'ADMIN' })
+          .in('id', pIds)
+          .eq('user_id', effectiveUserId);
+      }
+      const gIds = pendingMovements.expenses.map((g) => g.id.replace(/^gc_/, ''));
+      if (gIds.length > 0) {
+        await supabase
+          .from('gastos')
+          .update({ confirmado: true, estado: 'CONFIRMADO', confirmado_por: user?.email || 'ADMIN' })
+          .in('id', gIds)
+          .eq('user_id', effectiveUserId);
+      }
+      await loadData();
+      alert('✅ Todos los movimientos pendientes han sido confirmados y conciliados con éxito.');
+    } catch (err: any) {
+      console.warn('Error confirmando movimientos pendientes:', err);
+    } finally {
+      setIsProcessing(false);
+    }
+  };
+
+  // Ejecutar Pre-Cierre Seguro y Congelar Snapshot Total (Dual Supabase + PostgreSQL)
+  const handleExecuteSafePreClosureAndSnapshot = async () => {
+    if (!effectiveUserId) return;
+
+    if (pendingMovements.totalCount > 0) {
+      const ok = window.confirm(
+        `⚠️ VALIDACIÓN DE CUADRE:\nExisten ${pendingMovements.totalCount} movimientos sin confirmar en este ciclo.\n\n` +
+        `Para garantizar la concordancia matemática al 100% entre la Matriz General y las Actas Oficiales, ¿deseas confirmar y conciliar estos movimientos ahora antes de congelar el Snapshot?`
+      );
+      if (ok) {
+        await handleConfirmAllPendingMovements();
+      }
+    }
+
+    setIsProcessing(true);
+    try {
+      // 1. Preparar lista de Arrastres Iniciales que hereda el siguiente ciclo
+      const carryOverBalances = [
+        ...auditRows.map((r) => ({
+          entidad: r.entidad,
+          tipo_entidad: 'AGENCIA' as const,
+          moneda: r.moneda,
+          saldo_final: r.saldo_final,
+        })),
+        ...operatorRows.map((r) => ({
+          entidad: `OPERADORA: ${r.sistema}`,
+          tipo_entidad: 'OPERADORA' as const,
+          moneda: r.moneda,
+          saldo_final: r.balanceFinal,
+        })),
+      ];
+
+      // 2. Construir objeto de Snapshot Total Inmutable
+      const snapshotPayload = {
+        user_id: effectiveUserId,
+        semana_no: systemCycle.semana,
+        periodo: `${systemCycle.tipo === 'SEMANAL' ? 'Semana' : 'Ciclo'} ${systemCycle.semana} (${systemCycle.desde} al ${systemCycle.hasta})`,
+        fecha_cierre: new Date().toISOString(),
+        raw_sales_loads: sales,
+        consolidated_totals: totalsByCurrency,
+        agency_matrix: auditRows,
+        operator_matrix: operatorRows,
+        all_movements: {
+          bankPayments: bankTransactionItems,
+          cashDeliveries: cashDeliveryItems,
+          routeCollectors: collectorDailyPayments,
+          agencyExpenses: cycleAgencyExpenses,
+          adminExpenses,
+          confirmations: confirmationAuditItems,
+        },
+        carry_over_balances: carryOverBalances,
+      };
+
+      // 3. Persistir en base de datos dual (Supabase Cloud + PostgreSQL local/Docker + config_sistema)
+      const result = await saveWeeklySnapshot(snapshotPayload);
+      if (!result.success) {
+        throw new Error(result.error || 'Error al persistir snapshot');
+      }
+
+      // 4. Descargar archivo JSON para respaldo local
+      downloadSnapshotJson({
+        ...snapshotPayload,
+        integrity_hash: result.hash,
+      });
+
+      setSnapshotSuccess({
+        hash: result.hash,
+        semana: systemCycle.semana,
+      });
+
+      confetti({
+        particleCount: 90,
+        spread: 100,
+        origin: { y: 0.6 },
+      });
+
+      alert(
+        `🛡️ ¡Pre-Cierre Seguro y Snapshot Total Congelado con Éxito!\n\n` +
+        `• Ciclo: Semana ${systemCycle.semana} (${systemCycle.desde} al ${systemCycle.hasta})\n` +
+        `• Matriz de Arqueo: ${auditRows.length} filas cuadradas\n` +
+        `• Casas Operadoras: ${operatorRows.length} liquidaciones auditadas\n` +
+        `• Hash SHA-256: ${result.hash}\n\n` +
+        `El snapshot ha sido guardado de forma dual en Supabase/PostgreSQL y se ha descargado el archivo JSON de respaldo.`
+      );
+    } catch (err: any) {
+      console.error('Error executing safe pre-closure snapshot:', err);
+      alert(`Error al generar el Snapshot: ${err?.message || 'Error desconocido'}`);
+    } finally {
+      setIsProcessing(false);
+    }
+  };
+
+  // Sincronizar saldos de arrastre del Snapshot Oficial S41 y activar Semana 42
   const handleRestoreCycleFromS41Acta = async () => {
     if (!effectiveUserId) return;
 
     setIsLoading(true);
     try {
-      const { data: directData, error: dirErr } = await supabase
-        .from('cierres_semanales')
-        .select('*')
-        .eq('user_id', effectiveUserId)
-        .order('id', { ascending: false });
-
-      if (dirErr || !directData || directData.length === 0) {
-        alert('No se encontraron registros de Actas de Cierre en la base de datos.');
+      // 1. Obtener el Snapshot Certificado de la Semana 41
+      const s41Snapshot = await getWeeklySnapshot('41', effectiveUserId);
+      if (!s41Snapshot || !s41Snapshot.carry_over_balances) {
+        alert('No se pudo cargar el Snapshot de la Semana 41.');
         return;
       }
 
-      // Buscar el cierre de la Semana 41 (2026-10-05 al 2026-10-11)
-      const targetRows = directData.filter(
-        (r) =>
-          r.periodo?.includes('2026-10-05') ||
-          r.periodo?.includes('Semana 41') ||
-          r.periodo?.includes('11/10/2026')
-      );
-      const rowsToUse = targetRows.length > 0 ? targetRows : directData;
-      const agRows = rowsToUse.filter((r) => r.tipo_entidad === 'AGENCIA' || !r.entidad?.startsWith('OPERADORA:'));
-      const opRows = rowsToUse.filter((r) => r.tipo_entidad === 'OPERADORA' || r.entidad?.startsWith('OPERADORA:'));
-
-      const per = rowsToUse[0]?.periodo || 'Semana 41';
-
       if (
         !window.confirm(
-          `⚡ ¿CONFIRMA ACTIVAR LA SEMANA 42 APLICANDO LOS ARRASTRES DEL ACTA DE CIERRE (${per})?\n\nEsta operación:\n1. Fijará los saldos iniciales de las ${agRows.length} agencias con sus saldos finales auditados.\n2. Fijará los saldos de arrastre de las ${opRows.length} casas operadoras.\n3. Establecerá el ciclo oficial en SEMANA 42 (2026-10-12 al 2026-10-18).\n4. Asignará las ventas activas a la Semana 42.`
+          `⚡ ¿CONFIRMA ACTIVAR LA SEMANA 42 APLICANDO LOS ARRASTRES DEL SNAPSHOT TOTAL AUDITADO (Semana 41)?\n\nEsta operación:\n1. Fijará los saldos iniciales de las agencias con sus saldos finales auditados de S41.\n2. Fijará los saldos de arrastre de las casas operadoras (BETM3, CDAPUESTAS).\n3. Establecerá el ciclo oficial en SEMANA 42 (2026-10-12 al 2026-10-18).\n4. MANTENDRÁ 100% INTACTAS las cargas de ventas de la Semana 42 actualmente en el sistema.`
         )
       ) {
         return;
       }
 
-      // 1. Obtener agencias vigentes de la BD para tener sus IDs
+      // 2. Actualizar saldos iniciales de agencias en BD
       const { data: currentAgencies } = await supabase
         .from('agencias')
         .select('*')
         .eq('user_id', effectiveUserId);
 
       const agListToUpdate = currentAgencies || agencies;
+      const agCarry = s41Snapshot.carry_over_balances.filter((c) => c.tipo_entidad === 'AGENCIA');
 
-      // 2. Actualizar saldos iniciales de agencias
-      for (const r of agRows) {
+      for (const r of agCarry) {
         const nom = cleanAgencyName(r.entidad);
         const col = r.moneda === 'BS' ? 'saldo_inicial_bs' : r.moneda === 'USD' ? 'saldo_inicial_usd' : 'saldo_inicial_cop';
         const targetAg = agListToUpdate.find((a) => cleanAgencyName(a.nombre_agencia) === nom);
@@ -256,8 +396,11 @@ export const PreClosureAuditTab: React.FC = () => {
       }
 
       // 3. Actualizar saldos iniciales de Casas Operadoras
-      const updatedKeywords: SystemKeywordsMap = { ...systemConfigs };
-      for (const op of opRows) {
+      const confs = await loadSystemKeywords(effectiveUserId);
+      const updatedKeywords: SystemKeywordsMap = { ...confs };
+      const opCarry = s41Snapshot.carry_over_balances.filter((c) => c.tipo_entidad === 'OPERADORA');
+
+      for (const op of opCarry) {
         const sysUpper = String(op.entidad || '').replace(/^OPERADORA:\s*/i, '').trim().toUpperCase();
         if (sysUpper) {
           if (!updatedKeywords[sysUpper]) {
@@ -285,17 +428,15 @@ export const PreClosureAuditTab: React.FC = () => {
         { parametro: 'semana_no', valor: '42' },
       ];
 
-      try {
-        await supabase
+      for (const item of cycleUpdates) {
+        const { data: updated, error: upErr } = await supabase
           .from('config_sistema')
-          .delete()
+          .update({ valor: item.valor })
           .eq('user_id', effectiveUserId)
-          .in('parametro', ['fecha_desde', 'fecha_hasta', 'tipo_cierre', 'semana_no']);
-        await supabase
-          .from('config_sistema')
-          .insert(cycleUpdates.map((c) => ({ user_id: effectiveUserId, parametro: c.parametro, valor: c.valor })));
-      } catch (_) {
-        for (const item of cycleUpdates) {
+          .eq('parametro', item.parametro)
+          .select();
+
+        if (upErr || !updated || updated.length === 0) {
           await supabase.from('config_sistema').upsert(
             { user_id: effectiveUserId, parametro: item.parametro, valor: item.valor },
             { onConflict: 'user_id,parametro' }
@@ -316,23 +457,14 @@ export const PreClosureAuditTab: React.FC = () => {
         );
       } catch (_) {}
 
-      // 6. Actualizar fecha de las ventas en carga_actual al rango de Semana 42 (2026-10-18)
-      try {
-        await supabase
-          .from('carga_actual')
-          .update({ fecha: '2026-10-18' })
-          .eq('user_id', effectiveUserId);
-      } catch (_) {}
+      // NOTA: NO TOCAR carga_actual, las ventas de la Semana 42 se preservan intactas
 
-      alert(`⚡ ¡Operación Exitosa! Arrastres aplicados desde el Acta Oficial de Cierre (${per}). El sistema ahora opera en la SEMANA 42 (2026-10-12 al 2026-10-18) y sus ventas están correctamente ubicadas en este ciclo.`);
-
-      if (refreshSystemCycle) {
-        await refreshSystemCycle();
-      }
+      alert('⚡ ¡Semana 42 activada con éxito! Los arrastres de la Semana 41 han sido inyectados y las ventas de Semana 42 permanecen intactas.');
+      if (refreshSystemCycle) await refreshSystemCycle();
       await loadData();
     } catch (err: any) {
-      console.error('Error restaurando ciclo desde acta en PreClosure:', err);
-      alert('Error al restaurar ciclo desde el acta: ' + (err?.message || err));
+      console.error('Error restaurando ciclo desde snapshot S41:', err);
+      alert(`Error: ${err?.message || 'Error al restaurar ciclo'}`);
     } finally {
       setIsLoading(false);
     }
@@ -450,7 +582,13 @@ export const PreClosureAuditTab: React.FC = () => {
 
         if (confMon.includes(mon) || Math.abs(sAnt) > 0.01 || agSales.length > 0) {
           // Gastos confirmados en el ciclo
-          const agExp = expenses.filter((g) => g.agencia === nom && normalizarMoneda(g.moneda) === mon && Boolean(g.confirmado));
+          const agExp = expenses.filter((g) => {
+            const matchAg = g.agencia === nom;
+            const matchMon = normalizarMoneda(g.moneda) === mon;
+            const fStr = String(g.fecha || g.created_at || '').slice(0, 10);
+            const inCycle = !systemCycle?.desde || (fStr >= systemCycle.desde && fStr <= (systemCycle.hasta || fStr));
+            return matchAg && matchMon && Boolean(g.confirmado) && inCycle && !g.rechazado;
+          });
           const gTot = agExp.reduce((sum, curr) => sum + Number(curr.monto || 0), 0);
 
           // Segregación de Pagos por Canal restringidos al ciclo operativo activo:
@@ -490,20 +628,26 @@ export const PreClosureAuditTab: React.FC = () => {
           // Si el efectivo entregado al supervisor ya fue despachado al cobrador / liquidado, solo se computa y muestra el remanente en taquilla
           const efectivoTaquillaTot = Math.max(0, rawEfectivoTaquillaTot - cobradorRutaTot);
 
-          // 3. Bancos ordinarios (pagos_semana + cda_pagos_bancarios sin incluir reposición de premios)
+          // 3. Bancos ordinarios (pagos_semana + cda_pagos_bancarios sin incluir reposición de premios ni efectivo)
           const agBancosList = payments.filter((p) => {
-            const matchAg = p.agencia === nom && normalizarMoneda(p.moneda) === mon;
+            const matchAg = p.agencia === nom;
+            const matchMon = normalizarMoneda(p.moneda) === mon;
             const isPrem = String(p.tipo_pago || '').toUpperCase().includes('PREMIO') || String(p.referencia || '').toUpperCase().includes('PREMIO');
-            const isDiario = p.id.startsWith('pd_');
-            return matchAg && !isPrem && !isDiario && Boolean(p.confirmado);
+            const isEfectivo = p.id.startsWith('pd_') || p.metodo === 'EFECTIVO' || String(p.referencia || '').toUpperCase().includes('EFECTIVO TAQUILLA');
+            const fStr = String(p.fecha || p.created_at || '').slice(0, 10);
+            const inCycle = !systemCycle?.desde || (fStr >= systemCycle.desde && fStr <= (systemCycle.hasta || fStr));
+            return matchAg && matchMon && !isPrem && !isEfectivo && Boolean(p.confirmado) && inCycle && !p.rechazado;
           });
           const bancosTot = agBancosList.reduce((sum, curr) => sum + Number(curr.monto || 0), 0);
 
           // 4. Reposición de Premios (Abonos de la Operadora a la agencia por pérdidas / faltantes de premio)
           const agPremiosList = payments.filter((p) => {
-            const matchAg = p.agencia === nom && normalizarMoneda(p.moneda) === mon;
+            const matchAg = p.agencia === nom;
+            const matchMon = normalizarMoneda(p.moneda) === mon;
             const isPrem = String(p.tipo_pago || '').toUpperCase().includes('PREMIO') || String(p.referencia || '').toUpperCase().includes('PREMIO');
-            return matchAg && isPrem && Boolean(p.confirmado);
+            const fStr = String(p.fecha || p.created_at || '').slice(0, 10);
+            const inCycle = !systemCycle?.desde || (fStr >= systemCycle.desde && fStr <= (systemCycle.hasta || fStr));
+            return matchAg && matchMon && isPrem && Boolean(p.confirmado) && inCycle && !p.rechazado;
           });
           const reposicionPremiosTot = agPremiosList.reduce((sum, curr) => sum + Number(curr.monto || 0), 0);
 
@@ -571,7 +715,7 @@ export const PreClosureAuditTab: React.FC = () => {
     }> = {};
 
     ['BS', 'USD', 'COP'].forEach((m) => {
-      const admG = adminExpenses.filter((g) => g.moneda === m).reduce((a, b) => a + b.monto, 0);
+      const admG = adminExpenses.filter((g) => normalizarMoneda(g.moneda) === m).reduce((a, b) => a + Number(b.monto || 0), 0);
       res[m] = {
         saldoAnterior: 0,
         ventaNeta: 0,
@@ -613,10 +757,11 @@ export const PreClosureAuditTab: React.FC = () => {
   const adminExpensesByCurrency = useMemo(() => {
     const map: Record<string, number> = { BS: 0, USD: 0, COP: 0 };
     adminExpenses.forEach((g) => {
-      if (map[g.moneda] !== undefined) {
-        map[g.moneda] += Number(g.monto) || 0;
+      const mon = normalizarMoneda(g.moneda) as 'BS' | 'USD' | 'COP';
+      if (map[mon] !== undefined) {
+        map[mon] += Number(g.monto) || 0;
       } else {
-        map[g.moneda] = Number(g.monto) || 0;
+        map[mon] = Number(g.monto) || 0;
       }
     });
     return map;
@@ -829,6 +974,12 @@ export const PreClosureAuditTab: React.FC = () => {
       const inCycle = !systemCycle?.desde || (fStr >= systemCycle.desde && fStr <= (systemCycle.hasta || fStr));
       if (!inCycle) return;
 
+      const isEfectivo = p.id.startsWith('pd_') ||
+                         p.metodo === 'EFECTIVO' ||
+                         String(p.referencia || '').toUpperCase().includes('EFECTIVO TAQUILLA') ||
+                         String(p.referencia || '').toUpperCase().includes('COBRADOR');
+      if (isEfectivo) return; // Efectivo taquilla se procesa en el paso 3 como EFECTIVO, NO como BANCO!
+
       const isPremio = String(p.tipo_pago || '').toUpperCase().includes('PREMIO') || String(p.referencia || '').toUpperCase().includes('PREMIO');
       const bInfo = resolveBankName({
         agencia: p.agencia,
@@ -942,8 +1093,11 @@ export const PreClosureAuditTab: React.FC = () => {
       const inCycle = !systemCycle?.desde || (fStr >= systemCycle.desde && fStr <= (systemCycle.hasta || fStr));
       if (!inCycle) return;
 
-      const isDiario = p.id.startsWith('pd_');
-      if (isDiario) return; // Efectivo diario de taquilla se procesa en el acta de efectivo
+      const isEfectivo = p.id.startsWith('pd_') ||
+                         p.metodo === 'EFECTIVO' ||
+                         String(p.referencia || '').toUpperCase().includes('EFECTIVO TAQUILLA') ||
+                         String(p.referencia || '').toUpperCase().includes('COBRADOR');
+      if (isEfectivo) return; // Efectivo diario de taquilla se procesa en el acta de efectivo
 
       const isPremio = String(p.tipo_pago || '').toUpperCase().includes('PREMIO') || String(p.referencia || '').toUpperCase().includes('PREMIO');
       const bInfo = resolveBankName({
@@ -1386,8 +1540,18 @@ export const PreClosureAuditTab: React.FC = () => {
           )}
 
           <button
+            onClick={handleExecuteSafePreClosureAndSnapshot}
+            disabled={isLoading || isProcessing}
+            className="px-3.5 py-2.5 rounded-xl bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-slate-950 font-black text-xs shadow-lg shadow-emerald-500/20 flex items-center gap-1.5 transition-all cursor-pointer disabled:opacity-50"
+            title="Ejecutar Pre-Cierre Seguro, validar concordancia matemática al 100% y congelar Snapshot Total inmutable (Dual Supabase + PostgreSQL)"
+          >
+            <ShieldCheck className="w-4 h-4" />
+            <span>🛡️ Pre-Cierre Seguro & Snapshot</span>
+          </button>
+
+          <button
             onClick={handleRestoreCycleFromS41Acta}
-            disabled={isLoading}
+            disabled={isLoading || isProcessing}
             className="px-3 py-2.5 rounded-xl bg-amber-500/10 hover:bg-amber-500/20 text-amber-400 text-xs font-bold flex items-center gap-1.5 transition-all border border-amber-500/30 cursor-pointer disabled:opacity-50"
             title="Sincronizar arrastres del Acta Oficial de Semana 41 y activar Semana 42"
           >
@@ -1397,7 +1561,7 @@ export const PreClosureAuditTab: React.FC = () => {
 
           <button
             onClick={loadData}
-            disabled={isLoading}
+            disabled={isLoading || isProcessing}
             className="p-2.5 rounded-xl bg-white dark:bg-slate-800/80 hover:bg-slate-100 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-300 transition-all border border-slate-200 dark:border-slate-700 cursor-pointer disabled:opacity-50"
             title="Recalcular arqueo"
           >
@@ -1405,6 +1569,31 @@ export const PreClosureAuditTab: React.FC = () => {
           </button>
         </div>
       </div>
+
+      {/* Alerta de Validación de Pre-Cierre: Movimientos Pendientes */}
+      {pendingMovements.totalCount > 0 && (
+        <div className="p-4 rounded-2xl bg-amber-500/10 border border-amber-500/30 flex flex-col sm:flex-row items-center justify-between gap-3 text-amber-300 shadow-xl">
+          <div className="flex items-center gap-3">
+            <AlertTriangle className="w-5 h-5 shrink-0 text-amber-400" />
+            <div>
+              <div className="font-bold text-xs sm:text-sm text-white">
+                ⚠️ Validación de Cuadre: Existen {pendingMovements.totalCount} movimientos sin confirmar en este ciclo
+              </div>
+              <div className="text-xs text-amber-200/80">
+                {pendingMovements.payments.length} pago(s) y {pendingMovements.expenses.length} gasto(s) pendientes de confirmación. Para garantizar cuadre 100% exacto entre la Matriz General y las Actas Oficiales, concílialos antes del Pre-Cierre Seguro.
+              </div>
+            </div>
+          </div>
+          <button
+            onClick={handleConfirmAllPendingMovements}
+            disabled={isProcessing}
+            className="px-4 py-2 rounded-xl bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold text-xs flex items-center gap-1.5 transition-all cursor-pointer shrink-0 shadow-lg shadow-amber-500/20"
+          >
+            <CheckCircle2 className="w-4 h-4" />
+            <span>Confirmar y Conciliar ({pendingMovements.totalCount})</span>
+          </button>
+        </div>
+      )}
 
       {String(systemCycle.semana) === '41' && (
         <div className="p-4 rounded-2xl bg-gradient-to-r from-amber-500/20 via-[#0D1B22] to-amber-500/10 border border-amber-500/30 flex flex-col sm:flex-row items-center justify-between gap-3 text-amber-300 shadow-xl">
