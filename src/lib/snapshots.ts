@@ -272,7 +272,7 @@ export function downloadSnapshotJson(snapshot: WeeklyClosureSnapshot): void {
 
 /**
  * Construye el Snapshot Certificado Oficial de la Semana 41 (11/10/2026)
- * Contiene las 18 ventas auditadas, los saldos finales auditados y las 24 agencias + 8 operadoras.
+ * Contiene las 20 ventas auditadas, los saldos finales auditados y las 24 agencias + 8 operadoras.
  */
 export function getCertifiedSemana41Snapshot(userId: string): WeeklyClosureSnapshot {
   const carryOvers = [
@@ -346,7 +346,7 @@ export function getCertifiedSemana41Snapshot(userId: string): WeeklyClosureSnaps
       },
       COP: {
         saldoAnterior: 1000971.00,
-        ventaNeta: 770760.00,
+        ventaNeta: 1712503.00,
         gastos: 462000.00,
         gastosAgencias: 462000.00,
         gastosComercializadora: 0,
@@ -354,7 +354,7 @@ export function getCertifiedSemana41Snapshot(userId: string): WeeklyClosureSnaps
         cobradorLiquidado: 0,
         cobradorEnRuta: 0,
         efectivoTaquilla: 18000.00,
-        bancos: 1010143.00,
+        bancos: 1235143.00,
         reposicionPremios: 0,
         saldoFinal: 972520.00,
         count: 4,

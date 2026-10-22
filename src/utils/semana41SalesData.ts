@@ -30,10 +30,12 @@ export const SEMANA_41_SALES_RECORDS: Semana41SaleRecord[] = [
   { agencia: 'JYY', sistema: 'BETM3', moneda: 'BS', venta: 176800, comision: 17680, premios: 130500, neto: 28620, util_ag: 0, util_op: 28620, fecha: '2026-10-11' },
   { agencia: 'YERITZA', sistema: 'BETM3', moneda: 'BS', venta: 261650, comision: 26165, premios: 157500, neto: 77985, util_ag: 0, util_op: 77985, fecha: '2026-10-11' },
 
-  // 2. BETM3 - PESOS COLOMBIANOS (COP) [3 registros]
+  // 2. PESOS COLOMBIANOS (COP) [5 registros]
   { agencia: 'EL FUTURO', sistema: 'BETM3', moneda: 'COP', venta: 209400, comision: 20940, premios: 180000, neto: 8460, util_ag: 0, util_op: 8460, fecha: '2026-10-11' },
   { agencia: 'AG ORLANDO', sistema: 'BETM3', moneda: 'COP', venta: 41000, comision: 4100, premios: 30000, neto: 6900, util_ag: 0, util_op: 6900, fecha: '2026-10-11' },
-  { agencia: 'MAXIMA CDA 02 T2', sistema: 'BETM3', moneda: 'COP', venta: 2174400, comision: 0, premios: 1419000, neto: 755400, util_ag: 0, util_op: 755400, fecha: '2026-10-11' },
+  { agencia: 'MAXIMA CDA 02 T2', sistema: 'GATO PESOS', moneda: 'COP', venta: 890500, comision: 0, premios: 25000, neto: 865500, util_ag: 0, util_op: 865500, fecha: '2026-10-11' },
+  { agencia: 'MAXIMA CDA 02 T2', sistema: 'KENO', moneda: 'COP', venta: 7447500, comision: 0, premios: 7180957, neto: 266543, util_ag: 0, util_op: 266543, fecha: '2026-10-11' },
+  { agencia: 'MAXIMA CDA 02 T2', sistema: 'BETM3', moneda: 'COP', venta: 2395100, comision: 0, premios: 1830000, neto: 565100, util_ag: 0, util_op: 565100, fecha: '2026-10-11' },
 
   // 3. BETM3 - DÓLARES (USD) [2 registros]
   { agencia: 'EL CUJI', sistema: 'BETM3', moneda: 'USD', venta: 79.5, comision: 7.95, premios: 210, neto: -138.45, util_ag: 0, util_op: -138.45, fecha: '2026-10-11' },
