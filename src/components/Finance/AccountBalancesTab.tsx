@@ -53,6 +53,13 @@ import {
 } from './DeliveryReportModal';
 import { AuditLogTab } from '../Audit/AuditLogTab';
 import { logAuditEvent } from '../../utils/auditLogger';
+import { UI_LOCK } from '../../styles/uiDesignLock';
+import {
+  loadCurrencies,
+  DEFAULT_CURRENCIES,
+  getCurrencyFlag,
+  type CurrencyConfig,
+} from '../../utils/currencies';
 
 const WhatsAppIcon: React.FC<{ className?: string }> = ({ className = 'w-4 h-4' }) => (
   <svg className={className} viewBox="0 0 24 24" fill="currentColor">
@@ -79,7 +86,8 @@ export const AccountBalancesTab: React.FC = () => {
 
   const [activeMainSubTab, setActiveMainSubTab] = useState<'activo' | 'historico' | 'actas' | 'auditoria'>('activo');
   const [isLoading, setIsLoading] = useState(true);
-  const [activeCurrency, setActiveCurrency] = useState<'BS' | 'USD' | 'COP'>('BS');
+  const [currenciesList, setCurrenciesList] = useState<CurrencyConfig[]>(DEFAULT_CURRENCIES);
+  const [activeCurrency, setActiveCurrency] = useState<string>('BS');
   const [agencies, setAgencies] = useState<Agency[]>([]);
   const [sales, setSales] = useState<any[]>([]);
   const [payments, setPayments] = useState<ConsolidatedPaymentItem[]>([]);
@@ -101,15 +109,22 @@ export const AccountBalancesTab: React.FC = () => {
     setIsLoading(true);
 
     try {
-      const [agRes, sRes, pConsolidated, gConsolidated] = await Promise.all([
+      const [agRes, sRes, pConsolidated, gConsolidated, userCurrencies] = await Promise.all([
         supabase.from('agencias').select('*').eq('user_id', effectiveUserId).order('id', { ascending: true }),
         supabase.from('carga_actual').select('*').eq('user_id', effectiveUserId),
         getConsolidatedPayments(effectiveUserId, { fechaDesde: systemCycle.desde, fechaHasta: systemCycle.hasta }),
         getConsolidatedExpenses(effectiveUserId, { fechaDesde: systemCycle.desde, fechaHasta: systemCycle.hasta }),
+        loadCurrencies(effectiveUserId),
       ]);
 
-      const agList = agRes.data || [];
+      if (userCurrencies && userCurrencies.length > 0) {
+        setCurrenciesList(userCurrencies);
+        if (!userCurrencies.some((c) => c.codigo === activeCurrency)) {
+          setActiveCurrency(userCurrencies[0].codigo);
+        }
+      }
 
+      const agList = agRes.data || [];
       const salesList = sRes.data || [];
 
       // Check if any active sale with participation has not been recalculated in DB
@@ -189,9 +204,10 @@ export const AccountBalancesTab: React.FC = () => {
   }, [effectiveUserId]);
 
   // Compute balance rows for given currency
-  const computeBalances = (mon: 'BS' | 'USD' | 'COP'): { rows: BalanceRow[]; totalDebt: number } => {
+  const computeBalances = (mon: string): { rows: BalanceRow[]; totalDebt: number } => {
     let totalDebt = 0;
-    const colInicial = mon === 'BS' ? 'saldo_inicial_bs' : mon === 'USD' ? 'saldo_inicial_usd' : 'saldo_inicial_cop';
+    const normMon = normalizarMoneda(mon);
+    const colInicial = normMon === 'BS' ? 'saldo_inicial_bs' : normMon === 'USD' ? 'saldo_inicial_usd' : normMon === 'COP' ? 'saldo_inicial_cop' : (`saldo_inicial_${normMon.toLowerCase()}` as keyof Agency);
 
     const rows: BalanceRow[] = [];
 
@@ -202,11 +218,11 @@ export const AccountBalancesTab: React.FC = () => {
       const agencyCodigos = Object.values(cond)
         .map((c: any) => (c?.codigo ? String(c.codigo).trim().toUpperCase() : null))
         .filter(Boolean) as string[];
-      const sAnt = Number(ag[colInicial] || 0);
+      const sAnt = Number(ag[colInicial] || (cond as any)?.[normMon]?.saldo_inicial || (ag as any)?.condiciones?.[normMon]?.saldo_inicial || 0);
 
       // Ventas pertenecientes a la agencia en esta moneda
       const agSales = sales.filter((s) => {
-        if (normalizarMoneda(s.moneda) !== mon) return false;
+        if (normalizarMoneda(s.moneda) !== normMon) return false;
         const sNom = String(s.agencia || '').trim().toUpperCase();
         if (sNom === nom) return true;
         if (agencyCodigos.includes(sNom)) return true;
@@ -216,7 +232,7 @@ export const AccountBalancesTab: React.FC = () => {
 
       // Utilidad operativa de la semana (descontando participación de agencia si aplica)
       const uOp = agSales.reduce((sum, s) => {
-        const { partPct } = getAgencyCommissionAndParticipation(ag, s.sistema, mon);
+        const { partPct } = getAgencyCommissionAndParticipation(ag, s.sistema, normMon);
         const v = Number(s.venta ?? s.monto_venta ?? 0);
         const c = Number(s.comision ?? 0);
         const p = Number(s.premios ?? s.monto_premios ?? 0);
@@ -236,7 +252,7 @@ export const AccountBalancesTab: React.FC = () => {
       // Gastos (solo confirmados en Pizarra de Confirmaciones)
       const gTot = expenses
         .filter((g) => {
-          if (normalizarMoneda(g.moneda) !== mon || !Boolean(g.confirmado)) return false;
+          if (normalizarMoneda(g.moneda) !== normMon || !Boolean(g.confirmado)) return false;
           const gNom = String(g.agencia || '').trim().toUpperCase();
           return gNom === nom || cleanAgencyName(g.agencia) === cleanNom;
         })
@@ -245,7 +261,7 @@ export const AccountBalancesTab: React.FC = () => {
       // Pagos ordinarios recibidos de la agencia (solo confirmados, reducen la deuda)
       const pCobros = payments
         .filter((p) => {
-          if (normalizarMoneda(p.moneda) !== mon || !Boolean(p.confirmado)) return false;
+          if (normalizarMoneda(p.moneda) !== normMon || !Boolean(p.confirmado)) return false;
           if (String(p.tipo_pago || '').toUpperCase().includes('PREMIO')) return false;
           const pNom = String(p.agencia || '').trim().toUpperCase();
           return pNom === nom || cleanAgencyName(p.agencia) === cleanNom;
@@ -255,7 +271,7 @@ export const AccountBalancesTab: React.FC = () => {
       // Reposición de premios pagados por la operadora a la agencia (solo confirmados)
       const pPremios = payments
         .filter((p) => {
-          if (normalizarMoneda(p.moneda) !== mon || !Boolean(p.confirmado)) return false;
+          if (normalizarMoneda(p.moneda) !== normMon || !Boolean(p.confirmado)) return false;
           if (!String(p.tipo_pago || '').toUpperCase().includes('PREMIO')) return false;
           const pNom = String(p.agencia || '').trim().toUpperCase();
           return pNom === nom || cleanAgencyName(p.agencia) === cleanNom;
@@ -326,8 +342,9 @@ export const AccountBalancesTab: React.FC = () => {
     const ahora = new Date().toLocaleString('es-VE');
     let reportTxt = `📑 *REPORTE DE AGENCIAS CONSOLIDADO*\n📅 ${ahora}\n\n`;
 
-    ['BS', 'USD', 'COP'].forEach((mon) => {
-      const { rows } = computeBalances(mon as any);
+    currenciesList.forEach((c) => {
+      const mon = c.codigo;
+      const { rows } = computeBalances(mon);
       const withBalance = rows.filter((r) => Math.abs(r.balance_final) > 0.1);
 
       if (withBalance.length > 0) {
@@ -581,26 +598,28 @@ ${totalPartAg > 0 ? `    (-) Part. Agencia (${maxPartPct}%): ${fmtNumber(totalPa
   }, [detailModalAgency, sales, payments, expenses, activeCurrency]);
 
   return (
-    <div className="space-y-6">
+    <div className={UI_LOCK.pageContainer}>
       {/* Header */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-        <div>
-          <h2 className="text-xl sm:text-2xl font-black text-white flex items-center gap-2">
-            <span className="p-2 rounded-xl bg-purple-500/10 text-purple-400 border border-purple-500/20">
-              <FileText className="w-5 h-5" />
-            </span>
-            Estado de Cuenta por Agencia
-          </h2>
-          <p className="text-xs sm:text-sm text-slate-400 mt-1">
-            Fórmula: (Saldo Arrastre + Utilidad Semanal) - Gastos - Pagos + Premios = Balance Final.
-          </p>
+      <div className={UI_LOCK.headerCard}>
+        <div className="flex items-center gap-3">
+          <div className={UI_LOCK.headerIconWrap}>
+            <FileText className="w-6 h-6" />
+          </div>
+          <div>
+            <h2 className={UI_LOCK.headerTitle}>
+              Estado de Cuenta por Agencia
+            </h2>
+            <p className={UI_LOCK.headerSubtitle}>
+              Fórmula: (Saldo Arrastre + Utilidad Semanal) - Gastos - Pagos + Premios = Balance Final.
+            </p>
+          </div>
         </div>
 
-        <div className="flex items-center gap-2 flex-wrap">
+        <div className={UI_LOCK.headerActions}>
           <button
             onClick={() => loadData()}
             disabled={isLoading}
-            className="px-3.5 py-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-semibold flex items-center gap-1.5 transition-all border border-slate-700 cursor-pointer disabled:opacity-50"
+            className={UI_LOCK.buttonSecondary}
           >
             <RefreshCw className={`w-3.5 h-3.5 ${isLoading ? 'animate-spin' : ''}`} />
             Actualizar
@@ -610,31 +629,27 @@ ${totalPartAg > 0 ? `    (-) Part. Agencia (${maxPartPct}%): ${fmtNumber(totalPa
             onClick={handleSyncOfficialS40}
             disabled={isLoading}
             title="Sincronizar y restaurar saldos de arrastre del acta oficial S40"
-            className="px-3.5 py-2.5 rounded-xl bg-cyan-500/10 hover:bg-cyan-500/20 text-cyan-400 text-xs font-semibold flex items-center gap-1.5 transition-all border border-cyan-500/30 cursor-pointer disabled:opacity-50"
+            className={UI_LOCK.buttonSecondary}
           >
-            <ShieldCheck className="w-3.5 h-3.5" />
+            <ShieldCheck className="w-3.5 h-3.5 text-cyan-600 dark:text-cyan-400" />
             Sincronizar Arrastres S40
           </button>
 
           <button
             onClick={() => setIsGeneralActaOpen(true)}
-            className="px-3.5 py-2.5 rounded-xl bg-sky-500/10 hover:bg-sky-500/20 text-sky-400 text-xs font-semibold flex items-center gap-1.5 transition-all border border-sky-500/30 cursor-pointer"
+            className={UI_LOCK.buttonSecondary}
             title="Imprimir Acta General de Entrega y Cierre en PDF"
           >
-            <Printer className="w-3.5 h-3.5" />
+            <Printer className="w-3.5 h-3.5 text-sky-600 dark:text-sky-400" />
             Acta General (PDF)
           </button>
 
           <button
             onClick={() => setActiveMainSubTab('auditoria')}
-            className={`px-3.5 py-2.5 rounded-xl text-xs font-semibold flex items-center gap-1.5 transition-all border cursor-pointer ${
-              activeMainSubTab === 'auditoria'
-                ? 'bg-amber-500 text-black border-amber-400 font-bold'
-                : 'bg-amber-500/10 hover:bg-amber-500/20 text-amber-400 border-amber-500/30'
-            }`}
+            className={UI_LOCK.buttonSecondary}
             title="Ver Log de Auditoría y Movimientos"
           >
-            <ShieldCheck className="w-3.5 h-3.5" />
+            <ShieldCheck className="w-3.5 h-3.5 text-amber-600 dark:text-amber-400" />
             Log Auditoría
           </button>
 
@@ -642,7 +657,7 @@ ${totalPartAg > 0 ? `    (-) Part. Agencia (${maxPartPct}%): ${fmtNumber(totalPa
             href={generateWhatsAppUrl()}
             target="_blank"
             rel="noreferrer"
-            className="px-4 py-2.5 rounded-xl bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white font-bold text-xs shadow-lg shadow-emerald-600/20 flex items-center gap-2 transition-all"
+            className={UI_LOCK.buttonPrimary}
           >
             <Share2 className="w-4 h-4" />
             Reporte WhatsApp
@@ -651,13 +666,13 @@ ${totalPartAg > 0 ? `    (-) Part. Agencia (${maxPartPct}%): ${fmtNumber(totalPa
       </div>
 
       {/* Sub-tabs Navigation */}
-      <div className="flex items-center gap-2 border-b border-slate-800 pb-3 flex-wrap">
+      <div className="flex items-center gap-2 border-b border-slate-200 dark:border-slate-800 pb-3 flex-wrap">
         <button
           onClick={() => setActiveMainSubTab('activo')}
           className={`px-4 py-2.5 rounded-xl text-xs sm:text-sm font-bold flex items-center gap-2 transition-all cursor-pointer ${
             activeMainSubTab === 'activo'
-              ? 'bg-purple-500/10 text-purple-400 border border-purple-500/30'
-              : 'text-slate-400 hover:text-white hover:bg-slate-800/60'
+              ? 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/30 shadow-xs'
+              : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-slate-800/60'
           }`}
         >
           <FileText className="w-4 h-4" />
@@ -668,8 +683,8 @@ ${totalPartAg > 0 ? `    (-) Part. Agencia (${maxPartPct}%): ${fmtNumber(totalPa
           onClick={() => setActiveMainSubTab('historico')}
           className={`px-4 py-2.5 rounded-xl text-xs sm:text-sm font-bold flex items-center gap-2 transition-all cursor-pointer ${
             activeMainSubTab === 'historico'
-              ? 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/30'
-              : 'text-slate-400 hover:text-white hover:bg-slate-800/60'
+              ? 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/30 shadow-xs'
+              : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-slate-800/60'
           }`}
         >
           <History className="w-4 h-4" />
@@ -680,8 +695,8 @@ ${totalPartAg > 0 ? `    (-) Part. Agencia (${maxPartPct}%): ${fmtNumber(totalPa
           onClick={() => setActiveMainSubTab('actas')}
           className={`px-4 py-2.5 rounded-xl text-xs sm:text-sm font-bold flex items-center gap-2 transition-all cursor-pointer ${
             activeMainSubTab === 'actas'
-              ? 'bg-sky-500/10 text-sky-400 border border-sky-500/30'
-              : 'text-slate-400 hover:text-white hover:bg-slate-800/60'
+              ? 'bg-sky-500/10 text-sky-600 dark:text-sky-400 border border-sky-500/30 shadow-xs'
+              : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-slate-800/60'
           }`}
         >
           <Printer className="w-4 h-4" />
@@ -692,8 +707,8 @@ ${totalPartAg > 0 ? `    (-) Part. Agencia (${maxPartPct}%): ${fmtNumber(totalPa
           onClick={() => setActiveMainSubTab('auditoria')}
           className={`px-4 py-2.5 rounded-xl text-xs sm:text-sm font-bold flex items-center gap-2 transition-all cursor-pointer ${
             activeMainSubTab === 'auditoria'
-              ? 'bg-amber-500/10 text-amber-400 border border-amber-500/30'
-              : 'text-slate-400 hover:text-white hover:bg-slate-800/60'
+              ? 'bg-amber-500/10 text-amber-600 dark:text-amber-400 border border-amber-500/30 shadow-xs'
+              : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-slate-800/60'
           }`}
         >
           <ShieldCheck className="w-4 h-4" />
@@ -707,21 +722,21 @@ ${totalPartAg > 0 ? `    (-) Part. Agencia (${maxPartPct}%): ${fmtNumber(totalPa
         <AuditLogTab />
       ) : activeMainSubTab === 'actas' ? (
         <div className="space-y-6">
-          <div className="bg-[#0D1B22] border border-slate-800 rounded-3xl p-6 shadow-xl space-y-4">
+          <div className={UI_LOCK.card}>
             <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
               <div>
-                <h3 className="text-base sm:text-lg font-black text-white flex items-center gap-2">
-                  <Printer className="w-5 h-5 text-sky-400" />
+                <h3 className="text-base sm:text-lg font-black text-slate-900 dark:text-white flex items-center gap-2">
+                  <Printer className="w-5 h-5 text-sky-600 dark:text-sky-400" />
                   <span>Emisión de Actas de Entrega y Finiquitos Individuales</span>
                 </h3>
-                <p className="text-xs text-slate-400 mt-1">
+                <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">
                   Generación e impresión directa en formato PDF oficial para cada agencia o consolidado general del ciclo activo ({systemCycle.desde} al {systemCycle.hasta}).
                 </p>
               </div>
 
               <button
                 onClick={() => setIsGeneralActaOpen(true)}
-                className="px-4 py-2.5 rounded-2xl bg-gradient-to-r from-sky-600 to-indigo-600 hover:from-sky-500 hover:to-indigo-500 text-white font-black text-xs uppercase tracking-wider shadow-lg shadow-sky-600/20 flex items-center gap-2 cursor-pointer transition-all self-start sm:self-auto"
+                className={UI_LOCK.buttonPrimary}
               >
                 <Printer className="w-4 h-4" />
                 <span>Acta General de Entrega ({activeCurrency})</span>
@@ -729,26 +744,26 @@ ${totalPartAg > 0 ? `    (-) Part. Agencia (${maxPartPct}%): ${fmtNumber(totalPa
             </div>
 
             {/* List of Agencies with 1-click Acta generation */}
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 pt-2">
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 pt-4">
               {activeBalances.rows.map((r) => (
                 <div
                   key={r.id}
-                  className="bg-[#071217] border border-slate-800/90 rounded-2xl p-4 flex items-center justify-between hover:border-slate-700 transition-all"
+                  className="bg-slate-50 dark:bg-slate-850 border border-slate-200 dark:border-slate-800 rounded-2xl p-4 flex items-center justify-between hover:border-slate-300 dark:hover:border-slate-700 transition-all shadow-xs"
                 >
                   <div className="min-w-0 pr-2">
                     <div className="flex items-center gap-1.5">
-                      <span className="text-[10px] text-slate-500 font-mono">#{r.id}</span>
-                      <h4 className="text-xs font-bold text-white truncate">{r.agencia}</h4>
+                      <span className="text-[10px] text-slate-400 font-mono font-bold">#{r.id}</span>
+                      <h4 className="text-xs font-bold text-slate-900 dark:text-white truncate">{r.agencia}</h4>
                     </div>
                     <div className="text-[11px] font-mono mt-0.5">
-                      <span className="text-slate-400">Balance: </span>
+                      <span className="text-slate-500 dark:text-slate-400">Balance: </span>
                       <span
                         className={`font-black ${
                           r.status === 'pendiente'
-                            ? 'text-rose-400'
+                            ? 'text-rose-600 dark:text-rose-400'
                             : r.status === 'favor'
-                            ? 'text-cyan-400'
-                            : 'text-emerald-400'
+                            ? 'text-cyan-600 dark:text-cyan-400'
+                            : 'text-emerald-600 dark:text-emerald-400'
                         }`}
                       >
                         {formatCurrency(r.balance_final, activeCurrency)}
@@ -758,7 +773,7 @@ ${totalPartAg > 0 ? `    (-) Part. Agencia (${maxPartPct}%): ${fmtNumber(totalPa
 
                   <button
                     onClick={() => openIndividualActa(r)}
-                    className="px-3 py-2 rounded-xl bg-sky-500/15 hover:bg-sky-500 text-sky-300 hover:text-white border border-sky-500/30 text-xs font-bold flex items-center gap-1.5 transition-all cursor-pointer shrink-0"
+                    className="px-3 py-2 rounded-xl bg-sky-50 dark:bg-sky-500/15 hover:bg-sky-500 text-sky-700 dark:text-sky-300 hover:text-white border border-sky-200 dark:border-sky-500/30 text-xs font-bold flex items-center gap-1.5 transition-all cursor-pointer shrink-0"
                     title={`Generar e Imprimir Finiquito Individual de ${r.agencia}`}
                   >
                     <Printer className="w-3.5 h-3.5" />
@@ -772,712 +787,677 @@ ${totalPartAg > 0 ? `    (-) Part. Agencia (${maxPartPct}%): ${fmtNumber(totalPa
       ) : (
         <>
           {/* Currency Switcher & Total Cartera Metric */}
-          <div id="tour-saldos-summary" className="bg-[#0D1B22] border border-slate-800 rounded-3xl p-4 sm:p-6 shadow-xl flex flex-col md:flex-row items-stretch md:items-center justify-between gap-4 sm:gap-6">
-        {/* Currency Tabs (3 columns on mobile, flex on desktop) */}
-        <div className="grid grid-cols-3 sm:flex items-center gap-1.5 sm:gap-2 bg-[#071217] p-1.5 rounded-2xl border border-slate-800 w-full sm:w-auto">
-          <button
-            onClick={() => setActiveCurrency('BS')}
-            className={`px-3 sm:px-4 py-2 rounded-xl text-xs font-bold transition-all cursor-pointer text-center ${
-              activeCurrency === 'BS'
-                ? 'bg-amber-500/20 text-amber-400 border border-amber-500/30 shadow-sm'
-                : 'text-slate-400 hover:text-white'
-            }`}
-          >
-            🇻🇪 BS
-          </button>
+          <div id="tour-saldos-summary" className="bg-white dark:bg-slate-900 border border-slate-200/80 dark:border-slate-800 rounded-2xl p-4 sm:p-6 shadow-sm flex flex-col md:flex-row items-stretch md:items-center justify-between gap-4 sm:gap-6">
+            {/* Dynamic Currency Tabs */}
+            <div className="flex flex-wrap items-center gap-1.5 sm:gap-2 bg-slate-100 dark:bg-slate-800/80 p-1.5 rounded-2xl border border-slate-200 dark:border-slate-700 w-full sm:w-auto">
+              {currenciesList.map((c) => {
+                const isAct = activeCurrency === c.codigo;
+                return (
+                  <button
+                    key={c.codigo}
+                    onClick={() => setActiveCurrency(c.codigo)}
+                    className={`px-3 sm:px-4 py-2 rounded-xl text-xs font-bold transition-all cursor-pointer text-center ${
+                      isAct
+                        ? 'bg-emerald-600 text-white shadow-sm'
+                        : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
+                    }`}
+                  >
+                    {getCurrencyFlag(c.codigo)} {c.codigo}
+                  </button>
+                );
+              })}
+            </div>
 
-          <button
-            onClick={() => setActiveCurrency('USD')}
-            className={`px-3 sm:px-4 py-2 rounded-xl text-xs font-bold transition-all cursor-pointer text-center ${
-              activeCurrency === 'USD'
-                ? 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 shadow-sm'
-                : 'text-slate-400 hover:text-white'
-            }`}
-          >
-            💵 USD
-          </button>
-
-          <button
-            onClick={() => setActiveCurrency('COP')}
-            className={`px-3 sm:px-4 py-2 rounded-xl text-xs font-bold transition-all cursor-pointer text-center ${
-              activeCurrency === 'COP'
-                ? 'bg-cyan-500/20 text-cyan-400 border border-cyan-500/30 shadow-sm'
-                : 'text-slate-400 hover:text-white'
-            }`}
-          >
-            🇨🇴 COP
-          </button>
-        </div>
-
-        {/* Cartera Total Metric */}
-        <div
-          className={`text-center md:text-right p-3 sm:p-3.5 md:px-5 md:py-2.5 rounded-2xl border transition-all shadow-sm ${
-            isLight
-              ? activeBalances.totalDebt > 0
-                ? 'bg-gradient-to-r from-rose-50/90 via-red-50/60 to-rose-50/90 border-rose-200/90'
-                : activeBalances.totalDebt < 0
-                ? 'bg-gradient-to-r from-cyan-50/90 via-sky-50/60 to-cyan-50/90 border-cyan-200/90'
-                : 'bg-gradient-to-r from-emerald-50/90 via-teal-50/60 to-emerald-50/90 border-emerald-200/90'
-              : activeBalances.totalDebt > 0
-              ? 'bg-gradient-to-r from-rose-950/30 via-[#071217] to-rose-950/30 border-rose-500/30 shadow-rose-950/20'
-              : activeBalances.totalDebt < 0
-              ? 'bg-gradient-to-r from-cyan-950/30 via-[#071217] to-cyan-950/30 border-cyan-500/30 shadow-cyan-950/20'
-              : 'bg-gradient-to-r from-emerald-950/30 via-[#071217] to-emerald-950/30 border-emerald-500/30 shadow-emerald-950/20'
-          }`}
-        >
-          <div className="flex items-center justify-center md:justify-end gap-1.5">
-            <span
-              className={`w-2 h-2 rounded-full shrink-0 ${
-                activeBalances.totalDebt > 0
-                  ? isLight ? 'bg-rose-500 animate-pulse' : 'bg-rose-400 animate-pulse'
-                  : activeBalances.totalDebt < 0
-                  ? isLight ? 'bg-cyan-500 animate-pulse' : 'bg-cyan-400 animate-pulse'
-                  : isLight ? 'bg-emerald-500' : 'bg-emerald-400'
-              }`}
-            />
-            <span
-              className={`text-[10px] sm:text-[11px] font-bold uppercase tracking-wider block ${
+            {/* Cartera Total Metric */}
+            <div
+              className={`text-center md:text-right p-3 sm:p-3.5 md:px-5 md:py-2.5 rounded-2xl border transition-all shadow-xs ${
                 isLight
                   ? activeBalances.totalDebt > 0
-                    ? 'text-rose-700'
+                    ? 'bg-rose-50 border-rose-200'
                     : activeBalances.totalDebt < 0
-                    ? 'text-cyan-700'
-                    : 'text-emerald-700'
+                    ? 'bg-cyan-50 border-cyan-200'
+                    : 'bg-emerald-50 border-emerald-200'
                   : activeBalances.totalDebt > 0
-                  ? 'text-rose-300'
+                  ? 'bg-rose-950/20 border-rose-500/30'
                   : activeBalances.totalDebt < 0
-                  ? 'text-cyan-300'
-                  : 'text-emerald-300'
+                  ? 'bg-cyan-950/20 border-cyan-500/30'
+                  : 'bg-emerald-950/20 border-emerald-500/30'
               }`}
             >
-              Cartera Total Pendiente ({activeCurrency})
-            </span>
-          </div>
-          <span
-            className={`text-2xl sm:text-3xl font-black font-mono mt-1 block tracking-tight ${
-              isLight
-                ? activeBalances.totalDebt > 0
-                  ? 'text-rose-600'
-                  : activeBalances.totalDebt < 0
-                  ? 'text-cyan-600'
-                  : 'text-emerald-600'
-                : activeBalances.totalDebt > 0
-                ? 'text-rose-400 drop-shadow-[0_0_12px_rgba(244,63,94,0.35)]'
-                : activeBalances.totalDebt < 0
-                ? 'text-cyan-400 drop-shadow-[0_0_12px_rgba(6,182,212,0.35)]'
-                : 'text-emerald-400 drop-shadow-[0_0_12px_rgba(16,185,129,0.35)]'
-            }`}
-          >
-            {formatCurrency(activeBalances.totalDebt, activeCurrency)}
-          </span>
-        </div>
-      </div>
-
-      {/* Controls Bar: Search + Status Chips + View Toggle */}
-      <div id="tour-saldos-table" className="space-y-3">
-        <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3">
-          {/* Search Input */}
-          <div className="relative flex-1">
-            <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
-            <input
-              type="text"
-              placeholder="Buscar agencia por nombre..."
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              className="w-full bg-[#0D1B22] border border-slate-800 rounded-2xl pl-9 pr-4 py-2.5 text-xs text-white placeholder:text-slate-500 focus:outline-none focus:border-purple-500 transition-colors"
-            />
-          </div>
-
-          {/* View Toggle (Cards vs Table) */}
-          <div className="flex items-center gap-1 bg-[#071217] p-1 rounded-2xl border border-slate-800 self-end sm:self-auto shrink-0">
-            <button
-              onClick={() => setViewMode('cards')}
-              className={`px-3 py-1.5 rounded-xl text-xs font-bold flex items-center gap-1.5 transition-all cursor-pointer ${
-                viewMode === 'cards'
-                  ? 'bg-purple-600 text-white shadow-sm'
-                  : 'text-slate-400 hover:text-white'
-              }`}
-            >
-              <LayoutGrid className="w-3.5 h-3.5" />
-              <span>Tarjetas</span>
-            </button>
-            <button
-              onClick={() => setViewMode('table')}
-              className={`px-3 py-1.5 rounded-xl text-xs font-bold flex items-center gap-1.5 transition-all cursor-pointer ${
-                viewMode === 'table'
-                  ? 'bg-purple-600 text-white shadow-sm'
-                  : 'text-slate-400 hover:text-white'
-              }`}
-            >
-              <List className="w-3.5 h-3.5" />
-              <span>Tabla</span>
-            </button>
-          </div>
-        </div>
-
-        {/* Status Filter Chips */}
-        <div className="flex items-center gap-1.5 overflow-x-auto pb-1 no-scrollbar">
-          <button
-            onClick={() => setStatusFilter('all')}
-            className={`px-3 py-1.5 rounded-xl text-xs font-semibold whitespace-nowrap transition-all cursor-pointer ${
-              statusFilter === 'all'
-                ? 'bg-slate-700 text-white shadow'
-                : 'bg-[#0D1B22] text-slate-400 hover:text-slate-200 border border-slate-800'
-            }`}
-          >
-            Todas ({statusCounts.all})
-          </button>
-          <button
-            onClick={() => setStatusFilter('pendiente')}
-            className={`px-3 py-1.5 rounded-xl text-xs font-semibold whitespace-nowrap transition-all cursor-pointer ${
-              statusFilter === 'pendiente'
-                ? 'bg-rose-500/20 text-rose-300 border border-rose-500/40 shadow'
-                : 'bg-[#0D1B22] text-rose-400/90 hover:text-rose-300 border border-slate-800'
-            }`}
-          >
-            🔴 Pendientes ({statusCounts.pendiente})
-          </button>
-          <button
-            onClick={() => setStatusFilter('favor')}
-            className={`px-3 py-1.5 rounded-xl text-xs font-semibold whitespace-nowrap transition-all cursor-pointer ${
-              statusFilter === 'favor'
-                ? 'bg-cyan-500/20 text-cyan-300 border border-cyan-500/40 shadow'
-                : 'bg-[#0D1B22] text-cyan-400/90 hover:text-cyan-300 border border-slate-800'
-            }`}
-          >
-            🔵 A Favor ({statusCounts.favor})
-          </button>
-          <button
-            onClick={() => setStatusFilter('pagado')}
-            className={`px-3 py-1.5 rounded-xl text-xs font-semibold whitespace-nowrap transition-all cursor-pointer ${
-              statusFilter === 'pagado'
-                ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/40 shadow'
-                : 'bg-[#0D1B22] text-emerald-400/90 hover:text-emerald-300 border border-slate-800'
-            }`}
-          >
-            🟢 Pagadas ({statusCounts.pagado})
-          </button>
-        </div>
-      </div>
-
-      {/* =========================================================================
-          VIEW MODE 1: MODERN MOBILE / RESPONSIVE CARDS
-      ========================================================================= */}
-      {viewMode === 'cards' && (
-        <div className="space-y-3">
-          <div className="flex items-center justify-between text-xs text-slate-400 px-1">
-            <span>Mostrando <strong>{filteredRows.length}</strong> agencias en <strong>{activeCurrency}</strong></span>
-          </div>
-
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 sm:gap-4">
-            {filteredRows.map((r) => (
-              <div
-                key={r.id}
-                onClick={() => setDetailModalAgency(r.agencia)}
-                className="bg-[#0D1B22] hover:bg-[#10222b] border border-slate-800 hover:border-slate-700/80 rounded-2xl p-4 shadow-xl active:scale-[0.99] transition-all cursor-pointer space-y-3 relative overflow-hidden group"
-              >
-                {/* Agency Name & Status Badge */}
-                <div className="flex items-center justify-between gap-2">
-                  <div className="flex items-center gap-2 min-w-0">
-                    <span className="w-6 h-6 rounded-lg bg-slate-800/90 border border-slate-700/70 flex items-center justify-center text-slate-300 font-mono text-[11px] font-bold shrink-0">
-                      {r.id}
-                    </span>
-                    <h3 className="font-bold text-white text-sm truncate group-hover:text-purple-300 transition-colors">
-                      {r.agencia}
-                    </h3>
-                  </div>
-
-                  <div className="flex items-center gap-1.5 shrink-0">
-                    {r.status === 'pagado' && (
-                      <span className="px-2 py-0.5 rounded-full bg-emerald-500/15 text-emerald-400 text-[10px] font-bold border border-emerald-500/30 flex items-center gap-1">
-                        <span className="w-1.5 h-1.5 rounded-full bg-emerald-400"></span>
-                        PAGADO
-                      </span>
-                    )}
-                    {r.status === 'pendiente' && (
-                      <span className="px-2 py-0.5 rounded-full bg-rose-500/15 text-rose-400 text-[10px] font-bold border border-rose-500/30 flex items-center gap-1">
-                        <span className="w-1.5 h-1.5 rounded-full bg-rose-400 animate-pulse"></span>
-                        PENDIENTE
-                      </span>
-                    )}
-                    {r.status === 'favor' && (
-                      <span className="px-2 py-0.5 rounded-full bg-cyan-500/15 text-cyan-400 text-[10px] font-bold border border-cyan-500/30 flex items-center gap-1">
-                        <span className="w-1.5 h-1.5 rounded-full bg-cyan-400"></span>
-                        A FAVOR
-                      </span>
-                    )}
-                    <button
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        openIndividualActa(r);
-                      }}
-                      className="p-1 rounded-lg bg-sky-500/20 hover:bg-sky-500 text-sky-400 hover:text-white border border-sky-500/30 transition-colors cursor-pointer"
-                      title="Generar / Imprimir Acta en PDF"
-                    >
-                      <Printer className="w-4 h-4" />
-                    </button>
-                    <a
-                      href={generateAgencyWhatsAppUrl(r)}
-                      target="_blank"
-                      rel="noreferrer"
-                      onClick={(e) => e.stopPropagation()}
-                      className="p-1 rounded-lg bg-emerald-600/20 hover:bg-emerald-600 text-emerald-400 hover:text-white border border-emerald-500/30 transition-colors cursor-pointer"
-                      title="Enviar Estado de Cuenta por WhatsApp"
-                    >
-                      <WhatsAppIcon className="w-4 h-4" />
-                    </a>
-                    <button
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        setDetailModalAgency(r.agencia);
-                      }}
-                      className="p-1 rounded-lg bg-slate-800/80 hover:bg-slate-700 text-slate-400 hover:text-white transition-colors"
-                      title="Ver detalle"
-                    >
-                      <ChevronRight className="w-4 h-4" />
-                    </button>
-                  </div>
-                </div>
-
-                {/* Hero Balance Box */}
-                <div
-                  className={`p-3 rounded-xl border flex items-center justify-between ${
-                    r.status === 'pendiente'
-                      ? 'bg-rose-500/10 border-rose-500/25 text-rose-400'
-                      : r.status === 'favor'
-                      ? 'bg-cyan-500/10 border-cyan-500/25 text-cyan-400'
-                      : 'bg-emerald-500/10 border-emerald-500/25 text-emerald-400'
+              <div className="flex items-center justify-center md:justify-end gap-1.5">
+                <span
+                  className={`w-2 h-2 rounded-full shrink-0 ${
+                    activeBalances.totalDebt > 0
+                      ? 'bg-rose-500 animate-pulse'
+                      : activeBalances.totalDebt < 0
+                      ? 'bg-cyan-500 animate-pulse'
+                      : 'bg-emerald-500'
+                  }`}
+                />
+                <span
+                  className={`text-[10px] sm:text-[11px] font-bold uppercase tracking-wider block ${
+                    activeBalances.totalDebt > 0
+                      ? 'text-rose-700 dark:text-rose-300'
+                      : activeBalances.totalDebt < 0
+                      ? 'text-cyan-700 dark:text-cyan-300'
+                      : 'text-emerald-700 dark:text-emerald-300'
                   }`}
                 >
-                  <div className="text-[10px] font-bold uppercase tracking-wider text-slate-400">
-                    Balance Final
-                  </div>
-                  <div className="text-lg sm:text-xl font-black font-mono tracking-tight">
-                    {formatCurrency(r.balance_final, activeCurrency)}
-                  </div>
-                </div>
-
-                {/* 5 Financial Items Grid */}
-                <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 text-xs font-mono">
-                  <div className="bg-[#071217] p-2 rounded-xl border border-slate-800/80">
-                    <span className="text-[10px] font-sans text-slate-400 block">Saldo Arrastre</span>
-                    <span className="text-slate-200 font-semibold text-xs truncate block">
-                      {formatCurrency(r.saldo_arrastre, activeCurrency)}
-                    </span>
-                  </div>
-
-                  <div className="bg-[#071217] p-2 rounded-xl border border-slate-800/80">
-                    <span className="text-[10px] font-sans text-slate-400 block">Semana (Utilidad)</span>
-                    <span className="text-emerald-400 font-semibold text-xs truncate block">
-                      {formatCurrency(r.utilidad_semana, activeCurrency)}
-                    </span>
-                  </div>
-
-                  <div className="bg-[#071217] p-2 rounded-xl border border-slate-800/80">
-                    <span className="text-[10px] font-sans text-slate-400 block">Gastos (-)</span>
-                    <span className="text-rose-400 font-semibold text-xs truncate block">
-                      {formatCurrency(r.gastos, activeCurrency)}
-                    </span>
-                  </div>
-
-                  <div className="bg-[#071217] p-2 rounded-xl border border-slate-800/80">
-                    <span className="text-[10px] font-sans text-slate-400 block">Pagos (-)</span>
-                    <span className="text-cyan-400 font-semibold text-xs truncate block">
-                      {formatCurrency(r.pagos, activeCurrency)}
-                    </span>
-                  </div>
-
-                  <div className="bg-[#071217] p-2 rounded-xl border border-slate-800/80 col-span-2 sm:col-span-1">
-                    <span className="text-[10px] font-sans text-slate-400 block">Premios (+)</span>
-                    <span className="text-amber-400 font-semibold text-xs truncate block">
-                      {r.reposicion_premios > 0 ? `+${formatCurrency(r.reposicion_premios, activeCurrency)}` : '-'}
-                    </span>
-                  </div>
-                </div>
+                  Cartera Total Pendiente ({activeCurrency})
+                </span>
               </div>
-            ))}
-          </div>
-
-          {filteredRows.length === 0 && (
-            <div className="bg-[#0D1B22] border border-slate-800 rounded-3xl p-8 text-center text-slate-400 text-xs">
-              No se encontraron agencias con los filtros aplicados.
+              <span
+                className={`text-2xl sm:text-3xl font-black font-mono mt-1 block tracking-tight ${
+                  activeBalances.totalDebt > 0
+                    ? 'text-rose-600 dark:text-rose-400'
+                    : activeBalances.totalDebt < 0
+                    ? 'text-cyan-600 dark:text-cyan-400'
+                    : 'text-emerald-600 dark:text-emerald-400'
+                }`}
+              >
+                {formatCurrency(activeBalances.totalDebt, activeCurrency)}
+              </span>
             </div>
-          )}
-        </div>
-      )}
-
-      {/* =========================================================================
-          VIEW MODE 2: DESKTOP / PINNED STICKY TABLE
-      ========================================================================= */}
-      {viewMode === 'table' && (
-        <div className="bg-[#0D1B22] border border-slate-800 rounded-3xl overflow-hidden shadow-xl">
-          <div className="p-4 sm:p-6 border-b border-slate-800 flex items-center justify-between">
-            <h4 className="text-sm font-bold text-white uppercase tracking-wider">
-              Saldos y Balances en {activeCurrency} ({filteredRows.length})
-            </h4>
           </div>
 
-          <div className="overflow-x-auto">
-            <table className="w-full text-left text-xs">
-              <thead className="bg-[#071217] text-slate-400 border-b border-slate-800 font-bold uppercase tracking-wider">
-                <tr>
-                  {/* Pinned Agency Column with shadow */}
-                  <th className="py-3.5 px-4 sticky left-0 bg-[#071217] z-20 border-r border-slate-800 shadow-[2px_0_8px_-2px_rgba(0,0,0,0.6)]">
-                    Agencia
-                  </th>
-                  <th className="py-3.5 px-4 text-right">Saldo Arrastre</th>
-                  <th className="py-3.5 px-4 text-right">Semana (Utilidad)</th>
-                  <th className="py-3.5 px-4 text-right">Gastos (-)</th>
-                  <th className="py-3.5 px-4 text-right">Pagos (-)</th>
-                  <th className="py-3.5 px-4 text-right">Premios (+)</th>
-                  <th className="py-3.5 px-4 text-right">Balance Final</th>
-                  <th className="py-3.5 px-4 text-center">Estatus</th>
-                  <th className="py-3.5 px-4 text-center">Acciones</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-slate-800/80 font-mono">
+          {/* Controls Bar: Search + Status Chips + View Toggle */}
+          <div id="tour-saldos-table" className="space-y-3">
+            <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3">
+              {/* Search Input */}
+              <div className="relative flex-1">
+                <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+                <input
+                  type="text"
+                  placeholder="Buscar agencia por nombre..."
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                  className={UI_LOCK.input}
+                  style={{ paddingLeft: '2.5rem' }}
+                />
+              </div>
+
+              {/* View Toggle (Cards vs Table) */}
+              <div className="flex items-center gap-1 bg-slate-100 dark:bg-slate-800/80 p-1 rounded-2xl border border-slate-200 dark:border-slate-700 self-end sm:self-auto shrink-0">
+                <button
+                  onClick={() => setViewMode('cards')}
+                  className={viewMode === 'cards' ? UI_LOCK.filterPillActive : UI_LOCK.filterPillInactive}
+                >
+                  <LayoutGrid className="w-3.5 h-3.5" />
+                  <span>Tarjetas</span>
+                </button>
+                <button
+                  onClick={() => setViewMode('table')}
+                  className={viewMode === 'table' ? UI_LOCK.filterPillActive : UI_LOCK.filterPillInactive}
+                >
+                  <List className="w-3.5 h-3.5" />
+                  <span>Tabla</span>
+                </button>
+              </div>
+            </div>
+
+            {/* Status Filter Chips */}
+            <div className="flex items-center gap-1.5 overflow-x-auto pb-1 no-scrollbar">
+              <button
+                onClick={() => setStatusFilter('all')}
+                className={`px-3 py-1.5 rounded-xl text-xs font-semibold whitespace-nowrap transition-all cursor-pointer ${
+                  statusFilter === 'all'
+                    ? 'bg-slate-800 text-white dark:bg-slate-700 shadow-xs'
+                    : 'bg-white dark:bg-slate-850 text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200 border border-slate-200 dark:border-slate-800'
+                }`}
+              >
+                Todas ({statusCounts.all})
+              </button>
+              <button
+                onClick={() => setStatusFilter('pendiente')}
+                className={`px-3 py-1.5 rounded-xl text-xs font-semibold whitespace-nowrap transition-all cursor-pointer ${
+                  statusFilter === 'pendiente'
+                    ? 'bg-rose-600 text-white shadow-xs'
+                    : 'bg-white dark:bg-slate-850 text-rose-600 dark:text-rose-400 hover:text-rose-700 border border-slate-200 dark:border-slate-800'
+                }`}
+              >
+                🔴 Pendientes ({statusCounts.pendiente})
+              </button>
+              <button
+                onClick={() => setStatusFilter('favor')}
+                className={`px-3 py-1.5 rounded-xl text-xs font-semibold whitespace-nowrap transition-all cursor-pointer ${
+                  statusFilter === 'favor'
+                    ? 'bg-cyan-600 text-white shadow-xs'
+                    : 'bg-white dark:bg-slate-850 text-cyan-600 dark:text-cyan-400 hover:text-cyan-700 border border-slate-200 dark:border-slate-800'
+                }`}
+              >
+                🔵 A Favor ({statusCounts.favor})
+              </button>
+              <button
+                onClick={() => setStatusFilter('pagado')}
+                className={`px-3 py-1.5 rounded-xl text-xs font-semibold whitespace-nowrap transition-all cursor-pointer ${
+                  statusFilter === 'pagado'
+                    ? 'bg-emerald-600 text-white shadow-xs'
+                    : 'bg-white dark:bg-slate-850 text-emerald-600 dark:text-emerald-400 hover:text-emerald-700 border border-slate-200 dark:border-slate-800'
+                }`}
+              >
+                🟢 Pagadas ({statusCounts.pagado})
+              </button>
+            </div>
+          </div>
+
+          {/* =========================================================================
+              VIEW MODE 1: MODERN MOBILE / RESPONSIVE CARDS
+          ========================================================================= */}
+          {viewMode === 'cards' && (
+            <div className="space-y-3">
+              <div className="flex items-center justify-between text-xs text-slate-500 dark:text-slate-400 px-1">
+                <span>Mostrando <strong>{filteredRows.length}</strong> agencias en <strong>{activeCurrency}</strong></span>
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 sm:gap-4">
                 {filteredRows.map((r) => (
-                  <tr key={r.id} className="hover:bg-slate-800/30 transition-colors group">
-                    {/* Pinned Agency Column with shadow */}
-                    <td className="py-3.5 px-4 font-sans font-bold text-white sticky left-0 bg-[#0D1B22] group-hover:bg-[#12232c] z-10 border-r border-slate-800/80 shadow-[2px_0_8px_-2px_rgba(0,0,0,0.6)] whitespace-nowrap">
-                      <div className="flex items-center gap-2">
-                        <span className="text-[11px] text-slate-500 font-mono">#{r.id}</span>
-                        <span>{r.agencia}</span>
+                  <div
+                    key={r.id}
+                    onClick={() => setDetailModalAgency(r.agencia)}
+                    className="bg-white dark:bg-slate-900 hover:bg-slate-50 dark:hover:bg-slate-850 border border-slate-200/80 dark:border-slate-800 hover:border-slate-300 dark:hover:border-slate-700 rounded-2xl p-4 shadow-sm active:scale-[0.99] transition-all cursor-pointer space-y-3 relative overflow-hidden group"
+                  >
+                    {/* Agency Name & Status Badge */}
+                    <div className="flex items-center justify-between gap-2">
+                      <div className="flex items-center gap-2 min-w-0">
+                        <span className="w-6 h-6 rounded-lg bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 flex items-center justify-center text-slate-600 dark:text-slate-300 font-mono text-[11px] font-bold shrink-0">
+                          {r.id}
+                        </span>
+                        <h3 className="font-bold text-slate-900 dark:text-white text-sm truncate group-hover:text-emerald-600 dark:group-hover:text-emerald-400 transition-colors">
+                          {r.agencia}
+                        </h3>
                       </div>
-                    </td>
-                    <td className="py-3.5 px-4 text-right text-slate-400">{formatCurrency(r.saldo_arrastre, activeCurrency)}</td>
-                    <td className="py-3.5 px-4 text-right text-emerald-400 font-semibold">{formatCurrency(r.utilidad_semana, activeCurrency)}</td>
-                    <td className="py-3.5 px-4 text-right text-rose-400">{formatCurrency(r.gastos, activeCurrency)}</td>
-                    <td className="py-3.5 px-4 text-right text-cyan-400 font-semibold">
-                      {formatCurrency(r.pagos, activeCurrency)}
-                    </td>
-                    <td className="py-3.5 px-4 text-right text-amber-400 font-semibold">
-                      {r.reposicion_premios > 0 ? `+${formatCurrency(r.reposicion_premios, activeCurrency)}` : '-'}
-                    </td>
-                    <td
-                      className={`py-3.5 px-4 text-right font-black text-sm ${
-                        r.status === 'pendiente'
-                          ? 'text-rose-400'
-                          : r.status === 'favor'
-                          ? 'text-cyan-400'
-                          : 'text-emerald-400'
-                      }`}
-                    >
-                      {formatCurrency(r.balance_final, activeCurrency)}
-                    </td>
-                    <td className="py-3.5 px-4 text-center font-sans whitespace-nowrap">
-                      {r.status === 'pagado' && (
-                        <span className="px-2 py-0.5 rounded-full bg-emerald-500/15 text-emerald-400 text-[10px] font-bold border border-emerald-500/30">
-                          🟢 PAGADO
-                        </span>
-                      )}
-                      {r.status === 'pendiente' && (
-                        <span className="px-2 py-0.5 rounded-full bg-rose-500/15 text-rose-400 text-[10px] font-bold border border-rose-500/30">
-                          🔴 PENDIENTE
-                        </span>
-                      )}
-                      {r.status === 'favor' && (
-                        <span className="px-2 py-0.5 rounded-full bg-cyan-500/15 text-cyan-400 text-[10px] font-bold border border-cyan-500/30">
-                          🔵 A FAVOR
-                        </span>
-                      )}
-                    </td>
-                    <td className="py-3.5 px-4 text-center">
-                      <div className="flex items-center justify-center gap-1.5">
+
+                      <div className="flex items-center gap-1.5 shrink-0">
+                        {r.status === 'pagado' && (
+                          <span className="px-2 py-0.5 rounded-full bg-emerald-50 dark:bg-emerald-500/15 text-emerald-700 dark:text-emerald-400 text-[10px] font-bold border border-emerald-200 dark:border-emerald-500/30 flex items-center gap-1">
+                            <span className="w-1.5 h-1.5 rounded-full bg-emerald-500"></span>
+                            PAGADO
+                          </span>
+                        )}
+                        {r.status === 'pendiente' && (
+                          <span className="px-2 py-0.5 rounded-full bg-rose-50 dark:bg-rose-500/15 text-rose-700 dark:text-rose-400 text-[10px] font-bold border border-rose-200 dark:border-rose-500/30 flex items-center gap-1">
+                            <span className="w-1.5 h-1.5 rounded-full bg-rose-500 animate-pulse"></span>
+                            PENDIENTE
+                          </span>
+                        )}
+                        {r.status === 'favor' && (
+                          <span className="px-2 py-0.5 rounded-full bg-cyan-50 dark:bg-cyan-500/15 text-cyan-700 dark:text-cyan-400 text-[10px] font-bold border border-cyan-200 dark:border-cyan-500/30 flex items-center gap-1">
+                            <span className="w-1.5 h-1.5 rounded-full bg-cyan-500"></span>
+                            A FAVOR
+                          </span>
+                        )}
                         <button
-                          onClick={() => openIndividualActa(r)}
-                          className="p-1.5 rounded-lg bg-sky-500/20 hover:bg-sky-500 text-sky-400 hover:text-white border border-sky-500/30 transition-all cursor-pointer"
-                          title={`Imprimir Acta / Finiquito de ${r.agencia} en PDF`}
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            openIndividualActa(r);
+                          }}
+                          className="p-1.5 rounded-lg bg-sky-50 dark:bg-sky-500/20 hover:bg-sky-500 text-sky-600 dark:text-sky-400 hover:text-white border border-sky-200 dark:border-sky-500/30 transition-colors cursor-pointer"
+                          title="Generar / Imprimir Acta en PDF"
                         >
                           <Printer className="w-3.5 h-3.5" />
-                        </button>
-                        <button
-                          onClick={() => setDetailModalAgency(r.agencia)}
-                          className="p-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white transition-colors cursor-pointer"
-                          title="Ver Detalle de la Agencia"
-                        >
-                          <ExternalLink className="w-3.5 h-3.5" />
                         </button>
                         <a
                           href={generateAgencyWhatsAppUrl(r)}
                           target="_blank"
                           rel="noreferrer"
-                          className="p-1.5 rounded-lg bg-emerald-600/20 hover:bg-emerald-600 text-emerald-400 hover:text-white border border-emerald-500/30 transition-all cursor-pointer"
-                          title={`Enviar Estado de Cuenta de ${r.agencia} por WhatsApp`}
+                          onClick={(e) => e.stopPropagation()}
+                          className="p-1.5 rounded-lg bg-emerald-50 dark:bg-emerald-600/20 hover:bg-emerald-600 text-emerald-600 dark:text-emerald-400 hover:text-white border border-emerald-200 dark:border-emerald-500/30 transition-colors cursor-pointer"
+                          title="Enviar Estado de Cuenta por WhatsApp"
                         >
-                          <WhatsAppIcon className="w-3.5 h-3.5 fill-current" />
+                          <WhatsAppIcon className="w-3.5 h-3.5" />
                         </a>
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setDetailModalAgency(r.agencia);
+                          }}
+                          className="p-1.5 rounded-lg bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-500 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white transition-colors"
+                          title="Ver detalle"
+                        >
+                          <ChevronRight className="w-3.5 h-3.5" />
+                        </button>
                       </div>
-                    </td>
-                  </tr>
+                    </div>
+
+                    {/* Hero Balance Box */}
+                    <div
+                      className={`p-3 rounded-xl border flex items-center justify-between ${
+                        r.status === 'pendiente'
+                          ? 'bg-rose-50 dark:bg-rose-950/20 border-rose-200 dark:border-rose-800/40 text-rose-700 dark:text-rose-400'
+                          : r.status === 'favor'
+                          ? 'bg-cyan-50 dark:bg-cyan-950/20 border-cyan-200 dark:border-cyan-800/40 text-cyan-700 dark:text-cyan-400'
+                          : 'bg-emerald-50 dark:bg-emerald-950/20 border-emerald-200 dark:border-emerald-800/40 text-emerald-700 dark:text-emerald-400'
+                      }`}
+                    >
+                      <div className="text-[10px] font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400">
+                        Balance Final
+                      </div>
+                      <div className="text-lg sm:text-xl font-black font-mono tracking-tight">
+                        {formatCurrency(r.balance_final, activeCurrency)}
+                      </div>
+                    </div>
+
+                    {/* 5 Financial Items Grid */}
+                    <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 text-xs font-mono">
+                      <div className="bg-slate-50 dark:bg-slate-800/50 p-2 rounded-xl border border-slate-200/80 dark:border-slate-700/60">
+                        <span className="text-[10px] font-sans text-slate-500 dark:text-slate-400 block">Saldo Arrastre</span>
+                        <span className="text-slate-800 dark:text-slate-200 font-semibold text-xs truncate block">
+                          {formatCurrency(r.saldo_arrastre, activeCurrency)}
+                        </span>
+                      </div>
+
+                      <div className="bg-slate-50 dark:bg-slate-800/50 p-2 rounded-xl border border-slate-200/80 dark:border-slate-700/60">
+                        <span className="text-[10px] font-sans text-slate-500 dark:text-slate-400 block">Semana (Utilidad)</span>
+                        <span className="text-emerald-600 dark:text-emerald-400 font-semibold text-xs truncate block">
+                          {formatCurrency(r.utilidad_semana, activeCurrency)}
+                        </span>
+                      </div>
+
+                      <div className="bg-slate-50 dark:bg-slate-800/50 p-2 rounded-xl border border-slate-200/80 dark:border-slate-700/60">
+                        <span className="text-[10px] font-sans text-slate-500 dark:text-slate-400 block">Gastos (-)</span>
+                        <span className="text-rose-600 dark:text-rose-400 font-semibold text-xs truncate block">
+                          {formatCurrency(r.gastos, activeCurrency)}
+                        </span>
+                      </div>
+
+                      <div className="bg-slate-50 dark:bg-slate-800/50 p-2 rounded-xl border border-slate-200/80 dark:border-slate-700/60">
+                        <span className="text-[10px] font-sans text-slate-500 dark:text-slate-400 block">Pagos (-)</span>
+                        <span className="text-cyan-600 dark:text-cyan-400 font-semibold text-xs truncate block">
+                          {formatCurrency(r.pagos, activeCurrency)}
+                        </span>
+                      </div>
+
+                      <div className="bg-slate-50 dark:bg-slate-800/50 p-2 rounded-xl border border-slate-200/80 dark:border-slate-700/60 col-span-2 sm:col-span-1">
+                        <span className="text-[10px] font-sans text-slate-500 dark:text-slate-400 block">Premios (+)</span>
+                        <span className="text-amber-600 dark:text-amber-400 font-semibold text-xs truncate block">
+                          {r.reposicion_premios > 0 ? `+${formatCurrency(r.reposicion_premios, activeCurrency)}` : '-'}
+                        </span>
+                      </div>
+                    </div>
+                  </div>
                 ))}
-              </tbody>
-            </table>
-          </div>
-        </div>
-      )}
-
-      {/* =========================================================================
-          INDIVIDUAL AGENCY DETAIL MODAL
-      ========================================================================= */}
-      {detailMovements && (
-        <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-3 sm:p-4 overflow-y-auto">
-          <div className="bg-[#0D1B22] border border-slate-800 rounded-3xl p-5 sm:p-7 max-w-2xl w-full max-h-[90vh] flex flex-col shadow-2xl animate-fade-in my-auto">
-            <div className="flex items-center justify-between pb-3 border-b border-slate-800 shrink-0">
-              <div className="pr-2">
-                <h3 className="text-sm sm:text-base font-bold text-white flex items-center gap-2">
-                  <Building2 className="w-5 h-5 text-purple-400 shrink-0" />
-                  <span>Estado de Cuenta: {detailMovements.agencia}</span>
-                </h3>
-                <p className="text-[11px] sm:text-xs text-slate-400 mt-0.5">
-                  Desglose financiero consolidado, ventas, pagos y gastos en {activeCurrency}.
-                </p>
               </div>
 
-              <div className="flex items-center gap-2 shrink-0">
-                {selectedAgencyRow && (
-                  <a
-                    href={generateAgencyWhatsAppUrl(selectedAgencyRow)}
-                    target="_blank"
-                    rel="noreferrer"
-                    className="p-2 rounded-xl bg-emerald-600/20 hover:bg-emerald-600 text-emerald-400 hover:text-white border border-emerald-500/30 transition-all cursor-pointer hidden sm:flex items-center gap-1.5 text-xs font-bold"
-                    title="Enviar Estado de Cuenta por WhatsApp"
-                  >
-                    <WhatsAppIcon className="w-4 h-4 fill-current" />
-                    <span>WhatsApp</span>
-                  </a>
-                )}
-                <button
-                  onClick={() => setDetailModalAgency(null)}
-                  className="w-8 h-8 rounded-full bg-slate-800 hover:bg-slate-700 text-slate-400 hover:text-white flex items-center justify-center text-xs font-bold transition-colors shrink-0"
-                >
-                  ✕
-                </button>
-              </div>
-            </div>
-
-            {/* Scrollable contents */}
-            <div className="overflow-y-auto space-y-4 py-3 pr-1 flex-1">
-              {/* Financial Balance Summary Card */}
-              {selectedAgencyRow && (
-                <div className="bg-[#071217] border border-slate-800 rounded-2xl p-4 space-y-3 shrink-0">
-                  <div className="flex items-center justify-between">
-                    <div>
-                      <span className="text-[10px] uppercase font-bold text-slate-400 tracking-wider">
-                        Balance Final ({activeCurrency})
-                      </span>
-                      <div
-                        className="text-xl sm:text-2xl font-black font-mono mt-0.5"
-                        style={{
-                          color:
-                            selectedAgencyRow.status === 'pendiente'
-                              ? '#f43f5e'
-                              : selectedAgencyRow.status === 'favor'
-                              ? '#22d3ee'
-                              : '#10b981',
-                        }}
-                      >
-                        {formatCurrency(selectedAgencyRow.balance_final, activeCurrency)}
-                      </div>
-                    </div>
-                    <div className="flex items-center gap-2">
-                      {selectedAgencyRow.status === 'pagado' && (
-                        <span className="px-2.5 py-1 rounded-full bg-emerald-500/15 text-emerald-400 text-xs font-bold border border-emerald-500/30">
-                          🟢 PAGADO
-                        </span>
-                      )}
-                      {selectedAgencyRow.status === 'pendiente' && (
-                        <span className="px-2.5 py-1 rounded-full bg-rose-500/15 text-rose-400 text-xs font-bold border border-rose-500/30 animate-pulse">
-                          🔴 PENDIENTE
-                        </span>
-                      )}
-                      {selectedAgencyRow.status === 'favor' && (
-                        <span className="px-2.5 py-1 rounded-full bg-cyan-500/15 text-cyan-400 text-xs font-bold border border-cyan-500/30">
-                          🔵 A FAVOR
-                        </span>
-                      )}
-                    </div>
-                  </div>
-
-                  <div className="grid grid-cols-2 sm:grid-cols-5 gap-2 font-mono text-xs">
-                    <div className="bg-[#0D1B22] p-2.5 rounded-xl border border-slate-800/80">
-                      <span className="text-[10px] font-sans text-slate-400 block">Saldo Arrastre</span>
-                      <span className="text-slate-200 font-semibold truncate block">
-                        {formatCurrency(selectedAgencyRow.saldo_arrastre, activeCurrency)}
-                      </span>
-                    </div>
-                    <div className="bg-[#0D1B22] p-2.5 rounded-xl border border-slate-800/80">
-                      <span className="text-[10px] font-sans text-slate-400 block">Semana (Utilidad)</span>
-                      <span className="text-emerald-400 font-semibold truncate block">
-                        {formatCurrency(selectedAgencyRow.utilidad_semana, activeCurrency)}
-                      </span>
-                    </div>
-                    <div className="bg-[#0D1B22] p-2.5 rounded-xl border border-slate-800/80">
-                      <span className="text-[10px] font-sans text-slate-400 block">Gastos (-)</span>
-                      <span className="text-rose-400 font-semibold truncate block">
-                        {formatCurrency(selectedAgencyRow.gastos, activeCurrency)}
-                      </span>
-                    </div>
-                    <div className="bg-[#0D1B22] p-2.5 rounded-xl border border-slate-800/80">
-                      <span className="text-[10px] font-sans text-slate-400 block">Pagos (-)</span>
-                      <span className="text-cyan-400 font-semibold truncate block">
-                        {formatCurrency(selectedAgencyRow.pagos, activeCurrency)}
-                      </span>
-                    </div>
-                    <div className="bg-[#0D1B22] p-2.5 rounded-xl border border-slate-800/80 col-span-2 sm:col-span-1">
-                      <span className="text-[10px] font-sans text-slate-400 block">Premios (+)</span>
-                      <span className="text-amber-400 font-semibold truncate block">
-                        {selectedAgencyRow.reposicion_premios && selectedAgencyRow.reposicion_premios > 0
-                          ? `+${formatCurrency(selectedAgencyRow.reposicion_premios, activeCurrency)}`
-                          : '-'}
-                      </span>
-                    </div>
-                  </div>
-
-                  <a
-                    href={generateAgencyWhatsAppUrl(selectedAgencyRow)}
-                    target="_blank"
-                    rel="noreferrer"
-                    className="w-full py-2.5 px-4 rounded-xl bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white font-bold text-xs shadow-lg shadow-emerald-600/20 flex items-center justify-center gap-2 transition-all cursor-pointer"
-                  >
-                    <WhatsAppIcon className="w-4 h-4 fill-white" />
-                    <span>Enviar Estado de Cuenta por WhatsApp</span>
-                  </a>
+              {filteredRows.length === 0 && (
+                <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-8 text-center text-slate-500 dark:text-slate-400 text-xs shadow-sm">
+                  No se encontraron agencias con los filtros aplicados.
                 </div>
               )}
+            </div>
+          )}
 
-              {/* Desglose por Sistemas */}
-              <div className="space-y-1.5">
-                <span className="text-[11px] font-bold uppercase text-slate-400 tracking-wider">
-                  Desglose por Sistemas ({detailMovements.sistemas.length})
-                </span>
-                {detailMovements.sistemas.length === 0 ? (
-                  <p className="text-xs text-slate-500 italic">No hay movimientos por sistema en {activeCurrency}.</p>
-                ) : (
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                    {detailMovements.sistemas.map((sis) => (
-                      <div key={sis.sistema} className="bg-[#071217] border border-slate-800 rounded-xl p-3 space-y-1.5 font-mono text-xs">
-                        <div className="flex items-center justify-between border-b border-slate-800/80 pb-1">
-                          <span className="font-sans font-bold text-white text-xs flex items-center gap-1.5">
-                            <span className="w-2 h-2 rounded-full bg-purple-400"></span>
-                            {sis.sistema}
-                          </span>
-                          <span className="font-bold text-emerald-400">
-                            Neto: {formatCurrency(sis.neto, activeCurrency)}
-                          </span>
-                        </div>
-                        <div className="grid grid-cols-3 gap-1 text-[11px] text-slate-300">
-                          <div>
-                            <span className="text-[9px] text-slate-400 font-sans block">Venta</span>
-                            <span>{formatCurrency(sis.venta, activeCurrency)}</span>
-                          </div>
-                          <div>
-                            <span className="text-[9px] text-slate-400 font-sans block">Comisión</span>
-                            <span className="text-rose-300">-{formatCurrency(sis.comision, activeCurrency)}</span>
-                          </div>
-                          <div>
-                            <span className="text-[9px] text-slate-400 font-sans block">Premios</span>
-                            <span className="text-amber-300">-{formatCurrency(sis.premios, activeCurrency)}</span>
-                          </div>
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                )}
+          {/* =========================================================================
+              VIEW MODE 2: DESKTOP / PINNED STICKY TABLE
+          ========================================================================= */}
+          {viewMode === 'table' && (
+            <div className={UI_LOCK.tableContainer}>
+              <div className="p-4 sm:p-6 border-b border-slate-200 dark:border-slate-800 flex items-center justify-between">
+                <h4 className="text-sm font-bold text-slate-900 dark:text-white uppercase tracking-wider">
+                  Saldos y Balances en {activeCurrency} ({filteredRows.length})
+                </h4>
               </div>
 
-              {/* Sales List */}
-              <div className="space-y-1.5">
-                <span className="text-[11px] font-bold uppercase text-slate-400 tracking-wider">
-                  Ventas ({detailMovements.sales.length})
-                </span>
-                {detailMovements.sales.length === 0 ? (
-                  <p className="text-xs text-slate-500 italic">No hay ventas registradas en {activeCurrency}.</p>
-                ) : (
-                  <div className="max-h-40 overflow-y-auto border border-slate-800 rounded-xl bg-[#071217] p-2 space-y-1 text-xs font-mono">
-                    {detailMovements.sales.map((s) => (
-                      <div key={s.id} className="flex justify-between items-center py-1 border-b border-slate-800/60 last:border-0 text-[11px] sm:text-xs">
-                        <span className="truncate pr-2">{formatDate(s.fecha)} • {s.sistema}</span>
-                        <span className="shrink-0 text-right">Venta: {formatCurrency(s.venta, s.moneda)} | <strong className="text-emerald-400">{formatCurrency(s.neto, s.moneda)}</strong></span>
-                      </div>
+              <div className="overflow-x-auto">
+                <table className={UI_LOCK.table}>
+                  <thead className={UI_LOCK.tableThead}>
+                    <tr>
+                      {/* Pinned Agency Column with shadow */}
+                      <th className="py-3.5 px-4 sticky left-0 bg-slate-50 dark:bg-slate-800/90 z-20 border-r border-slate-200 dark:border-slate-800 shadow-xs">
+                        Agencia
+                      </th>
+                      <th className="py-3.5 px-4 text-right">Saldo Arrastre</th>
+                      <th className="py-3.5 px-4 text-right">Semana (Utilidad)</th>
+                      <th className="py-3.5 px-4 text-right">Gastos (-)</th>
+                      <th className="py-3.5 px-4 text-right">Pagos (-)</th>
+                      <th className="py-3.5 px-4 text-right">Premios (+)</th>
+                      <th className="py-3.5 px-4 text-right">Balance Final</th>
+                      <th className="py-3.5 px-4 text-center">Estatus</th>
+                      <th className="py-3.5 px-4 text-center">Acciones</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-100 dark:divide-slate-800/80 font-mono">
+                    {filteredRows.map((r) => (
+                      <tr key={r.id} className="hover:bg-slate-50 dark:hover:bg-slate-800/30 transition-colors group">
+                        {/* Pinned Agency Column with shadow */}
+                        <td className="py-3.5 px-4 font-sans font-bold text-slate-900 dark:text-white sticky left-0 bg-white group-hover:bg-slate-50 dark:bg-slate-900 dark:group-hover:bg-slate-850 z-10 border-r border-slate-200 dark:border-slate-800 shadow-xs whitespace-nowrap">
+                          <div className="flex items-center gap-2">
+                            <span className="text-[11px] text-slate-400 font-mono">#{r.id}</span>
+                            <span>{r.agencia}</span>
+                          </div>
+                        </td>
+                        <td className="py-3.5 px-4 text-right text-slate-600 dark:text-slate-400">{formatCurrency(r.saldo_arrastre, activeCurrency)}</td>
+                        <td className="py-3.5 px-4 text-right text-emerald-600 dark:text-emerald-400 font-semibold">{formatCurrency(r.utilidad_semana, activeCurrency)}</td>
+                        <td className="py-3.5 px-4 text-right text-rose-600 dark:text-rose-400">{formatCurrency(r.gastos, activeCurrency)}</td>
+                        <td className="py-3.5 px-4 text-right text-cyan-600 dark:text-cyan-400 font-semibold">
+                          {formatCurrency(r.pagos, activeCurrency)}
+                        </td>
+                        <td className="py-3.5 px-4 text-right text-amber-600 dark:text-amber-400 font-semibold">
+                          {r.reposicion_premios > 0 ? `+${formatCurrency(r.reposicion_premios, activeCurrency)}` : '-'}
+                        </td>
+                        <td
+                          className={`py-3.5 px-4 text-right font-black text-sm ${
+                            r.status === 'pendiente'
+                              ? 'text-rose-600 dark:text-rose-400'
+                              : r.status === 'favor'
+                              ? 'text-cyan-600 dark:text-cyan-400'
+                              : 'text-emerald-600 dark:text-emerald-400'
+                          }`}
+                        >
+                          {formatCurrency(r.balance_final, activeCurrency)}
+                        </td>
+                        <td className="py-3.5 px-4 text-center font-sans whitespace-nowrap">
+                          {r.status === 'pagado' && (
+                            <span className="px-2 py-0.5 rounded-full bg-emerald-50 dark:bg-emerald-500/15 text-emerald-700 dark:text-emerald-400 text-[10px] font-bold border border-emerald-200 dark:border-emerald-500/30">
+                              🟢 PAGADO
+                            </span>
+                          )}
+                          {r.status === 'pendiente' && (
+                            <span className="px-2 py-0.5 rounded-full bg-rose-50 dark:bg-rose-500/15 text-rose-700 dark:text-rose-400 text-[10px] font-bold border border-rose-200 dark:border-rose-500/30">
+                              🔴 PENDIENTE
+                            </span>
+                          )}
+                          {r.status === 'favor' && (
+                            <span className="px-2 py-0.5 rounded-full bg-cyan-50 dark:bg-cyan-500/15 text-cyan-700 dark:text-cyan-400 text-[10px] font-bold border border-cyan-200 dark:border-cyan-500/30">
+                              🔵 A FAVOR
+                            </span>
+                          )}
+                        </td>
+                        <td className="py-3.5 px-4 text-center">
+                          <div className="flex items-center justify-center gap-1.5">
+                            <button
+                              onClick={() => openIndividualActa(r)}
+                              className="p-1.5 rounded-lg bg-sky-50 dark:bg-sky-500/20 hover:bg-sky-500 text-sky-600 dark:text-sky-400 hover:text-white border border-sky-200 dark:border-sky-500/30 transition-all cursor-pointer"
+                              title={`Imprimir Acta / Finiquito de ${r.agencia} en PDF`}
+                            >
+                              <Printer className="w-3.5 h-3.5" />
+                            </button>
+                            <button
+                              onClick={() => setDetailModalAgency(r.agencia)}
+                              className="p-1.5 rounded-lg bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-600 dark:text-slate-300 transition-colors cursor-pointer"
+                              title="Ver Detalle de la Agencia"
+                            >
+                              <ExternalLink className="w-3.5 h-3.5" />
+                            </button>
+                            <a
+                              href={generateAgencyWhatsAppUrl(r)}
+                              target="_blank"
+                              rel="noreferrer"
+                              className="p-1.5 rounded-lg bg-emerald-50 dark:bg-emerald-600/20 hover:bg-emerald-600 text-emerald-600 dark:text-emerald-400 hover:text-white border border-emerald-200 dark:border-emerald-500/30 transition-all cursor-pointer"
+                              title={`Enviar Estado de Cuenta de ${r.agencia} por WhatsApp`}
+                            >
+                              <WhatsAppIcon className="w-3.5 h-3.5 fill-current" />
+                            </a>
+                          </div>
+                        </td>
+                      </tr>
                     ))}
-                  </div>
-                )}
+                  </tbody>
+                </table>
               </div>
+            </div>
+          )}
 
-              {/* Payments List */}
-              <div className="space-y-1.5">
-                <span className="text-[11px] font-bold uppercase text-slate-400 tracking-wider">
-                  Pagos y Cobranzas ({detailMovements.payments.length})
-                </span>
-                {detailMovements.payments.length === 0 ? (
-                  <p className="text-xs text-slate-500 italic">No hay pagos registrados en {activeCurrency}.</p>
-                ) : (
-                  <div className="max-h-40 overflow-y-auto border border-slate-800 rounded-xl bg-[#071217] p-2 space-y-1 text-xs font-mono">
-                    {detailMovements.payments.map((p) => {
-                      const isPremio = String(p.tipo_pago || '').toUpperCase().includes('PREMIO');
-                      return (
-                        <div key={p.id} className="flex justify-between items-center py-1.5 border-b border-slate-800/60 last:border-0 text-[11px] sm:text-xs">
-                          <span className="truncate pr-2">
-                            {formatDate(p.fecha)} • {p.metodo} ({p.referencia})
-                            {isPremio && (
-                              <span className="ml-1.5 px-1.5 py-0.5 rounded bg-amber-500/20 text-amber-300 text-[9px] font-sans font-semibold">
-                                Reposición Premios
+          {/* =========================================================================
+              INDIVIDUAL AGENCY DETAIL MODAL
+          ========================================================================= */}
+          {detailMovements && (
+            <div className={UI_LOCK.modalBackdrop}>
+              <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-3xl p-5 sm:p-7 max-w-2xl w-full max-h-[90vh] flex flex-col shadow-2xl animate-fade-in my-auto">
+                <div className="flex items-center justify-between pb-3 border-b border-slate-200 dark:border-slate-800 shrink-0">
+                  <div className="pr-2">
+                    <h3 className="text-sm sm:text-base font-bold text-slate-900 dark:text-white flex items-center gap-2">
+                      <Building2 className="w-5 h-5 text-emerald-600 dark:text-emerald-400 shrink-0" />
+                      <span>Estado de Cuenta: {detailMovements.agencia}</span>
+                    </h3>
+                    <p className="text-[11px] sm:text-xs text-slate-500 dark:text-slate-400 mt-0.5">
+                      Desglose financiero consolidado, ventas, pagos y gastos en {activeCurrency}.
+                    </p>
+                  </div>
+
+                  <div className="flex items-center gap-2 shrink-0">
+                    {selectedAgencyRow && (
+                      <a
+                        href={generateAgencyWhatsAppUrl(selectedAgencyRow)}
+                        target="_blank"
+                        rel="noreferrer"
+                        className="p-2 rounded-xl bg-emerald-50 dark:bg-emerald-600/20 hover:bg-emerald-600 text-emerald-600 dark:text-emerald-400 hover:text-white border border-emerald-200 dark:border-emerald-500/30 transition-all cursor-pointer hidden sm:flex items-center gap-1.5 text-xs font-bold"
+                        title="Enviar Estado de Cuenta por WhatsApp"
+                      >
+                        <WhatsAppIcon className="w-4 h-4 fill-current" />
+                        <span>WhatsApp</span>
+                      </a>
+                    )}
+                    <button
+                      onClick={() => setDetailModalAgency(null)}
+                      className="w-8 h-8 rounded-full bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-500 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white flex items-center justify-center text-xs font-bold transition-colors shrink-0"
+                    >
+                      ✕
+                    </button>
+                  </div>
+                </div>
+
+                {/* Scrollable contents */}
+                <div className="overflow-y-auto space-y-4 py-3 pr-1 flex-1">
+                  {/* Financial Balance Summary Card */}
+                  {selectedAgencyRow && (
+                    <div className="bg-slate-50 dark:bg-slate-850 border border-slate-200 dark:border-slate-800 rounded-2xl p-4 space-y-3 shrink-0">
+                      <div className="flex items-center justify-between">
+                        <div>
+                          <span className="text-[10px] uppercase font-bold text-slate-500 dark:text-slate-400 tracking-wider">
+                            Balance Final ({activeCurrency})
+                          </span>
+                          <div
+                            className="text-xl sm:text-2xl font-black font-mono mt-0.5"
+                            style={{
+                              color:
+                                selectedAgencyRow.status === 'pendiente'
+                                  ? '#e11d48'
+                                  : selectedAgencyRow.status === 'favor'
+                                  ? '#0891b2'
+                                  : '#059669',
+                            }}
+                          >
+                            {formatCurrency(selectedAgencyRow.balance_final, activeCurrency)}
+                          </div>
+                        </div>
+                        <div className="flex items-center gap-2">
+                          {selectedAgencyRow.status === 'pagado' && (
+                            <span className="px-2.5 py-1 rounded-full bg-emerald-50 dark:bg-emerald-500/15 text-emerald-700 dark:text-emerald-400 text-xs font-bold border border-emerald-200 dark:border-emerald-500/30">
+                              🟢 PAGADO
+                            </span>
+                          )}
+                          {selectedAgencyRow.status === 'pendiente' && (
+                            <span className="px-2.5 py-1 rounded-full bg-rose-50 dark:bg-rose-500/15 text-rose-700 dark:text-rose-400 text-xs font-bold border border-rose-200 dark:border-rose-500/30 animate-pulse">
+                              🔴 PENDIENTE
+                            </span>
+                          )}
+                          {selectedAgencyRow.status === 'favor' && (
+                            <span className="px-2.5 py-1 rounded-full bg-cyan-50 dark:bg-cyan-500/15 text-cyan-700 dark:text-cyan-400 text-xs font-bold border border-cyan-200 dark:border-cyan-500/30">
+                              🔵 A FAVOR
+                            </span>
+                          )}
+                        </div>
+                      </div>
+
+                      <div className="grid grid-cols-2 sm:grid-cols-5 gap-2 font-mono text-xs">
+                        <div className="bg-white dark:bg-slate-900 p-2.5 rounded-xl border border-slate-200 dark:border-slate-800">
+                          <span className="text-[10px] font-sans text-slate-500 dark:text-slate-400 block">Saldo Arrastre</span>
+                          <span className="text-slate-800 dark:text-slate-200 font-semibold truncate block">
+                            {formatCurrency(selectedAgencyRow.saldo_arrastre, activeCurrency)}
+                          </span>
+                        </div>
+                        <div className="bg-white dark:bg-slate-900 p-2.5 rounded-xl border border-slate-200 dark:border-slate-800">
+                          <span className="text-[10px] font-sans text-slate-500 dark:text-slate-400 block">Semana (Utilidad)</span>
+                          <span className="text-emerald-600 dark:text-emerald-400 font-semibold truncate block">
+                            {formatCurrency(selectedAgencyRow.utilidad_semana, activeCurrency)}
+                          </span>
+                        </div>
+                        <div className="bg-white dark:bg-slate-900 p-2.5 rounded-xl border border-slate-200 dark:border-slate-800">
+                          <span className="text-[10px] font-sans text-slate-500 dark:text-slate-400 block">Gastos (-)</span>
+                          <span className="text-rose-600 dark:text-rose-400 font-semibold truncate block">
+                            {formatCurrency(selectedAgencyRow.gastos, activeCurrency)}
+                          </span>
+                        </div>
+                        <div className="bg-white dark:bg-slate-900 p-2.5 rounded-xl border border-slate-200 dark:border-slate-800">
+                          <span className="text-[10px] font-sans text-slate-500 dark:text-slate-400 block">Pagos (-)</span>
+                          <span className="text-cyan-600 dark:text-cyan-400 font-semibold truncate block">
+                            {formatCurrency(selectedAgencyRow.pagos, activeCurrency)}
+                          </span>
+                        </div>
+                        <div className="bg-white dark:bg-slate-900 p-2.5 rounded-xl border border-slate-200 dark:border-slate-800 col-span-2 sm:col-span-1">
+                          <span className="text-[10px] font-sans text-slate-500 dark:text-slate-400 block">Premios (+)</span>
+                          <span className="text-amber-600 dark:text-amber-400 font-semibold truncate block">
+                            {selectedAgencyRow.reposicion_premios && selectedAgencyRow.reposicion_premios > 0
+                              ? `+${formatCurrency(selectedAgencyRow.reposicion_premios, activeCurrency)}`
+                              : '-'}
+                          </span>
+                        </div>
+                      </div>
+
+                      <a
+                        href={generateAgencyWhatsAppUrl(selectedAgencyRow)}
+                        target="_blank"
+                        rel="noreferrer"
+                        className={UI_LOCK.buttonPrimary + ' w-full'}
+                      >
+                        <WhatsAppIcon className="w-4 h-4 fill-white" />
+                        <span>Enviar Estado de Cuenta por WhatsApp</span>
+                      </a>
+                    </div>
+                  )}
+
+                  {/* Desglose por Sistemas */}
+                  <div className="space-y-1.5">
+                    <span className="text-[11px] font-bold uppercase text-slate-500 dark:text-slate-400 tracking-wider">
+                      Desglose por Sistemas ({detailMovements.sistemas.length})
+                    </span>
+                    {detailMovements.sistemas.length === 0 ? (
+                      <p className="text-xs text-slate-400 italic">No hay movimientos por sistema en {activeCurrency}.</p>
+                    ) : (
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                        {detailMovements.sistemas.map((sis) => (
+                          <div key={sis.sistema} className="bg-slate-50 dark:bg-slate-850 border border-slate-200 dark:border-slate-800 rounded-xl p-3 space-y-1.5 font-mono text-xs">
+                            <div className="flex items-center justify-between border-b border-slate-200 dark:border-slate-800 pb-1">
+                              <span className="font-sans font-bold text-slate-900 dark:text-white text-xs flex items-center gap-1.5">
+                                <span className="w-2 h-2 rounded-full bg-emerald-500"></span>
+                                {sis.sistema}
                               </span>
-                            )}
-                          </span>
-                          <strong className={`shrink-0 ${isPremio ? 'text-amber-400' : 'text-cyan-400'}`}>
-                            {isPremio ? '-' : ''}{formatCurrency(p.monto, p.moneda)}
-                          </strong>
-                        </div>
-                      );
-                    })}
-                  </div>
-                )}
-              </div>
-
-              {/* Expenses List */}
-              <div className="space-y-1.5">
-                <span className="text-[11px] font-bold uppercase text-slate-400 tracking-wider">
-                  Gastos ({detailMovements.expenses.length})
-                </span>
-                {detailMovements.expenses.length === 0 ? (
-                  <p className="text-xs text-slate-500 italic">No hay gastos registrados en {activeCurrency}.</p>
-                ) : (
-                  <div className="max-h-40 overflow-y-auto border border-slate-800 rounded-xl bg-[#071217] p-2 space-y-1 text-xs font-mono">
-                    {detailMovements.expenses.map((e) => (
-                      <div key={e.id} className="flex justify-between items-center py-1 border-b border-slate-800/60 last:border-0 text-[11px] sm:text-xs">
-                        <span className="truncate pr-2">{formatDate(e.fecha)} • {e.concepto}</span>
-                        <strong className="text-rose-400 shrink-0">{formatCurrency(e.monto, e.moneda)}</strong>
+                              <span className="font-bold text-emerald-600 dark:text-emerald-400">
+                                Neto: {formatCurrency(sis.neto, activeCurrency)}
+                              </span>
+                            </div>
+                            <div className="grid grid-cols-3 gap-1 text-[11px] text-slate-600 dark:text-slate-300">
+                              <div>
+                                <span className="text-[9px] text-slate-400 font-sans block">Venta</span>
+                                <span>{formatCurrency(sis.venta, activeCurrency)}</span>
+                              </div>
+                              <div>
+                                <span className="text-[9px] text-slate-400 font-sans block">Comisión</span>
+                                <span className="text-rose-600 dark:text-rose-400">-{formatCurrency(sis.comision, activeCurrency)}</span>
+                              </div>
+                              <div>
+                                <span className="text-[9px] text-slate-400 font-sans block">Premios</span>
+                                <span className="text-amber-600 dark:text-amber-400">-{formatCurrency(sis.premios, activeCurrency)}</span>
+                              </div>
+                            </div>
+                          </div>
+                        ))}
                       </div>
-                    ))}
+                    )}
                   </div>
-                )}
+
+                  {/* Sales List */}
+                  <div className="space-y-1.5">
+                    <span className="text-[11px] font-bold uppercase text-slate-500 dark:text-slate-400 tracking-wider">
+                      Ventas ({detailMovements.sales.length})
+                    </span>
+                    {detailMovements.sales.length === 0 ? (
+                      <p className="text-xs text-slate-400 italic">No hay ventas registradas en {activeCurrency}.</p>
+                    ) : (
+                      <div className="max-h-40 overflow-y-auto border border-slate-200 dark:border-slate-800 rounded-xl bg-slate-50 dark:bg-slate-850 p-2 space-y-1 text-xs font-mono">
+                        {detailMovements.sales.map((s) => (
+                          <div key={s.id} className="flex justify-between items-center py-1 border-b border-slate-200/60 dark:border-slate-800/60 last:border-0 text-[11px] sm:text-xs text-slate-700 dark:text-slate-300">
+                            <span className="truncate pr-2">{formatDate(s.fecha)} • {s.sistema}</span>
+                            <span className="shrink-0 text-right">Venta: {formatCurrency(s.venta, s.moneda)} | <strong className="text-emerald-600 dark:text-emerald-400">{formatCurrency(s.neto, s.moneda)}</strong></span>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Payments List */}
+                  <div className="space-y-1.5">
+                    <span className="text-[11px] font-bold uppercase text-slate-500 dark:text-slate-400 tracking-wider">
+                      Pagos y Cobranzas ({detailMovements.payments.length})
+                    </span>
+                    {detailMovements.payments.length === 0 ? (
+                      <p className="text-xs text-slate-400 italic">No hay pagos registrados en {activeCurrency}.</p>
+                    ) : (
+                      <div className="max-h-40 overflow-y-auto border border-slate-200 dark:border-slate-800 rounded-xl bg-slate-50 dark:bg-slate-850 p-2 space-y-1 text-xs font-mono">
+                        {detailMovements.payments.map((p) => {
+                          const isPremio = String(p.tipo_pago || '').toUpperCase().includes('PREMIO');
+                          return (
+                            <div key={p.id} className="flex justify-between items-center py-1.5 border-b border-slate-200/60 dark:border-slate-800/60 last:border-0 text-[11px] sm:text-xs text-slate-700 dark:text-slate-300">
+                              <span className="truncate pr-2">
+                                {formatDate(p.fecha)} • {p.metodo} ({p.referencia})
+                                {isPremio && (
+                                  <span className="ml-1.5 px-1.5 py-0.5 rounded bg-amber-50 dark:bg-amber-500/20 text-amber-700 dark:text-amber-300 text-[9px] font-sans font-semibold border border-amber-200 dark:border-amber-500/30">
+                                    Reposición Premios
+                                  </span>
+                                )}
+                              </span>
+                              <strong className={`shrink-0 ${isPremio ? 'text-amber-600 dark:text-amber-400' : 'text-cyan-600 dark:text-cyan-400'}`}>
+                                {isPremio ? '-' : ''}{formatCurrency(p.monto, p.moneda)}
+                              </strong>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Expenses List */}
+                  <div className="space-y-1.5">
+                    <span className="text-[11px] font-bold uppercase text-slate-500 dark:text-slate-400 tracking-wider">
+                      Gastos ({detailMovements.expenses.length})
+                    </span>
+                    {detailMovements.expenses.length === 0 ? (
+                      <p className="text-xs text-slate-400 italic">No hay gastos registrados en {activeCurrency}.</p>
+                    ) : (
+                      <div className="max-h-40 overflow-y-auto border border-slate-200 dark:border-slate-800 rounded-xl bg-slate-50 dark:bg-slate-850 p-2 space-y-1 text-xs font-mono">
+                        {detailMovements.expenses.map((e) => (
+                          <div key={e.id} className="flex justify-between items-center py-1 border-b border-slate-200/60 dark:border-slate-800/60 last:border-0 text-[11px] sm:text-xs text-slate-700 dark:text-slate-300">
+                            <span className="truncate pr-2">{formatDate(e.fecha)} • {e.concepto}</span>
+                            <strong className="text-rose-600 dark:text-rose-400 shrink-0">{formatCurrency(e.monto, e.moneda)}</strong>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                </div>
+
+                <div className="flex items-center justify-between pt-3 border-t border-slate-200 dark:border-slate-800 shrink-0 gap-2">
+                  {selectedAgencyRow && (
+                    <a
+                      href={generateAgencyWhatsAppUrl(selectedAgencyRow)}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="px-4 py-2.5 rounded-xl bg-emerald-50 dark:bg-emerald-600/20 hover:bg-emerald-600 text-emerald-700 dark:text-emerald-300 hover:text-white font-bold text-xs border border-emerald-200 dark:border-emerald-500/30 flex items-center gap-2 transition-all cursor-pointer"
+                    >
+                      <WhatsAppIcon className="w-4 h-4 fill-current" />
+                      <span>Enviar por WhatsApp</span>
+                    </a>
+                  )}
+                  <button
+                    onClick={() => setDetailModalAgency(null)}
+                    className={UI_LOCK.buttonSecondary + ' ml-auto'}
+                  >
+                    Cerrar Detalle
+                  </button>
+                </div>
               </div>
             </div>
-
-            <div className="flex items-center justify-between pt-3 border-t border-slate-800 shrink-0 gap-2">
-              {selectedAgencyRow && (
-                <a
-                  href={generateAgencyWhatsAppUrl(selectedAgencyRow)}
-                  target="_blank"
-                  rel="noreferrer"
-                  className="px-4 py-2.5 rounded-xl bg-emerald-600/20 hover:bg-emerald-600 text-emerald-300 hover:text-white font-bold text-xs border border-emerald-500/30 flex items-center gap-2 transition-all cursor-pointer"
-                >
-                  <WhatsAppIcon className="w-4 h-4 fill-current" />
-                  <span>Enviar por WhatsApp</span>
-                </a>
-              )}
-              <button
-                onClick={() => setDetailModalAgency(null)}
-                className="px-5 py-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 font-semibold text-xs transition-colors text-center ml-auto cursor-pointer"
-              >
-                Cerrar Detalle
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
+          )}
         </>
       )}
 

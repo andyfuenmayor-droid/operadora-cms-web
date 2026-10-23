@@ -7,5 +7,19 @@
   npm run test:closure
   ```
 - **PROHIBIDO** duplicar entregas de efectivo como movimientos bancarios en Confirmaciones y Actas.
-- Consulta `CLOSURE_ARCHITECTURE_RULES.md` para ver el detalle de las invariantes matemáticas de la Semana 41.
+- Consulta `CLOSURE_ARCHITECTURE_RULES.md` para ver el detalle de las invariantes matemáticas de la Semana 41 y las Leyes de Diseño Visual.
 - Antes de finalizar cualquier tarea en este repositorio, ejecuta siempre `npm run build` para asegurar que el Golden Test y el bundler compilan con éxito.
+
+## Ley Permanente de Diseño Visual y Menú Lateral (UI Design Lock)
+1. **Orden del Menú Lateral Intocable (22 Menús):**
+   El orden de los 22 menús laterales jamás debe desorganizarse ni alterarse:
+   1. Inicio, 2. Confirmaciones, 3. Confirmados, 4. Sistemas, 5. Monedas, 6. Cuentas Bancarias, 7. Agencias, 8. Grupos, 9. Cobradores, 10. Cargar Ventas, 11. Pagos Agencias, 12. Gastos por Agencia, 13. Saldo Agencias, 14. Venta Real, 15. Pagos a Proveedores, 16. Reporte Proveedores, 17. Config. Proveedores, 18. Gastos Administrativos, 19. Cierre, 20. Auditoría, 21. Ajustes, 22. Usuarios.
+2. **Patrón Visual Obligatorio para Nuevas Pantallas y Componentes:**
+   Cualquier pantalla, modal, pestaña o componente que se cree o modifique en el futuro DEBE importar y seguir obligatoriamente los tokens de `src/styles/uiDesignLock.ts`, respetando la jerarquía estructural:
+   - Bloque 1: Cabecera Estándar (`headerCard`, `headerTitle`, `headerSubtitle`, acciones con botón esmeralda)
+   - Bloque 2: Tarjetas de Resumen / KPIs Dinámicos por Moneda (`kpiGrid`, `kpiCard`, adaptable 1 a 4+ cols)
+   - Bloque 3: Formulario / Filtros con píldoras (`filterPillActive` / `filterPillInactive`)
+   - Bloque 4: Tabla Dual Claro/Oscuro (`tableContainer`, `tableThead`, `tableRow`)
+   - Monedas 100% Dinámicas: Obtener siempre con `loadCurrencies(effectiveUserId)` / `getActiveCurrencies()`. Cero hardcode de `['BS', 'USD', 'COP']`.
+3. **Prohibición de Estilos Inventados:**
+   Queda estrictamente prohibido introducir botones morados, turquesas de ancho completo o colores fuera de la paleta corporativa esmeralda (`bg-emerald-600 hover:bg-emerald-500 text-white font-semibold rounded-xl px-5 py-2.5 shadow-sm transition-all`) sin que el usuario escriba explícitamente `"CAMBIO VISUAL AUTORIZADO"`.

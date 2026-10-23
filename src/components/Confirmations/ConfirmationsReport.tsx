@@ -31,6 +31,8 @@ import {
 } from 'lucide-react';
 import { realtimeBroadcast } from '../../utils/realtimeBroadcast';
 import { logAuditEvent } from '../../utils/auditLogger';
+import { loadCurrencies, type CurrencyConfig } from '../../utils/currencies';
+import { UI_LOCK } from '../../styles/uiDesignLock';
 
 
 interface CustodiaAgencia {
@@ -97,6 +99,7 @@ export const ConfirmationsReport: React.FC = () => {
   const [isProcessing, setIsProcessing] = useState(false);
   const [transactions, setTransactions] = useState<ConfirmationTransaction[]>([]);
   const [agenciesList, setAgenciesList] = useState<string[]>([]);
+  const [activeCurrencies, setActiveCurrencies] = useState<CurrencyConfig[]>([]);
   const [cajaSupervisorRows, setCajaSupervisorRows] = useState<any[]>([]);
 
   // Receipt modal state
@@ -105,7 +108,7 @@ export const ConfirmationsReport: React.FC = () => {
   // New Cash Entry Form state (Tab 3)
   const [formAgencia, setFormAgencia] = useState('');
   const [formSupervisor, setFormSupervisor] = useState('');
-  const [formMoneda, setFormMoneda] = useState<'COP' | 'USD' | 'BS'>('COP');
+  const [formMoneda, setFormMoneda] = useState<string>('BS');
   const [formMonto, setFormMonto] = useState('');
   const [formNota, setFormNota] = useState('');
   const [isSubmittingCash, setIsSubmittingCash] = useState(false);
@@ -120,11 +123,18 @@ export const ConfirmationsReport: React.FC = () => {
     setMessage(null);
 
     try {
-      // 1. Fetch agencies
-      const { data: agData } = await supabase
-        .from('agencias')
-        .select('id, nombre_agencia, cuentas_asignadas')
-        .eq('user_id', effectiveUserId);
+      // 1. Fetch agencies & active currencies
+      const [{ data: agData }, currs] = await Promise.all([
+        supabase
+          .from('agencias')
+          .select('id, nombre_agencia, cuentas_asignadas')
+          .eq('user_id', effectiveUserId),
+        loadCurrencies(effectiveUserId),
+      ]);
+      setActiveCurrencies(currs);
+      if (currs.length > 0) {
+        setFormMoneda(currs[0].codigo);
+      }
 
       const ags = (agData || [])
         .map((a: any) => String(a.nombre_agencia || '').trim().toUpperCase())
@@ -532,46 +542,39 @@ export const ConfirmationsReport: React.FC = () => {
 
   // Metrics
   const metrics = useMemo(() => {
-    let confBs = 0, confUsd = 0, confCop = 0;
-    let rutaBs = 0, rutaUsd = 0, rutaCop = 0;
-    let pendBs = 0, pendUsd = 0, pendCop = 0;
-    let rechBs = 0, rechUsd = 0, rechCop = 0;
+    const byCurr: Record<string, { conf: number; ruta: number; pend: number; rech: number }> = {};
+    activeCurrencies.forEach((c) => {
+      byCurr[c.codigo] = { conf: 0, ruta: 0, pend: 0, rech: 0 };
+    });
     let totalConf = 0, totalRuta = 0, totalPend = 0, totalRech = 0;
 
     filteredTransactions.forEach((tx) => {
       const isRuta = tx.is_cobrador && (tx.confirmado || tx.estado_raw === 'cobrado') && !tx.liquidado_admin && tx.estado_raw !== 'liquidado';
 
+      if (!byCurr[tx.moneda]) {
+        byCurr[tx.moneda] = { conf: 0, ruta: 0, pend: 0, rech: 0 };
+      }
+
       if (tx.rechazado) {
         totalRech++;
-        if (tx.moneda === 'BS') rechBs += tx.monto;
-        else if (tx.moneda === 'COP') rechCop += tx.monto;
-        else rechUsd += tx.monto;
+        byCurr[tx.moneda].rech += tx.monto;
       } else if (isRuta) {
         totalRuta++;
-        if (tx.moneda === 'BS') rutaBs += tx.monto;
-        else if (tx.moneda === 'COP') rutaCop += tx.monto;
-        else rutaUsd += tx.monto;
+        byCurr[tx.moneda].ruta += tx.monto;
       } else if (tx.confirmado) {
         totalConf++;
-        if (tx.moneda === 'BS') confBs += tx.monto;
-        else if (tx.moneda === 'COP') confCop += tx.monto;
-        else confUsd += tx.monto;
+        byCurr[tx.moneda].conf += tx.monto;
       } else {
         totalPend++;
-        if (tx.moneda === 'BS') pendBs += tx.monto;
-        else if (tx.moneda === 'COP') pendCop += tx.monto;
-        else pendUsd += tx.monto;
+        byCurr[tx.moneda].pend += tx.monto;
       }
     });
 
     return {
       totalConf, totalRuta, totalPend, totalRech,
-      confBs, confUsd, confCop,
-      rutaBs, rutaUsd, rutaCop,
-      pendBs, pendUsd, pendCop,
-      rechBs, rechUsd, rechCop,
+      byCurr,
     };
-  }, [filteredTransactions]);
+  }, [filteredTransactions, activeCurrencies]);
 
   // Action: Restore rejected item to pending
   const handleRestoreToPending = async (tx: ConfirmationTransaction) => {
@@ -682,17 +685,17 @@ export const ConfirmationsReport: React.FC = () => {
   };
 
   return (
-    <div className="space-y-6">
+    <div className={UI_LOCK.pageContainer}>
       {/* Header & Sub-Tabs */}
-      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 bg-[#0D1B22] p-5 rounded-2xl border border-slate-800/80 shadow-lg">
+      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 bg-white dark:bg-[#0D1B22] p-5 rounded-2xl border border-slate-200/80 dark:border-slate-800/80 shadow-sm transition-colors">
         <div>
           <div className="flex items-center gap-3">
-            <div className="p-2.5 rounded-xl bg-sky-500/10 text-sky-400 border border-sky-500/20">
+            <div className="p-2.5 rounded-xl bg-sky-500/10 text-sky-600 dark:text-sky-400 border border-sky-500/20">
               <FileText className="w-6 h-6" />
             </div>
             <div>
-              <h2 className="text-xl font-black text-white tracking-tight">Confirmados</h2>
-              <p className="text-xs text-slate-400 mt-0.5">
+              <h2 className="text-xl font-black text-slate-900 dark:text-white tracking-tight">Confirmados</h2>
+              <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
                 Reportes históricos, auditoría de transacciones confirmadas, rechazadas y custodia de efectivo.
               </p>
             </div>
@@ -700,12 +703,12 @@ export const ConfirmationsReport: React.FC = () => {
         </div>
 
         {/* Sub Tabs & Manual Refresh */}
-        <div className="flex items-center gap-2">
-          <div id="tour-confirmados-tabs" className="flex items-center gap-1.5 p-1 bg-slate-900/90 border border-slate-800 rounded-xl">
+        <div className="flex items-center gap-2 flex-wrap">
+          <div id="tour-confirmados-tabs" className="flex items-center gap-1.5 p-1 bg-slate-100 dark:bg-slate-900/90 border border-slate-200 dark:border-slate-800 rounded-xl">
             <button
               onClick={() => setActiveTab('reporte')}
               className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer ${
-                activeTab === 'reporte' ? 'bg-emerald-500 text-black shadow-xs font-extrabold' : 'text-slate-400 hover:text-white'
+                activeTab === 'reporte' ? 'bg-emerald-600 text-white shadow-xs font-extrabold' : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
               }`}
             >
               📋 Reporte General ({filteredTransactions.length})
@@ -713,7 +716,7 @@ export const ConfirmationsReport: React.FC = () => {
             <button
               onClick={() => setActiveTab('rechazados')}
               className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer ${
-                activeTab === 'rechazados' ? 'bg-rose-500 text-white shadow-xs font-extrabold' : 'text-slate-400 hover:text-white'
+                activeTab === 'rechazados' ? 'bg-rose-600 text-white shadow-xs font-extrabold' : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
               }`}
             >
               ❌ Auditoría Rechazados ({rejectedTransactions.length})
@@ -721,7 +724,7 @@ export const ConfirmationsReport: React.FC = () => {
             <button
               onClick={() => setActiveTab('arqueo')}
               className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer ${
-                activeTab === 'arqueo' ? 'bg-sky-500 text-black shadow-xs font-extrabold' : 'text-slate-400 hover:text-white'
+                activeTab === 'arqueo' ? 'bg-sky-600 text-white shadow-xs font-extrabold' : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
               }`}
             >
               📦 Arqueo y Efectivo
@@ -731,10 +734,10 @@ export const ConfirmationsReport: React.FC = () => {
           <button
             onClick={() => loadData()}
             disabled={isLoading}
-            className="p-2.5 rounded-xl bg-slate-900/90 hover:bg-slate-800 text-slate-400 hover:text-white border border-slate-800 text-xs font-bold transition-all cursor-pointer disabled:opacity-50 shadow-xs"
+            className={UI_LOCK.buttonRefresh}
             title="Actualizar reporte manualmente"
           >
-            <RefreshCw className={`w-4 h-4 ${isLoading ? 'animate-spin text-emerald-400' : ''}`} />
+            <RefreshCw className={`w-4 h-4 ${isLoading ? 'animate-spin text-emerald-500' : ''}`} />
           </button>
         </div>
       </div>
@@ -744,12 +747,12 @@ export const ConfirmationsReport: React.FC = () => {
         <div
           className={`p-4 rounded-xl text-xs font-bold border flex items-center justify-between animate-fade-in ${
             message.type === 'success'
-              ? 'bg-emerald-500/10 text-emerald-300 border-emerald-500/30'
-              : 'bg-rose-500/10 text-rose-300 border-rose-500/30'
+              ? 'bg-emerald-50 text-emerald-900 border-emerald-300 dark:bg-emerald-500/10 dark:text-emerald-300 dark:border-emerald-500/30'
+              : 'bg-rose-50 text-rose-900 border-rose-300 dark:bg-rose-500/10 dark:text-rose-300 dark:border-rose-500/30'
           }`}
         >
           <span>{message.text}</span>
-          <button onClick={() => setMessage(null)} className="text-slate-400 hover:text-white cursor-pointer font-black">
+          <button onClick={() => setMessage(null)} className="text-slate-400 hover:text-slate-700 dark:hover:text-white cursor-pointer font-black">
             ✕
           </button>
         </div>
@@ -757,34 +760,34 @@ export const ConfirmationsReport: React.FC = () => {
 
       {/* Filters Bar (Common for Tab 1 & Tab 2) */}
       {activeTab !== 'arqueo' && (
-        <div id="tour-confirmados-filters" className="p-4 rounded-2xl bg-[#0D1B22] border border-slate-800/80 space-y-3">
+        <div id="tour-confirmados-filters" className="p-4 rounded-2xl bg-white dark:bg-[#0D1B22] border border-slate-200/80 dark:border-slate-800/80 shadow-sm space-y-3 transition-colors">
           <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-3">
             <div>
-              <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1">Desde</label>
+              <label className="block text-[10px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider mb-1">Desde</label>
               <input
                 type="date"
                 value={fechaDesde}
                 onChange={(e) => setFechaDesde(e.target.value)}
-                className="w-full px-2.5 py-1.5 bg-slate-900 border border-slate-700/80 rounded-xl text-xs font-bold text-white focus:outline-hidden focus:border-emerald-500"
+                className="w-full px-2.5 py-1.5 bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700/80 rounded-xl text-xs font-bold text-slate-900 dark:text-white focus:outline-hidden focus:border-emerald-500"
               />
             </div>
 
             <div>
-              <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1">Hasta</label>
+              <label className="block text-[10px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider mb-1">Hasta</label>
               <input
                 type="date"
                 value={fechaHasta}
                 onChange={(e) => setFechaHasta(e.target.value)}
-                className="w-full px-2.5 py-1.5 bg-slate-900 border border-slate-700/80 rounded-xl text-xs font-bold text-white focus:outline-hidden focus:border-emerald-500"
+                className="w-full px-2.5 py-1.5 bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700/80 rounded-xl text-xs font-bold text-slate-900 dark:text-white focus:outline-hidden focus:border-emerald-500"
               />
             </div>
 
             <div>
-              <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1">Agencia</label>
+              <label className="block text-[10px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider mb-1">Agencia</label>
               <select
                 value={selAgencia}
                 onChange={(e) => setSelAgencia(e.target.value)}
-                className="w-full px-2.5 py-1.5 bg-slate-900 border border-slate-700/80 rounded-xl text-xs font-bold text-white focus:outline-hidden focus:border-emerald-500 cursor-pointer"
+                className="w-full px-2.5 py-1.5 bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700/80 rounded-xl text-xs font-bold text-slate-900 dark:text-white focus:outline-hidden focus:border-emerald-500 cursor-pointer"
               >
                 <option value="Todas">Todas las Agencias</option>
                 {agenciesList.map((ag) => (
@@ -796,11 +799,11 @@ export const ConfirmationsReport: React.FC = () => {
             </div>
 
             <div>
-              <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1">Tipo / Origen</label>
+              <label className="block text-[10px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider mb-1">Tipo / Origen</label>
               <select
                 value={selCategoria}
                 onChange={(e) => setSelCategoria(e.target.value)}
-                className="w-full px-2.5 py-1.5 bg-slate-900 border border-slate-700/80 rounded-xl text-xs font-bold text-white focus:outline-hidden focus:border-emerald-500 cursor-pointer"
+                className="w-full px-2.5 py-1.5 bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700/80 rounded-xl text-xs font-bold text-slate-900 dark:text-white focus:outline-hidden focus:border-emerald-500 cursor-pointer"
               >
                 <option value="Todas">Todas las Fuentes</option>
                 <option value="Bancos y POS">Bancos y POS</option>
@@ -811,11 +814,11 @@ export const ConfirmationsReport: React.FC = () => {
             </div>
 
             <div>
-              <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1">Estado</label>
+              <label className="block text-[10px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider mb-1">Estado</label>
               <select
                 value={selEstado}
                 onChange={(e: any) => setSelEstado(e.target.value)}
-                className="w-full px-2.5 py-1.5 bg-slate-900 border border-slate-700/80 rounded-xl text-xs font-bold text-white focus:outline-hidden focus:border-emerald-500 cursor-pointer"
+                className="w-full px-2.5 py-1.5 bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700/80 rounded-xl text-xs font-bold text-slate-900 dark:text-white focus:outline-hidden focus:border-emerald-500 cursor-pointer"
               >
                 <option value="Todos">Todos los Estados</option>
                 <option value="Confirmados">✅ Solo Confirmados</option>
@@ -834,7 +837,7 @@ export const ConfirmationsReport: React.FC = () => {
                 placeholder="Buscar por referencia, pagador, concepto o agencia..."
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
-                className="w-full pl-9 pr-3 py-2 bg-slate-900 border border-slate-700/80 rounded-xl text-xs text-white placeholder-slate-500 focus:outline-hidden focus:border-emerald-500"
+                className="w-full pl-9 pr-3 py-2 bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700/80 rounded-xl text-xs text-slate-900 dark:text-white placeholder-slate-400 dark:placeholder-slate-500 focus:outline-hidden focus:border-emerald-500"
               />
             </div>
 
@@ -846,8 +849,8 @@ export const ConfirmationsReport: React.FC = () => {
                 }}
                 className={`px-3 py-2 rounded-xl text-xs font-bold transition-all cursor-pointer ${
                   fechaDesde === systemCycle.desde && fechaHasta === systemCycle.hasta
-                    ? 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/30'
-                    : 'bg-slate-800 hover:bg-slate-700 text-slate-300'
+                    ? 'bg-emerald-500/20 text-emerald-700 dark:text-emerald-400 border border-emerald-500/30'
+                    : 'bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-300'
                 }`}
                 title="Filtrar por ciclo de trabajo activo"
               >
@@ -861,8 +864,8 @@ export const ConfirmationsReport: React.FC = () => {
                 }}
                 className={`px-3 py-2 rounded-xl text-xs font-bold transition-all cursor-pointer ${
                   fechaHasta === todayIso && fechaDesde !== ''
-                    ? 'bg-sky-500/20 text-sky-400 border border-sky-500/30'
-                    : 'bg-slate-800 hover:bg-slate-700 text-slate-300'
+                    ? 'bg-sky-500/20 text-sky-700 dark:text-sky-400 border border-sky-500/30'
+                    : 'bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-300'
                 }`}
                 title="Mostrar desde inicio de ciclo hasta el día de hoy"
               >
@@ -876,8 +879,8 @@ export const ConfirmationsReport: React.FC = () => {
                 }}
                 className={`px-3 py-2 rounded-xl text-xs font-bold transition-all cursor-pointer ${
                   !fechaDesde && !fechaHasta
-                    ? 'bg-amber-500/20 text-amber-400 border border-amber-500/30'
-                    : 'bg-slate-800 hover:bg-slate-700 text-slate-300'
+                    ? 'bg-amber-500/20 text-amber-700 dark:text-amber-400 border border-amber-500/30'
+                    : 'bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-300'
                 }`}
                 title="Ver todo el historial completo sin límite de fechas"
               >
@@ -886,7 +889,7 @@ export const ConfirmationsReport: React.FC = () => {
 
               <button
                 onClick={handleExportCSV}
-                className="flex items-center gap-1.5 px-3.5 py-2 bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 rounded-xl text-xs font-bold transition-all cursor-pointer"
+                className="flex items-center gap-1.5 px-3.5 py-2 bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-700 dark:text-emerald-400 border border-emerald-500/30 rounded-xl text-xs font-bold transition-all cursor-pointer"
               >
                 <FileText className="w-3.5 h-3.5" />
                 <span>Exportar CSV</span>
@@ -901,105 +904,75 @@ export const ConfirmationsReport: React.FC = () => {
       {/* ========================================================= */}
       {activeTab === 'reporte' && (
         <div className="space-y-4">
-          {/* Metrics Overview */}
-          <div id="tour-confirmados-metrics" className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3.5">
-            <div className="p-4 rounded-2xl bg-[#0D1B22] border border-slate-800/80 shadow-xs">
-              <div className="text-[11px] font-bold text-slate-400 uppercase tracking-wider">Estado de Registros</div>
+          {/* Metrics Overview - Dynamic Currencies */}
+          <div id="tour-confirmados-metrics" className={UI_LOCK.kpiGrid(activeCurrencies.length + 1)}>
+            <div className="p-4 rounded-2xl bg-white dark:bg-[#0D1B22] border border-slate-200/80 dark:border-slate-800/80 shadow-xs transition-colors">
+              <div className="text-[11px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider">Estado de Registros</div>
               <div className="mt-2 space-y-1">
                 <div className="flex justify-between text-xs">
-                  <span className="text-emerald-400 font-bold">✅ Confirmados:</span>
-                  <span className="font-mono font-bold text-white">{metrics.totalConf}</span>
+                  <span className="text-emerald-600 dark:text-emerald-400 font-bold">✅ Confirmados:</span>
+                  <span className="font-mono font-bold text-slate-900 dark:text-white">{metrics.totalConf}</span>
                 </div>
                 <div className="flex justify-between text-xs">
-                  <span className="text-sky-400 font-bold">🛵 En Ruta (Cobradores):</span>
-                  <span className="font-mono font-bold text-white">{metrics.totalRuta}</span>
+                  <span className="text-sky-600 dark:text-sky-400 font-bold">🛵 En Ruta (Cobradores):</span>
+                  <span className="font-mono font-bold text-slate-900 dark:text-white">{metrics.totalRuta}</span>
                 </div>
                 <div className="flex justify-between text-xs">
-                  <span className="text-rose-400 font-bold">❌ Rechazados:</span>
-                  <span className="font-mono font-bold text-white">{metrics.totalRech}</span>
+                  <span className="text-rose-600 dark:text-rose-400 font-bold">❌ Rechazados:</span>
+                  <span className="font-mono font-bold text-slate-900 dark:text-white">{metrics.totalRech}</span>
                 </div>
                 <div className="flex justify-between text-xs">
-                  <span className="text-amber-400 font-bold">⏳ Pendientes:</span>
-                  <span className="font-mono font-bold text-white">{metrics.totalPend}</span>
+                  <span className="text-amber-600 dark:text-amber-400 font-bold">⏳ Pendientes:</span>
+                  <span className="font-mono font-bold text-slate-900 dark:text-white">{metrics.totalPend}</span>
                 </div>
               </div>
             </div>
 
-            <div className="p-4 rounded-2xl bg-[#0D1B22] border border-slate-800/80 shadow-xs">
-              <div className="text-[11px] font-bold text-slate-400 uppercase tracking-wider">🇻🇪 Bolívares (BS)</div>
-              <div className="mt-2 space-y-1">
-                <div className="text-xs text-emerald-400 font-bold">
-                  Conf: <span className="font-mono font-black">{formatCurrency(metrics.confBs, 'BS')}</span>
-                </div>
-                {metrics.rutaBs > 0 && (
-                  <div className="text-[11px] text-sky-400 font-semibold">
-                    En Ruta: <span className="font-mono font-bold">{formatCurrency(metrics.rutaBs, 'BS')}</span>
+            {activeCurrencies.map((c) => {
+              const curData = metrics.byCurr[c.codigo] || { conf: 0, ruta: 0, pend: 0, rech: 0 };
+              return (
+                <div key={c.codigo} className="p-4 rounded-2xl bg-white dark:bg-[#0D1B22] border border-slate-200/80 dark:border-slate-800/80 shadow-xs transition-colors">
+                  <div className="text-[11px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider flex items-center gap-1.5">
+                    <span>{c.icono || '🪙'}</span>
+                    <span>{c.nombre} ({c.codigo})</span>
                   </div>
-                )}
-                <div className="text-[11px] text-amber-400 font-semibold">
-                  Pend: <span className="font-mono">{formatCurrency(metrics.pendBs, 'BS')}</span>
-                </div>
-                <div className="text-[11px] text-rose-400 font-semibold">
-                  Rech: <span className="font-mono">{formatCurrency(metrics.rechBs, 'BS')}</span>
-                </div>
-              </div>
-            </div>
-
-            <div className="p-4 rounded-2xl bg-[#0D1B22] border border-slate-800/80 shadow-xs">
-              <div className="text-[11px] font-bold text-slate-400 uppercase tracking-wider">💵 Dólares (USD)</div>
-              <div className="mt-2 space-y-1">
-                <div className="text-xs text-emerald-400 font-bold">
-                  Conf: <span className="font-mono font-black">{formatCurrency(metrics.confUsd, 'USD')}</span>
-                </div>
-                {metrics.rutaUsd > 0 && (
-                  <div className="text-[11px] text-sky-400 font-semibold">
-                    En Ruta: <span className="font-mono font-bold">{formatCurrency(metrics.rutaUsd, 'USD')}</span>
+                  <div className="mt-2 space-y-1">
+                    <div className="text-xs text-emerald-600 dark:text-emerald-400 font-bold">
+                      Conf: <span className="font-mono font-black">{formatCurrency(curData.conf, c.codigo)}</span>
+                    </div>
+                    {curData.ruta > 0 && (
+                      <div className="text-[11px] text-sky-600 dark:text-sky-400 font-semibold">
+                        En Ruta: <span className="font-mono font-bold">{formatCurrency(curData.ruta, c.codigo)}</span>
+                      </div>
+                    )}
+                    <div className="text-[11px] text-amber-600 dark:text-amber-400 font-semibold">
+                      Pend: <span className="font-mono">{formatCurrency(curData.pend, c.codigo)}</span>
+                    </div>
+                    <div className="text-[11px] text-rose-600 dark:text-rose-400 font-semibold">
+                      Rech: <span className="font-mono">{formatCurrency(curData.rech, c.codigo)}</span>
+                    </div>
                   </div>
-                )}
-                <div className="text-[11px] text-amber-400 font-semibold">
-                  Pend: <span className="font-mono">{formatCurrency(metrics.pendUsd, 'USD')}</span>
                 </div>
-                <div className="text-[11px] text-rose-400 font-semibold">
-                  Rech: <span className="font-mono">{formatCurrency(metrics.rechUsd, 'USD')}</span>
-                </div>
-              </div>
-            </div>
-
-            <div className="p-4 rounded-2xl bg-[#0D1B22] border border-slate-800/80 shadow-xs">
-              <div className="text-[11px] font-bold text-slate-400 uppercase tracking-wider">🇨🇴 Pesos (COP)</div>
-              <div className="mt-2 space-y-1">
-                <div className="text-xs text-emerald-400 font-bold">
-                  Conf: <span className="font-mono font-black">{formatCurrency(metrics.confCop, 'COP')}</span>
-                </div>
-                <div className="text-[11px] text-sky-400 font-bold">
-                  En Ruta: <span className="font-mono font-black">{formatCurrency(metrics.rutaCop, 'COP')}</span>
-                </div>
-                <div className="text-[11px] text-amber-400 font-semibold">
-                  Pend: <span className="font-mono">{formatCurrency(metrics.pendCop, 'COP')}</span>
-                </div>
-                <div className="text-[11px] text-rose-400 font-semibold">
-                  Rech: <span className="font-mono">{formatCurrency(metrics.rechCop, 'COP')}</span>
-                </div>
-              </div>
-            </div>
+              );
+            })}
           </div>
 
           {/* Table View */}
           {isLoading ? (
-            <div className="p-12 text-center bg-[#0D1B22] rounded-2xl border border-slate-800/80">
+            <div className="p-12 text-center bg-white dark:bg-[#0D1B22] rounded-2xl border border-slate-200/80 dark:border-slate-800/80">
               <div className="w-8 h-8 border-2 border-emerald-500 border-t-transparent rounded-full animate-spin mx-auto mb-3" />
-              <p className="text-xs text-slate-400">Cargando reporte de confirmaciones...</p>
+              <p className="text-xs text-slate-500 dark:text-slate-400">Cargando reporte de confirmaciones...</p>
             </div>
           ) : filteredTransactions.length === 0 ? (
-            <div className="p-12 text-center bg-[#0D1B22] rounded-2xl border border-slate-800/80">
-              <FileText className="w-8 h-8 text-slate-500 mx-auto mb-2" />
-              <h4 className="text-sm font-bold text-slate-300">No hay transacciones registradas</h4>
-              <p className="text-xs text-slate-500 mt-1">Intente ajustar los filtros de fecha o estado.</p>
+            <div className="p-12 text-center bg-white dark:bg-[#0D1B22] rounded-2xl border border-slate-200/80 dark:border-slate-800/80">
+              <FileText className="w-8 h-8 text-slate-400 dark:text-slate-500 mx-auto mb-2" />
+              <h4 className="text-sm font-bold text-slate-800 dark:text-slate-300">No hay transacciones registradas</h4>
+              <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">Intente ajustar los filtros de fecha o estado.</p>
             </div>
           ) : (
-            <div id="tour-confirmados-table" className="overflow-x-auto bg-[#0D1B22] rounded-2xl border border-slate-800/80 shadow-sm">
+            <div id="tour-confirmados-table" className="overflow-x-auto bg-white dark:bg-[#0D1B22] rounded-2xl border border-slate-200/80 dark:border-slate-800/80 shadow-sm">
               <table className="w-full text-left text-xs">
-                <thead className="bg-slate-900/90 text-[10px] font-black text-slate-400 uppercase tracking-wider border-b border-slate-800">
+                <thead className="bg-slate-50 dark:bg-slate-900/90 text-[10px] font-black text-slate-500 dark:text-slate-400 uppercase tracking-wider border-b border-slate-200 dark:border-slate-800">
                   <tr>
                     <th className="p-3.5">Fecha / Hora</th>
                     <th className="p-3.5">Agencia / Origen</th>
@@ -1011,16 +984,16 @@ export const ConfirmationsReport: React.FC = () => {
                     <th className="p-3.5 text-center">Estado</th>
                   </tr>
                 </thead>
-                <tbody className="divide-y divide-slate-800/60">
+                <tbody className="divide-y divide-slate-200/80 dark:divide-slate-800/60">
                   {filteredTransactions.map((tx) => {
                     const isBanco = tx.categoria === 'Bancos' || tx.categoria === 'Punto de Venta';
                     const isGasto = tx.categoria === 'Gastos';
                     const timeStr = getTimeString(tx.created_at || tx.fecha);
 
                     return (
-                      <tr key={`${tx.tabla}_${tx.id}`} className="hover:bg-slate-800/30 transition-colors">
+                      <tr key={`${tx.tabla}_${tx.id}`} className="hover:bg-slate-50/80 dark:hover:bg-slate-800/30 transition-colors">
                         <td className="p-3.5 whitespace-nowrap">
-                          <div className="font-mono font-bold text-slate-300">{formatDate(tx.fecha)}</div>
+                          <div className="font-mono font-bold text-slate-800 dark:text-slate-300">{formatDate(tx.fecha)}</div>
                           {timeStr && (
                             <div className="text-[10px] text-slate-500 font-mono flex items-center gap-1 mt-0.5">
                               <Clock className="w-2.5 h-2.5 text-slate-400" />
@@ -1029,79 +1002,79 @@ export const ConfirmationsReport: React.FC = () => {
                           )}
                         </td>
                         <td className="p-3.5 whitespace-nowrap">
-                          <div className="font-bold text-white flex items-center gap-1.5">
-                            <Building2 className="w-3.5 h-3.5 text-emerald-400 shrink-0" />
+                          <div className="font-bold text-slate-900 dark:text-white flex items-center gap-1.5">
+                            <Building2 className="w-3.5 h-3.5 text-emerald-500 dark:text-emerald-400 shrink-0" />
                             <span>{tx.agencia}</span>
                           </div>
-                          <div className="text-[10px] text-slate-400 flex items-center gap-1 mt-0.5">
-                            <User className="w-2.5 h-2.5 text-slate-500 shrink-0" />
+                          <div className="text-[10px] text-slate-500 dark:text-slate-400 flex items-center gap-1 mt-0.5">
+                            <User className="w-2.5 h-2.5 text-slate-400 dark:text-slate-500 shrink-0" />
                             <span className="truncate max-w-[140px]">{tx.cajero_nombre || 'Taquilla'}</span>
                           </div>
                         </td>
                         <td className="p-3.5 whitespace-nowrap">
                           {tx.banco ? (
-                            <div className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-sky-500/10 border border-sky-500/25 text-sky-300 font-bold text-[11px]">
-                              <Landmark className="w-3 h-3 text-sky-400 shrink-0" />
+                            <div className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-sky-50 dark:bg-sky-500/10 border border-sky-200 dark:border-sky-500/25 text-sky-700 dark:text-sky-300 font-bold text-[11px]">
+                              <Landmark className="w-3 h-3 text-sky-500 dark:text-sky-400 shrink-0" />
                               <span>{tx.banco}</span>
                             </div>
                           ) : isGasto ? (
-                            <span className="text-[11px] text-slate-500 italic">Caja / Gasto</span>
+                            <span className="text-[11px] text-slate-400 dark:text-slate-500 italic">Caja / Gasto</span>
                           ) : (
-                            <span className="text-[11px] text-slate-500 italic">Efectivo / Caja</span>
+                            <span className="text-[11px] text-slate-400 dark:text-slate-500 italic">Efectivo / Caja</span>
                           )}
                         </td>
                         <td className="p-3.5 whitespace-nowrap">
                           <span
                             className={`px-2 py-0.5 rounded-md text-[10px] font-bold ${
                               isGasto
-                                ? 'bg-rose-500/15 text-rose-300'
+                                ? 'bg-rose-50 text-rose-700 dark:bg-rose-500/15 dark:text-rose-300'
                                 : isBanco
-                                ? 'bg-sky-500/15 text-sky-300'
-                                : 'bg-emerald-500/15 text-emerald-300'
+                                ? 'bg-sky-50 text-sky-700 dark:bg-sky-500/15 dark:text-sky-300'
+                                : 'bg-emerald-50 text-emerald-700 dark:bg-emerald-500/15 dark:text-emerald-300'
                             }`}
                           >
                             {tx.metodo}
                           </span>
                         </td>
-                        <td className="p-3.5 font-mono font-bold text-amber-300 whitespace-nowrap">{tx.referencia}</td>
+                        <td className="p-3.5 font-mono font-bold text-amber-700 dark:text-amber-300 whitespace-nowrap">{tx.referencia}</td>
                         <td className="p-3.5 max-w-xs">
-                          <div className="font-semibold text-slate-200 truncate">
+                          <div className="font-semibold text-slate-900 dark:text-slate-200 truncate">
                             {tx.pagador && tx.pagador !== 'N/A' ? tx.pagador : tx.concepto}
                           </div>
                           {tx.pagador && tx.pagador !== 'N/A' && tx.concepto && tx.concepto !== tx.pagador && (
-                            <div className="text-[10px] text-slate-400 truncate mt-0.5">
+                            <div className="text-[10px] text-slate-500 dark:text-slate-400 truncate mt-0.5">
                               {tx.concepto}
                             </div>
                           )}
                         </td>
-                        <td className="p-3.5 font-mono font-black text-right text-emerald-400 whitespace-nowrap">
+                        <td className="p-3.5 font-mono font-black text-right text-emerald-600 dark:text-emerald-400 whitespace-nowrap">
                           {formatCurrency(tx.monto, tx.moneda)}
                         </td>
                         <td className="p-3.5 text-center whitespace-nowrap">
                           {tx.rechazado ? (
-                            <span className="px-2.5 py-1 rounded-md bg-rose-500/15 text-rose-400 border border-rose-500/30 text-[10px] font-bold">
+                            <span className="px-2.5 py-1 rounded-md bg-rose-50 text-rose-700 border border-rose-200 dark:bg-rose-500/15 dark:text-rose-400 dark:border-rose-500/30 text-[10px] font-bold">
                               ❌ Rechazado
                             </span>
                           ) : tx.is_cobrador ? (
                             tx.liquidado_admin || tx.estado_raw === 'liquidado' ? (
-                              <span className="px-2.5 py-1 rounded-md bg-teal-500/15 text-teal-300 border border-teal-500/30 text-[10px] font-bold">
+                              <span className="px-2.5 py-1 rounded-md bg-teal-50 text-teal-700 border border-teal-200 dark:bg-teal-500/15 dark:text-teal-300 dark:border-teal-500/30 text-[10px] font-bold">
                                 💼 Liquidado en Caja
                               </span>
                             ) : tx.confirmado || tx.estado_raw === 'cobrado' ? (
-                              <span className="px-2.5 py-1 rounded-md bg-sky-500/15 text-sky-300 border border-sky-500/30 text-[10px] font-bold">
+                              <span className="px-2.5 py-1 rounded-md bg-sky-50 text-sky-700 border border-sky-200 dark:bg-sky-500/15 dark:text-sky-300 dark:border-sky-500/30 text-[10px] font-bold">
                                 🛵 Cobrado / En Ruta {tx.confirmado_por ? `(${tx.confirmado_por})` : ''}
                               </span>
                             ) : (
-                              <span className="px-2.5 py-1 rounded-md bg-amber-500/15 text-amber-400 border border-amber-500/30 text-[10px] font-bold">
+                              <span className="px-2.5 py-1 rounded-md bg-amber-50 text-amber-700 border border-amber-200 dark:bg-amber-500/15 dark:text-amber-400 dark:border-amber-500/30 text-[10px] font-bold">
                                 ⏳ Por Recoger (Taquilla)
                               </span>
                             )
                           ) : tx.confirmado ? (
-                            <span className="px-2.5 py-1 rounded-md bg-emerald-500/15 text-emerald-400 border border-emerald-500/30 text-[10px] font-bold">
+                            <span className="px-2.5 py-1 rounded-md bg-emerald-50 text-emerald-700 border border-emerald-200 dark:bg-emerald-500/15 dark:text-emerald-400 dark:border-emerald-500/30 text-[10px] font-bold">
                               ✅ Confirmado {tx.confirmado_por ? `(${tx.confirmado_por})` : ''}
                             </span>
                           ) : (
-                            <span className="px-2.5 py-1 rounded-md bg-amber-500/15 text-amber-400 border border-amber-500/30 text-[10px] font-bold">
+                            <span className="px-2.5 py-1 rounded-md bg-amber-50 text-amber-700 border border-amber-200 dark:bg-amber-500/15 dark:text-amber-400 dark:border-amber-500/30 text-[10px] font-bold">
                               ⏳ Pendiente
                             </span>
                           )}
@@ -1121,17 +1094,17 @@ export const ConfirmationsReport: React.FC = () => {
       {/* ========================================================= */}
       {activeTab === 'rechazados' && (
         <div className="space-y-3">
-          <div className="flex items-center justify-between text-xs font-bold text-slate-400 px-1">
+          <div className="flex items-center justify-between text-xs font-bold text-slate-500 dark:text-slate-400 px-1">
             <span>Se encontraron {rejectedTransactions.length} registros rechazados en el sistema:</span>
           </div>
 
           {rejectedTransactions.length === 0 ? (
-            <div className="p-16 text-center bg-[#0D1B22] rounded-2xl border border-slate-800/80 flex flex-col items-center justify-center">
-              <div className="w-16 h-16 rounded-2xl bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 flex items-center justify-center mb-4">
+            <div className="p-16 text-center bg-white dark:bg-[#0D1B22] rounded-2xl border border-slate-200/80 dark:border-slate-800/80 flex flex-col items-center justify-center">
+              <div className="w-16 h-16 rounded-2xl bg-emerald-50 dark:bg-emerald-500/10 border border-emerald-200 dark:border-emerald-500/20 text-emerald-600 dark:text-emerald-400 flex items-center justify-center mb-4">
                 <CheckCircle2 className="w-8 h-8" />
               </div>
-              <h3 className="text-lg font-black text-white tracking-tight">¡Sin transacciones rechazadas!</h3>
-              <p className="text-xs text-slate-400 max-w-sm mt-1">
+              <h3 className="text-lg font-black text-slate-900 dark:text-white tracking-tight">¡Sin transacciones rechazadas!</h3>
+              <p className="text-xs text-slate-500 dark:text-slate-400 max-w-sm mt-1">
                 Todas las operaciones verificadas fueron aprobadas correctamente.
               </p>
             </div>
@@ -1140,50 +1113,50 @@ export const ConfirmationsReport: React.FC = () => {
               {rejectedTransactions.map((tx) => (
                 <div
                   key={`${tx.tabla}_${tx.id}`}
-                  className="p-4 rounded-2xl bg-[#0D1B22] border border-rose-500/30 shadow-sm flex flex-col lg:flex-row lg:items-center justify-between gap-4"
+                  className="p-4 rounded-2xl bg-white dark:bg-[#0D1B22] border border-rose-200 dark:border-rose-500/30 shadow-sm flex flex-col lg:flex-row lg:items-center justify-between gap-4"
                 >
                   <div className="space-y-2 flex-1 min-w-0">
                     <div className="flex flex-wrap items-center gap-2">
-                      <span className="text-sm font-black text-white flex items-center gap-1.5">
-                        <Building2 className="w-3.5 h-3.5 text-rose-400 shrink-0" />
+                      <span className="text-sm font-black text-slate-900 dark:text-white flex items-center gap-1.5">
+                        <Building2 className="w-3.5 h-3.5 text-rose-500 dark:text-rose-400 shrink-0" />
                         <span>{tx.agencia}</span>
                       </span>
 
-                      <span className="px-2 py-0.5 rounded-md bg-rose-500/15 text-rose-300 border border-rose-500/30 text-[10px] font-black uppercase">
+                      <span className="px-2 py-0.5 rounded-md bg-rose-50 text-rose-700 dark:bg-rose-500/15 dark:text-rose-300 border border-rose-200 dark:border-rose-500/30 text-[10px] font-black uppercase">
                         ❌ Rechazado
                       </span>
 
-                      <span className="text-[11px] text-slate-400 font-mono">{formatDate(tx.fecha)}</span>
+                      <span className="text-[11px] text-slate-500 dark:text-slate-400 font-mono">{formatDate(tx.fecha)}</span>
                     </div>
 
-                    <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 text-xs text-slate-300 pt-1">
+                    <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 text-xs text-slate-700 dark:text-slate-300 pt-1">
                       <div>
                         <span className="text-[10px] text-slate-500 uppercase block font-bold">Método</span>
-                        <span className="font-semibold text-slate-200">{tx.metodo}</span>
+                        <span className="font-semibold text-slate-800 dark:text-slate-200">{tx.metodo}</span>
                       </div>
 
                       <div>
                         <span className="text-[10px] text-slate-500 uppercase block font-bold">Banco Destino</span>
-                        <span className="font-semibold text-sky-300 flex items-center gap-1">
-                          <Landmark className="w-3 h-3 text-sky-400 shrink-0" />
+                        <span className="font-semibold text-sky-700 dark:text-sky-300 flex items-center gap-1">
+                          <Landmark className="w-3 h-3 text-sky-500 dark:text-sky-400 shrink-0" />
                           {tx.banco || 'Caja / General'}
                         </span>
                       </div>
 
                       <div>
                         <span className="text-[10px] text-slate-500 uppercase block font-bold">Referencia</span>
-                        <span className="font-mono font-bold text-amber-300 break-all">{tx.referencia}</span>
+                        <span className="font-mono font-bold text-amber-700 dark:text-amber-300 break-all">{tx.referencia}</span>
                       </div>
 
                       <div>
                         <span className="text-[10px] text-slate-500 uppercase block font-bold">Rechazado Por</span>
-                        <span className="text-rose-300 font-bold">{tx.rechazado_por || 'ADMIN'}</span>
+                        <span className="text-rose-700 dark:text-rose-300 font-bold">{tx.rechazado_por || 'ADMIN'}</span>
                       </div>
                     </div>
 
                     {/* Motivo box */}
-                    <div className="p-2.5 bg-rose-500/5 border border-rose-500/20 rounded-xl text-xs text-rose-300 flex items-start gap-2">
-                      <AlertTriangle className="w-4 h-4 text-rose-400 shrink-0 mt-0.5" />
+                    <div className="p-2.5 bg-rose-50 dark:bg-rose-500/5 border border-rose-200 dark:border-rose-500/20 rounded-xl text-xs text-rose-700 dark:text-rose-300 flex items-start gap-2">
+                      <AlertTriangle className="w-4 h-4 text-rose-500 dark:text-rose-400 shrink-0 mt-0.5" />
                       <div>
                         <span className="font-bold">Motivo del rechazo: </span>
                         <span>{tx.motivo_rechazo || 'Rechazado por Administración'}</span>
@@ -1191,10 +1164,10 @@ export const ConfirmationsReport: React.FC = () => {
                     </div>
                   </div>
 
-                  <div className="flex items-center justify-between lg:justify-end gap-4 shrink-0 pt-3 lg:pt-0 border-t lg:border-t-0 border-slate-800">
+                  <div className="flex items-center justify-between lg:justify-end gap-4 shrink-0 pt-3 lg:pt-0 border-t lg:border-t-0 border-slate-200 dark:border-slate-800">
                     <div className="text-right">
-                      <div className="text-[10px] text-slate-400 uppercase font-bold tracking-wider">Monto</div>
-                      <div className="text-xl font-black text-rose-400 font-mono">
+                      <div className="text-[10px] text-slate-500 dark:text-slate-400 uppercase font-bold tracking-wider">Monto</div>
+                      <div className="text-xl font-black text-rose-600 dark:text-rose-400 font-mono">
                         {formatCurrency(tx.monto, tx.moneda)}
                       </div>
                     </div>
@@ -1202,10 +1175,10 @@ export const ConfirmationsReport: React.FC = () => {
                     <button
                       onClick={() => handleRestoreToPending(tx)}
                       disabled={isProcessing}
-                      className="px-3.5 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 hover:text-white border border-slate-700 text-xs font-bold flex items-center gap-1.5 transition-all cursor-pointer"
+                      className="px-3.5 py-2 rounded-xl bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 border border-slate-300 dark:border-slate-700 text-xs font-bold flex items-center gap-1.5 transition-all cursor-pointer"
                       title="Restaurar transacción a estado pendiente"
                     >
-                      <RotateCcw className="w-3.5 h-3.5 text-emerald-400" />
+                      <RotateCcw className="w-3.5 h-3.5 text-emerald-500 dark:text-emerald-400" />
                       <span>Restaurar a Pendiente</span>
                     </button>
                   </div>
@@ -1222,22 +1195,22 @@ export const ConfirmationsReport: React.FC = () => {
       {activeTab === 'arqueo' && (
         <div className="space-y-6">
           {/* Form to enter cash into central admin */}
-          <div className="p-5 rounded-2xl bg-[#0D1B22] border border-slate-800/80 shadow-md">
-            <div className="flex items-center gap-2 mb-4 pb-3 border-b border-slate-800">
-              <Banknote className="w-5 h-5 text-emerald-400" />
-              <h3 className="text-sm font-black text-white uppercase tracking-wider">
+          <div className="p-5 rounded-2xl bg-white dark:bg-[#0D1B22] border border-slate-200/80 dark:border-slate-800/80 shadow-sm">
+            <div className="flex items-center gap-2 mb-4 pb-3 border-b border-slate-200 dark:border-slate-800">
+              <Banknote className="w-5 h-5 text-emerald-500 dark:text-emerald-400" />
+              <h3 className="text-sm font-black text-slate-900 dark:text-white uppercase tracking-wider">
                 Registrar Entrega de Efectivo a Caja Central
               </h3>
             </div>
 
             <form onSubmit={handleCreateCashEntry} className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3.5">
               <div>
-                <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1">Agencia</label>
+                <label className="block text-[10px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider mb-1">Agencia</label>
                 <select
                   value={formAgencia}
                   onChange={(e) => setFormAgencia(e.target.value)}
                   required
-                  className="w-full px-3 py-2 bg-slate-900 border border-slate-700 rounded-xl text-xs font-bold text-white focus:outline-hidden focus:border-emerald-500 cursor-pointer"
+                  className="w-full px-3 py-2 bg-slate-50 dark:bg-slate-900 border border-slate-300 dark:border-slate-700 rounded-xl text-xs font-bold text-slate-900 dark:text-white focus:outline-hidden focus:border-emerald-500 cursor-pointer"
                 >
                   <option value="">Seleccione Agencia</option>
                   {agenciesList.map((ag) => (
@@ -1249,20 +1222,22 @@ export const ConfirmationsReport: React.FC = () => {
               </div>
 
               <div>
-                <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1">Moneda</label>
+                <label className="block text-[10px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider mb-1">Moneda</label>
                 <select
                   value={formMoneda}
                   onChange={(e: any) => setFormMoneda(e.target.value)}
-                  className="w-full px-3 py-2 bg-slate-900 border border-slate-700 rounded-xl text-xs font-bold text-white focus:outline-hidden focus:border-emerald-500 cursor-pointer"
+                  className="w-full px-3 py-2 bg-slate-50 dark:bg-slate-900 border border-slate-300 dark:border-slate-700 rounded-xl text-xs font-bold text-slate-900 dark:text-white focus:outline-hidden focus:border-emerald-500 cursor-pointer"
                 >
-                  <option value="COP">Pesos (COP)</option>
-                  <option value="USD">Dólares (USD)</option>
-                  <option value="BS">Bolívares (BS)</option>
+                  {activeCurrencies.map((c) => (
+                    <option key={c.codigo} value={c.codigo}>
+                      {c.nombre} ({c.codigo})
+                    </option>
+                  ))}
                 </select>
               </div>
 
               <div>
-                <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1">Monto Entregado</label>
+                <label className="block text-[10px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider mb-1">Monto Entregado</label>
                 <input
                   type="number"
                   step="0.01"
@@ -1271,18 +1246,18 @@ export const ConfirmationsReport: React.FC = () => {
                   placeholder="0.00"
                   value={formMonto}
                   onChange={(e) => setFormMonto(e.target.value)}
-                  className="w-full px-3 py-2 bg-slate-900 border border-slate-700 rounded-xl text-xs font-mono font-bold text-emerald-400 focus:outline-hidden focus:border-emerald-500"
+                  className="w-full px-3 py-2 bg-slate-50 dark:bg-slate-900 border border-slate-300 dark:border-slate-700 rounded-xl text-xs font-mono font-bold text-emerald-600 dark:text-emerald-400 focus:outline-hidden focus:border-emerald-500"
                 />
               </div>
 
               <div>
-                <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1">Entregado Por</label>
+                <label className="block text-[10px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider mb-1">Entregado Por</label>
                 <input
                   type="text"
                   placeholder="Nombre de supervisor o cajero"
                   value={formSupervisor}
                   onChange={(e) => setFormSupervisor(e.target.value)}
-                  className="w-full px-3 py-2 bg-slate-900 border border-slate-700 rounded-xl text-xs text-white placeholder-slate-500 focus:outline-hidden focus:border-emerald-500"
+                  className="w-full px-3 py-2 bg-slate-50 dark:bg-slate-900 border border-slate-300 dark:border-slate-700 rounded-xl text-xs text-slate-900 dark:text-white placeholder-slate-400 dark:placeholder-slate-500 focus:outline-hidden focus:border-emerald-500"
                 />
               </div>
 
@@ -1290,7 +1265,7 @@ export const ConfirmationsReport: React.FC = () => {
                 <button
                   type="submit"
                   disabled={isSubmittingCash}
-                  className="w-full py-2.5 px-4 bg-emerald-500 hover:bg-emerald-400 text-black text-xs font-black rounded-xl shadow-md shadow-emerald-500/20 transition-all cursor-pointer"
+                  className={UI_LOCK.buttonPrimary + ' w-full text-xs justify-center'}
                 >
                   {isSubmittingCash ? 'Registrando...' : '💾 Registrar y Generar Recibo'}
                 </button>
@@ -1300,12 +1275,12 @@ export const ConfirmationsReport: React.FC = () => {
 
           {/* Historical Cash Handover Entries */}
           <div className="space-y-3">
-            <h4 className="text-xs font-black text-slate-400 uppercase tracking-wider">
+            <h4 className="text-xs font-black text-slate-500 dark:text-slate-400 uppercase tracking-wider">
               Historial de Entregas a Caja Central ({cajaSupervisorRows.length})
             </h4>
 
             {cajaSupervisorRows.length === 0 ? (
-              <div className="p-8 text-center bg-[#0D1B22] rounded-2xl border border-slate-800/80">
+              <div className="p-8 text-center bg-white dark:bg-[#0D1B22] rounded-2xl border border-slate-200/80 dark:border-slate-800/80">
                 <p className="text-xs text-slate-500">No hay entregas de efectivo registradas aún.</p>
               </div>
             ) : (
@@ -1313,28 +1288,28 @@ export const ConfirmationsReport: React.FC = () => {
                 {cajaSupervisorRows.map((row: any) => (
                   <div
                     key={row.id}
-                    className="p-4 rounded-2xl bg-[#0D1B22] border border-slate-800/90 hover:border-emerald-500/40 transition-all shadow-sm space-y-2.5"
+                    className="p-4 rounded-2xl bg-white dark:bg-[#0D1B22] border border-slate-200/80 dark:border-slate-800/90 hover:border-emerald-500/40 transition-all shadow-sm space-y-2.5"
                   >
                     <div className="flex items-center justify-between">
-                      <span className="text-xs font-black text-white">{row.agencia || 'AGENCIA GENERAL'}</span>
+                      <span className="text-xs font-black text-slate-900 dark:text-white">{row.agencia || 'AGENCIA GENERAL'}</span>
                       <span className="text-[10px] font-mono text-slate-500">{formatDate(row.created_at)}</span>
                     </div>
 
-                    <div className="text-lg font-black text-emerald-400 font-mono">
+                    <div className="text-lg font-black text-emerald-600 dark:text-emerald-400 font-mono">
                       {formatCurrency(row.monto, row.moneda)}
                     </div>
 
-                    <div className="text-xs text-slate-400 space-y-0.5 border-t border-slate-800/80 pt-2">
-                      <div>Entregó: <span className="text-slate-200 font-semibold">{row.supervisor_nombre || 'N/A'}</span></div>
-                      <div>Recibió: <span className="text-slate-200 font-semibold">{row.recibido_por || 'ADMIN'}</span></div>
+                    <div className="text-xs text-slate-500 dark:text-slate-400 space-y-0.5 border-t border-slate-100 dark:border-slate-800/80 pt-2">
+                      <div>Entregó: <span className="text-slate-800 dark:text-slate-200 font-semibold">{row.supervisor_nombre || 'N/A'}</span></div>
+                      <div>Recibió: <span className="text-slate-800 dark:text-slate-200 font-semibold">{row.recibido_por || 'ADMIN'}</span></div>
                     </div>
 
                     <div className="pt-2 flex items-center justify-end">
                       <button
                         onClick={() => setReceiptModalItem(row)}
-                        className="px-3 py-1.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-bold flex items-center gap-1.5 transition-all cursor-pointer"
+                        className="px-3 py-1.5 rounded-xl bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 text-xs font-bold flex items-center gap-1.5 transition-all cursor-pointer"
                       >
-                        <Printer className="w-3.5 h-3.5 text-sky-400" />
+                        <Printer className="w-3.5 h-3.5 text-sky-500 dark:text-sky-400" />
                         <span>Ver Recibo</span>
                       </button>
                     </div>
@@ -1349,29 +1324,29 @@ export const ConfirmationsReport: React.FC = () => {
       {/* Receipt Modal */}
       {receiptModalItem && (
         <div className="fixed inset-0 bg-black/75 backdrop-blur-xs flex items-center justify-center p-4 z-50">
-          <div className="bg-[#0D1B22] border border-emerald-500/30 rounded-2xl max-w-sm w-full p-6 space-y-4 shadow-2xl animate-scale-up">
-            <div className="flex items-center justify-between border-b border-slate-800 pb-3">
-              <span className="text-xs font-black text-emerald-400 uppercase tracking-wider">Recibo Oficial de Entrada</span>
+          <div className="bg-white dark:bg-[#0D1B22] border border-slate-200 dark:border-emerald-500/30 rounded-2xl max-w-sm w-full p-6 space-y-4 shadow-2xl animate-scale-up">
+            <div className="flex items-center justify-between border-b border-slate-200 dark:border-slate-800 pb-3">
+              <span className="text-xs font-black text-emerald-600 dark:text-emerald-400 uppercase tracking-wider">Recibo Oficial de Entrada</span>
               <button
                 onClick={() => setReceiptModalItem(null)}
-                className="text-slate-400 hover:text-white cursor-pointer font-bold"
+                className="text-slate-400 hover:text-slate-700 dark:hover:text-white cursor-pointer font-bold"
               >
                 ✕
               </button>
             </div>
 
             {/* Ticket Format (80mm aesthetic) */}
-            <div className="p-4 bg-slate-900 border border-slate-800 rounded-xl space-y-3 font-mono text-xs">
-              <div className="text-center border-b border-dashed border-slate-700 pb-2">
-                <div className="font-bold text-white text-sm">MULTIBANCA EXPRESS</div>
-                <div className="text-[10px] text-slate-400">CAJA CENTRAL - LIQUIDACIÓN</div>
-                <div className="text-[10px] text-slate-500">Folio: #{receiptModalItem.id}</div>
+            <div className="p-4 bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl space-y-3 font-mono text-xs">
+              <div className="text-center border-b border-dashed border-slate-300 dark:border-slate-700 pb-2">
+                <div className="font-bold text-slate-900 dark:text-white text-sm">MULTIBANCA EXPRESS</div>
+                <div className="text-[10px] text-slate-500 dark:text-slate-400">CAJA CENTRAL - LIQUIDACIÓN</div>
+                <div className="text-[10px] text-slate-400 dark:text-slate-500">Folio: #{receiptModalItem.id}</div>
               </div>
 
-              <div className="space-y-1 text-slate-300">
+              <div className="space-y-1 text-slate-700 dark:text-slate-300">
                 <div className="flex justify-between">
                   <span className="text-slate-500">Agencia:</span>
-                  <span className="font-bold text-white">{receiptModalItem.agencia}</span>
+                  <span className="font-bold text-slate-900 dark:text-white">{receiptModalItem.agencia}</span>
                 </div>
                 <div className="flex justify-between">
                   <span className="text-slate-500">Fecha:</span>
@@ -1387,14 +1362,14 @@ export const ConfirmationsReport: React.FC = () => {
                 </div>
               </div>
 
-              <div className="text-center border-t border-b border-dashed border-slate-700 py-2">
-                <div className="text-[10px] text-slate-400 uppercase">Monto Recibido</div>
-                <div className="text-xl font-black text-emerald-400">
+              <div className="text-center border-t border-b border-dashed border-slate-300 dark:border-slate-700 py-2">
+                <div className="text-[10px] text-slate-500 dark:text-slate-400 uppercase">Monto Recibido</div>
+                <div className="text-xl font-black text-emerald-600 dark:text-emerald-400">
                   {formatCurrency(receiptModalItem.monto, receiptModalItem.moneda)}
                 </div>
               </div>
 
-              <div className="text-center text-[10px] text-slate-500 italic pt-1">
+              <div className="text-center text-[10px] text-slate-400 dark:text-slate-500 italic pt-1">
                 Comprobante oficial verificado en Sistema CMS
               </div>
             </div>
@@ -1403,7 +1378,7 @@ export const ConfirmationsReport: React.FC = () => {
               <button
                 type="button"
                 onClick={() => window.print()}
-                className="px-4 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-bold flex items-center gap-1.5 transition-all cursor-pointer"
+                className="px-4 py-2 rounded-xl bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 text-xs font-bold flex items-center gap-1.5 transition-all cursor-pointer"
               >
                 <Printer className="w-3.5 h-3.5" />
                 <span>Imprimir</span>
@@ -1411,7 +1386,7 @@ export const ConfirmationsReport: React.FC = () => {
               <button
                 type="button"
                 onClick={() => setReceiptModalItem(null)}
-                className="px-4 py-2 rounded-xl bg-emerald-500 hover:bg-emerald-400 text-black text-xs font-bold transition-all cursor-pointer"
+                className="px-4 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold transition-all cursor-pointer"
               >
                 Cerrar
               </button>

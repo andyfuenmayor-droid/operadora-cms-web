@@ -25,6 +25,7 @@ import {
   type SystemKeywordConfig
 } from '../../utils/systemKeywords';
 import { loadCurrencies, type CurrencyConfig } from '../../utils/currencies';
+import { UI_LOCK } from '../../styles/uiDesignLock';
 
 export const SystemsTab: React.FC = () => {
   const { effectiveUserId } = useAuth();
@@ -301,29 +302,29 @@ export const SystemsTab: React.FC = () => {
   return (
     <div className="space-y-6">
       {/* Header */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-slate-800 pb-4">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-slate-200 dark:border-slate-800 pb-4">
         <div>
-          <h2 className="text-xl font-black text-white flex items-center gap-2">
-            <Layers className="w-5 h-5 text-emerald-400" />
+          <h2 className="text-xl font-black text-slate-900 dark:text-white flex items-center gap-2">
+            <Layers className="w-5 h-5 text-emerald-500 dark:text-emerald-400" />
             <span>Gestión de Sistemas y Proveedores</span>
           </h2>
-          <p className="text-xs text-slate-400 mt-1">
+          <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">
             Configuración de proveedores de apuestas: Comisión Comercializador, Participación Comercializador, Saldos Iniciales y mapeo de columnas para importación.
           </p>
         </div>
         <button
           onClick={fetchSystems}
           disabled={loading}
-          className="p-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 transition-colors self-start sm:self-auto cursor-pointer"
+          className="p-2 rounded-xl bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-300 transition-colors self-start sm:self-auto cursor-pointer"
         >
-          <RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin text-emerald-400' : ''}`} />
+          <RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin text-emerald-500 dark:text-emerald-400' : ''}`} />
         </button>
       </div>
 
       {/* Form: Add System with Complete Operator/Commercializer Config */}
-      <div id="tour-sistemas-form" className="bg-[#0D1B22] border border-slate-800 rounded-2xl p-5 shadow-lg space-y-4">
-        <h3 className="text-xs font-extrabold uppercase tracking-wider text-slate-300 flex items-center gap-2">
-          <Plus className="w-4 h-4 text-emerald-400" />
+      <div id="tour-sistemas-form" className="bg-white dark:bg-[#0D1B22] border border-slate-200/80 dark:border-slate-800 rounded-2xl p-5 shadow-sm space-y-4">
+        <h3 className="text-xs font-extrabold uppercase tracking-wider text-slate-800 dark:text-slate-300 flex items-center gap-2">
+          <Plus className="w-4 h-4 text-emerald-500 dark:text-emerald-400" />
           <span>Añadir Nuevo Sistema / Proveedor</span>
         </h3>
 
@@ -331,7 +332,7 @@ export const SystemsTab: React.FC = () => {
           {/* Row 1: Identificación y Columnas de Archivo */}
           <div id="tour-sistemas-form-inputs" className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
             <div className="space-y-1">
-              <label className="text-xs font-bold text-white flex items-center gap-1">
+              <label className="text-xs font-bold text-slate-800 dark:text-white flex items-center gap-1">
                 <span>Nombre del Sistema *</span>
               </label>
               <input
@@ -339,13 +340,13 @@ export const SystemsTab: React.FC = () => {
                 value={nombre}
                 onChange={(e) => handleNombreChange(e.target.value)}
                 placeholder="EJ: KENO, BETM3, HIPISMO"
-                className="w-full bg-[#071217] border border-slate-700 rounded-xl px-3 py-2 text-xs text-white placeholder-slate-500 uppercase focus:outline-none focus:border-emerald-500 font-bold"
+                className="w-full bg-white dark:bg-[#071217] border border-slate-300 dark:border-slate-700 rounded-xl px-3 py-2 text-xs text-slate-900 dark:text-white placeholder-slate-400 dark:placeholder-slate-500 uppercase focus:outline-hidden focus:border-emerald-500 font-bold"
               />
             </div>
 
             <div className="space-y-1">
-              <label className="text-xs font-semibold text-slate-300 flex items-center gap-1">
-                <Tag className="w-3 h-3 text-amber-400" />
+              <label className="text-xs font-semibold text-slate-700 dark:text-slate-300 flex items-center gap-1">
+                <Tag className="w-3 h-3 text-amber-500 dark:text-amber-400" />
                 <span>Columna de Agencia / ID</span>
               </label>
               <input
@@ -353,13 +354,13 @@ export const SystemsTab: React.FC = () => {
                 value={colAgencia}
                 onChange={(e) => setColAgencia(e.target.value)}
                 placeholder="Ej: Agent, Nombre, USUARIO"
-                className="w-full bg-[#071217] border border-slate-700 rounded-xl px-3 py-2 text-xs text-white font-mono placeholder-slate-600 focus:outline-none focus:border-cyan-500"
+                className="w-full bg-white dark:bg-[#071217] border border-slate-300 dark:border-slate-700 rounded-xl px-3 py-2 text-xs text-slate-900 dark:text-white font-mono placeholder-slate-400 dark:placeholder-slate-600 focus:outline-hidden focus:border-cyan-500"
               />
             </div>
 
             <div className="space-y-1">
-              <label className="text-xs font-semibold text-slate-300 flex items-center gap-1">
-                <Tag className="w-3 h-3 text-cyan-400" />
+              <label className="text-xs font-semibold text-slate-700 dark:text-slate-300 flex items-center gap-1">
+                <Tag className="w-3 h-3 text-cyan-500 dark:text-cyan-400" />
                 <span>Columna de Ventas</span>
               </label>
               <input
@@ -367,13 +368,13 @@ export const SystemsTab: React.FC = () => {
                 value={colVenta}
                 onChange={(e) => setColVenta(e.target.value)}
                 placeholder="Ej: Total accepted, Venta, Jugado"
-                className="w-full bg-[#071217] border border-slate-700 rounded-xl px-3 py-2 text-xs text-white font-mono placeholder-slate-600 focus:outline-none focus:border-cyan-500"
+                className="w-full bg-white dark:bg-[#071217] border border-slate-300 dark:border-slate-700 rounded-xl px-3 py-2 text-xs text-slate-900 dark:text-white font-mono placeholder-slate-400 dark:placeholder-slate-600 focus:outline-hidden focus:border-cyan-500"
               />
             </div>
 
             <div className="space-y-1">
-              <label className="text-xs font-semibold text-slate-300 flex items-center gap-1">
-                <Tag className="w-3 h-3 text-rose-400" />
+              <label className="text-xs font-semibold text-slate-700 dark:text-slate-300 flex items-center gap-1">
+                <Tag className="w-3 h-3 text-rose-500 dark:text-rose-400" />
                 <span>Columna de Premios</span>
               </label>
               <input
@@ -381,21 +382,21 @@ export const SystemsTab: React.FC = () => {
                 value={colPremio}
                 onChange={(e) => setColPremio(e.target.value)}
                 placeholder="Ej: Total paid, Premio, Pagados"
-                className="w-full bg-[#071217] border border-slate-700 rounded-xl px-3 py-2 text-xs text-white font-mono placeholder-slate-600 focus:outline-none focus:border-cyan-500"
+                className="w-full bg-white dark:bg-[#071217] border border-slate-300 dark:border-slate-700 rounded-xl px-3 py-2 text-xs text-slate-900 dark:text-white font-mono placeholder-slate-400 dark:placeholder-slate-600 focus:outline-hidden focus:border-cyan-500"
               />
             </div>
           </div>
 
           {/* Row 2: Comisión y Participación Comercializador + Saldos Iniciales de Arrastre */}
-          <div id="tour-sistemas-form-conditions" className="p-3.5 rounded-xl bg-[#071217]/80 border border-slate-800/80 space-y-3">
-            <div className="text-[11px] font-bold uppercase tracking-wider text-slate-400 flex items-center gap-2">
-              <TrendingUp className="w-3.5 h-3.5 text-amber-400" />
+          <div id="tour-sistemas-form-conditions" className="p-3.5 rounded-xl bg-slate-50 dark:bg-[#071217]/80 border border-slate-200 dark:border-slate-800/80 space-y-3">
+            <div className="text-[11px] font-bold uppercase tracking-wider text-slate-600 dark:text-slate-400 flex items-center gap-2">
+              <TrendingUp className="w-3.5 h-3.5 text-amber-500 dark:text-amber-400" />
               <span>Condiciones del Comercializador y Saldos Iniciales con el Proveedor</span>
             </div>
 
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3">
               <div className="space-y-1">
-                <label className="text-[11px] font-semibold text-amber-300 flex items-center gap-1">
+                <label className="text-[11px] font-semibold text-amber-700 dark:text-amber-300 flex items-center gap-1">
                   <Percent className="w-3 h-3" />
                   <span>% Comisión Comercializador</span>
                 </label>
@@ -407,12 +408,12 @@ export const SystemsTab: React.FC = () => {
                   value={comisionComercializador}
                   onChange={(e) => setComisionComercializador(e.target.value)}
                   placeholder="0.00 %"
-                  className="w-full bg-[#0D1B22] border border-amber-500/30 rounded-xl px-3 py-2 text-xs text-amber-200 font-mono font-bold focus:outline-none focus:border-amber-400"
+                  className="w-full bg-white dark:bg-[#0D1B22] border border-amber-300 dark:border-amber-500/30 rounded-xl px-3 py-2 text-xs text-amber-800 dark:text-amber-200 font-mono font-bold focus:outline-hidden focus:border-amber-500"
                 />
               </div>
 
               <div className="space-y-1">
-                <label className="text-[11px] font-semibold text-indigo-300 flex items-center gap-1">
+                <label className="text-[11px] font-semibold text-indigo-700 dark:text-indigo-300 flex items-center gap-1">
                   <Percent className="w-3 h-3" />
                   <span>% Participación Comercializador</span>
                 </label>
@@ -424,13 +425,13 @@ export const SystemsTab: React.FC = () => {
                   value={participacionComercializador}
                   onChange={(e) => setParticipacionComercializador(e.target.value)}
                   placeholder="0.00 %"
-                  className="w-full bg-[#0D1B22] border border-indigo-500/30 rounded-xl px-3 py-2 text-xs text-indigo-200 font-mono font-bold focus:outline-none focus:border-indigo-400"
+                  className="w-full bg-white dark:bg-[#0D1B22] border border-indigo-300 dark:border-indigo-500/30 rounded-xl px-3 py-2 text-xs text-indigo-800 dark:text-indigo-200 font-mono font-bold focus:outline-hidden focus:border-indigo-500"
                 />
               </div>
 
               <div className="space-y-1">
-                <label className="text-[11px] font-semibold text-slate-300 flex items-center gap-1">
-                  <Wallet className="w-3 h-3 text-amber-400" />
+                <label className="text-[11px] font-semibold text-slate-700 dark:text-slate-300 flex items-center gap-1">
+                  <Wallet className="w-3 h-3 text-amber-500 dark:text-amber-400" />
                   <span>Saldo Inicial (BS)</span>
                 </label>
                 <input
@@ -439,13 +440,13 @@ export const SystemsTab: React.FC = () => {
                   value={saldoInicialBs}
                   onChange={(e) => setSaldoInicialBs(e.target.value)}
                   placeholder="0.00 Bs."
-                  className="w-full bg-[#0D1B22] border border-slate-700 rounded-xl px-3 py-2 text-xs text-white font-mono focus:outline-none focus:border-emerald-500"
+                  className="w-full bg-white dark:bg-[#0D1B22] border border-slate-300 dark:border-slate-700 rounded-xl px-3 py-2 text-xs text-slate-900 dark:text-white font-mono focus:outline-hidden focus:border-emerald-500"
                 />
               </div>
 
               <div className="space-y-1">
-                <label className="text-[11px] font-semibold text-slate-300 flex items-center gap-1">
-                  <Wallet className="w-3 h-3 text-emerald-400" />
+                <label className="text-[11px] font-semibold text-slate-700 dark:text-slate-300 flex items-center gap-1">
+                  <Wallet className="w-3 h-3 text-emerald-500 dark:text-emerald-400" />
                   <span>Saldo Inicial (USD)</span>
                 </label>
                 <input
@@ -454,13 +455,13 @@ export const SystemsTab: React.FC = () => {
                   value={saldoInicialUsd}
                   onChange={(e) => setSaldoInicialUsd(e.target.value)}
                   placeholder="0.00 $"
-                  className="w-full bg-[#0D1B22] border border-slate-700 rounded-xl px-3 py-2 text-xs text-white font-mono focus:outline-none focus:border-emerald-500"
+                  className="w-full bg-white dark:bg-[#0D1B22] border border-slate-300 dark:border-slate-700 rounded-xl px-3 py-2 text-xs text-slate-900 dark:text-white font-mono focus:outline-hidden focus:border-emerald-500"
                 />
               </div>
 
               <div className="space-y-1">
-                <label className="text-[11px] font-semibold text-slate-300 flex items-center gap-1">
-                  <Wallet className="w-3 h-3 text-cyan-400" />
+                <label className="text-[11px] font-semibold text-slate-700 dark:text-slate-300 flex items-center gap-1">
+                  <Wallet className="w-3 h-3 text-cyan-500 dark:text-cyan-400" />
                   <span>Saldo Inicial (COP)</span>
                 </label>
                 <input
@@ -469,23 +470,23 @@ export const SystemsTab: React.FC = () => {
                   value={saldoInicialCop}
                   onChange={(e) => setSaldoInicialCop(e.target.value)}
                   placeholder="0.00 COP"
-                  className="w-full bg-[#0D1B22] border border-slate-700 rounded-xl px-3 py-2 text-xs text-white font-mono focus:outline-none focus:border-emerald-500"
+                  className="w-full bg-white dark:bg-[#0D1B22] border border-slate-300 dark:border-slate-700 rounded-xl px-3 py-2 text-xs text-slate-900 dark:text-white font-mono focus:outline-hidden focus:border-emerald-500"
                 />
               </div>
             </div>
           </div>
 
           <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 pt-1">
-            <p className="text-[11px] text-slate-400">
-              💡 La comisión y participación se aplicarán automáticamente en el módulo de <strong className="text-slate-200">Reporte Proveedores</strong>.
+            <p className="text-[11px] text-slate-500 dark:text-slate-400">
+              💡 La comisión y participación se aplicarán automáticamente en el módulo de <strong className="text-slate-800 dark:text-slate-200">Reporte Proveedores</strong>.
             </p>
             <button
               type="submit"
               disabled={saving}
-              className="w-full sm:w-auto py-2.5 px-6 rounded-xl bg-emerald-500 hover:bg-emerald-400 text-black font-extrabold text-xs tracking-wide transition-all shadow-md flex items-center justify-center gap-2 cursor-pointer disabled:opacity-50 shrink-0"
+              className={UI_LOCK.buttonPrimary + ' w-full sm:w-auto text-xs'}
             >
               {saving ? (
-                <div className="w-4 h-4 border-2 border-black border-t-transparent rounded-full animate-spin" />
+                <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
               ) : (
                 <>
                   <Plus className="w-4 h-4" />
@@ -497,14 +498,14 @@ export const SystemsTab: React.FC = () => {
         </form>
 
         {errorMsg && (
-          <div className="p-3 rounded-xl bg-rose-500/10 border border-rose-500/30 text-rose-400 text-xs font-semibold flex items-center gap-2">
+          <div className="p-3 rounded-xl bg-rose-50 text-rose-700 border border-rose-200 dark:bg-rose-500/10 dark:border-rose-500/30 dark:text-rose-400 text-xs font-semibold flex items-center gap-2">
             <AlertCircle className="w-4 h-4 shrink-0" />
             <span>{errorMsg}</span>
           </div>
         )}
 
         {successMsg && (
-          <div className="p-3 rounded-xl bg-emerald-500/10 border border-emerald-500/30 text-emerald-400 text-xs font-semibold flex items-center gap-2">
+          <div className="p-3 rounded-xl bg-emerald-50 text-emerald-700 border border-emerald-200 dark:bg-emerald-500/10 dark:border-emerald-500/30 dark:text-emerald-400 text-xs font-semibold flex items-center gap-2">
             <CheckCircle2 className="w-4 h-4 shrink-0" />
             <span>{successMsg}</span>
           </div>
@@ -512,9 +513,9 @@ export const SystemsTab: React.FC = () => {
       </div>
 
       {/* Systems Table */}
-      <div id="tour-sistemas-table" className="bg-[#0D1B22] border border-slate-800 rounded-2xl overflow-hidden shadow-lg">
-        <div className="p-4 border-b border-slate-800 flex items-center justify-between">
-          <h4 className="text-xs font-extrabold uppercase tracking-wider text-slate-300">
+      <div id="tour-sistemas-table" className="bg-white dark:bg-[#0D1B22] border border-slate-200/80 dark:border-slate-800 rounded-2xl overflow-hidden shadow-sm">
+        <div className="p-4 border-b border-slate-200 dark:border-slate-800 flex items-center justify-between">
+          <h4 className="text-xs font-extrabold uppercase tracking-wider text-slate-800 dark:text-slate-300">
             Sistemas Registrados y Proveedores ({systems.length})
           </h4>
         </div>
@@ -522,7 +523,7 @@ export const SystemsTab: React.FC = () => {
         <div className="overflow-x-auto">
           <table className="w-full text-left border-collapse text-xs">
             <thead>
-              <tr className="border-b border-slate-800 bg-[#071217] text-slate-400 font-bold uppercase text-[11px]">
+              <tr className="border-b border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-[#071217] text-slate-600 dark:text-slate-400 font-bold uppercase text-[11px]">
                 <th className="py-3 px-3.5 w-14">ID</th>
                 <th className="py-3 px-3.5 min-w-[130px]">Sistema / Proveedor</th>
                 <th className="py-3 px-3.5 min-w-[160px]">Comisión Comercializador</th>
@@ -532,7 +533,7 @@ export const SystemsTab: React.FC = () => {
                 <th className="py-3 px-3.5 text-right w-24">Acciones</th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-slate-800/60 font-mono">
+            <tbody className="divide-y divide-slate-200/80 dark:divide-slate-800/60 font-mono">
               {systems.length === 0 ? (
                 <tr>
                   <td colSpan={7} className="py-8 text-center text-slate-500 font-sans">
@@ -559,24 +560,24 @@ export const SystemsTab: React.FC = () => {
                   const copInit = Number(conf.saldo_inicial_cop || 0);
 
                   return (
-                    <tr key={s.id} className="hover:bg-slate-800/30 transition-colors">
-                      <td className="py-3 px-3.5 font-mono font-bold text-slate-400">#{s.id}</td>
-                      <td className="py-3 px-3.5 font-sans font-black text-white text-sm tracking-wide">
+                    <tr key={s.id} className="hover:bg-slate-50/80 dark:hover:bg-slate-800/30 transition-colors">
+                      <td className="py-3 px-3.5 font-mono font-bold text-slate-500 dark:text-slate-400">#{s.id}</td>
+                      <td className="py-3 px-3.5 font-sans font-black text-slate-900 dark:text-white text-sm tracking-wide">
                         🎰 {s.nombre_sistema}
                       </td>
 
                       {/* Comisión Comercializador */}
                       <td className="py-3 px-3.5 font-sans">
-                        <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-xl bg-amber-500/10 border border-amber-500/30 text-amber-300 font-bold text-xs">
-                          <Percent className="w-3 h-3 text-amber-400" />
+                        <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-xl bg-amber-50 text-amber-700 border border-amber-200 dark:bg-amber-500/10 dark:border-amber-500/30 dark:text-amber-300 font-bold text-xs">
+                          <Percent className="w-3 h-3 text-amber-500 dark:text-amber-400" />
                           <span>{comPct.toFixed(2)}%</span>
                         </span>
                       </td>
 
                       {/* Participación Comercializador */}
                       <td className="py-3 px-3.5 font-sans">
-                        <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-xl bg-indigo-500/10 border border-indigo-500/30 text-indigo-300 font-bold text-xs">
-                          <Percent className="w-3 h-3 text-indigo-400" />
+                        <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-xl bg-indigo-50 text-indigo-700 border border-indigo-200 dark:bg-indigo-500/10 dark:border-indigo-500/30 dark:text-indigo-300 font-bold text-xs">
+                          <Percent className="w-3 h-3 text-indigo-500 dark:text-indigo-400" />
                           <span>{partPct.toFixed(2)}%</span>
                         </span>
                       </td>
@@ -584,14 +585,14 @@ export const SystemsTab: React.FC = () => {
                       {/* Saldos Iniciales Arrastre */}
                       <td className="py-3 px-3.5 font-mono">
                         <div className="flex flex-col gap-1 text-[11px]">
-                          <span className="text-slate-300">
-                            🇻🇪 <span className="text-slate-400">BS:</span> {formatCurrency(bsInit, 'BS')}
+                          <span className="text-slate-800 dark:text-slate-300">
+                            🇻🇪 <span className="text-slate-500 dark:text-slate-400">BS:</span> {formatCurrency(bsInit, 'BS')}
                           </span>
-                          <span className="text-slate-300">
-                            💵 <span className="text-slate-400">USD:</span> {formatCurrency(usdInit, 'USD')}
+                          <span className="text-slate-800 dark:text-slate-300">
+                            💵 <span className="text-slate-500 dark:text-slate-400">USD:</span> {formatCurrency(usdInit, 'USD')}
                           </span>
-                          <span className="text-slate-300">
-                            🇨🇴 <span className="text-slate-400">COP:</span> {formatCurrency(copInit, 'COP')}
+                          <span className="text-slate-800 dark:text-slate-300">
+                            🇨🇴 <span className="text-slate-500 dark:text-slate-400">COP:</span> {formatCurrency(copInit, 'COP')}
                           </span>
                         </div>
                       </td>
@@ -599,14 +600,14 @@ export const SystemsTab: React.FC = () => {
                       {/* Palabras clave de mapeo */}
                       <td className="py-3 px-3.5 text-[11px]">
                         <div className="flex flex-col gap-1">
-                          <span className="text-amber-400 font-mono font-bold">
-                            ID: <span className="font-bold text-white">{conf.agencia || 'Agent / Nombre'}</span>
+                          <span className="text-amber-700 dark:text-amber-400 font-mono font-bold">
+                            ID: <span className="font-bold text-slate-900 dark:text-white">{conf.agencia || 'Agent / Nombre'}</span>
                           </span>
-                          <span className="text-cyan-400 font-mono font-bold">
-                            Venta: <span className="font-bold text-white">{conf.venta || 'Venta'}</span>
+                          <span className="text-cyan-700 dark:text-cyan-400 font-mono font-bold">
+                            Venta: <span className="font-bold text-slate-900 dark:text-white">{conf.venta || 'Venta'}</span>
                           </span>
-                          <span className="text-rose-400 font-mono font-bold">
-                            Premio: <span className="font-bold text-white">{conf.premio || 'Premio'}</span>
+                          <span className="text-rose-700 dark:text-rose-400 font-mono font-bold">
+                            Premio: <span className="font-bold text-slate-900 dark:text-white">{conf.premio || 'Premio'}</span>
                           </span>
                         </div>
                       </td>
@@ -616,14 +617,14 @@ export const SystemsTab: React.FC = () => {
                         <div className="flex items-center justify-end gap-1">
                           <button
                             onClick={() => handleOpenEdit(s)}
-                            className="p-1.5 rounded-lg hover:bg-cyan-500/20 text-slate-400 hover:text-cyan-400 transition-colors cursor-pointer"
+                            className="p-1.5 rounded-lg hover:bg-slate-100 dark:hover:bg-cyan-500/20 text-slate-500 dark:text-slate-400 hover:text-cyan-600 dark:hover:text-cyan-400 transition-colors cursor-pointer"
                             title="Editar configuración y palabras clave"
                           >
                             <Edit2 className="w-3.5 h-3.5" />
                           </button>
                           <button
                             onClick={() => handleDeleteSystem(s.id, s.nombre_sistema)}
-                            className="p-1.5 rounded-lg hover:bg-rose-500/20 text-slate-400 hover:text-rose-400 transition-colors cursor-pointer"
+                            className="p-1.5 rounded-lg hover:bg-rose-50 dark:hover:bg-rose-500/20 text-slate-500 dark:text-slate-400 hover:text-rose-600 dark:hover:text-rose-400 transition-colors cursor-pointer"
                             title="Eliminar sistema"
                           >
                             <Trash2 className="w-3.5 h-3.5" />
@@ -641,36 +642,36 @@ export const SystemsTab: React.FC = () => {
 
       {/* Edit System Modal */}
       {editingSystem && (
-        <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4">
-          <div className="bg-[#0D1B22] border border-cyan-500/30 rounded-3xl p-6 max-w-lg w-full space-y-4 shadow-2xl animate-fade-in max-h-[90vh] overflow-y-auto">
-            <div className="flex items-center justify-between pb-3 border-b border-slate-800">
-              <h3 className="text-sm font-bold text-white flex items-center gap-2">
-                <FileSpreadsheet className="w-4 h-4 text-cyan-400" />
-                <span>Configurar Proveedor: <span className="text-emerald-400">{editingSystem.nombre_sistema}</span></span>
+        <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-xs flex items-center justify-center p-4">
+          <div className="bg-white dark:bg-[#0D1B22] border border-slate-200 dark:border-emerald-500/30 rounded-3xl p-6 max-w-lg w-full space-y-4 shadow-2xl animate-fade-in max-h-[90vh] overflow-y-auto">
+            <div className="flex items-center justify-between pb-3 border-b border-slate-200 dark:border-slate-800">
+              <h3 className="text-sm font-bold text-slate-900 dark:text-white flex items-center gap-2">
+                <FileSpreadsheet className="w-4 h-4 text-emerald-500 dark:text-emerald-400" />
+                <span>Configurar Proveedor: <span className="text-emerald-600 dark:text-emerald-400">{editingSystem.nombre_sistema}</span></span>
               </h3>
               <button
                 onClick={() => setEditingSystem(null)}
-                className="text-slate-400 hover:text-white text-xs font-bold"
+                className="text-slate-400 hover:text-slate-700 dark:hover:text-white text-xs font-bold cursor-pointer"
               >
                 ✕
               </button>
             </div>
 
-            <p className="text-xs text-slate-300">
+            <p className="text-xs text-slate-600 dark:text-slate-300">
               Ajusta las condiciones de liquidación con el comercializador, saldos iniciales y los nombres de columnas de importación para este sistema.
             </p>
 
             <form onSubmit={handleSaveEditKeywords} className="space-y-4">
               {/* Condiciones Comercializador */}
-              <div className="p-3.5 rounded-2xl bg-[#071217] border border-slate-800 space-y-3">
-                <div className="text-[11px] font-bold uppercase tracking-wider text-amber-400 flex items-center gap-1.5">
+              <div className="p-3.5 rounded-2xl bg-slate-50 dark:bg-[#071217] border border-slate-200 dark:border-slate-800 space-y-3">
+                <div className="text-[11px] font-bold uppercase tracking-wider text-amber-700 dark:text-amber-400 flex items-center gap-1.5">
                   <TrendingUp className="w-3.5 h-3.5" />
                   <span>Condiciones de Liquidación</span>
                 </div>
 
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                   <div className="space-y-1">
-                    <label className="text-xs font-semibold text-amber-300 flex items-center gap-1">
+                    <label className="text-xs font-semibold text-amber-800 dark:text-amber-300 flex items-center gap-1">
                       <Percent className="w-3 h-3" />
                       <span>% Comisión Comercializador</span>
                     </label>
@@ -681,12 +682,12 @@ export const SystemsTab: React.FC = () => {
                       max="100"
                       value={editComisionComercializador}
                       onChange={(e) => setEditComisionComercializador(e.target.value)}
-                      className="w-full bg-[#0D1B22] border border-amber-500/40 rounded-xl px-3 py-2 text-xs text-amber-200 font-mono font-bold focus:outline-none focus:border-amber-400"
+                      className="w-full bg-white dark:bg-[#0D1B22] border border-slate-300 dark:border-amber-500/40 rounded-xl px-3 py-2 text-xs text-slate-900 dark:text-amber-200 font-mono font-bold focus:outline-hidden focus:border-amber-500"
                     />
                   </div>
 
                   <div className="space-y-1">
-                    <label className="text-xs font-semibold text-indigo-300 flex items-center gap-1">
+                    <label className="text-xs font-semibold text-indigo-800 dark:text-indigo-300 flex items-center gap-1">
                       <Percent className="w-3 h-3" />
                       <span>% Participación Comercializador</span>
                     </label>
@@ -697,15 +698,15 @@ export const SystemsTab: React.FC = () => {
                       max="100"
                       value={editParticipacionComercializador}
                       onChange={(e) => setEditParticipacionComercializador(e.target.value)}
-                      className="w-full bg-[#0D1B22] border border-indigo-500/40 rounded-xl px-3 py-2 text-xs text-indigo-200 font-mono font-bold focus:outline-none focus:border-indigo-400"
+                      className="w-full bg-white dark:bg-[#0D1B22] border border-slate-300 dark:border-indigo-500/40 rounded-xl px-3 py-2 text-xs text-slate-900 dark:text-indigo-200 font-mono font-bold focus:outline-hidden focus:border-indigo-500"
                     />
                   </div>
                 </div>
               </div>
 
               {/* Saldos Iniciales por Moneda */}
-              <div className="p-3.5 rounded-2xl bg-[#071217] border border-slate-800 space-y-3">
-                <div className="text-[11px] font-bold uppercase tracking-wider text-emerald-400 flex items-center gap-1.5">
+              <div className="p-3.5 rounded-2xl bg-slate-50 dark:bg-[#071217] border border-slate-200 dark:border-slate-800 space-y-3">
+                <div className="text-[11px] font-bold uppercase tracking-wider text-emerald-700 dark:text-emerald-400 flex items-center gap-1.5">
                   <Wallet className="w-3.5 h-3.5" />
                   <span>Saldos Iniciales de Arrastre con el Proveedor</span>
                 </div>
@@ -713,39 +714,39 @@ export const SystemsTab: React.FC = () => {
                 <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
                   {(activeCurrencies.length === 0 || activeCurrencies.some((c) => c.codigo === 'BS')) && (
                     <div className="space-y-1">
-                      <label className="text-xs font-semibold text-slate-300">🇻🇪 Saldo BS</label>
+                      <label className="text-xs font-semibold text-slate-700 dark:text-slate-300">🇻🇪 Saldo BS</label>
                       <input
                         type="number"
                         step="0.01"
                         value={editSaldoInicialBs}
                         onChange={(e) => setEditSaldoInicialBs(e.target.value)}
-                        className="w-full bg-[#0D1B22] border border-slate-700 rounded-xl px-3 py-2 text-xs text-white font-mono focus:outline-none focus:border-emerald-500"
+                        className="w-full bg-white dark:bg-[#0D1B22] border border-slate-300 dark:border-slate-700 rounded-xl px-3 py-2 text-xs text-slate-900 dark:text-white font-mono focus:outline-hidden focus:border-emerald-500"
                       />
                     </div>
                   )}
 
                   {(activeCurrencies.length === 0 || activeCurrencies.some((c) => c.codigo === 'USD')) && (
                     <div className="space-y-1">
-                      <label className="text-xs font-semibold text-slate-300">💵 Saldo USD</label>
+                      <label className="text-xs font-semibold text-slate-700 dark:text-slate-300">💵 Saldo USD</label>
                       <input
                         type="number"
                         step="0.01"
                         value={editSaldoInicialUsd}
                         onChange={(e) => setEditSaldoInicialUsd(e.target.value)}
-                        className="w-full bg-[#0D1B22] border border-slate-700 rounded-xl px-3 py-2 text-xs text-white font-mono focus:outline-none focus:border-emerald-500"
+                        className="w-full bg-white dark:bg-[#0D1B22] border border-slate-300 dark:border-slate-700 rounded-xl px-3 py-2 text-xs text-slate-900 dark:text-white font-mono focus:outline-hidden focus:border-emerald-500"
                       />
                     </div>
                   )}
 
                   {(activeCurrencies.length === 0 || activeCurrencies.some((c) => c.codigo === 'COP')) && (
                     <div className="space-y-1">
-                      <label className="text-xs font-semibold text-slate-300">🇨🇴 Saldo COP</label>
+                      <label className="text-xs font-semibold text-slate-700 dark:text-slate-300">🇨🇴 Saldo COP</label>
                       <input
                         type="number"
                         step="0.01"
                         value={editSaldoInicialCop}
                         onChange={(e) => setEditSaldoInicialCop(e.target.value)}
-                        className="w-full bg-[#0D1B22] border border-slate-700 rounded-xl px-3 py-2 text-xs text-white font-mono focus:outline-none focus:border-emerald-500"
+                        className="w-full bg-white dark:bg-[#0D1B22] border border-slate-300 dark:border-slate-700 rounded-xl px-3 py-2 text-xs text-slate-900 dark:text-white font-mono focus:outline-hidden focus:border-emerald-500"
                       />
                     </div>
                   )}
@@ -753,16 +754,16 @@ export const SystemsTab: React.FC = () => {
               </div>
 
               {/* Palabras clave de Importación */}
-              <div className="p-3.5 rounded-2xl bg-[#071217] border border-slate-800 space-y-3">
-                <div className="text-[11px] font-bold uppercase tracking-wider text-cyan-400 flex items-center gap-1.5">
+              <div className="p-3.5 rounded-2xl bg-slate-50 dark:bg-[#071217] border border-slate-200 dark:border-slate-800 space-y-3">
+                <div className="text-[11px] font-bold uppercase tracking-wider text-cyan-700 dark:text-cyan-400 flex items-center gap-1.5">
                   <Tag className="w-3.5 h-3.5" />
                   <span>Columnas de Archivos (Excel / CSV / PDF)</span>
                 </div>
 
                 <div className="space-y-2">
                   <div className="space-y-1">
-                    <label className="text-xs font-semibold text-slate-300 flex items-center gap-1">
-                      <Tag className="w-3 h-3 text-amber-400" />
+                    <label className="text-xs font-semibold text-slate-700 dark:text-slate-300 flex items-center gap-1">
+                      <Tag className="w-3 h-3 text-amber-500 dark:text-amber-400" />
                       <span>Columna de Agencia / ID</span>
                     </label>
                     <input
@@ -770,13 +771,13 @@ export const SystemsTab: React.FC = () => {
                       value={editColAgencia}
                       onChange={(e) => setEditColAgencia(e.target.value)}
                       placeholder="Ej: Agent, Nombre, USUARIO"
-                      className="w-full bg-[#0D1B22] border border-slate-700 rounded-xl px-3 py-2 text-xs text-white font-mono focus:outline-none focus:border-cyan-500"
+                      className="w-full bg-white dark:bg-[#0D1B22] border border-slate-300 dark:border-slate-700 rounded-xl px-3 py-2 text-xs text-slate-900 dark:text-white font-mono focus:outline-hidden focus:border-cyan-500"
                     />
                   </div>
 
                   <div className="space-y-1">
-                    <label className="text-xs font-semibold text-slate-300 flex items-center gap-1">
-                      <Tag className="w-3 h-3 text-cyan-400" />
+                    <label className="text-xs font-semibold text-slate-700 dark:text-slate-300 flex items-center gap-1">
+                      <Tag className="w-3 h-3 text-cyan-500 dark:text-cyan-400" />
                       <span>Columna de Ventas</span>
                     </label>
                     <input
@@ -785,13 +786,13 @@ export const SystemsTab: React.FC = () => {
                       value={editColVenta}
                       onChange={(e) => setEditColVenta(e.target.value)}
                       placeholder="Ej: Total accepted, Venta, VENTAS"
-                      className="w-full bg-[#0D1B22] border border-slate-700 rounded-xl px-3 py-2 text-xs text-white font-mono focus:outline-none focus:border-cyan-500"
+                      className="w-full bg-white dark:bg-[#0D1B22] border border-slate-300 dark:border-slate-700 rounded-xl px-3 py-2 text-xs text-slate-900 dark:text-white font-mono focus:outline-hidden focus:border-cyan-500"
                     />
                   </div>
 
                   <div className="space-y-1">
-                    <label className="text-xs font-semibold text-slate-300 flex items-center gap-1">
-                      <Tag className="w-3 h-3 text-rose-400" />
+                    <label className="text-xs font-semibold text-slate-700 dark:text-slate-300 flex items-center gap-1">
+                      <Tag className="w-3 h-3 text-rose-500 dark:text-rose-400" />
                       <span>Columna de Premios</span>
                     </label>
                     <input
@@ -800,24 +801,24 @@ export const SystemsTab: React.FC = () => {
                       value={editColPremio}
                       onChange={(e) => setEditColPremio(e.target.value)}
                       placeholder="Ej: Total paid, Premio, PREMIOS"
-                      className="w-full bg-[#0D1B22] border border-slate-700 rounded-xl px-3 py-2 text-xs text-white font-mono focus:outline-none focus:border-cyan-500"
+                      className="w-full bg-white dark:bg-[#0D1B22] border border-slate-300 dark:border-slate-700 rounded-xl px-3 py-2 text-xs text-slate-900 dark:text-white font-mono focus:outline-hidden focus:border-cyan-500"
                     />
                   </div>
                 </div>
               </div>
 
-              <div className="flex items-center justify-end gap-2 pt-3 border-t border-slate-800">
+              <div className="flex items-center justify-end gap-2 pt-3 border-t border-slate-200 dark:border-slate-800">
                 <button
                   type="button"
                   onClick={() => setEditingSystem(null)}
-                  className="px-4 py-2 rounded-xl text-xs font-semibold text-slate-400 hover:text-white"
+                  className="px-4 py-2 rounded-xl text-xs font-semibold text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-white cursor-pointer"
                 >
                   Cancelar
                 </button>
                 <button
                   type="submit"
                   disabled={saving}
-                  className="px-5 py-2.5 rounded-xl bg-cyan-600 hover:bg-cyan-500 text-white font-bold text-xs shadow-md transition-all cursor-pointer disabled:opacity-50"
+                  className={UI_LOCK.buttonPrimary + ' text-xs'}
                 >
                   {saving ? 'Guardando...' : 'Guardar Configuración'}
                 </button>

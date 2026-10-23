@@ -29,6 +29,8 @@ import confetti from 'canvas-confetti';
 import { notificationService } from '../../utils/notificationService';
 import { realtimeBroadcast } from '../../utils/realtimeBroadcast';
 import { ApiDocsModal } from '../Common/ApiDocsModal';
+import { loadCurrencies, type CurrencyConfig } from '../../utils/currencies';
+import { UI_LOCK } from '../../styles/uiDesignLock';
 
 export const ConfirmationsQuick: React.FC = () => {
   const { effectiveUserId, user } = useAuth();
@@ -46,6 +48,7 @@ export const ConfirmationsQuick: React.FC = () => {
   const [transactions, setTransactions] = useState<ConfirmationTransaction[]>([]);
   const [agenciesList, setAgenciesList] = useState<string[]>([]);
   const [cashierMap, setCashierMap] = useState<Record<string, string>>({});
+  const [activeCurrencies, setActiveCurrencies] = useState<CurrencyConfig[]>([]);
 
   // Reject modal state
   const [rejectModalItem, setRejectModalItem] = useState<ConfirmationTransaction | null>(null);
@@ -87,8 +90,8 @@ export const ConfirmationsQuick: React.FC = () => {
     }
 
     try {
-      // 1. Fetch agencies & bank accounts
-      const [{ data: agData }, { data: cbData }] = await Promise.all([
+      // 1. Fetch agencies & bank accounts & active currencies
+      const [{ data: agData }, { data: cbData }, currs] = await Promise.all([
         supabase
           .from('agencias')
           .select('id, nombre_agencia, cuentas_asignadas')
@@ -97,7 +100,9 @@ export const ConfirmationsQuick: React.FC = () => {
           .from('cuentas_bancarias')
           .select('id, banco, titular, numero_cuenta, moneda, tipo_cuenta, agencia_asignada')
           .eq('user_id', effectiveUserId),
+        loadCurrencies(effectiveUserId),
       ]);
+      setActiveCurrencies(currs);
 
       const ags = (agData || [])
         .map((a: any) => String(a.nombre_agencia || '').trim().toUpperCase())
@@ -635,16 +640,15 @@ export const ConfirmationsQuick: React.FC = () => {
 
   // Metrics totals for pending transactions
   const metrics = useMemo(() => {
-    let bs = 0;
-    let usd = 0;
-    let cop = 0;
-    filteredTransactions.forEach((tx) => {
-      if (tx.moneda === 'BS') bs += tx.monto;
-      else if (tx.moneda === 'COP') cop += tx.monto;
-      else usd += tx.monto;
+    const byCurr: Record<string, number> = {};
+    activeCurrencies.forEach((c) => {
+      byCurr[c.codigo] = 0;
     });
-    return { count: filteredTransactions.length, bs, usd, cop };
-  }, [filteredTransactions]);
+    filteredTransactions.forEach((tx) => {
+      byCurr[tx.moneda] = (byCurr[tx.moneda] || 0) + tx.monto;
+    });
+    return { count: filteredTransactions.length, byCurr };
+  }, [filteredTransactions, activeCurrencies]);
 
   // Action: Confirm Single
   const handleConfirmSingle = async (tx: ConfirmationTransaction) => {
@@ -885,36 +889,36 @@ export const ConfirmationsQuick: React.FC = () => {
   };
 
   return (
-    <div className="space-y-6">
+    <div className={UI_LOCK.pageContainer}>
       {/* Header & Actions */}
-      <div id="tour-confirmaciones-header" className="flex flex-col md:flex-row md:items-center justify-between gap-4 bg-[#0D1B22] p-5 rounded-2xl border border-slate-800/80 shadow-lg">
+      <div id="tour-confirmaciones-header" className="flex flex-col md:flex-row md:items-center justify-between gap-4 bg-white dark:bg-[#0D1B22] p-5 rounded-2xl border border-slate-200/80 dark:border-slate-800/80 shadow-sm transition-colors">
         <div>
           <div className="flex items-center gap-3">
-            <div className="p-2.5 rounded-xl bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">
+            <div className="p-2.5 rounded-xl bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20">
               <CheckCheck className="w-6 h-6" />
             </div>
             <div>
-              <h2 className="text-xl font-black text-white tracking-tight flex items-center gap-2">
+              <h2 className="text-xl font-black text-slate-900 dark:text-white tracking-tight flex items-center gap-2">
                 <span>Confirmaciones</span>
-                <span className="px-2.5 py-0.5 rounded-full bg-amber-500/10 text-amber-400 border border-amber-500/20 text-xs font-bold font-mono">
+                <span className="px-2.5 py-0.5 rounded-full bg-amber-500/10 text-amber-700 dark:text-amber-400 border border-amber-500/20 text-xs font-bold font-mono">
                   {metrics.count} pendientes
                 </span>
               </h2>
-              <p className="text-xs text-slate-400 mt-0.5">
+              <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
                 Pizarra operativa: Verificación y aprobación rápida en 1 clic de transferencias, puntos de venta, gastos y efectivo.
               </p>
             </div>
           </div>
         </div>
 
-        <div className="flex items-center gap-2.5">
+        <div className="flex items-center gap-2.5 flex-wrap">
           {/* Live Auto-sync Toggle Pill */}
           <button
             onClick={() => setAutoSyncEnabled(!autoSyncEnabled)}
             className={`px-3 py-2 rounded-xl border text-xs font-bold flex items-center gap-2 transition-all cursor-pointer shadow-sm ${
               autoSyncEnabled
-                ? 'bg-emerald-500/10 border-emerald-500/30 text-emerald-400 hover:bg-emerald-500/20'
-                : 'bg-slate-800/80 border-slate-700 text-slate-400 hover:text-slate-200'
+                ? 'bg-emerald-500/10 border-emerald-500/30 text-emerald-600 dark:text-emerald-400 hover:bg-emerald-500/20'
+                : 'bg-slate-100 dark:bg-slate-800/80 border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200'
             }`}
             title={
               autoSyncEnabled
@@ -928,7 +932,7 @@ export const ConfirmationsQuick: React.FC = () => {
               )}
               <span
                 className={`relative inline-flex rounded-full h-2 w-2 ${
-                  autoSyncEnabled ? 'bg-emerald-500' : 'bg-slate-500'
+                  autoSyncEnabled ? 'bg-emerald-500' : 'bg-slate-400'
                 }`}
               ></span>
             </span>
@@ -936,17 +940,17 @@ export const ConfirmationsQuick: React.FC = () => {
           </button>
 
           {/* Relative last updated time */}
-          <span className="text-[11px] text-slate-400 font-mono hidden sm:inline px-1">
+          <span className="text-[11px] text-slate-500 dark:text-slate-400 font-mono hidden sm:inline px-1">
             {secondsAgo < 5 ? 'Actualizado ahora' : `Hace ${secondsAgo}s`}
           </span>
 
           {/* External API / Connect Apps Button */}
           <button
             onClick={() => setShowApiModal(true)}
-            className="flex items-center gap-1.5 px-3 py-2 rounded-xl bg-purple-500/10 hover:bg-purple-500/20 text-purple-300 text-xs font-bold transition-all border border-purple-500/30 cursor-pointer shadow-sm"
+            className="flex items-center gap-1.5 px-3 py-2 rounded-xl bg-purple-500/10 hover:bg-purple-500/20 text-purple-700 dark:text-purple-300 text-xs font-bold transition-all border border-purple-500/30 cursor-pointer shadow-sm"
             title="Credenciales y webhook de API para conectar aplicaciones móviles o externas"
           >
-            <Code2 className="w-3.5 h-3.5 text-purple-400" />
+            <Code2 className="w-3.5 h-3.5 text-purple-600 dark:text-purple-400" />
             <span className="hidden sm:inline">Conectar Apps / API</span>
           </button>
 
@@ -954,10 +958,10 @@ export const ConfirmationsQuick: React.FC = () => {
           <button
             onClick={() => loadData(false)}
             disabled={isLoading || isSilentUpdating}
-            className="flex items-center gap-2 px-3 py-2 rounded-xl bg-slate-800/80 hover:bg-slate-700/80 text-slate-300 hover:text-white text-xs font-bold transition-all border border-slate-700/50 cursor-pointer disabled:opacity-50"
+            className={UI_LOCK.buttonSecondary}
             title="Sincronizar manualmente"
           >
-            <RefreshCw className={`w-3.5 h-3.5 text-emerald-400 ${isLoading || isSilentUpdating ? 'animate-spin' : ''}`} />
+            <RefreshCw className={`w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400 ${isLoading || isSilentUpdating ? 'animate-spin' : ''}`} />
             <span className="hidden sm:inline">Sincronizar</span>
           </button>
 
@@ -965,7 +969,7 @@ export const ConfirmationsQuick: React.FC = () => {
             <button
               onClick={handleBulkConfirmAll}
               disabled={isBulkConfirming || isProcessing}
-              className="flex items-center gap-2 px-4 py-2 rounded-xl bg-gradient-to-r from-emerald-500 to-teal-500 hover:from-emerald-400 hover:to-teal-400 text-black text-xs font-extrabold shadow-md shadow-emerald-500/20 transition-all cursor-pointer"
+              className={UI_LOCK.buttonPrimary}
             >
               <CheckCircle2 className="w-4 h-4" />
               <span>{isBulkConfirming ? 'Confirmando...' : `Confirmar Todos (${metrics.count})`}</span>
@@ -977,18 +981,18 @@ export const ConfirmationsQuick: React.FC = () => {
       {/* Messages / Avisos de Confirmación */}
       {message && (
         <div
-          className={`p-4 rounded-2xl text-sm font-bold border flex items-center justify-between shadow-2xl transition-all animate-fade-in ${
+          className={`p-4 rounded-2xl text-sm font-bold border flex items-center justify-between shadow-lg transition-all animate-fade-in ${
             message.type === 'success'
-              ? 'bg-emerald-950/70 text-emerald-300 border-emerald-500/40 shadow-emerald-950/60 backdrop-blur-md'
-              : 'bg-rose-950/70 text-rose-300 border-rose-500/40 shadow-rose-950/60 backdrop-blur-md'
+              ? 'bg-emerald-50 border-emerald-300 text-emerald-900 dark:bg-emerald-950/70 dark:text-emerald-300 dark:border-emerald-500/40'
+              : 'bg-rose-50 border-rose-300 text-rose-900 dark:bg-rose-950/70 dark:text-rose-300 dark:border-rose-500/40'
           }`}
         >
           <div className="flex items-center gap-3">
             <div
               className={`p-2 rounded-xl shrink-0 ${
                 message.type === 'success'
-                  ? 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/30'
-                  : 'bg-rose-500/20 text-rose-400 border border-rose-500/30'
+                  ? 'bg-emerald-500/20 text-emerald-600 dark:text-emerald-400 border border-emerald-500/30'
+                  : 'bg-rose-500/20 text-rose-600 dark:text-rose-400 border border-rose-500/30'
               }`}
             >
               {message.type === 'success' ? <CheckCircle2 className="w-5 h-5" /> : <AlertTriangle className="w-5 h-5" />}
@@ -997,7 +1001,7 @@ export const ConfirmationsQuick: React.FC = () => {
           </div>
           <button
             onClick={() => setMessage(null)}
-            className="text-slate-400 hover:text-white p-1 rounded-lg hover:bg-white/10 transition-all cursor-pointer font-black text-xs ml-3 shrink-0"
+            className="text-slate-400 hover:text-slate-700 dark:hover:text-white p-1 rounded-lg hover:bg-black/5 dark:hover:bg-white/10 transition-all cursor-pointer font-black text-xs ml-3 shrink-0"
             title="Cerrar aviso"
           >
             ✕
@@ -1005,58 +1009,47 @@ export const ConfirmationsQuick: React.FC = () => {
         </div>
       )}
 
-      {/* Metrics Row */}
-      <div id="tour-confirmaciones-metrics" className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3.5">
-        <div className="p-4 rounded-2xl bg-[#0D1B22] border border-slate-800/80 shadow-xs flex items-center gap-3.5">
-          <div className="p-3 rounded-xl bg-amber-500/10 text-amber-400 border border-amber-500/20 shrink-0">
+      {/* Metrics Row - Dynamic Currencies */}
+      <div id="tour-confirmaciones-metrics" className={UI_LOCK.kpiGrid(activeCurrencies.length + 1)}>
+        <div className="p-4 rounded-2xl bg-white dark:bg-[#0D1B22] border border-slate-200/80 dark:border-slate-800/80 shadow-xs flex items-center gap-3.5 transition-colors">
+          <div className="p-3 rounded-xl bg-amber-500/10 text-amber-600 dark:text-amber-400 border border-amber-500/20 shrink-0">
             <Clock className="w-5 h-5" />
           </div>
           <div>
-            <div className="text-[11px] font-bold text-slate-400 uppercase tracking-wider">Total Pendientes</div>
-            <div className="text-2xl font-black text-amber-400 font-mono mt-0.5">{metrics.count}</div>
+            <div className="text-[11px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider">Total Pendientes</div>
+            <div className="text-2xl font-black text-amber-600 dark:text-amber-400 font-mono mt-0.5">{metrics.count}</div>
           </div>
         </div>
 
-        <div className="p-4 rounded-2xl bg-[#0D1B22] border border-slate-800/80 shadow-xs flex items-center gap-3.5">
-          <div className="p-3 rounded-xl bg-sky-500/10 text-sky-400 border border-sky-500/20 shrink-0">
-            <DollarSign className="w-5 h-5" />
-          </div>
-          <div>
-            <div className="text-[11px] font-bold text-slate-400 uppercase tracking-wider">Pendiente Bolívares</div>
-            <div className="text-lg font-black text-white font-mono mt-0.5">{formatCurrency(metrics.bs, 'BS')}</div>
-          </div>
-        </div>
-
-        <div className="p-4 rounded-2xl bg-[#0D1B22] border border-slate-800/80 shadow-xs flex items-center gap-3.5">
-          <div className="p-3 rounded-xl bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 shrink-0">
-            <DollarSign className="w-5 h-5" />
-          </div>
-          <div>
-            <div className="text-[11px] font-bold text-slate-400 uppercase tracking-wider">Pendiente Dólares</div>
-            <div className="text-lg font-black text-emerald-400 font-mono mt-0.5">{formatCurrency(metrics.usd, 'USD')}</div>
-          </div>
-        </div>
-
-        <div className="p-4 rounded-2xl bg-[#0D1B22] border border-slate-800/80 shadow-xs flex items-center gap-3.5">
-          <div className="p-3 rounded-xl bg-amber-500/10 text-amber-400 border border-amber-500/20 shrink-0">
-            <DollarSign className="w-5 h-5" />
-          </div>
-          <div>
-            <div className="text-[11px] font-bold text-slate-400 uppercase tracking-wider">Pendiente Pesos COP</div>
-            <div className="text-lg font-black text-white font-mono mt-0.5">{formatCurrency(metrics.cop, 'COP')}</div>
-          </div>
-        </div>
+        {activeCurrencies.map((curr) => {
+          const montoPend = metrics.byCurr[curr.codigo] || 0;
+          return (
+            <div key={curr.codigo} className="p-4 rounded-2xl bg-white dark:bg-[#0D1B22] border border-slate-200/80 dark:border-slate-800/80 shadow-xs flex items-center gap-3.5 transition-colors">
+              <div className="p-3 rounded-xl bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20 shrink-0">
+                <DollarSign className="w-5 h-5" />
+              </div>
+              <div className="min-w-0 flex-1">
+                <div className="text-[11px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider truncate">
+                  Pendiente {curr.nombre} ({curr.codigo})
+                </div>
+                <div className="text-lg font-black text-slate-900 dark:text-white font-mono mt-0.5 truncate">
+                  {formatCurrency(montoPend, curr.codigo)}
+                </div>
+              </div>
+            </div>
+          );
+        })}
       </div>
 
       {/* Quick Filters */}
-      <div className="p-4 rounded-2xl bg-[#0D1B22] border border-slate-800/80 flex flex-col md:flex-row items-center gap-3.5">
+      <div className="p-4 rounded-2xl bg-white dark:bg-[#0D1B22] border border-slate-200/80 dark:border-slate-800/80 shadow-sm flex flex-col md:flex-row items-center gap-3.5 transition-colors">
         <div className="w-full md:w-64">
-          <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1">Agencia</label>
+          <label className="block text-[10px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider mb-1">Agencia</label>
           <div className="relative">
             <select
               value={selAgencia}
               onChange={(e) => setSelAgencia(e.target.value)}
-              className="w-full pl-3 pr-8 py-2 bg-slate-900 border border-slate-700/80 rounded-xl text-xs font-bold text-white focus:outline-hidden focus:border-emerald-500 cursor-pointer"
+              className="w-full pl-3 pr-8 py-2 bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700/80 rounded-xl text-xs font-bold text-slate-900 dark:text-white focus:outline-hidden focus:border-emerald-500 cursor-pointer"
             >
               <option value="Todas">Todas las Agencias</option>
               {agenciesList.map((ag) => (
@@ -1069,7 +1062,7 @@ export const ConfirmationsQuick: React.FC = () => {
         </div>
 
         <div className="w-full flex-1">
-          <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1">Buscar</label>
+          <label className="block text-[10px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider mb-1">Buscar</label>
           <div className="relative">
             <Search className="w-4 h-4 text-slate-400 absolute left-3 top-2.5" />
             <input
@@ -1077,7 +1070,7 @@ export const ConfirmationsQuick: React.FC = () => {
               placeholder="Buscar por referencia, pagador, concepto o método..."
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
-              className="w-full pl-9 pr-3 py-2 bg-slate-900 border border-slate-700/80 rounded-xl text-xs text-white placeholder-slate-500 focus:outline-hidden focus:border-emerald-500"
+              className="w-full pl-9 pr-3 py-2 bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700/80 rounded-xl text-xs text-slate-900 dark:text-white placeholder-slate-400 dark:placeholder-slate-500 focus:outline-hidden focus:border-emerald-500"
             />
           </div>
         </div>
@@ -1085,23 +1078,23 @@ export const ConfirmationsQuick: React.FC = () => {
 
       {/* Pending Items List */}
       {isLoading ? (
-        <div className="p-12 text-center bg-[#0D1B22] rounded-2xl border border-slate-800/80">
+        <div className="p-12 text-center bg-white dark:bg-[#0D1B22] rounded-2xl border border-slate-200/80 dark:border-slate-800/80 shadow-sm">
           <div className="w-8 h-8 border-2 border-emerald-500 border-t-transparent rounded-full animate-spin mx-auto mb-3" />
-          <p className="text-xs text-slate-400">Cargando transacciones pendientes...</p>
+          <p className="text-xs text-slate-500 dark:text-slate-400">Cargando transacciones pendientes...</p>
         </div>
       ) : filteredTransactions.length === 0 ? (
-        <div className="p-16 text-center bg-[#0D1B22] rounded-2xl border border-slate-800/80 flex flex-col items-center justify-center">
-          <div className="w-16 h-16 rounded-2xl bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 flex items-center justify-center mb-4">
+        <div className="p-16 text-center bg-white dark:bg-[#0D1B22] rounded-2xl border border-slate-200/80 dark:border-slate-800/80 shadow-sm flex flex-col items-center justify-center">
+          <div className="w-16 h-16 rounded-2xl bg-emerald-500/10 border border-emerald-500/20 text-emerald-600 dark:text-emerald-400 flex items-center justify-center mb-4">
             <CheckCircle2 className="w-8 h-8" />
           </div>
-          <h3 className="text-lg font-black text-white tracking-tight">¡Todo al día!</h3>
-          <p className="text-xs text-slate-400 max-w-sm mt-1">
+          <h3 className="text-lg font-black text-slate-900 dark:text-white tracking-tight">¡Todo al día!</h3>
+          <p className="text-xs text-slate-500 dark:text-slate-400 max-w-sm mt-1">
             No hay transacciones pendientes por confirmar con los filtros seleccionados.
           </p>
         </div>
       ) : (
         <div id="tour-confirmaciones-board" className="space-y-3">
-          <div className="flex items-center justify-between text-xs font-bold text-slate-400 px-1">
+          <div className="flex items-center justify-between text-xs font-bold text-slate-500 dark:text-slate-400 px-1">
             <span>Mostrando {filteredTransactions.length} registros pendientes:</span>
           </div>
 
@@ -1117,28 +1110,28 @@ export const ConfirmationsQuick: React.FC = () => {
                   key={itemKey}
                   className={`p-4 rounded-2xl transition-all shadow-sm flex flex-col lg:flex-row lg:items-center justify-between gap-4 group ${
                     isRecentlyArrived
-                      ? 'bg-[#0f2425] border-2 border-emerald-400 ring-2 ring-emerald-500/50 shadow-[0_0_35px_rgba(16,185,129,0.35)] animate-pulse'
-                      : 'bg-[#0D1B22] border border-slate-800/90 hover:border-emerald-500/40'
+                      ? 'bg-emerald-50 dark:bg-[#0f2425] border-2 border-emerald-400 ring-2 ring-emerald-500/50 shadow-[0_0_35px_rgba(16,185,129,0.35)] animate-pulse'
+                      : 'bg-white dark:bg-[#0D1B22] border border-slate-200/80 dark:border-slate-800/90 hover:border-emerald-500/40'
                   }`}
                 >
                   {/* Left: Info details */}
                   <div className="space-y-2 flex-1 min-w-0">
                     <div className="flex flex-wrap items-center gap-2">
-                      <span className="text-sm font-black text-white flex items-center gap-1.5">
-                        <Building2 className="w-3.5 h-3.5 text-emerald-400 shrink-0" />
+                      <span className="text-sm font-black text-slate-900 dark:text-white flex items-center gap-1.5">
+                        <Building2 className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400 shrink-0" />
                         <span>{tx.agencia}</span>
                       </span>
 
                       {isRecentlyArrived && (
-                        <span className="px-2 py-0.5 rounded-md text-[10px] font-black uppercase tracking-wider bg-emerald-500 text-black shadow-md flex items-center gap-1 animate-bounce">
+                        <span className="px-2 py-0.5 rounded-md text-[10px] font-black uppercase tracking-wider bg-emerald-500 text-white dark:text-black shadow-md flex items-center gap-1 animate-bounce">
                           <Sparkles className="w-3 h-3" />
                           <span>¡NUEVO ENTRANTE!</span>
                         </span>
                       )}
 
                       {(tx.cajero_id === 'API' || tx.cajero_nombre?.includes('API')) && (
-                        <span className="px-2 py-0.5 rounded-md text-[10px] font-black uppercase tracking-wider bg-purple-500/20 text-purple-300 border border-purple-500/40 shadow-sm flex items-center gap-1">
-                          <Code2 className="w-3 h-3 text-purple-400" />
+                        <span className="px-2 py-0.5 rounded-md text-[10px] font-black uppercase tracking-wider bg-purple-500/10 dark:bg-purple-500/20 text-purple-700 dark:text-purple-300 border border-purple-500/40 shadow-xs flex items-center gap-1">
+                          <Code2 className="w-3 h-3 text-purple-600 dark:text-purple-400" />
                           <span>API EXTERNA (APP/WEB)</span>
                         </span>
                       )}
@@ -1146,61 +1139,61 @@ export const ConfirmationsQuick: React.FC = () => {
                       <span
                         className={`px-2 py-0.5 rounded-md text-[10px] font-black uppercase tracking-wider ${
                           isGasto
-                            ? 'bg-rose-500/15 text-rose-300 border border-rose-500/30'
+                            ? 'bg-rose-500/10 dark:bg-rose-500/15 text-rose-700 dark:text-rose-300 border border-rose-500/30'
                             : isBanco
-                            ? 'bg-sky-500/15 text-sky-300 border border-sky-500/30'
-                            : 'bg-emerald-500/15 text-emerald-300 border border-emerald-500/30'
+                            ? 'bg-sky-500/10 dark:bg-sky-500/15 text-sky-700 dark:text-sky-300 border border-sky-500/30'
+                            : 'bg-emerald-500/10 dark:bg-emerald-500/15 text-emerald-700 dark:text-emerald-300 border border-emerald-500/30'
                         }`}
                       >
                         {tx.categoria}
                       </span>
 
-                      <span className="px-2 py-0.5 rounded-md bg-amber-500/10 text-amber-400 border border-amber-500/20 text-[10px] font-bold flex items-center gap-1">
+                      <span className="px-2 py-0.5 rounded-md bg-amber-500/10 text-amber-700 dark:text-amber-400 border border-amber-500/20 text-[10px] font-bold flex items-center gap-1">
                         <Clock className="w-2.5 h-2.5" />
                         <span>{tx.metodo.includes('COBRADOR') ? '🛵 Por Recoger (Cobrador)' : 'Pendiente'}</span>
                       </span>
 
-                      <span className="text-[11px] text-slate-400 font-mono">{formatDate(tx.fecha)}</span>
+                      <span className="text-[11px] text-slate-500 dark:text-slate-400 font-mono">{formatDate(tx.fecha)}</span>
                     </div>
 
                     {/* Metadata Grid */}
-                    <div className="grid grid-cols-2 sm:grid-cols-5 gap-2 text-xs text-slate-300 pt-1">
+                    <div className="grid grid-cols-2 sm:grid-cols-5 gap-2 text-xs text-slate-700 dark:text-slate-300 pt-1">
                       <div>
-                        <span className="text-[10px] text-slate-500 uppercase block font-bold">Origen / Cajero</span>
-                        <span className={`font-semibold truncate block ${tx.cajero_id === 'API' || tx.cajero_nombre?.includes('API') ? 'text-purple-300 font-bold' : 'text-slate-200'}`}>
+                        <span className="text-[10px] text-slate-400 dark:text-slate-500 uppercase block font-bold">Origen / Cajero</span>
+                        <span className={`font-semibold truncate block ${tx.cajero_id === 'API' || tx.cajero_nombre?.includes('API') ? 'text-purple-600 dark:text-purple-300 font-bold' : 'text-slate-800 dark:text-slate-200'}`}>
                           {tx.cajero_nombre || 'Taquilla'}
                         </span>
                       </div>
 
                       <div>
-                        <span className="text-[10px] text-slate-500 uppercase block font-bold">Banco Destino</span>
+                        <span className="text-[10px] text-slate-400 dark:text-slate-500 uppercase block font-bold">Banco Destino</span>
                         {tx.banco ? (
                           <div className="flex items-center gap-1 mt-0.5">
-                            <span className="px-2 py-0.5 rounded bg-sky-500/15 text-sky-300 border border-sky-500/30 text-[10px] font-black uppercase inline-flex items-center gap-1">
-                              <Landmark className="w-3 h-3 text-sky-400" />
+                            <span className="px-2 py-0.5 rounded bg-sky-500/10 dark:bg-sky-500/15 text-sky-700 dark:text-sky-300 border border-sky-500/30 text-[10px] font-black uppercase inline-flex items-center gap-1">
+                              <Landmark className="w-3 h-3 text-sky-600 dark:text-sky-400" />
                               <span>{tx.banco}</span>
                             </span>
                           </div>
                         ) : (
-                          <span className="font-semibold text-slate-400">
+                          <span className="font-semibold text-slate-500 dark:text-slate-400">
                             {tx.categoria === 'Gastos' ? 'Caja Operativa' : 'Banco'}
                           </span>
                         )}
                       </div>
 
                       <div>
-                        <span className="text-[10px] text-slate-500 uppercase block font-bold">Método</span>
-                        <span className="font-semibold text-slate-200 truncate block">{tx.metodo}</span>
+                        <span className="text-[10px] text-slate-400 dark:text-slate-500 uppercase block font-bold">Método</span>
+                        <span className="font-semibold text-slate-800 dark:text-slate-200 truncate block">{tx.metodo}</span>
                       </div>
 
                       <div>
-                        <span className="text-[10px] text-slate-500 uppercase block font-bold">Referencia</span>
-                        <span className="font-mono font-bold text-amber-300 break-all">{tx.referencia}</span>
+                        <span className="text-[10px] text-slate-400 dark:text-slate-500 uppercase block font-bold">Referencia</span>
+                        <span className="font-mono font-bold text-amber-700 dark:text-amber-300 break-all">{tx.referencia}</span>
                       </div>
 
                       <div>
-                        <span className="text-[10px] text-slate-500 uppercase block font-bold">Pagador / Concepto</span>
-                        <span className="text-slate-300 truncate block">
+                        <span className="text-[10px] text-slate-400 dark:text-slate-500 uppercase block font-bold">Pagador / Concepto</span>
+                        <span className="text-slate-700 dark:text-slate-300 truncate block">
                           {tx.pagador !== 'N/A' ? tx.pagador : tx.concepto}
                         </span>
                       </div>
@@ -1208,10 +1201,10 @@ export const ConfirmationsQuick: React.FC = () => {
                   </div>
 
                   {/* Right: Amount & Actions */}
-                  <div className="flex items-center justify-between lg:justify-end gap-4 shrink-0 pt-3 lg:pt-0 border-t lg:border-t-0 border-slate-800">
+                  <div className="flex items-center justify-between lg:justify-end gap-4 shrink-0 pt-3 lg:pt-0 border-t lg:border-t-0 border-slate-200 dark:border-slate-800">
                     <div className="text-right">
-                      <div className="text-[10px] text-slate-400 uppercase font-bold tracking-wider">Monto</div>
-                      <div className="text-xl font-black text-emerald-400 font-mono">
+                      <div className="text-[10px] text-slate-500 dark:text-slate-400 uppercase font-bold tracking-wider">Monto</div>
+                      <div className="text-xl font-black text-emerald-600 dark:text-emerald-400 font-mono">
                         {formatCurrency(tx.monto, tx.moneda)}
                       </div>
                     </div>
@@ -1220,7 +1213,7 @@ export const ConfirmationsQuick: React.FC = () => {
                       <button
                         onClick={() => handleConfirmSingle(tx)}
                         disabled={isProcessing}
-                        className="px-3.5 py-2 rounded-xl bg-emerald-500 hover:bg-emerald-400 text-black text-xs font-black flex items-center gap-1.5 shadow-md shadow-emerald-500/10 transition-all cursor-pointer"
+                        className={UI_LOCK.buttonPrimary}
                         title="Aprobar transacción"
                       >
                         <CheckCircle2 className="w-4 h-4" />
@@ -1230,7 +1223,7 @@ export const ConfirmationsQuick: React.FC = () => {
                       <button
                         onClick={() => handleOpenRejectModal(tx)}
                         disabled={isProcessing}
-                        className="px-3 py-2 rounded-xl bg-rose-500/15 hover:bg-rose-500/25 text-rose-400 hover:text-rose-300 border border-rose-500/30 text-xs font-bold flex items-center gap-1 transition-all cursor-pointer"
+                        className="px-3 py-2 rounded-xl bg-rose-500/10 hover:bg-rose-500/20 text-rose-700 dark:text-rose-300 border border-rose-500/30 text-xs font-bold flex items-center gap-1 transition-all cursor-pointer"
                         title="Rechazar transacción"
                       >
                         <XCircle className="w-4 h-4" />
@@ -1243,6 +1236,7 @@ export const ConfirmationsQuick: React.FC = () => {
             })}
           </div>
         </div>
+
       )}
 
       {/* Reject Modal */}

@@ -30,6 +30,13 @@ import {
   getAgencyCommissionAndParticipation,
 } from '../../utils/salesRecalculation';
 import { logAuditEvent } from '../../utils/auditLogger';
+import { UI_LOCK } from '../../styles/uiDesignLock';
+import {
+  loadCurrencies,
+  DEFAULT_CURRENCIES,
+  getCurrencyFlag,
+  type CurrencyConfig,
+} from '../../utils/currencies';
 
 interface SystemSaleDetail {
   sistema: string;
@@ -65,8 +72,9 @@ export const RealSalesTab: React.FC = () => {
   const [fechaDesde, setFechaDesde] = useState(systemCycle?.desde || '');
   const [fechaHasta, setFechaHasta] = useState(systemCycle?.hasta || '');
 
-  // Active currency pill filter: 'BS' | 'USD' | 'COP' | 'TODAS'
-  const [activeCurrencyTab, setActiveCurrencyTab] = useState<'BS' | 'USD' | 'COP' | 'TODAS'>('BS');
+  // Active currency pill filter: string | 'TODAS'
+  const [activeCurrencyTab, setActiveCurrencyTab] = useState<string>('BS');
+  const [currenciesList, setCurrenciesList] = useState<CurrencyConfig[]>(DEFAULT_CURRENCIES);
 
   // Search filter
   const [searchQuery, setSearchQuery] = useState('');
@@ -115,12 +123,20 @@ export const RealSalesTab: React.FC = () => {
         salesQuery = salesQuery.lte('fecha', fechaHasta);
       }
 
-      const [salesRes, agRes, sisRes, monRes] = await Promise.all([
+      const [salesRes, agRes, sisRes, monRes, userCurrencies] = await Promise.all([
         salesQuery,
         supabase.from('agencias').select('*').eq('user_id', effectiveUserId).order('id', { ascending: true }),
         supabase.from('sistemas').select('*').eq('user_id', effectiveUserId).order('nombre_sistema', { ascending: true }),
         supabase.from('monedas').select('*').eq('user_id', effectiveUserId).order('id', { ascending: true }),
+        loadCurrencies(effectiveUserId),
       ]);
+
+      if (userCurrencies && userCurrencies.length > 0) {
+        setCurrenciesList(userCurrencies);
+        if (activeCurrencyTab !== 'TODAS' && !userCurrencies.some(c => c.codigo === activeCurrencyTab)) {
+          setActiveCurrencyTab(userCurrencies[0].codigo);
+        }
+      }
 
       setSales(salesRes.data || []);
       setAgencies(agRes.data || []);
@@ -131,7 +147,7 @@ export const RealSalesTab: React.FC = () => {
     } finally {
       setIsLoading(false);
     }
-  }, [effectiveUserId, fechaDesde, fechaHasta]);
+  }, [effectiveUserId, fechaDesde, fechaHasta, activeCurrencyTab]);
 
   useEffect(() => {
     loadData();
@@ -185,8 +201,8 @@ export const RealSalesTab: React.FC = () => {
 
   // Process and group sales by currency and agency
   const currencyGroupedData = useMemo(() => {
-    const supportedCurrencies: Array<'BS' | 'USD' | 'COP'> = ['BS', 'USD', 'COP'];
-    const result: Record<'BS' | 'USD' | 'COP', {
+    const supportedCurrencies: string[] = currenciesList.map(c => c.codigo);
+    const result: Record<string, {
       summaries: AgencySaleSummary[];
       totals: {
         venta: number;
@@ -198,11 +214,14 @@ export const RealSalesTab: React.FC = () => {
         registrosCount: number;
         agenciasCount: number;
       };
-    }> = {
-      BS: { summaries: [], totals: { venta: 0, comision: 0, premios: 0, neto: 0, utilAg: 0, utilOp: 0, registrosCount: 0, agenciasCount: 0 } },
-      USD: { summaries: [], totals: { venta: 0, comision: 0, premios: 0, neto: 0, utilAg: 0, utilOp: 0, registrosCount: 0, agenciasCount: 0 } },
-      COP: { summaries: [], totals: { venta: 0, comision: 0, premios: 0, neto: 0, utilAg: 0, utilOp: 0, registrosCount: 0, agenciasCount: 0 } },
-    };
+    }> = {};
+
+    supportedCurrencies.forEach((curr) => {
+      result[curr] = {
+        summaries: [],
+        totals: { venta: 0, comision: 0, premios: 0, neto: 0, utilAg: 0, utilOp: 0, registrosCount: 0, agenciasCount: 0 },
+      };
+    });
 
     // Agency map for quick config lookup
     const agencyMap = new Map<string, Agency>();
@@ -418,25 +437,25 @@ export const RealSalesTab: React.FC = () => {
   // Active currency currencies to render
   const activeCurrenciesToRender = useMemo(() => {
     if (activeCurrencyTab === 'TODAS') {
-      return ['BS', 'USD', 'COP'] as const;
+      return currenciesList.map(c => c.codigo);
     }
-    return [activeCurrencyTab] as const;
-  }, [activeCurrencyTab]);
+    return [activeCurrencyTab];
+  }, [activeCurrencyTab, currenciesList]);
 
   // Overall totals across all active currencies for KPIs
   const currentKpiTotals = useMemo(() => {
-    if (activeCurrencyTab !== 'TODAS') {
+    if (activeCurrencyTab !== 'TODAS' && currencyGroupedData[activeCurrencyTab]) {
       return {
         ...currencyGroupedData[activeCurrencyTab].totals,
         moneda: activeCurrencyTab,
       };
     }
-    // For 'TODAS', show BS as dominant or default
+    const defaultCode = currenciesList[0]?.codigo || 'BS';
     return {
-      ...currencyGroupedData.BS.totals,
-      moneda: 'BS',
+      ...(currencyGroupedData[defaultCode]?.totals || { venta: 0, comision: 0, premios: 0, neto: 0, utilAg: 0, utilOp: 0, registrosCount: 0, agenciasCount: 0 }),
+      moneda: defaultCode,
     };
-  }, [activeCurrencyTab, currencyGroupedData]);
+  }, [activeCurrencyTab, currencyGroupedData, currenciesList]);
 
   // Export to Excel function
   const handleExportExcel = () => {
@@ -444,6 +463,7 @@ export const RealSalesTab: React.FC = () => {
 
     activeCurrenciesToRender.forEach((curr) => {
       const data = currencyGroupedData[curr];
+      if (!data) return;
       const rows: any[] = [];
 
       data.summaries.forEach((ag, idx) => {
@@ -507,127 +527,122 @@ export const RealSalesTab: React.FC = () => {
   };
 
   return (
-    <div className="space-y-6 animate-fade-in font-sans">
+    <div className={UI_LOCK.pageContainer}>
       {/* 1. Header & Controls Card */}
-      <div className="bg-gradient-to-r from-[#0D1B22] via-[#0F242C] to-[#0D1B22] border border-slate-800 rounded-3xl p-6 shadow-2xl relative overflow-hidden">
-        <div className="absolute top-0 right-0 w-80 h-80 bg-emerald-500/5 rounded-full blur-3xl pointer-events-none" />
-
-        <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4 relative z-10">
-          <div className="space-y-1">
-            <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-emerald-500/10 border border-emerald-500/30 text-emerald-400 text-xs font-bold">
-              <TrendingUp className="w-3.5 h-3.5" />
-              <span>Control y Reporte de Ventas Consolidadas</span>
-            </div>
-            <h2 className="text-xl sm:text-2xl font-black text-white tracking-tight flex items-center gap-2.5">
-              <span>Venta Real por Agencias</span>
-              <span className="text-xs px-2.5 py-0.5 rounded-full bg-slate-800 text-slate-300 font-mono font-normal">
+      <div className={UI_LOCK.headerCard}>
+        <div className="flex items-center gap-3">
+          <div className={UI_LOCK.headerIconWrap}>
+            <TrendingUp className="w-6 h-6" />
+          </div>
+          <div>
+            <div className="flex items-center gap-2">
+              <h2 className={UI_LOCK.headerTitle}>
+                Venta Real por Agencias
+              </h2>
+              <span className="text-xs px-2.5 py-0.5 rounded-full bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 font-mono font-medium">
                 {sales.length} registros cargados
               </span>
-            </h2>
-            <p className="text-xs sm:text-sm text-slate-400 max-w-2xl">
+            </div>
+            <p className={UI_LOCK.headerSubtitle}>
               Consolidado de ventas, comisiones, premios y utilidades por agencia y moneda en el ciclo operativo oficial.
             </p>
           </div>
+        </div>
 
-          <div id="tour-ventareal-actions" className="flex flex-wrap items-center gap-2.5">
-            <button
-              onClick={handleSyncAndRecalculate}
-              disabled={isRecalculating || sales.length === 0}
-              className="px-4 py-2.5 rounded-2xl bg-sky-500/10 hover:bg-sky-500/20 text-sky-400 border border-sky-500/30 font-bold text-xs flex items-center gap-2 transition-all cursor-pointer disabled:opacity-50"
-              title="Recalcula comisiones y participaciones con la configuración actual de las agencias"
-            >
-              <RefreshCw className={`w-4 h-4 ${isRecalculating ? 'animate-spin' : ''}`} />
-              <span>{isRecalculating ? 'Sincronizando...' : 'Sincronizar con Agencias'}</span>
-            </button>
+        <div className={UI_LOCK.headerActions} id="tour-ventareal-actions">
+          <button
+            onClick={handleSyncAndRecalculate}
+            disabled={isRecalculating || sales.length === 0}
+            className={UI_LOCK.buttonSecondary}
+            title="Recalcula comisiones y participaciones con la configuración actual de las agencias"
+          >
+            <RefreshCw className={`w-4 h-4 ${isRecalculating ? 'animate-spin text-emerald-500' : ''}`} />
+            <span>{isRecalculating ? 'Sincronizando...' : 'Sincronizar con Agencias'}</span>
+          </button>
 
-            <button
-              onClick={handleExportExcel}
-              disabled={sales.length === 0}
-              className="px-4 py-2.5 rounded-2xl bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-bold text-xs flex items-center gap-2 transition-all cursor-pointer shadow-lg shadow-emerald-500/20 disabled:opacity-50"
-            >
-              <FileSpreadsheet className="w-4 h-4" />
-              <span>Exportar Excel</span>
-            </button>
+          <button
+            onClick={handleExportExcel}
+            disabled={sales.length === 0}
+            className={UI_LOCK.buttonPrimary}
+          >
+            <FileSpreadsheet className="w-4 h-4" />
+            <span>Exportar Excel</span>
+          </button>
 
-            <button
-              onClick={() => loadData()}
-              disabled={isLoading}
-              className="p-2.5 rounded-2xl bg-slate-800/90 hover:bg-slate-700 text-slate-300 hover:text-white transition-all border border-slate-700 cursor-pointer"
-              title="Recargar datos"
-            >
-              <RefreshCw className={`w-4 h-4 ${isLoading ? 'animate-spin text-emerald-400' : ''}`} />
-            </button>
+          <button
+            onClick={() => loadData()}
+            disabled={isLoading}
+            className={UI_LOCK.buttonRefresh}
+            title="Recargar datos"
+          >
+            <RefreshCw className={`w-4 h-4 ${isLoading ? 'animate-spin text-emerald-500' : ''}`} />
+          </button>
+        </div>
+      </div>
+
+      {syncMessage && (
+        <div className={UI_LOCK.successBanner}>
+          <CheckCircle2 className="w-5 h-5 shrink-0 text-emerald-600 dark:text-emerald-400" />
+          <span className="text-sm font-semibold">{syncMessage}</span>
+        </div>
+      )}
+
+      {/* Date Filter Strip */}
+      <div className={UI_LOCK.cardCompact + ' flex flex-wrap items-center justify-between gap-3 text-xs'}>
+        <div className="flex flex-wrap items-center gap-2.5">
+          <span className="text-slate-500 dark:text-slate-400 font-bold uppercase tracking-wider text-[10px] flex items-center gap-1.5">
+            <Calendar className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400" />
+            <span>Período de Ventas:</span>
+          </span>
+          <div className="flex items-center gap-1.5 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl px-2.5 py-1">
+            <input
+              type="date"
+              value={fechaDesde}
+              onChange={(e) => setFechaDesde(e.target.value)}
+              className="bg-transparent text-slate-800 dark:text-white font-mono text-xs focus:outline-none cursor-pointer"
+            />
+            <span className="text-slate-400 font-sans text-[11px]">al</span>
+            <input
+              type="date"
+              value={fechaHasta}
+              onChange={(e) => setFechaHasta(e.target.value)}
+              className="bg-transparent text-slate-800 dark:text-white font-mono text-xs focus:outline-none cursor-pointer"
+            />
           </div>
         </div>
 
-        {syncMessage && (
-          <div className="mt-4 p-3 rounded-2xl bg-sky-500/10 border border-sky-500/30 text-sky-300 text-xs flex items-center gap-2 animate-fade-in">
-            <CheckCircle2 className="w-4 h-4 shrink-0 text-sky-400" />
-            <span>{syncMessage}</span>
-          </div>
+        {systemCycle?.desde && (
+          <button
+            onClick={handleResetCycle}
+            className={UI_LOCK.buttonSecondary + ' text-xs py-1.5 px-3'}
+          >
+            <Clock className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400" />
+            <span>Restablecer al Ciclo Actual ({formatDate(systemCycle.desde)} al {formatDate(systemCycle.hasta)})</span>
+          </button>
         )}
-
-        {/* Date Filter Strip */}
-        <div className="mt-5 pt-4 border-t border-slate-800/80 flex flex-wrap items-center justify-between gap-3 text-xs relative z-10">
-          <div className="flex flex-wrap items-center gap-2.5">
-            <span className="text-slate-400 font-bold uppercase tracking-wider text-[10px] flex items-center gap-1.5">
-              <Calendar className="w-3.5 h-3.5 text-emerald-400" />
-              <span>Período de Ventas:</span>
-            </span>
-            <div className="flex items-center gap-1.5 bg-[#071217] border border-slate-700 rounded-xl px-2.5 py-1">
-              <input
-                type="date"
-                value={fechaDesde}
-                onChange={(e) => setFechaDesde(e.target.value)}
-                className="bg-transparent text-white font-mono text-xs focus:outline-none cursor-pointer"
-              />
-              <span className="text-slate-500 font-sans text-[11px]">al</span>
-              <input
-                type="date"
-                value={fechaHasta}
-                onChange={(e) => setFechaHasta(e.target.value)}
-                className="bg-transparent text-white font-mono text-xs focus:outline-none cursor-pointer"
-              />
-            </div>
-          </div>
-
-          {systemCycle?.desde && (
-            <button
-              onClick={handleResetCycle}
-              className="px-3 py-1.5 rounded-xl bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer"
-            >
-              <Clock className="w-3.5 h-3.5" />
-              <span>Restablecer al Ciclo Actual ({formatDate(systemCycle.desde)} al {formatDate(systemCycle.hasta)})</span>
-            </button>
-          )}
-        </div>
       </div>
 
       {/* 2. Currency Pills & Search Bar Strip */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-        {/* Currency Switcher */}
-        <div id="tour-ventareal-currency" className="flex items-center gap-1 bg-[#0D1B22] p-1 rounded-2xl border border-slate-800">
-          {(['BS', 'USD', 'COP', 'TODAS'] as const).map((curr) => {
+        {/* Dynamic Currency Switcher */}
+        <div id="tour-ventareal-currency" className="flex flex-wrap items-center gap-1 bg-slate-100 dark:bg-slate-800/80 p-1 rounded-2xl border border-slate-200 dark:border-slate-700">
+          {[...currenciesList.map(c => c.codigo), 'TODAS'].map((curr) => {
             const isSelected = activeCurrencyTab === curr;
             const count = curr === 'TODAS'
               ? sales.length
-              : currencyGroupedData[curr].totals.registrosCount;
+              : currencyGroupedData[curr]?.totals.registrosCount || 0;
 
             return (
               <button
                 key={curr}
                 onClick={() => setActiveCurrencyTab(curr)}
-                className={`px-3.5 py-2 rounded-xl text-xs font-black transition-all cursor-pointer flex items-center gap-1.5 ${
-                  isSelected
-                    ? 'bg-emerald-500 text-slate-950 shadow-md shadow-emerald-500/20 scale-[1.02]'
-                    : 'text-slate-400 hover:text-white hover:bg-slate-800/40'
-                }`}
+                className={isSelected ? UI_LOCK.filterPillActive : UI_LOCK.filterPillInactive}
               >
                 <span>
-                  {curr === 'BS' ? '🇻🇪 BS' : curr === 'USD' ? '💵 USD' : curr === 'COP' ? '🇨🇴 COP' : '🌐 Todas'}
+                  {curr === 'TODAS' ? '🌐 Todas' : `${getCurrencyFlag(curr)} ${curr}`}
                 </span>
                 <span className={`text-[10px] px-1.5 py-0.2 rounded-full font-mono ${
-                  isSelected ? 'bg-slate-950/20 text-slate-950' : 'bg-slate-800 text-slate-400'
+                  isSelected ? 'bg-white/20 text-white' : 'bg-slate-200 dark:bg-slate-700 text-slate-600 dark:text-slate-300'
                 }`}>
                   {count}
                 </span>
@@ -645,89 +660,90 @@ export const RealSalesTab: React.FC = () => {
               placeholder="Buscar agencia o sistema..."
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
-              className="bg-[#0D1B22] border border-slate-800 rounded-xl pl-8 pr-3 py-1.5 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-emerald-500 w-52 sm:w-64"
+              className={UI_LOCK.input}
+              style={{ paddingLeft: '2.25rem', width: '16rem' }}
             />
           </div>
 
-          <label className="flex items-center gap-1.5 text-xs text-slate-400 cursor-pointer bg-[#0D1B22] border border-slate-800 rounded-xl px-3 py-1.5 hover:border-slate-700">
+          <label className="flex items-center gap-1.5 text-xs text-slate-600 dark:text-slate-400 cursor-pointer bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl px-3 py-2 shadow-xs hover:border-slate-300 dark:hover:border-slate-600 transition-colors">
             <input
               type="checkbox"
               checked={onlyWithMovements}
               onChange={(e) => setOnlyWithMovements(e.target.checked)}
-              className="rounded text-emerald-500 bg-slate-900 border-slate-700 focus:ring-0"
+              className="rounded text-emerald-600 bg-slate-100 dark:bg-slate-900 border-slate-300 dark:border-slate-700 focus:ring-0"
             />
-            <span className="text-[11px] font-semibold text-slate-300 whitespace-nowrap">Con ventas</span>
+            <span className="text-[11px] font-semibold text-slate-700 dark:text-slate-300 whitespace-nowrap">Con ventas</span>
           </label>
         </div>
       </div>
 
       {/* 3. KPI Summary Cards for Active Selection */}
-      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3">
-        <div className="bg-[#0D1B22] border border-slate-800 rounded-2xl p-4 space-y-1 shadow-sm">
-          <span className="text-[10px] font-bold uppercase text-slate-400 flex items-center gap-1">
-            <Coins className="w-3 h-3 text-cyan-400" />
+      <div className={UI_LOCK.kpiGrid(5)}>
+        <div className={UI_LOCK.kpiCard}>
+          <span className={UI_LOCK.kpiLabel + ' flex items-center gap-1'}>
+            <Coins className="w-3.5 h-3.5 text-cyan-600 dark:text-cyan-400" />
             Venta Bruta Total
           </span>
-          <div className="text-base sm:text-lg font-black text-white font-mono truncate">
+          <div className={UI_LOCK.kpiValue + ' font-mono'}>
             {formatCurrency(currentKpiTotals.venta, currentKpiTotals.moneda)}
           </div>
-          <span className="text-[10px] text-slate-500 font-mono block">
+          <span className="text-[10px] text-slate-500 dark:text-slate-400 font-mono block mt-1">
             {currentKpiTotals.registrosCount} registros
           </span>
         </div>
 
-        <div className="bg-[#0D1B22] border border-slate-800 rounded-2xl p-4 space-y-1 shadow-sm">
-          <span className="text-[10px] font-bold uppercase text-slate-400 flex items-center gap-1">
-            <Receipt className="w-3 h-3 text-amber-400" />
+        <div className={UI_LOCK.kpiCard}>
+          <span className={UI_LOCK.kpiLabel + ' flex items-center gap-1'}>
+            <Receipt className="w-3.5 h-3.5 text-amber-600 dark:text-amber-400" />
             Comisiones
           </span>
-          <div className="text-base sm:text-lg font-black text-amber-400 font-mono truncate">
+          <div className={UI_LOCK.kpiValue + ' font-mono text-amber-600 dark:text-amber-400'}>
             {formatCurrency(currentKpiTotals.comision, currentKpiTotals.moneda)}
           </div>
-          <span className="text-[10px] text-slate-500 font-mono block">
+          <span className="text-[10px] text-slate-500 dark:text-slate-400 font-mono block mt-1">
             {currentKpiTotals.venta > 0 ? `${((currentKpiTotals.comision / currentKpiTotals.venta) * 100).toFixed(1)}% prom.` : '0%'}
           </span>
         </div>
 
-        <div className="bg-[#0D1B22] border border-slate-800 rounded-2xl p-4 space-y-1 shadow-sm">
-          <span className="text-[10px] font-bold uppercase text-slate-400 flex items-center gap-1">
-            <Award className="w-3 h-3 text-rose-400" />
+        <div className={UI_LOCK.kpiCard}>
+          <span className={UI_LOCK.kpiLabel + ' flex items-center gap-1'}>
+            <Award className="w-3.5 h-3.5 text-rose-600 dark:text-rose-400" />
             Premios Pagados
           </span>
-          <div className="text-base sm:text-lg font-black text-rose-400 font-mono truncate">
+          <div className={UI_LOCK.kpiValue + ' font-mono text-rose-600 dark:text-rose-400'}>
             {formatCurrency(currentKpiTotals.premios, currentKpiTotals.moneda)}
           </div>
-          <span className="text-[10px] text-slate-500 font-mono block">
+          <span className="text-[10px] text-slate-500 dark:text-slate-400 font-mono block mt-1">
             Pagos en taquillas
           </span>
         </div>
 
-        <div className="bg-[#0D1B22] border border-slate-800 rounded-2xl p-4 space-y-1 shadow-sm">
-          <span className="text-[10px] font-bold uppercase text-slate-400 flex items-center gap-1">
-            <Wallet className="w-3 h-3 text-emerald-400" />
+        <div className={UI_LOCK.kpiCard}>
+          <span className={UI_LOCK.kpiLabel + ' flex items-center gap-1'}>
+            <Wallet className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400" />
             Utilidad Operadora
           </span>
-          <div className={`text-base sm:text-lg font-black font-mono truncate ${
-            currentKpiTotals.utilOp >= 0 ? 'text-emerald-400' : 'text-rose-400'
+          <div className={`${UI_LOCK.kpiValue} font-mono ${
+            currentKpiTotals.utilOp >= 0 ? 'text-emerald-600 dark:text-emerald-400' : 'text-rose-600 dark:text-rose-400'
           }`}>
             {formatCurrency(currentKpiTotals.utilOp, currentKpiTotals.moneda)}
           </div>
-          <span className="text-[10px] text-slate-500 font-mono block">
+          <span className="text-[10px] text-slate-500 dark:text-slate-400 font-mono block mt-1">
             Neto para la Banca
           </span>
         </div>
 
-        <div className="bg-[#0D1B22] border border-slate-800 rounded-2xl p-4 space-y-1 shadow-sm col-span-2 sm:col-span-1">
-          <span className="text-[10px] font-bold uppercase text-slate-400 flex items-center gap-1">
-            <Building2 className="w-3 h-3 text-sky-400" />
+        <div className={UI_LOCK.kpiCard + ' col-span-2 sm:col-span-1'}>
+          <span className={UI_LOCK.kpiLabel + ' flex items-center gap-1'}>
+            <Building2 className="w-3.5 h-3.5 text-sky-600 dark:text-sky-400" />
             Utilidad Agencias
           </span>
-          <div className={`text-base sm:text-lg font-black font-mono truncate ${
-            currentKpiTotals.utilAg >= 0 ? 'text-sky-400' : 'text-rose-400'
+          <div className={`${UI_LOCK.kpiValue} font-mono ${
+            currentKpiTotals.utilAg >= 0 ? 'text-sky-600 dark:text-sky-400' : 'text-rose-600 dark:text-rose-400'
           }`}>
             {formatCurrency(currentKpiTotals.utilAg, currentKpiTotals.moneda)}
           </div>
-          <span className="text-[10px] text-slate-500 font-mono block">
+          <span className="text-[10px] text-slate-500 dark:text-slate-400 font-mono block mt-1">
             Participación Ag.
           </span>
         </div>
@@ -736,6 +752,7 @@ export const RealSalesTab: React.FC = () => {
       {/* 4. Tables per Currency */}
       {activeCurrenciesToRender.map((curr) => {
         const currData = currencyGroupedData[curr];
+        if (!currData) return null;
         const summaries = currData.summaries;
         const totals = currData.totals;
 
@@ -744,24 +761,24 @@ export const RealSalesTab: React.FC = () => {
         }
 
         return (
-          <div key={curr} id="tour-ventareal-table" className="bg-[#0D1B22] border border-slate-800 rounded-3xl overflow-hidden shadow-xl space-y-0">
+          <div key={curr} id="tour-ventareal-table" className={UI_LOCK.tableContainer}>
             {/* Currency Banner Header */}
-            <div className="p-4 bg-[#071217] border-b border-slate-800 flex items-center justify-between">
+            <div className="p-4 bg-slate-50 dark:bg-slate-800/60 border-b border-slate-200 dark:border-slate-800 flex items-center justify-between">
               <div className="flex items-center gap-2">
                 <span className="text-base">
-                  {curr === 'BS' ? '🇻🇪' : curr === 'USD' ? '💵' : '🇨🇴'}
+                  {getCurrencyFlag(curr)}
                 </span>
-                <h3 className="text-sm font-black text-white uppercase tracking-wider">
-                  Movimientos en {curr === 'BS' ? 'Bolívares (BS)' : curr === 'USD' ? 'Dólares (USD)' : 'Pesos (COP)'}
+                <h3 className="text-sm font-black text-slate-900 dark:text-white uppercase tracking-wider">
+                  Movimientos en {curr}
                 </h3>
-                <span className="text-[10px] px-2 py-0.5 rounded-full bg-slate-800 text-slate-400 font-mono font-bold">
+                <span className="text-[10px] px-2 py-0.5 rounded-full bg-slate-200 dark:bg-slate-700 text-slate-700 dark:text-slate-300 font-mono font-bold">
                   {summaries.length} agencias / {totals.registrosCount} registros
                 </span>
               </div>
 
-              <div className="text-xs font-mono font-bold text-slate-300">
+              <div className="text-xs font-mono font-bold text-slate-700 dark:text-slate-300">
                 Utilidad Operadora:{' '}
-                <span className={totals.utilOp >= 0 ? 'text-emerald-400' : 'text-rose-400'}>
+                <span className={totals.utilOp >= 0 ? 'text-emerald-600 dark:text-emerald-400' : 'text-rose-600 dark:text-rose-400'}>
                   {formatCurrency(totals.utilOp, curr)}
                 </span>
               </div>
@@ -769,41 +786,41 @@ export const RealSalesTab: React.FC = () => {
 
             {/* Table or Empty State */}
             {summaries.length === 0 ? (
-              <div className="p-8 text-center text-xs text-slate-500 italic">
+              <div className="p-8 text-center text-xs text-slate-500 dark:text-slate-400 italic">
                 No hay ventas registradas en {curr} para el período seleccionado.
               </div>
             ) : (
               <div className="overflow-x-auto">
-                <table className="w-full text-left text-xs">
-                  <thead className="bg-[#071217]/60 text-[10px] font-black text-slate-400 uppercase tracking-wider border-b border-slate-800">
+                <table className={UI_LOCK.table}>
+                  <thead className={UI_LOCK.tableThead}>
                     <tr>
                       <th className="py-3 px-3 text-center w-10">#</th>
                       <th className="py-3 px-4">Agencia</th>
                       <th className="py-3 px-3">Sistemas</th>
                       <th className="py-3 px-3 text-right">Venta Bruta</th>
                       <th className="py-3 px-3 text-right">Comisión</th>
-                      <th className="py-3 px-3 text-right text-rose-400">Premios</th>
+                      <th className="py-3 px-3 text-right text-rose-600 dark:text-rose-400">Premios</th>
                       <th className="py-3 px-3 text-right">Venta Neta</th>
                       <th className="py-3 px-3 text-right">Part. Ag.</th>
-                      <th className="py-3 px-3 text-right text-emerald-400">Utilidad Op.</th>
+                      <th className="py-3 px-3 text-right text-emerald-600 dark:text-emerald-400">Utilidad Op.</th>
                       <th className="py-3 px-3 text-center w-12">Detalle</th>
                     </tr>
                   </thead>
-                  <tbody className="divide-y divide-slate-800/60 font-mono">
+                  <tbody className="divide-y divide-slate-100 dark:divide-slate-800/60 font-mono">
                     {summaries.map((ag, idx) => {
                       const expandKey = `${curr}_${ag.agenciaNombre}`;
                       const isExpanded = Boolean(expandedAgencies[expandKey]);
 
                       return (
                         <React.Fragment key={ag.agenciaNombre}>
-                          <tr className="hover:bg-slate-800/30 transition-colors">
-                            <td className="py-3 px-3 text-center text-slate-500 text-[11px] font-mono">
+                          <tr className="hover:bg-slate-50 dark:hover:bg-slate-800/30 transition-colors">
+                            <td className="py-3 px-3 text-center text-slate-400 dark:text-slate-500 text-[11px] font-mono">
                               {idx + 1}
                             </td>
 
                             <td className="py-3 px-4 font-sans">
                               <div className="flex items-center gap-2">
-                                <span className="font-extrabold text-white text-xs whitespace-nowrap">
+                                <span className="font-extrabold text-slate-900 dark:text-white text-xs whitespace-nowrap">
                                   {ag.agenciaNombre}
                                 </span>
                               </div>
@@ -814,7 +831,7 @@ export const RealSalesTab: React.FC = () => {
                                 {ag.sistemas.map((sys) => (
                                   <span
                                     key={sys}
-                                    className="px-1.5 py-0.5 rounded text-[9.5px] font-bold bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 whitespace-nowrap"
+                                    className="px-1.5 py-0.5 rounded text-[9.5px] font-bold bg-emerald-50 dark:bg-emerald-500/10 text-emerald-700 dark:text-emerald-400 border border-emerald-200 dark:border-emerald-500/20 whitespace-nowrap"
                                   >
                                     🎰 {sys}
                                   </span>
@@ -822,42 +839,42 @@ export const RealSalesTab: React.FC = () => {
                               </div>
                             </td>
 
-                            <td className="py-3 px-3 text-right font-bold text-white whitespace-nowrap">
+                            <td className="py-3 px-3 text-right font-bold text-slate-900 dark:text-white whitespace-nowrap">
                               {formatCurrency(ag.venta, curr)}
                             </td>
 
-                            <td className="py-3 px-3 text-right text-slate-300 whitespace-nowrap">
+                            <td className="py-3 px-3 text-right text-slate-600 dark:text-slate-300 whitespace-nowrap">
                               <div className="flex flex-col items-end">
                                 <span>{formatCurrency(ag.comision, curr)}</span>
                                 {ag.venta > 0 && (
-                                  <span className="text-[9.5px] text-slate-500">
+                                  <span className="text-[9.5px] text-slate-400 dark:text-slate-500">
                                     {((ag.comision / ag.venta) * 100).toFixed(1)}%
                                   </span>
                                 )}
                               </div>
                             </td>
 
-                            <td className="py-3 px-3 text-right text-rose-400 whitespace-nowrap">
+                            <td className="py-3 px-3 text-right text-rose-600 dark:text-rose-400 whitespace-nowrap">
                               {formatCurrency(ag.premios, curr)}
                             </td>
 
                             <td className="py-3 px-3 text-right font-bold whitespace-nowrap">
-                              <span className={ag.neto >= 0 ? 'text-cyan-300' : 'text-rose-400'}>
+                              <span className={ag.neto >= 0 ? 'text-cyan-700 dark:text-cyan-300' : 'text-rose-600 dark:text-rose-400'}>
                                 {formatCurrency(ag.neto, curr)}
                               </span>
                             </td>
 
-                            <td className="py-3 px-3 text-right text-sky-400 whitespace-nowrap">
+                            <td className="py-3 px-3 text-right text-sky-700 dark:text-sky-400 whitespace-nowrap">
                               <div className="flex flex-col items-end">
                                 <span>{formatCurrency(ag.utilAg, curr)}</span>
-                                <span className="text-[9.5px] text-slate-500">
+                                <span className="text-[9.5px] text-slate-400 dark:text-slate-500">
                                   {ag.participacionPct}%
                                 </span>
                               </div>
                             </td>
 
                             <td className="py-3 px-3 text-right font-black whitespace-nowrap">
-                              <span className={ag.utilOp >= 0 ? 'text-emerald-400' : 'text-rose-400'}>
+                              <span className={ag.utilOp >= 0 ? 'text-emerald-600 dark:text-emerald-400' : 'text-rose-600 dark:text-rose-400'}>
                                 {formatCurrency(ag.utilOp, curr)}
                               </span>
                             </td>
@@ -868,8 +885,8 @@ export const RealSalesTab: React.FC = () => {
                                 onClick={() => toggleExpand(expandKey)}
                                 className={`p-1.5 rounded-lg transition-colors cursor-pointer ${
                                   isExpanded
-                                    ? 'bg-emerald-500/20 text-emerald-400'
-                                    : 'text-slate-400 hover:text-white hover:bg-slate-800'
+                                    ? 'bg-emerald-50 dark:bg-emerald-500/20 text-emerald-600 dark:text-emerald-400'
+                                    : 'text-slate-400 hover:text-slate-900 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-slate-800'
                                 }`}
                                 title="Ver desglose por sistema"
                               >
@@ -880,56 +897,56 @@ export const RealSalesTab: React.FC = () => {
 
                           {/* Subtable: Breakdown per system */}
                           {isExpanded && (
-                            <tr className="bg-[#071217]/90">
+                            <tr className="bg-slate-50/70 dark:bg-slate-900/60">
                               <td colSpan={10} className="p-3 pl-12">
-                                <div className="rounded-2xl border border-slate-800 bg-[#0D1B22] p-3 space-y-2">
-                                  <div className="flex items-center justify-between pb-1 border-b border-slate-800 text-[11px] font-bold text-slate-400 uppercase tracking-wider">
+                                <div className="rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 p-3 space-y-2 shadow-xs">
+                                  <div className="flex items-center justify-between pb-1 border-b border-slate-200 dark:border-slate-800 text-[11px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider">
                                     <span className="flex items-center gap-1.5">
-                                      <Layers className="w-3.5 h-3.5 text-sky-400" />
+                                      <Layers className="w-3.5 h-3.5 text-sky-600 dark:text-sky-400" />
                                       <span>Desglose por Sistema ({ag.systemDetails.length})</span>
                                     </span>
                                     <span>Agencia: {ag.agenciaNombre}</span>
                                   </div>
 
                                   <table className="w-full text-left text-[11px] font-mono">
-                                    <thead className="text-[9px] uppercase text-slate-500 border-b border-slate-800">
+                                    <thead className="text-[9px] uppercase text-slate-500 dark:text-slate-400 border-b border-slate-200 dark:border-slate-800">
                                       <tr>
                                         <th className="py-1 px-2 font-sans">Sistema</th>
                                         <th className="py-1 px-2 font-sans">Fechas Registradas</th>
                                         <th className="py-1 px-2 text-right">Venta</th>
                                         <th className="py-1 px-2 text-right">Comisión</th>
-                                        <th className="py-1 px-2 text-right text-rose-400">Premios</th>
-                                        <th className="py-1 px-2 text-right text-cyan-400">Neto</th>
-                                        <th className="py-1 px-2 text-right text-sky-400">Util. Ag.</th>
-                                        <th className="py-1 px-2 text-right text-emerald-400">Util. Op.</th>
+                                        <th className="py-1 px-2 text-right text-rose-600 dark:text-rose-400">Premios</th>
+                                        <th className="py-1 px-2 text-right text-cyan-600 dark:text-cyan-400">Neto</th>
+                                        <th className="py-1 px-2 text-right text-sky-600 dark:text-sky-400">Util. Ag.</th>
+                                        <th className="py-1 px-2 text-right text-emerald-600 dark:text-emerald-400">Util. Op.</th>
                                       </tr>
                                     </thead>
-                                    <tbody className="divide-y divide-slate-800/40">
+                                    <tbody className="divide-y divide-slate-100 dark:divide-slate-800/40">
                                       {ag.systemDetails.map((sys) => (
-                                        <tr key={sys.sistema} className="hover:bg-slate-800/20">
-                                          <td className="py-1.5 px-2 font-bold font-sans text-white flex items-center gap-1">
+                                        <tr key={sys.sistema} className="hover:bg-slate-50 dark:hover:bg-slate-800/20">
+                                          <td className="py-1.5 px-2 font-bold font-sans text-slate-900 dark:text-white flex items-center gap-1">
                                             <span>🎰</span>
                                             <span>{sys.sistema}</span>
                                           </td>
-                                          <td className="py-1.5 px-2 font-sans text-slate-400 text-[10px]">
+                                          <td className="py-1.5 px-2 font-sans text-slate-500 dark:text-slate-400 text-[10px]">
                                             {sys.fechas.map(formatDate).join(', ') || 'N/A'} ({sys.count} reg.)
                                           </td>
-                                          <td className="py-1.5 px-2 text-right text-white">
+                                          <td className="py-1.5 px-2 text-right text-slate-900 dark:text-white">
                                             {formatCurrency(sys.venta, curr)}
                                           </td>
-                                          <td className="py-1.5 px-2 text-right text-slate-300">
+                                          <td className="py-1.5 px-2 text-right text-slate-600 dark:text-slate-300">
                                             {formatCurrency(sys.comision, curr)}
                                           </td>
-                                          <td className="py-1.5 px-2 text-right text-rose-400">
+                                          <td className="py-1.5 px-2 text-right text-rose-600 dark:text-rose-400">
                                             {formatCurrency(sys.premios, curr)}
                                           </td>
-                                          <td className="py-1.5 px-2 text-right font-bold text-cyan-400">
+                                          <td className="py-1.5 px-2 text-right font-bold text-cyan-600 dark:text-cyan-400">
                                             {formatCurrency(sys.neto, curr)}
                                           </td>
-                                          <td className="py-1.5 px-2 text-right text-sky-400">
+                                          <td className="py-1.5 px-2 text-right text-sky-600 dark:text-sky-400">
                                             {formatCurrency(sys.utilAg, curr)}
                                           </td>
-                                          <td className="py-1.5 px-2 text-right font-bold text-emerald-400">
+                                          <td className="py-1.5 px-2 text-right font-bold text-emerald-600 dark:text-emerald-400">
                                             {formatCurrency(sys.utilOp, curr)}
                                           </td>
                                         </tr>
@@ -946,27 +963,27 @@ export const RealSalesTab: React.FC = () => {
                   </tbody>
 
                   {/* Grand Totals Footer */}
-                  <tfoot className="bg-[#071217] border-t-2 border-slate-700 font-mono text-xs">
+                  <tfoot className="bg-slate-100 dark:bg-slate-800/90 border-t-2 border-slate-200 dark:border-slate-700 font-mono text-xs">
                     <tr>
-                      <td colSpan={3} className="py-3 px-4 font-black text-amber-400 font-sans uppercase">
+                      <td colSpan={3} className="py-3 px-4 font-black text-amber-700 dark:text-amber-400 font-sans uppercase">
                         ⭐ TOTAL {curr} ({totals.agenciasCount} AGENCIAS / {totals.registrosCount} MOVIMIENTOS)
                       </td>
-                      <td className="py-3 px-3 text-right font-black text-white">
+                      <td className="py-3 px-3 text-right font-black text-slate-900 dark:text-white">
                         {formatCurrency(totals.venta, curr)}
                       </td>
-                      <td className="py-3 px-3 text-right font-black text-slate-300">
+                      <td className="py-3 px-3 text-right font-black text-slate-700 dark:text-slate-300">
                         {formatCurrency(totals.comision, curr)}
                       </td>
-                      <td className="py-3 px-3 text-right font-black text-rose-400">
+                      <td className="py-3 px-3 text-right font-black text-rose-600 dark:text-rose-400">
                         {formatCurrency(totals.premios, curr)}
                       </td>
-                      <td className="py-3 px-3 text-right font-black text-cyan-300">
+                      <td className="py-3 px-3 text-right font-black text-cyan-700 dark:text-cyan-300">
                         {formatCurrency(totals.neto, curr)}
                       </td>
-                      <td className="py-3 px-3 text-right font-black text-sky-400">
+                      <td className="py-3 px-3 text-right font-black text-sky-700 dark:text-sky-400">
                         {formatCurrency(totals.utilAg, curr)}
                       </td>
-                      <td className="py-3 px-3 text-right font-black text-emerald-400">
+                      <td className="py-3 px-3 text-right font-black text-emerald-600 dark:text-emerald-400">
                         {formatCurrency(totals.utilOp, curr)}
                       </td>
                       <td className="py-3 px-3"></td>

@@ -31,6 +31,7 @@ import confetti from 'canvas-confetti';
 import { recalculateAgencySales } from '../../utils/salesRecalculation';
 import { logAuditEvent } from '../../utils/auditLogger';
 import { loadCurrencies } from '../../utils/currencies';
+import { UI_LOCK } from '../../styles/uiDesignLock';
 
 /**
  * Parsea y formatea las cuentas y dispositivos bancarios al modo Ultra Compacto:
@@ -978,13 +979,13 @@ export const AgenciesTab: React.FC = () => {
       {/* Header & Quota Card */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
-          <h2 className="text-xl sm:text-2xl font-black text-white flex items-center gap-2">
-            <span className="p-2 rounded-xl bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">
+          <h2 className="text-xl sm:text-2xl font-black text-slate-900 dark:text-white flex items-center gap-2">
+            <span className="p-2 rounded-xl bg-emerald-50 text-emerald-700 border border-emerald-200 dark:bg-emerald-500/10 dark:text-emerald-400 dark:border-emerald-500/20">
               <Building2 className="w-5 h-5" />
             </span>
             Gestión de Agencias
           </h2>
-          <p className="text-xs sm:text-sm text-slate-400 mt-1">
+          <p className="text-xs sm:text-sm text-slate-500 dark:text-slate-400 mt-1">
             Administración completa de agencias taquilleras, comisiones, monedas, cuentas asignadas y credenciales de acceso POS.
           </p>
         </div>
@@ -993,7 +994,7 @@ export const AgenciesTab: React.FC = () => {
           <button
             onClick={() => loadData()}
             disabled={isLoading}
-            className="px-3.5 py-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-semibold flex items-center gap-1.5 transition-all border border-slate-700 cursor-pointer disabled:opacity-50"
+            className="px-3.5 py-2.5 rounded-xl bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-300 text-xs font-semibold flex items-center gap-1.5 transition-all border border-slate-300 dark:border-slate-700 cursor-pointer disabled:opacity-50"
           >
             <RefreshCw className={`w-3.5 h-3.5 ${isLoading ? 'animate-spin' : ''}`} />
             Actualizar
@@ -1002,7 +1003,7 @@ export const AgenciesTab: React.FC = () => {
           <button
             onClick={handleOpenNew}
             disabled={isLimitReached}
-            className="px-4 py-2.5 rounded-xl bg-gradient-to-r from-emerald-500 to-teal-600 hover:from-emerald-400 hover:to-teal-500 text-slate-950 font-bold text-xs shadow-lg shadow-emerald-500/20 flex items-center gap-2 transition-all cursor-pointer disabled:opacity-50"
+            className={UI_LOCK.buttonPrimary + ' text-xs'}
           >
             <Plus className="w-4 h-4" />
             Nueva Agencia
@@ -1011,16 +1012,16 @@ export const AgenciesTab: React.FC = () => {
       </div>
 
       {/* Plan Quota Banner */}
-      <div id="tour-agencias-quota" className="bg-[#0D1B22] border border-slate-800 rounded-2xl p-4 flex flex-col sm:flex-row items-center justify-between gap-3">
+      <div id="tour-agencias-quota" className="bg-white dark:bg-[#0D1B22] border border-slate-200/80 dark:border-slate-800 rounded-2xl p-4 flex flex-col sm:flex-row items-center justify-between gap-3 shadow-xs">
         <div className="flex items-center gap-3">
-          <div className="p-2 rounded-xl bg-cyan-500/10 text-cyan-400 border border-cyan-500/20">
+          <div className="p-2 rounded-xl bg-cyan-50 dark:bg-cyan-500/10 text-cyan-700 dark:text-cyan-400 border border-cyan-200 dark:border-cyan-500/20">
             <Building2 className="w-5 h-5" />
           </div>
           <div>
-            <div className="text-xs font-bold text-white">
-              Cuota de Agencias de tu Plan SaaS: <span className="text-cyan-400 font-mono font-black">{agencies.length}</span> / {agencyLimit}
+            <div className="text-xs font-bold text-slate-900 dark:text-white">
+              Cuota de Agencias de tu Plan SaaS: <span className="text-cyan-600 dark:text-cyan-400 font-mono font-black">{agencies.length}</span> / {agencyLimit}
             </div>
-            <p className="text-[11px] text-slate-400">
+            <p className="text-[11px] text-slate-500 dark:text-slate-400">
               {isLimitReached
                 ? '⚠️ Has utilizado el 100% del cupo de agencias disponible para tu suscripción actual.'
                 : `Tienes disponibilidad para registrar ${agencyLimit - agencies.length} agencia(s) adicional(es).`}
@@ -1028,7 +1029,7 @@ export const AgenciesTab: React.FC = () => {
           </div>
         </div>
 
-        <div className="w-full sm:w-48 bg-[#071217] rounded-full h-2.5 border border-slate-800 overflow-hidden">
+        <div className="w-full sm:w-48 bg-slate-100 dark:bg-[#071217] rounded-full h-2.5 border border-slate-200 dark:border-slate-800 overflow-hidden">
           <div
             className={`h-full rounded-full transition-all ${
               isLimitReached ? 'bg-rose-500' : 'bg-gradient-to-r from-emerald-500 to-cyan-500'
@@ -1042,8 +1043,8 @@ export const AgenciesTab: React.FC = () => {
         <div
           className={`p-4 rounded-2xl border flex items-center gap-3 text-sm animate-fade-in ${
             message.type === 'success'
-              ? 'bg-emerald-500/10 border-emerald-500/20 text-emerald-400'
-              : 'bg-rose-500/10 border-rose-500/20 text-rose-400'
+              ? 'bg-emerald-50 border-emerald-200 text-emerald-800 dark:bg-emerald-500/10 dark:border-emerald-500/20 dark:text-emerald-400'
+              : 'bg-rose-50 border-rose-200 text-rose-800 dark:bg-rose-500/10 dark:border-rose-500/20 dark:text-rose-400'
           }`}
         >
           {message.type === 'success' ? (
@@ -1064,12 +1065,12 @@ export const AgenciesTab: React.FC = () => {
             placeholder="Buscar agencia por nombre, sistema, moneda, usuario POS..."
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
-            className="w-full bg-[#0D1B22] border border-slate-800 rounded-2xl pl-9 pr-4 py-2.5 text-xs text-white focus:outline-none focus:border-emerald-500 transition-colors"
+            className="w-full bg-white dark:bg-[#0D1B22] border border-slate-300 dark:border-slate-800 rounded-2xl pl-9 pr-4 py-2.5 text-xs text-slate-900 dark:text-white placeholder-slate-400 dark:placeholder-slate-500 focus:outline-hidden focus:border-emerald-500 transition-colors"
           />
         </div>
 
         {/* View Mode Toggle */}
-        <div className="flex items-center gap-1 bg-[#0D1B22] p-1 rounded-2xl border border-slate-800 shrink-0 self-end sm:self-auto">
+        <div className="flex items-center gap-1 bg-slate-100 dark:bg-[#0D1B22] p-1 rounded-2xl border border-slate-200 dark:border-slate-800 shrink-0 self-end sm:self-auto">
           <button
             type="button"
             onClick={() => {
@@ -1078,8 +1079,8 @@ export const AgenciesTab: React.FC = () => {
             }}
             className={`px-3 py-1.5 rounded-xl text-xs font-bold flex items-center gap-1.5 transition-all cursor-pointer ${
               viewMode === 'linear'
-                ? 'bg-emerald-500 text-slate-950 font-black shadow-md shadow-emerald-500/20'
-                : 'text-slate-400 hover:text-white hover:bg-slate-800/60'
+                ? 'bg-emerald-600 text-white font-black shadow-xs'
+                : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white hover:bg-slate-200/60 dark:hover:bg-slate-800/60'
             }`}
             title="Vista Tabla"
           >
@@ -1094,8 +1095,8 @@ export const AgenciesTab: React.FC = () => {
             }}
             className={`px-3 py-1.5 rounded-xl text-xs font-bold flex items-center gap-1.5 transition-all cursor-pointer ${
               viewMode === 'cards'
-                ? 'bg-emerald-500 text-slate-950 font-black shadow-md shadow-emerald-500/20'
-                : 'text-slate-400 hover:text-white hover:bg-slate-800/60'
+                ? 'bg-emerald-600 text-white font-black shadow-xs'
+                : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white hover:bg-slate-200/60 dark:hover:bg-slate-800/60'
             }`}
             title="Vista Tarjetas"
           >
@@ -1107,20 +1108,20 @@ export const AgenciesTab: React.FC = () => {
 
       {/* Agencies Cards or Linear Table */}
       {isLoading ? (
-        <div className="text-center py-16 bg-[#0D1B22] border border-slate-800 rounded-3xl">
-          <RefreshCw className="w-8 h-8 text-emerald-400 animate-spin mx-auto mb-3" />
-          <p className="text-sm text-slate-400 font-medium">Cargando agencias...</p>
+        <div className="text-center py-16 bg-white dark:bg-[#0D1B22] border border-slate-200/80 dark:border-slate-800 rounded-3xl">
+          <RefreshCw className="w-8 h-8 text-emerald-500 dark:text-emerald-400 animate-spin mx-auto mb-3" />
+          <p className="text-sm text-slate-500 dark:text-slate-400 font-medium">Cargando agencias...</p>
         </div>
       ) : filteredAgencies.length === 0 ? (
-        <div className="text-center py-16 bg-[#0D1B22] border border-slate-800 rounded-3xl space-y-3">
-          <Building2 className="w-12 h-12 text-slate-600 mx-auto" />
-          <h4 className="text-base font-bold text-white">No se encontraron agencias</h4>
-          <p className="text-xs text-slate-400 max-w-sm mx-auto">
+        <div className="text-center py-16 bg-white dark:bg-[#0D1B22] border border-slate-200/80 dark:border-slate-800 rounded-3xl space-y-3">
+          <Building2 className="w-12 h-12 text-slate-400 dark:text-slate-600 mx-auto" />
+          <h4 className="text-base font-bold text-slate-900 dark:text-white">No se encontraron agencias</h4>
+          <p className="text-xs text-slate-500 dark:text-slate-400 max-w-sm mx-auto">
             Registra tu primera agencia para comenzar a operar la plataforma multimoneda y taquilla web.
           </p>
           <button
             onClick={handleOpenNew}
-            className="px-4 py-2 rounded-xl bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 text-xs font-bold hover:bg-emerald-500/30 cursor-pointer transition-all inline-flex items-center gap-1.5"
+            className={UI_LOCK.buttonPrimary + ' text-xs inline-flex'}
           >
             <Plus className="w-3.5 h-3.5" />
             Registrar Agencia
@@ -1128,29 +1129,29 @@ export const AgenciesTab: React.FC = () => {
         </div>
       ) : viewMode === 'linear' ? (
         /* Tabla de Agencias */
-        <div id="tour-agencias-table" className="bg-[#0D1B22] border border-slate-800 rounded-3xl overflow-hidden shadow-xl">
-          <div className="p-4 sm:p-5 border-b border-slate-800 flex items-center justify-between">
+        <div id="tour-agencias-table" className="bg-white dark:bg-[#0D1B22] border border-slate-200/80 dark:border-slate-800 rounded-3xl overflow-hidden shadow-sm">
+          <div className="p-4 sm:p-5 border-b border-slate-200 dark:border-slate-800 flex items-center justify-between">
             <div className="flex items-center gap-2.5">
-              <span className="p-2 rounded-xl bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">
+              <span className="p-2 rounded-xl bg-emerald-50 text-emerald-700 border border-emerald-200 dark:bg-emerald-500/10 dark:text-emerald-400 dark:border-emerald-500/20">
                 <Building2 className="w-4 h-4" />
               </span>
               <div>
-                <h4 className="text-xs sm:text-sm font-black text-white uppercase tracking-wider">
+                <h4 className="text-xs sm:text-sm font-black text-slate-900 dark:text-white uppercase tracking-wider">
                   Listado de Agencias ({filteredAgencies.length})
                 </h4>
-                <p className="text-[11px] text-slate-400 mt-0.5">
+                <p className="text-[11px] text-slate-500 dark:text-slate-400 mt-0.5">
                   Resumen de configuración y accesos por agencia
                 </p>
               </div>
             </div>
-            <span className="px-3 py-1 rounded-full bg-slate-800/80 text-slate-300 font-mono text-xs font-bold border border-slate-700">
+            <span className="px-3 py-1 rounded-full bg-slate-100 dark:bg-slate-800/80 text-slate-700 dark:text-slate-300 font-mono text-xs font-bold border border-slate-200 dark:border-slate-700">
               {filteredAgencies.length} de {agencies.length} agencias
             </span>
           </div>
 
           <div className="overflow-x-auto">
             <table className="w-full text-left text-xs border-collapse">
-              <thead className="sticky top-0 bg-[#071217] text-slate-400 font-bold uppercase text-[10px] tracking-wider border-b border-slate-800">
+              <thead className="sticky top-0 bg-slate-50 dark:bg-[#071217] text-slate-600 dark:text-slate-400 font-bold uppercase text-[10px] tracking-wider border-b border-slate-200 dark:border-slate-800">
                 <tr>
                   <th className="py-3 px-3 text-center w-12">#</th>
                   <th className="py-3 px-4 min-w-[140px]">Agencia</th>
@@ -1162,7 +1163,7 @@ export const AgenciesTab: React.FC = () => {
                   <th className="py-3 px-4 text-center w-24">Acciones</th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-slate-800/80 font-mono">
+              <tbody className="divide-y divide-slate-200/80 dark:divide-slate-800/80 font-mono">
                 {filteredAgencies.map((ag) => {
                   const sisArr = ag.sistemas ? ag.sistemas.split(',').map((s) => s.trim()).filter(Boolean) : [];
                   const monArr = (ag.monedas ? ag.monedas.split(',').map((m) => m.trim().toUpperCase()).filter(Boolean) : [])
@@ -1173,20 +1174,20 @@ export const AgenciesTab: React.FC = () => {
                       : [];
 
                   return (
-                    <tr key={ag.id} className="hover:bg-slate-800/30 transition-colors group">
+                    <tr key={ag.id} className="hover:bg-slate-50/80 dark:hover:bg-slate-800/30 transition-colors group">
                       {/* ID */}
-                      <td className="py-3 px-3 text-center text-slate-400 font-bold font-mono text-xs">
+                      <td className="py-3 px-3 text-center text-slate-500 dark:text-slate-400 font-bold font-mono text-xs">
                         #{ag.id}
                       </td>
 
                       {/* Agency Name */}
                       <td className="py-3 px-4 font-sans">
                         <div className="flex items-center gap-2 flex-wrap">
-                          <span className="font-extrabold text-white text-xs whitespace-nowrap">
+                          <span className="font-extrabold text-slate-900 dark:text-white text-xs whitespace-nowrap">
                             {ag.nombre_agencia}
                           </span>
                           {ag.grupo_nombre && (
-                            <span className="px-1.5 py-0.5 rounded text-[10px] bg-purple-500/20 text-purple-300 border border-purple-500/30 flex items-center gap-1 font-mono font-medium" title={`Pertenece al Grupo ${ag.grupo_nombre}`}>
+                            <span className="px-1.5 py-0.5 rounded text-[10px] bg-purple-50 text-purple-700 border border-purple-200 dark:bg-purple-500/20 dark:text-purple-300 dark:border-purple-500/30 flex items-center gap-1 font-mono font-medium" title={`Pertenece al Grupo ${ag.grupo_nombre}`}>
                               🤝 {ag.grupo_nombre}
                             </span>
                           )}
@@ -1206,11 +1207,11 @@ export const AgenciesTab: React.FC = () => {
                           if (!hasCustom) {
                             return (
                               <div className="inline-flex items-center gap-1 font-mono text-[11px]">
-                                <span className="px-2 py-0.5 rounded-md bg-emerald-500/10 text-emerald-400 font-bold border border-emerald-500/20" title="Comisión General">
+                                <span className="px-2 py-0.5 rounded-md bg-emerald-50 text-emerald-700 border border-emerald-200 dark:bg-emerald-500/10 dark:text-emerald-400 dark:border-emerald-500/20 font-bold" title="Comisión General">
                                   {ag.comision}%
                                 </span>
-                                <span className="text-slate-600">/</span>
-                                <span className="px-2 py-0.5 rounded-md bg-cyan-500/10 text-cyan-400 font-bold border border-cyan-500/20" title="Participación de Agencia">
+                                <span className="text-slate-400 dark:text-slate-600">/</span>
+                                <span className="px-2 py-0.5 rounded-md bg-cyan-50 text-cyan-700 border border-cyan-200 dark:bg-cyan-500/10 dark:text-cyan-400 dark:border-cyan-500/20 font-bold" title="Participación de Agencia">
                                   {ag.participacion_ag}%
                                 </span>
                               </div>
@@ -1226,17 +1227,17 @@ export const AgenciesTab: React.FC = () => {
                                 return (
                                   <div
                                     key={`${combo.sistema}_${combo.moneda}`}
-                                    className="inline-flex items-center gap-1 whitespace-nowrap bg-[#071217] px-1.5 py-0.5 rounded border border-slate-800"
+                                    className="inline-flex items-center gap-1 whitespace-nowrap bg-slate-50 dark:bg-[#071217] px-1.5 py-0.5 rounded border border-slate-200 dark:border-slate-800"
                                     title={`${combo.sistema} (${combo.moneda}): Comisión ${effCom}% / Participación ${effPart}%`}
                                   >
-                                    <span className="text-slate-400 font-sans font-semibold text-[10px]">
-                                      {combo.sistema} <span className="text-[9px] text-slate-500">({combo.moneda})</span>:
+                                    <span className="text-slate-600 dark:text-slate-400 font-sans font-semibold text-[10px]">
+                                      {combo.sistema} <span className="text-[9px] text-slate-400 dark:text-slate-500">({combo.moneda})</span>:
                                     </span>
-                                    <span className="text-emerald-400 font-bold" title={`Comisión en ${combo.sistema} ${combo.moneda}`}>
+                                    <span className="text-emerald-600 dark:text-emerald-400 font-bold" title={`Comisión en ${combo.sistema} ${combo.moneda}`}>
                                       {effCom}%
                                     </span>
-                                    <span className="text-slate-600">/</span>
-                                    <span className="text-cyan-400 font-bold" title={`Participación en ${combo.sistema} ${combo.moneda}`}>
+                                    <span className="text-slate-400 dark:text-slate-600">/</span>
+                                    <span className="text-cyan-600 dark:text-cyan-400 font-bold" title={`Participación en ${combo.sistema} ${combo.moneda}`}>
                                       {effPart}%
                                     </span>
                                   </div>
@@ -1254,23 +1255,23 @@ export const AgenciesTab: React.FC = () => {
                             const isUsd = combo.moneda.includes('USD') || combo.moneda.includes('$');
                             const isCop = combo.moneda.includes('COP');
                             const monBadge = isUsd
-                              ? 'bg-emerald-500/15 text-emerald-400 border-emerald-500/30'
+                              ? 'bg-emerald-50 text-emerald-700 border-emerald-200 dark:bg-emerald-500/15 dark:text-emerald-400 dark:border-emerald-500/30'
                               : isCop
-                              ? 'bg-sky-500/15 text-sky-400 border-sky-500/30'
-                              : 'bg-amber-500/15 text-amber-400 border-amber-500/30';
+                              ? 'bg-sky-50 text-sky-700 border-sky-200 dark:bg-sky-500/15 dark:text-sky-400 dark:border-sky-500/30'
+                              : 'bg-amber-50 text-amber-700 border-amber-200 dark:bg-amber-500/15 dark:text-amber-400 dark:border-amber-500/30';
 
                             return (
                               <span
                                 key={`${combo.sistema}_${combo.moneda}`}
                                 title={combo.codigo ? `Equivalencia en ${combo.sistema} (${combo.moneda}): ${combo.codigo}` : `Sistema ${combo.sistema} (${combo.moneda})`}
-                                className="px-2 py-1 rounded-md text-[10px] font-bold bg-[#071217] text-white border border-slate-800 whitespace-nowrap inline-flex items-center gap-1.5"
+                                className="px-2 py-1 rounded-md text-[10px] font-bold bg-slate-50 dark:bg-[#071217] text-slate-900 dark:text-white border border-slate-200 dark:border-slate-800 whitespace-nowrap inline-flex items-center gap-1.5"
                               >
-                                <span className="text-emerald-400">🎰 {combo.sistema}</span>
+                                <span className="text-emerald-600 dark:text-emerald-400">🎰 {combo.sistema}</span>
                                 <span className={`text-[9px] font-mono px-1 py-0.2 rounded border ${monBadge}`}>
                                   {combo.moneda}
                                 </span>
                                 {combo.codigo && (
-                                  <span className="text-[9px] font-mono text-cyan-400 bg-cyan-500/15 px-1.5 py-0.2 rounded border border-cyan-500/30">
+                                  <span className="text-[9px] font-mono text-cyan-700 dark:text-cyan-400 bg-cyan-50 dark:bg-cyan-500/15 px-1.5 py-0.2 rounded border border-cyan-200 dark:border-cyan-500/30">
                                     {combo.codigo}
                                   </span>
                                 )}
@@ -1286,7 +1287,7 @@ export const AgenciesTab: React.FC = () => {
                           {monArr.map((m) => (
                             <span
                               key={m}
-                              className="px-2 py-0.5 rounded-md text-[10px] font-bold bg-amber-500/15 text-amber-400 border border-amber-500/30 whitespace-nowrap"
+                              className="px-2 py-0.5 rounded-md text-[10px] font-bold bg-amber-50 text-amber-700 border border-amber-200 dark:bg-amber-500/15 dark:text-amber-400 dark:border-amber-500/30 whitespace-nowrap"
                             >
                               🪙 {m}
                             </span>
@@ -1311,18 +1312,18 @@ export const AgenciesTab: React.FC = () => {
 
                             return (
                               <div className="flex flex-col gap-0.5" title={fullTooltip}>
-                                <div className="inline-flex items-center gap-1.5 text-xs font-semibold text-cyan-400">
+                                <div className="inline-flex items-center gap-1.5 text-xs font-semibold text-cyan-600 dark:text-cyan-400">
                                   {parsedFirst?.isPos ? (
-                                    <Smartphone className="w-3.5 h-3.5 text-cyan-400 shrink-0" />
+                                    <Smartphone className="w-3.5 h-3.5 text-cyan-600 dark:text-cyan-400 shrink-0" />
                                   ) : (
-                                    <CreditCard className="w-3.5 h-3.5 text-cyan-400 shrink-0" />
+                                    <CreditCard className="w-3.5 h-3.5 text-cyan-600 dark:text-cyan-400 shrink-0" />
                                   )}
-                                  <span className="whitespace-nowrap font-bold text-cyan-400">
+                                  <span className="whitespace-nowrap font-bold text-cyan-700 dark:text-cyan-400">
                                     {parsedFirst?.shortTitle || accArr[0]}
                                   </span>
                                 </div>
                                 {accArr.length > 1 && (
-                                  <span className="text-[10px] text-slate-400 font-mono">
+                                  <span className="text-[10px] text-slate-500 dark:text-slate-400 font-mono">
                                     +{accArr.length - 1} más ({remaining.join(', ')})
                                   </span>
                                 )}
@@ -1330,7 +1331,7 @@ export const AgenciesTab: React.FC = () => {
                             );
                           })()
                         ) : (
-                          <span className="text-[11px] text-slate-500 italic">Ningún método</span>
+                          <span className="text-[11px] text-slate-400 dark:text-slate-500 italic">Ningún método</span>
                         )}
                       </td>
 
@@ -1338,9 +1339,9 @@ export const AgenciesTab: React.FC = () => {
                       <td className="py-3 px-4 font-sans">
                         <div className="flex flex-col gap-1">
                           <div className="flex items-center gap-1.5 text-[11px]">
-                            <Key className="w-3.5 h-3.5 text-amber-400 shrink-0" />
-                            <span className="font-bold text-white font-mono">{ag.usuario_taquilla || 'N/A'}</span>
-                            <span className="text-[10px] text-slate-400 font-mono">({ag.clave_taquilla || '****'})</span>
+                            <Key className="w-3.5 h-3.5 text-amber-500 dark:text-amber-400 shrink-0" />
+                            <span className="font-bold text-slate-900 dark:text-white font-mono">{ag.usuario_taquilla || 'N/A'}</span>
+                            <span className="text-[10px] text-slate-500 dark:text-slate-400 font-mono">({ag.clave_taquilla || '****'})</span>
                           </div>
                           {(() => {
                             const agUsers = taquillaUsers.filter((u) => u.agencia_id === ag.id);
@@ -1350,7 +1351,7 @@ export const AgenciesTab: React.FC = () => {
                               <button
                                 type="button"
                                 onClick={() => setTerminalUsersModalAgency(ag)}
-                                className="inline-flex items-center gap-1 text-[10px] text-sky-400 hover:text-sky-300 font-bold cursor-pointer hover:underline"
+                                className="inline-flex items-center gap-1 text-[10px] text-sky-600 hover:text-sky-500 dark:text-sky-400 dark:hover:text-sky-300 font-bold cursor-pointer hover:underline"
                                 title="Ver y gestionar cajeros y supervisores"
                               >
                                 <Users className="w-3 h-3" />
@@ -1370,21 +1371,21 @@ export const AgenciesTab: React.FC = () => {
                         <div className="flex items-center justify-center gap-1.5">
                           <button
                             onClick={() => setTerminalUsersModalAgency(ag)}
-                            className="p-1.5 rounded-xl bg-sky-500/10 hover:bg-sky-500/20 text-sky-400 transition-all cursor-pointer border border-sky-500/20"
+                            className="p-1.5 rounded-xl bg-sky-50 hover:bg-sky-100 text-sky-700 dark:bg-sky-500/10 dark:hover:bg-sky-500/20 dark:text-sky-400 transition-all cursor-pointer border border-sky-200 dark:border-sky-500/20"
                             title="Gestionar Cajeros y Supervisores POS"
                           >
                             <Users className="w-3.5 h-3.5" />
                           </button>
                           <button
                             onClick={() => handleOpenEdit(ag)}
-                            className="p-1.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white transition-all cursor-pointer border border-slate-700"
+                            className="p-1.5 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 dark:bg-slate-800 dark:hover:bg-slate-700 dark:text-slate-300 dark:hover:text-white transition-all cursor-pointer border border-slate-300 dark:border-slate-700"
                             title="Editar Agencia"
                           >
-                            <Edit2 className="w-3.5 h-3.5 text-cyan-400" />
+                            <Edit2 className="w-3.5 h-3.5 text-cyan-600 dark:text-cyan-400" />
                           </button>
                           <button
                             onClick={() => setDeleteModalAgency(ag)}
-                            className="p-1.5 rounded-xl bg-rose-500/10 hover:bg-rose-500/20 text-rose-400 transition-all cursor-pointer border border-rose-500/20"
+                            className="p-1.5 rounded-xl bg-rose-50 hover:bg-rose-100 text-rose-700 dark:bg-rose-500/10 dark:hover:bg-rose-500/20 dark:text-rose-400 transition-all cursor-pointer border border-rose-200 dark:border-rose-500/20"
                             title="Eliminar Agencia"
                           >
                             <Trash2 className="w-3.5 h-3.5" />
@@ -1413,24 +1414,24 @@ export const AgenciesTab: React.FC = () => {
             return (
               <div
                 key={ag.id}
-                className="bg-[#0D1B22] border border-slate-800 hover:border-slate-700 rounded-3xl p-5 sm:p-6 transition-all shadow-lg space-y-4"
+                className="bg-white dark:bg-[#0D1B22] border border-slate-200/80 dark:border-slate-800 hover:border-slate-300 dark:hover:border-slate-700 rounded-3xl p-5 sm:p-6 transition-all shadow-sm space-y-4"
               >
                 {/* Header Card */}
                 <div className="flex items-start justify-between gap-3">
                   <div>
-                      <div className="flex items-center gap-2">
-                        <span className="px-2 py-0.5 rounded-md bg-slate-800 text-slate-400 text-[10px] font-mono font-bold">
-                          #{ag.id}
+                    <div className="flex items-center gap-2">
+                      <span className="px-2 py-0.5 rounded-md bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400 text-[10px] font-mono font-bold">
+                        #{ag.id}
+                      </span>
+                      <h3 className="text-base font-black text-slate-900 dark:text-white">{ag.nombre_agencia}</h3>
+                      {ag.grupo_nombre && (
+                        <span className="px-2 py-0.5 rounded-md text-[10px] bg-purple-50 text-purple-700 border border-purple-200 dark:bg-purple-500/20 dark:text-purple-300 dark:border-purple-500/30 font-mono font-medium">
+                          🤝 {ag.grupo_nombre}
                         </span>
-                        <h3 className="text-base font-black text-white">{ag.nombre_agencia}</h3>
-                        {ag.grupo_nombre && (
-                          <span className="px-2 py-0.5 rounded-md text-[10px] bg-purple-500/20 text-purple-300 border border-purple-500/30 font-mono font-medium">
-                            🤝 {ag.grupo_nombre}
-                          </span>
-                        )}
-                      </div>
+                      )}
+                    </div>
 
-                    <div className="text-xs text-slate-400 mt-1 flex flex-wrap items-center gap-2 font-mono">
+                    <div className="text-xs text-slate-500 dark:text-slate-400 mt-1 flex flex-wrap items-center gap-2 font-mono">
                       {(() => {
                         const combos = parseAgencySystemCombos(ag, activeSysNames, activeMonNames);
                         const hasCustom = combos.some(
@@ -1442,7 +1443,7 @@ export const AgenciesTab: React.FC = () => {
                         if (hasCustom) {
                           return (
                             <div className="flex flex-wrap items-center gap-1.5">
-                              <span className="text-slate-400 font-sans text-xs">Condiciones:</span>
+                              <span className="text-slate-500 dark:text-slate-400 font-sans text-xs">Condiciones:</span>
                               {combos.map((combo) => {
                                 const effCom = combo.comision !== undefined && combo.comision !== null ? combo.comision : ag.comision;
                                 const effPart = combo.participacion !== undefined && combo.participacion !== null ? combo.participacion : ag.participacion_ag;
@@ -1450,13 +1451,13 @@ export const AgenciesTab: React.FC = () => {
                                 return (
                                   <span
                                     key={`${combo.sistema}_${combo.moneda}`}
-                                    className="inline-flex items-center gap-1 bg-[#071217] px-2 py-0.5 rounded border border-slate-800 text-[10px]"
+                                    className="inline-flex items-center gap-1 bg-slate-50 dark:bg-[#071217] px-2 py-0.5 rounded border border-slate-200 dark:border-slate-800 text-[10px]"
                                     title={`${combo.sistema} (${combo.moneda}): Comisión ${effCom}% / Participación ${effPart}%`}
                                   >
-                                    <strong className="text-slate-300 font-sans">{combo.sistema} <span className="text-[9px] text-slate-500">({combo.moneda})</span>:</strong>
-                                    <span className="text-emerald-400 font-bold">{effCom}%</span>
-                                    <span className="text-slate-600">/</span>
-                                    <span className="text-cyan-400 font-bold">{effPart}%</span>
+                                    <strong className="text-slate-700 dark:text-slate-300 font-sans">{combo.sistema} <span className="text-[9px] text-slate-400 dark:text-slate-500">({combo.moneda})</span>:</strong>
+                                    <span className="text-emerald-600 dark:text-emerald-400 font-bold">{effCom}%</span>
+                                    <span className="text-slate-400 dark:text-slate-600">/</span>
+                                    <span className="text-cyan-600 dark:text-cyan-400 font-bold">{effPart}%</span>
                                   </span>
                                 );
                               })}
@@ -1466,8 +1467,8 @@ export const AgenciesTab: React.FC = () => {
 
                         return (
                           <>
-                            <span>Comisión: <strong className="text-emerald-400">{ag.comision}%</strong></span>
-                            <span>• Part. Ag: <strong className="text-cyan-400">{ag.participacion_ag}%</strong></span>
+                            <span>Comisión: <strong className="text-emerald-600 dark:text-emerald-400">{ag.comision}%</strong></span>
+                            <span>• Part. Ag: <strong className="text-cyan-600 dark:text-cyan-400">{ag.participacion_ag}%</strong></span>
                           </>
                         );
                       })()}
@@ -1477,15 +1478,15 @@ export const AgenciesTab: React.FC = () => {
                   <div className="flex items-center gap-1">
                     <button
                       onClick={() => handleOpenEdit(ag)}
-                      className="p-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white transition-all cursor-pointer"
+                      className="p-2 rounded-xl bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-300 hover:text-slate-900 dark:hover:text-white transition-all cursor-pointer"
                       title="Editar Agencia"
                     >
-                      <Edit2 className="w-3.5 h-3.5 text-cyan-400" />
+                      <Edit2 className="w-3.5 h-3.5 text-cyan-600 dark:text-cyan-400" />
                     </button>
 
                     <button
                       onClick={() => setDeleteModalAgency(ag)}
-                      className="p-2 rounded-xl bg-rose-500/10 hover:bg-rose-500/20 text-rose-400 transition-all cursor-pointer"
+                      className="p-2 rounded-xl bg-rose-50 hover:bg-rose-100 dark:bg-rose-500/10 dark:hover:bg-rose-500/20 text-rose-600 dark:text-rose-400 transition-all cursor-pointer"
                       title="Eliminar Agencia"
                     >
                       <Trash2 className="w-3.5 h-3.5" />
@@ -1596,11 +1597,11 @@ export const AgenciesTab: React.FC = () => {
       ========================================================================= */}
       {(isNewModalOpen || editModalAgency) && (
         <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-3 sm:p-4 overflow-hidden">
-          <div className="bg-[#0D1B22] border border-slate-800 rounded-3xl max-w-5xl w-full max-h-[92vh] flex flex-col shadow-2xl animate-fade-in my-auto overflow-hidden">
+          <div className="bg-white dark:bg-[#0D1B22] border border-slate-200 dark:border-slate-800 rounded-3xl max-w-5xl w-full max-h-[92vh] flex flex-col shadow-2xl animate-fade-in my-auto overflow-hidden">
             {/* Header Fijo */}
-            <div className="flex items-center justify-between px-6 py-4 border-b border-slate-800 bg-[#0D1B22] shrink-0">
-              <h3 className="text-base font-bold text-white flex items-center gap-2">
-                <Building2 className="w-5 h-5 text-emerald-400" />
+            <div className="flex items-center justify-between px-6 py-4 border-b border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-[#0D1B22] shrink-0">
+              <h3 className="text-base font-bold text-slate-900 dark:text-white flex items-center gap-2">
+                <Building2 className="w-5 h-5 text-emerald-600 dark:text-emerald-400" />
                 {editModalAgency ? `Editar Agencia: ${editModalAgency.nombre_agencia}` : 'Registrar Nueva Agencia'}
               </h3>
               <button
@@ -1608,7 +1609,7 @@ export const AgenciesTab: React.FC = () => {
                   setIsNewModalOpen(false);
                   setEditModalAgency(null);
                 }}
-                className="text-slate-400 hover:text-white text-base font-bold p-1 rounded-lg hover:bg-slate-800/60 transition-colors cursor-pointer"
+                className="text-slate-400 hover:text-slate-700 dark:hover:text-white text-base font-bold p-1 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800/60 transition-colors cursor-pointer"
               >
                 ✕
               </button>
@@ -1616,17 +1617,17 @@ export const AgenciesTab: React.FC = () => {
 
             {/* Formulario con Scroll Interno */}
             <form onSubmit={handleSaveAgency} className="flex-1 flex flex-col min-h-0">
-              <div className="flex-1 overflow-y-auto px-6 py-5 space-y-6 custom-scrollbar">
+              <div className="flex-1 overflow-y-auto px-6 py-5 space-y-6 custom-scrollbar bg-white dark:bg-[#0D1B22]">
                 {/* Nombre de la Agencia */}
                 <div className="space-y-1.5">
-                  <label className="text-xs font-semibold text-slate-300">Nombre de la Agencia *</label>
+                  <label className="text-xs font-semibold text-slate-700 dark:text-slate-300">Nombre de la Agencia *</label>
                   <input
                     type="text"
                     required
                     placeholder="Ej: AGENCIA CENTRO 01"
                     value={formNombre}
                     onChange={(e) => handleNameChange(e.target.value)}
-                    className="w-full bg-[#071217] border border-slate-700 rounded-xl px-4 py-2.5 text-xs text-white focus:outline-none focus:border-emerald-500 font-semibold"
+                    className="w-full bg-slate-50 dark:bg-[#071217] border border-slate-300 dark:border-slate-700 rounded-xl px-4 py-2.5 text-xs text-slate-900 dark:text-white focus:outline-none focus:border-emerald-500 font-semibold"
                   />
                 </div>
 
@@ -2082,21 +2083,21 @@ export const AgenciesTab: React.FC = () => {
               </div>
 
               {/* Footer Fijo con Botones */}
-              <div className="flex items-center justify-end gap-3 px-6 py-3.5 border-t border-slate-800 bg-[#071217] shrink-0">
+              <div className="flex items-center justify-end gap-3 px-6 py-3.5 border-t border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-[#071217] shrink-0">
                 <button
                   type="button"
                   onClick={() => {
                     setIsNewModalOpen(false);
                     setEditModalAgency(null);
                   }}
-                  className="px-4 py-2 rounded-xl text-xs font-semibold text-slate-400 hover:text-white hover:bg-slate-800/60 transition-colors cursor-pointer"
+                  className="px-4 py-2 rounded-xl text-xs font-semibold text-slate-500 hover:text-slate-900 hover:bg-slate-200/60 dark:text-slate-400 dark:hover:text-white dark:hover:bg-slate-800/60 transition-colors cursor-pointer"
                 >
                   Cancelar
                 </button>
                 <button
                   type="submit"
                   disabled={isProcessing}
-                  className="px-6 py-2.5 rounded-xl bg-gradient-to-r from-emerald-500 to-teal-600 hover:from-emerald-400 hover:to-teal-500 text-slate-950 font-bold text-xs shadow-lg shadow-emerald-500/20 transition-all cursor-pointer disabled:opacity-50"
+                  className={UI_LOCK.buttonPrimary + ' text-xs'}
                 >
                   {isProcessing ? 'Guardando...' : editModalAgency ? 'Guardar Cambios' : 'Registrar Agencia'}
                 </button>
@@ -2331,7 +2332,7 @@ export const AgenciesTab: React.FC = () => {
                 <button
                   type="submit"
                   disabled={isProcessing}
-                  className="px-4 py-2 rounded-xl bg-sky-500 hover:bg-sky-400 text-slate-950 font-bold text-xs shadow-md transition-all cursor-pointer disabled:opacity-50"
+                  className={UI_LOCK.buttonPrimary + ' text-xs'}
                 >
                   {isProcessing ? 'Creando...' : 'Crear Usuario'}
                 </button>
@@ -2408,7 +2409,7 @@ export const AgenciesTab: React.FC = () => {
                 type="button"
                 onClick={handleUpdateTaquillaUser}
                 disabled={isProcessing}
-                className="px-4 py-1.5 rounded-xl bg-sky-500 hover:bg-sky-400 text-slate-950 font-bold text-xs disabled:opacity-50"
+                className={UI_LOCK.buttonPrimary + ' text-xs'}
               >
                 {isProcessing ? 'Guardando...' : 'Actualizar'}
               </button>

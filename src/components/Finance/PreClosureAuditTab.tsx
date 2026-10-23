@@ -84,6 +84,7 @@ import {
   type RawGroupPaymentEntry,
 } from '../../lib/closureEngineLock';
 import { GroupSettlementActaModal } from './GroupSettlementActaModal';
+import { UI_LOCK } from '../../styles/uiDesignLock';
 
 export const PreClosureAuditTab: React.FC = () => {
   const { effectiveUserId, systemCycle, user, refreshSystemCycle } = useAuth();
@@ -863,7 +864,7 @@ export const PreClosureAuditTab: React.FC = () => {
     });
 
     lines.push(`💼 *RESUMEN TOTALIZADO POR MONEDA:*`);
-    ['BS', 'USD', 'COP'].forEach((c) => {
+    activeCurrencyCodes.forEach((c) => {
       const tot = operatorTotalsByCurrency[c];
       if (tot && (tot.count > 0 || tot.venta > 0 || Math.abs(tot.balanceFinal) > 0.01)) {
         lines.push(
@@ -1380,21 +1381,21 @@ export const PreClosureAuditTab: React.FC = () => {
   return (
     <div className="space-y-6">
       {/* Top Banner with Quick Actions */}
-      <div className="bg-gradient-to-r from-emerald-950/30 via-[#0D1B22] to-sky-950/30 border border-emerald-500/20 rounded-3xl p-5 sm:p-6 shadow-xl flex flex-col md:flex-row md:items-center justify-between gap-4">
+      <div className="bg-white dark:bg-[#0D1B22] border border-slate-200/80 dark:border-slate-800 rounded-2xl p-5 sm:p-6 shadow-sm flex flex-col md:flex-row md:items-center justify-between gap-4 transition-colors">
         <div className="space-y-1">
           <div className="flex items-center gap-2">
-            <span className="px-2.5 py-0.5 rounded-full bg-emerald-500/20 text-emerald-400 text-[10px] font-extrabold uppercase border border-emerald-500/30 flex items-center gap-1.5">
+            <span className="px-2.5 py-0.5 rounded-full bg-emerald-50 dark:bg-emerald-500/10 text-emerald-700 dark:text-emerald-400 text-[10px] font-extrabold uppercase border border-emerald-200 dark:border-emerald-500/20 flex items-center gap-1.5">
               <ShieldCheck className="w-3.5 h-3.5" />
               Auditoría en Tiempo Real
             </span>
-            <span className="text-xs font-mono font-bold text-slate-400">
+            <span className="text-xs font-mono font-bold text-slate-500 dark:text-slate-400">
               {systemCycle.tipo === 'SEMANAL' ? `Semana ${systemCycle.semana}` : `Ciclo ${systemCycle.semana}`} ({systemCycle.desde} al {systemCycle.hasta})
             </span>
           </div>
-          <h3 className="text-lg font-black text-white">
+          <h3 className="text-lg font-bold text-slate-900 dark:text-white">
             Pre-Cierre y Arqueo Integral del Ciclo
           </h3>
-          <p className="text-xs text-slate-400">
+          <p className="text-xs text-slate-500 dark:text-slate-400">
             Conciliación de saldos por caja, canales de cobro (Efectivo/Cobradores/Bancos) y reposición de premios antes del cierre.
           </p>
         </div>
@@ -1402,20 +1403,19 @@ export const PreClosureAuditTab: React.FC = () => {
         <div id="tour-cierre-actas" className="flex flex-wrap items-center gap-2">
           {auditMode === 'agencias' && (
             <>
-              {/* Acta Oficial Integral Unificada (Dossier Completo en un solo PDF) */}
               <button
                 onClick={() => setIsUnifiedDossierOpen(true)}
-                className="px-4 py-2.5 rounded-xl bg-gradient-to-r from-emerald-500 to-teal-500 hover:from-emerald-400 hover:to-teal-400 text-slate-950 font-black text-xs shadow-lg shadow-emerald-500/20 flex items-center gap-2 transition-all cursor-pointer"
+                className={UI_LOCK.buttonPrimary + ' text-xs'}
                 title="Abrir e imprimir el Acta Oficial Integral y Dossier Completo en un solo PDF"
               >
                 <FileText className="w-4 h-4" />
-                <span>📄 Acta Oficial Integral (PDF / Imprimir)</span>
+                <span>📄 Acta Oficial Integral (PDF)</span>
               </button>
 
               <button
                 onClick={handleExportCSV}
                 disabled={auditRows.length === 0}
-                className="px-3 py-2.5 rounded-xl bg-white dark:bg-slate-800/80 hover:bg-slate-100 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-300 text-xs font-bold flex items-center gap-1.5 transition-all border border-slate-200 dark:border-slate-700 cursor-pointer disabled:opacity-50"
+                className="px-3 py-2 rounded-xl bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-300 text-xs font-bold flex items-center gap-1.5 transition-all border border-slate-200 dark:border-slate-700 cursor-pointer disabled:opacity-50"
                 title="Exportar archivo CSV de Agencias"
               >
                 <Download className="w-3.5 h-3.5" />
@@ -1429,17 +1429,17 @@ export const PreClosureAuditTab: React.FC = () => {
               <button
                 onClick={() => setIsOperatorActaModalOpen(true)}
                 disabled={operatorRows.length === 0}
-                className="px-4 py-2.5 rounded-xl bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-400 hover:to-amber-500 text-slate-950 font-black text-xs shadow-lg shadow-amber-500/20 flex items-center gap-2 transition-all cursor-pointer disabled:opacity-50"
+                className={UI_LOCK.buttonPrimary + ' text-xs'}
                 title="Acta Oficial Imprimible en PDF de Casas Operadoras"
               >
                 <Printer className="w-4 h-4" />
-                <span>📄 Acta Oficial de Liquidación de Operadoras (PDF / Imprimir)</span>
+                <span>📄 Acta Operadoras (PDF)</span>
               </button>
 
               <button
                 onClick={handleCopyOperatorActaWhatsApp}
                 disabled={operatorRows.length === 0}
-                className="px-3.5 py-2.5 rounded-xl bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-400 text-xs font-bold flex items-center gap-1.5 transition-all border border-emerald-500/30 cursor-pointer disabled:opacity-50"
+                className="px-3 py-2 rounded-xl bg-emerald-50 hover:bg-emerald-100 dark:bg-emerald-500/10 dark:hover:bg-emerald-500/20 text-emerald-700 dark:text-emerald-400 text-xs font-bold flex items-center gap-1.5 transition-all border border-emerald-200 dark:border-emerald-500/30 cursor-pointer disabled:opacity-50"
                 title="Copiar Acta Oficial de Casas Operadoras para WhatsApp"
               >
                 <Copy className="w-3.5 h-3.5" />
@@ -1449,11 +1449,11 @@ export const PreClosureAuditTab: React.FC = () => {
               <button
                 onClick={handleExportOperatorCSV}
                 disabled={operatorRows.length === 0}
-                className="px-3 py-2.5 rounded-xl bg-white dark:bg-slate-800/80 hover:bg-slate-100 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-300 text-xs font-bold flex items-center gap-1.5 transition-all border border-slate-200 dark:border-slate-700 cursor-pointer disabled:opacity-50"
+                className="px-3 py-2 rounded-xl bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-300 text-xs font-bold flex items-center gap-1.5 transition-all border border-slate-200 dark:border-slate-700 cursor-pointer disabled:opacity-50"
                 title="Exportar archivo CSV de Casas Operadoras"
               >
                 <Download className="w-3.5 h-3.5" />
-                <span>CSV Operadoras</span>
+                <span>CSV</span>
               </button>
             </>
           )}
@@ -1461,7 +1461,7 @@ export const PreClosureAuditTab: React.FC = () => {
           <button
             onClick={loadData}
             disabled={isLoading || isProcessing}
-            className="p-2.5 rounded-xl bg-white dark:bg-slate-800/80 hover:bg-slate-100 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-300 transition-all border border-slate-200 dark:border-slate-700 cursor-pointer disabled:opacity-50"
+            className="p-2.5 rounded-xl bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-300 transition-all border border-slate-200 dark:border-slate-700 cursor-pointer disabled:opacity-50"
             title="Recalcular arqueo"
           >
             <RefreshCw className={`w-4 h-4 ${isLoading ? 'animate-spin' : ''}`} />
@@ -1471,14 +1471,14 @@ export const PreClosureAuditTab: React.FC = () => {
 
       {/* Alerta de Validación de Pre-Cierre: Movimientos Pendientes */}
       {pendingMovements.totalCount > 0 && (
-        <div className="p-4 rounded-2xl bg-amber-500/10 border border-amber-500/30 flex flex-col sm:flex-row items-center justify-between gap-3 text-amber-300 shadow-xl">
+        <div className="p-4 rounded-2xl bg-amber-50 border border-amber-300 text-amber-900 dark:bg-amber-950/30 dark:border-amber-700/60 dark:text-amber-200 flex flex-col sm:flex-row items-center justify-between gap-3 shadow-sm transition-colors">
           <div className="flex items-center gap-3">
-            <AlertTriangle className="w-5 h-5 shrink-0 text-amber-400" />
+            <AlertTriangle className="w-5 h-5 shrink-0 text-amber-600 dark:text-amber-400" />
             <div>
-              <div className="font-bold text-xs sm:text-sm text-white">
+              <div className="font-bold text-xs sm:text-sm text-slate-900 dark:text-white">
                 ⚠️ Validación de Cuadre: Existen {pendingMovements.totalCount} movimientos sin confirmar en este ciclo
               </div>
-              <div className="text-xs text-amber-200/80">
+              <div className="text-xs text-amber-800 dark:text-amber-300/90">
                 {pendingMovements.payments.length} pago(s) y {pendingMovements.expenses.length} gasto(s) pendientes de confirmación. Para garantizar cuadre 100% exacto entre la Matriz General y las Actas Oficiales, concílialos antes del Pre-Cierre Seguro.
               </div>
             </div>
@@ -1486,13 +1486,130 @@ export const PreClosureAuditTab: React.FC = () => {
           <button
             onClick={handleConfirmAllPendingMovements}
             disabled={isProcessing}
-            className="px-4 py-2 rounded-xl bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold text-xs flex items-center gap-1.5 transition-all cursor-pointer shrink-0 shadow-lg shadow-amber-500/20"
+            className={UI_LOCK.buttonPrimary + ' text-xs shrink-0'}
           >
             <CheckCircle2 className="w-4 h-4" />
             <span>Confirmar y Conciliar ({pendingMovements.totalCount})</span>
           </button>
         </div>
       )}
+
+      {/* Barra Permanente de las 7 Actas Oficiales + Snapshot Total */}
+      <div className="bg-white dark:bg-[#0D1B22] border border-slate-200/80 dark:border-slate-800 rounded-2xl p-4 shadow-sm space-y-3 transition-colors">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-slate-100 dark:border-slate-800/80 pb-2.5">
+          <div className="flex items-center gap-2">
+            <FileText className="w-4 h-4 text-emerald-600 dark:text-emerald-400" />
+            <span className="text-xs font-bold uppercase tracking-wider text-slate-800 dark:text-slate-200">
+              Actas Oficiales y Documentación Contable (7 Actas + Snapshot)
+            </span>
+          </div>
+          <div className="flex items-center gap-2">
+            <button
+              onClick={() => setIsUnifiedDossierOpen(true)}
+              className={UI_LOCK.buttonPrimary + ' text-xs py-1.5 px-3'}
+              title="Abrir dossier oficial unificado en un solo PDF"
+            >
+              <FileText className="w-3.5 h-3.5" />
+              <span>📄 Dossier Completo (PDF)</span>
+            </button>
+            <button
+              onClick={handleRestoreCycleFromS41Acta}
+              disabled={isProcessing}
+              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-amber-50 hover:bg-amber-100 dark:bg-amber-500/15 dark:hover:bg-amber-500/25 text-amber-800 dark:text-amber-300 border border-amber-300 dark:border-amber-500/30 font-bold text-xs transition-all cursor-pointer"
+              title="Snapshot Total y Aplicación de Arrastres"
+            >
+              <Sparkles className="w-3.5 h-3.5 text-amber-500" />
+              <span>⚡ Snapshot Total</span>
+            </button>
+          </div>
+        </div>
+
+        <div className="flex flex-wrap items-center gap-2">
+          {/* 1. Acta General */}
+          <button
+            onClick={() => setIsActaModalOpen(true)}
+            className="px-3 py-1.5 rounded-xl bg-slate-50 hover:bg-slate-100 dark:bg-slate-800/80 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 border border-slate-200 dark:border-slate-700 text-xs font-semibold flex items-center gap-1.5 transition-all cursor-pointer"
+            title="Acta General de Arqueo y Cierre"
+          >
+            <span>📜 Acta General</span>
+            <span className="px-1.5 py-0.2 rounded-full bg-slate-200 dark:bg-slate-700 text-[10px] font-mono font-bold">
+              {auditRows.length}
+            </span>
+          </button>
+
+          {/* 2. Acta Gastos Agencias */}
+          <button
+            onClick={() => setIsAgencyExpensesActaOpen(true)}
+            className="px-3 py-1.5 rounded-xl bg-slate-50 hover:bg-slate-100 dark:bg-slate-800/80 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 border border-slate-200 dark:border-slate-700 text-xs font-semibold flex items-center gap-1.5 transition-all cursor-pointer"
+            title="Acta de Gastos Operativos de Taquillas"
+          >
+            <span>📉 Acta Gastos Agencias</span>
+            <span className="px-1.5 py-0.2 rounded-full bg-rose-100 dark:bg-rose-950/60 text-rose-700 dark:text-rose-300 border border-rose-200 dark:border-rose-800 text-[10px] font-mono font-bold">
+              {cycleAgencyExpenses.length}
+            </span>
+          </button>
+
+          {/* 3. Acta Gastos Comercializadora */}
+          <button
+            onClick={() => setIsCommercializadoraExpensesActaOpen(true)}
+            className="px-3 py-1.5 rounded-xl bg-slate-50 hover:bg-slate-100 dark:bg-slate-800/80 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 border border-slate-200 dark:border-slate-700 text-xs font-semibold flex items-center gap-1.5 transition-all cursor-pointer"
+            title="Acta de Gastos Administrativos de Casa Matriz"
+          >
+            <span>🏢 Acta Gastos Comercializadora</span>
+            <span className="px-1.5 py-0.2 rounded-full bg-purple-100 dark:bg-purple-950/60 text-purple-700 dark:text-purple-300 border border-purple-200 dark:border-purple-800 text-[10px] font-mono font-bold">
+              {adminExpenses.length}
+            </span>
+          </button>
+
+          {/* 4. Acta Bancaria */}
+          <button
+            onClick={() => setIsBankIncomeActaOpen(true)}
+            className="px-3 py-1.5 rounded-xl bg-slate-50 hover:bg-slate-100 dark:bg-slate-800/80 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 border border-slate-200 dark:border-slate-700 text-xs font-semibold flex items-center gap-1.5 transition-all cursor-pointer"
+            title="Acta de Movimientos y Cuentas Bancarias"
+          >
+            <span>🏛️ Acta Bancaria</span>
+            <span className="px-1.5 py-0.2 rounded-full bg-cyan-100 dark:bg-cyan-950/60 text-cyan-700 dark:text-cyan-300 border border-cyan-200 dark:border-cyan-800 text-[10px] font-mono font-bold">
+              {bankTransactionItems.length}
+            </span>
+          </button>
+
+          {/* 5. Acta Efectivo */}
+          <button
+            onClick={() => setIsCashDeliveryActaOpen(true)}
+            className="px-3 py-1.5 rounded-xl bg-slate-50 hover:bg-slate-100 dark:bg-slate-800/80 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 border border-slate-200 dark:border-slate-700 text-xs font-semibold flex items-center gap-1.5 transition-all cursor-pointer"
+            title="Acta de Efectivo y Rendición de Caja"
+          >
+            <span>💵 Acta Efectivo</span>
+            <span className="px-1.5 py-0.2 rounded-full bg-sky-100 dark:bg-sky-950/60 text-sky-700 dark:text-sky-300 border border-sky-200 dark:border-sky-800 text-[10px] font-mono font-bold">
+              {cashDeliveryItems.length}
+            </span>
+          </button>
+
+          {/* 6. Confirmaciones */}
+          <button
+            onClick={() => setIsConfirmationActaOpen(true)}
+            className="px-3 py-1.5 rounded-xl bg-slate-50 hover:bg-slate-100 dark:bg-slate-800/80 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 border border-slate-200 dark:border-slate-700 text-xs font-semibold flex items-center gap-1.5 transition-all cursor-pointer"
+            title="Acta de Movimientos Confirmados"
+          >
+            <span>🛡️ Confirmaciones</span>
+            <span className="px-1.5 py-0.2 rounded-full bg-emerald-100 dark:bg-emerald-950/60 text-emerald-700 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800 text-[10px] font-mono font-bold">
+              {confirmationAuditItems.length}
+            </span>
+          </button>
+
+          {/* 7. Cobrador */}
+          <button
+            onClick={() => setIsCollectorActaOpen(true)}
+            className="px-3 py-1.5 rounded-xl bg-slate-50 hover:bg-slate-100 dark:bg-slate-800/80 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 border border-slate-200 dark:border-slate-700 text-xs font-semibold flex items-center gap-1.5 transition-all cursor-pointer"
+            title="Acta de Recaudación en Ruta"
+          >
+            <span>🛵 Cobrador</span>
+            <span className="px-1.5 py-0.2 rounded-full bg-amber-100 dark:bg-amber-950/60 text-amber-700 dark:text-amber-300 border border-amber-200 dark:border-amber-800 text-[10px] font-mono font-bold">
+              {collectorDailyPayments.length}
+            </span>
+          </button>
+        </div>
+      </div>
 
       {/* Sub-View Switcher: Agencias vs Operadoras vs Consolidado */}
       <div className="flex flex-wrap items-center gap-2 border-b border-slate-200 dark:border-slate-800 pb-3">
@@ -2507,12 +2624,12 @@ export const PreClosureAuditTab: React.FC = () => {
           </span>
         </div>
 
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-          {['BS', 'USD', 'COP'].map((mon) => {
+        <div className={`grid grid-cols-1 ${activeCurrencyCodes.length === 2 ? 'md:grid-cols-2' : activeCurrencyCodes.length >= 3 ? 'md:grid-cols-3' : ''} gap-4`}>
+          {activeCurrencyCodes.map((mon) => {
             const tot = operatorTotalsByCurrency[mon];
             if (!tot) return null;
-            const flag = mon === 'BS' ? '🇻🇪' : mon === 'USD' ? '🇺🇸' : '🇨🇴';
-            const currencyName = mon === 'BS' ? 'Bolívares (BS)' : mon === 'USD' ? 'Dólares (USD)' : 'Pesos (COP)';
+            const flag = getCurrencyFlag(mon);
+            const currencyName = mon;
             const isDeuda = tot.balanceFinal > 0.01;
             const isFavor = tot.balanceFinal < -0.01;
 
@@ -3253,14 +3370,14 @@ export const PreClosureAuditTab: React.FC = () => {
       </div>
 
       <div className="grid grid-cols-1 gap-6">
-        {['BS', 'USD', 'COP'].map((mon) => {
+        {activeCurrencyCodes.map((mon) => {
           const agTot = totalsByCurrency[mon];
           const opTot = operatorTotalsByCurrency[mon];
           if (!agTot && !opTot) return null;
           if ((!agTot || agTot.count === 0) && (!opTot || (opTot.venta === 0 && Math.abs(opTot.balanceFinal) < 0.01))) return null;
 
-          const flag = mon === 'BS' ? '🇻🇪' : mon === 'USD' ? '🇺🇸' : '🇨🇴';
-          const currencyName = mon === 'BS' ? 'Bolívares (BS)' : mon === 'USD' ? 'Dólares (USD)' : 'Pesos (COP)';
+          const flag = getCurrencyFlag(mon);
+          const currencyName = mon;
 
           const gananciaComercializador = opTot?.totalComercializador || 0;
           const posicionNetaCartera = (agTot?.saldoFinal || 0) - (opTot?.balanceFinal || 0);

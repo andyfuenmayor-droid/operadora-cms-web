@@ -26,6 +26,7 @@ import {
   Clock,
   Printer,
 } from 'lucide-react';
+import { UI_LOCK } from '../../styles/uiDesignLock';
 
 export const AuditLogTab: React.FC = () => {
   const { user, profile, effectiveUserId, systemCycle } = useAuth();
@@ -434,20 +435,20 @@ export const AuditLogTab: React.FC = () => {
   return (
     <div className="space-y-6">
       {/* 1. Header Banner */}
-      <div id="tour-auditoria-header" className="bg-gradient-to-r from-[#0D1B22] via-[#0F242C] to-[#0D1B22] border border-slate-800 rounded-3xl p-6 shadow-2xl relative overflow-hidden">
+      <div id="tour-auditoria-header" className="bg-white dark:bg-[#0D1B22] border border-slate-200/80 dark:border-slate-800 rounded-2xl p-6 shadow-sm relative overflow-hidden transition-colors">
         <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4 relative z-10">
           <div className="space-y-1">
-            <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-emerald-500/10 border border-emerald-500/30 text-emerald-400 text-xs font-bold">
+            <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-emerald-50 dark:bg-emerald-500/10 border border-emerald-200 dark:border-emerald-500/30 text-emerald-700 dark:text-emerald-400 text-xs font-bold">
               <ShieldCheck className="w-3.5 h-3.5" />
               <span>Bitácora Oficial de Seguridad Financiera</span>
             </div>
-            <h2 className="text-xl sm:text-2xl font-black text-white tracking-tight flex items-center gap-2.5">
+            <h2 className="text-xl sm:text-2xl font-black text-slate-900 dark:text-white tracking-tight flex items-center gap-2.5">
               <span>Registro de Auditoría y Cambios</span>
-              <span className="text-xs px-2.5 py-0.5 rounded-full bg-slate-800 text-slate-300 font-mono font-normal">
+              <span className="text-xs px-2.5 py-0.5 rounded-full bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 font-mono font-normal">
                 {logs.length} eventos registrados
               </span>
             </h2>
-            <p className="text-xs sm:text-sm text-slate-400 max-w-2xl">
+            <p className="text-xs sm:text-sm text-slate-500 dark:text-slate-400 max-w-2xl">
               Trazabilidad inmutable de cambios en agencias, comisiones, participaciones, recálculos de ventas y movimientos que alteran balances.
             </p>
           </div>
@@ -456,7 +457,7 @@ export const AuditLogTab: React.FC = () => {
             <button
               onClick={handlePrintPDF}
               disabled={filteredLogs.length === 0}
-              className="px-4 py-2.5 rounded-2xl bg-gradient-to-r from-sky-600 to-indigo-600 hover:from-sky-500 hover:to-indigo-500 text-white font-black text-xs uppercase tracking-wider flex items-center gap-2 transition-all cursor-pointer shadow-lg shadow-sky-600/20 disabled:opacity-50"
+              className="px-4 py-2.5 rounded-xl bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-300 font-bold text-xs flex items-center gap-2 transition-all cursor-pointer border border-slate-200 dark:border-slate-700 disabled:opacity-50"
               title="Imprimir Acta y Bitácora Oficial en PDF"
             >
               <Printer className="w-4 h-4" />
@@ -465,7 +466,7 @@ export const AuditLogTab: React.FC = () => {
             <button
               onClick={handleExportCSV}
               disabled={filteredLogs.length === 0}
-              className="px-4 py-2.5 rounded-2xl bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-bold text-xs flex items-center gap-2 transition-all cursor-pointer shadow-lg shadow-emerald-500/20 disabled:opacity-50"
+              className={UI_LOCK.buttonPrimary + ' text-xs'}
             >
               <FileSpreadsheet className="w-4 h-4" />
               <span>Exportar CSV</span>
@@ -473,51 +474,51 @@ export const AuditLogTab: React.FC = () => {
             <button
               onClick={() => loadLogs(true)}
               disabled={isLoading}
-              className="p-2.5 rounded-2xl bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white transition-all border border-slate-700 cursor-pointer"
+              className="p-2.5 rounded-xl bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-300 transition-all border border-slate-200 dark:border-slate-700 cursor-pointer"
               title="Actualizar y Sincronizar (Limpiar Caché)"
             >
-              <RefreshCw className={`w-4 h-4 ${isLoading ? 'animate-spin text-emerald-400' : ''}`} />
+              <RefreshCw className={`w-4 h-4 ${isLoading ? 'animate-spin text-emerald-500 dark:text-emerald-400' : ''}`} />
             </button>
           </div>
         </div>
 
         {/* 3 Metric Cards */}
-        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 pt-5 mt-5 border-t border-slate-800/80">
-          <div className="bg-[#071217]/80 border border-slate-800 p-3 rounded-2xl flex items-center gap-3">
-            <div className="p-2 rounded-xl bg-slate-800 text-slate-300">
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 pt-5 mt-5 border-t border-slate-200 dark:border-slate-800/80">
+          <div className="bg-slate-50 dark:bg-[#071217]/80 border border-slate-200 dark:border-slate-800 p-3 rounded-2xl flex items-center gap-3">
+            <div className="p-2 rounded-xl bg-slate-200 dark:bg-slate-800 text-slate-700 dark:text-slate-300">
               <Clock className="w-4 h-4" />
             </div>
             <div>
-              <div className="text-[10px] uppercase font-bold text-slate-400">Total Eventos</div>
-              <div className="text-base font-black text-white font-mono">{logs.length}</div>
+              <div className="text-[10px] uppercase font-bold text-slate-500 dark:text-slate-400">Total Eventos</div>
+              <div className="text-base font-black text-slate-900 dark:text-white font-mono">{logs.length}</div>
             </div>
           </div>
-          <div className="bg-[#071217]/80 border border-slate-800 p-3 rounded-2xl flex items-center gap-3">
-            <div className="p-2 rounded-xl bg-rose-500/10 text-rose-400 border border-rose-500/20">
+          <div className="bg-slate-50 dark:bg-[#071217]/80 border border-slate-200 dark:border-slate-800 p-3 rounded-2xl flex items-center gap-3">
+            <div className="p-2 rounded-xl bg-rose-50 dark:bg-rose-500/10 text-rose-600 dark:text-rose-400 border border-rose-200 dark:border-rose-500/20">
               <AlertTriangle className="w-4 h-4" />
             </div>
             <div>
-              <div className="text-[10px] uppercase font-bold text-slate-400">Impacto Alto</div>
-              <div className="text-base font-black text-rose-400 font-mono">{highImpactCount}</div>
+              <div className="text-[10px] uppercase font-bold text-slate-500 dark:text-slate-400">Impacto Alto</div>
+              <div className="text-base font-black text-rose-600 dark:text-rose-400 font-mono">{highImpactCount}</div>
             </div>
           </div>
-          <div className="bg-[#071217]/80 border border-slate-800 p-3 rounded-2xl flex items-center gap-3">
-            <div className="p-2 rounded-xl bg-amber-500/10 text-amber-400 border border-amber-500/20">
+          <div className="bg-slate-50 dark:bg-[#071217]/80 border border-slate-200 dark:border-slate-800 p-3 rounded-2xl flex items-center gap-3">
+            <div className="p-2 rounded-xl bg-amber-50 dark:bg-amber-500/10 text-amber-600 dark:text-amber-400 border border-amber-200 dark:border-amber-500/20">
               <ShieldCheck className="w-4 h-4" />
             </div>
             <div>
-              <div className="text-[10px] uppercase font-bold text-slate-400">Agencias Auditadas</div>
-              <div className="text-base font-black text-amber-300 font-mono">{affectedAgenciesCount}</div>
+              <div className="text-[10px] uppercase font-bold text-slate-500 dark:text-slate-400">Agencias Auditadas</div>
+              <div className="text-base font-black text-amber-600 dark:text-amber-300 font-mono">{affectedAgenciesCount}</div>
             </div>
           </div>
         </div>
       </div>
 
       {/* 2. Cycle / Period Filter Selector */}
-      <div className="bg-[#0D1B22] border border-slate-800 rounded-3xl p-4 shadow-xl flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs">
+      <div className="bg-white dark:bg-[#0D1B22] border border-slate-200/80 dark:border-slate-800 rounded-2xl p-4 shadow-sm flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs transition-colors">
         <div className="flex items-center gap-2 flex-wrap">
-          <span className="text-xs font-bold text-slate-400 flex items-center gap-1 mr-1">
-            <Calendar className="w-4 h-4 text-emerald-400" />
+          <span className="text-xs font-bold text-slate-500 dark:text-slate-400 flex items-center gap-1 mr-1">
+            <Calendar className="w-4 h-4 text-emerald-600 dark:text-emerald-400" />
             <span>Ciclo Auditado:</span>
           </span>
 
@@ -525,8 +526,8 @@ export const AuditLogTab: React.FC = () => {
             onClick={() => setSelectedCycle('CICLO_ACTUAL')}
             className={`px-3 py-1.5 rounded-xl font-bold transition-all cursor-pointer flex items-center gap-1.5 ${
               selectedCycle === 'CICLO_ACTUAL'
-                ? 'bg-emerald-500 text-slate-950 shadow-md shadow-emerald-500/20'
-                : 'bg-[#071217] text-slate-400 hover:text-white border border-slate-800'
+                ? 'bg-emerald-600 text-white shadow-xs'
+                : 'bg-slate-100 dark:bg-[#071217] text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white border border-slate-200 dark:border-slate-800'
             }`}
           >
             <span>🎯</span>
@@ -537,8 +538,8 @@ export const AuditLogTab: React.FC = () => {
             onClick={() => setSelectedCycle('TODOS')}
             className={`px-3 py-1.5 rounded-xl font-bold transition-all cursor-pointer flex items-center gap-1.5 ${
               selectedCycle === 'TODOS'
-                ? 'bg-sky-500 text-slate-950 shadow-md shadow-sky-500/20'
-                : 'bg-[#071217] text-slate-400 hover:text-white border border-slate-800'
+                ? 'bg-sky-600 text-white shadow-xs'
+                : 'bg-slate-100 dark:bg-[#071217] text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white border border-slate-200 dark:border-slate-800'
             }`}
           >
             <span>📜</span>
@@ -553,8 +554,8 @@ export const AuditLogTab: React.FC = () => {
                 onClick={() => setSelectedCycle(w)}
                 className={`px-3 py-1.5 rounded-xl font-bold transition-all cursor-pointer ${
                   selectedCycle === w
-                    ? 'bg-amber-500 text-slate-950 shadow-md shadow-amber-500/20'
-                    : 'bg-[#071217] text-slate-400 hover:text-white border border-slate-800'
+                    ? 'bg-amber-600 text-white shadow-xs'
+                    : 'bg-slate-100 dark:bg-[#071217] text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white border border-slate-200 dark:border-slate-800'
                 }`}
               >
                 Semana {w}
@@ -562,13 +563,13 @@ export const AuditLogTab: React.FC = () => {
             ))}
         </div>
 
-        <div className="text-xs text-slate-400 font-mono">
-          Eventos en vista: <strong className="text-emerald-400">{filteredLogs.length}</strong>
+        <div className="text-xs text-slate-500 dark:text-slate-400 font-mono">
+          Eventos en vista: <strong className="text-emerald-600 dark:text-emerald-400">{filteredLogs.length}</strong>
         </div>
       </div>
 
       {/* 3. Search & Module Filter Bar */}
-      <div className="bg-[#0D1B22] border border-slate-800 rounded-3xl p-4 shadow-xl flex flex-col md:flex-row md:items-center justify-between gap-3 text-xs">
+      <div className="bg-white dark:bg-[#0D1B22] border border-slate-200/80 dark:border-slate-800 rounded-2xl p-4 shadow-sm flex flex-col md:flex-row md:items-center justify-between gap-3 text-xs transition-colors">
         {/* Search */}
         <div className="relative flex-1">
           <Search className="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2" />
@@ -577,7 +578,7 @@ export const AuditLogTab: React.FC = () => {
             placeholder="Buscar por agencia, usuario, descripción o acción..."
             value={searchTerm}
             onChange={(e) => setSearchTerm(e.target.value)}
-            className="w-full pl-9 pr-4 py-2 bg-[#071217] border border-slate-700/80 rounded-xl text-white placeholder-slate-500 text-xs focus:outline-none focus:border-emerald-500"
+            className="w-full pl-9 pr-4 py-2 bg-slate-50 dark:bg-[#071217] border border-slate-300 dark:border-slate-700/80 rounded-xl text-slate-900 dark:text-white placeholder-slate-400 dark:placeholder-slate-500 text-xs focus:outline-none focus:border-emerald-500"
           />
         </div>
 
@@ -589,8 +590,8 @@ export const AuditLogTab: React.FC = () => {
               onClick={() => setSelectedModule(mod)}
               className={`px-3 py-1.5 rounded-xl font-bold transition-all cursor-pointer ${
                 selectedModule === mod
-                  ? 'bg-emerald-500 text-slate-950 shadow-md shadow-emerald-500/20'
-                  : 'bg-slate-800/80 text-slate-400 hover:text-white'
+                  ? 'bg-emerald-600 text-white shadow-xs'
+                  : 'bg-slate-100 dark:bg-slate-800/80 text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
               }`}
             >
               {mod}
@@ -606,8 +607,8 @@ export const AuditLogTab: React.FC = () => {
               onClick={() => setSelectedImpact(imp)}
               className={`px-2.5 py-1 rounded-xl text-[11px] font-bold transition-all cursor-pointer ${
                 selectedImpact === imp
-                  ? 'bg-slate-200 text-slate-950 font-black'
-                  : 'bg-slate-800/40 text-slate-400 hover:text-white'
+                  ? 'bg-slate-800 text-white dark:bg-slate-200 dark:text-slate-950 font-black'
+                  : 'bg-slate-100 dark:bg-slate-800/40 text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
               }`}
             >
               {imp}
@@ -617,33 +618,33 @@ export const AuditLogTab: React.FC = () => {
       </div>
 
       {/* 4. Table of Events */}
-      <div id="tour-auditoria-table" className="bg-[#0D1B22] border border-slate-800 rounded-3xl p-6 shadow-xl space-y-4">
+      <div id="tour-auditoria-table" className="bg-white dark:bg-[#0D1B22] border border-slate-200 dark:border-slate-800 rounded-3xl p-6 shadow-xl space-y-4">
         {filteredLogs.length === 0 ? (
-          <div className="py-12 text-center text-slate-400 text-xs">
+          <div className="py-12 text-center text-slate-500 dark:text-slate-400 text-xs">
             {isLoading
               ? 'Cargando eventos de auditoría...'
               : 'No se encontraron registros de auditoría para este ciclo o filtros aplicados.'}
           </div>
         ) : (
-          <div className="overflow-x-auto rounded-2xl border border-slate-800/80 bg-[#071217]">
+          <div className="overflow-x-auto rounded-2xl border border-slate-200 dark:border-slate-800/80 bg-slate-50/50 dark:bg-[#071217]">
             <table className="w-full min-w-[760px] text-left text-xs border-collapse">
               <thead>
-                <tr className="border-b border-slate-800 text-[11px] uppercase tracking-wider text-slate-400 bg-slate-900/60">
+                <tr className="border-b border-slate-200 dark:border-slate-800 text-[11px] uppercase tracking-wider text-slate-600 dark:text-slate-400 bg-slate-100 dark:bg-slate-900/60">
                   <th className="py-3 px-3.5 font-bold">Fecha / Hora</th>
                   <th className="py-3 px-3 font-bold text-center">Semana</th>
                   <th className="py-3 px-3 font-bold">Módulo</th>
                   <th className="py-3 px-3 font-bold">Entidad Afectada</th>
                   <th className="py-3 px-3 font-bold">Descripción</th>
-                  <th className="py-3 px-3 font-bold text-right text-emerald-400">Monto</th>
+                  <th className="py-3 px-3 font-bold text-right text-emerald-600 dark:text-emerald-400">Monto</th>
                   <th className="py-3 px-3 font-bold">Usuario</th>
                   <th className="py-3 px-3 font-bold text-center">Impacto</th>
                   <th className="py-3 px-3 font-bold text-right">Detalle</th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-slate-800/60 font-mono">
+              <tbody className="divide-y divide-slate-200 dark:divide-slate-800/60 font-mono">
                 {filteredLogs.map((l) => (
-                  <tr key={l.id || l.timestamp} className="hover:bg-slate-800/30 transition-colors">
-                    <td className="py-2.5 px-3.5 text-slate-300 text-[11px] whitespace-nowrap">
+                  <tr key={l.id || l.timestamp} className="hover:bg-slate-100/70 dark:hover:bg-slate-800/30 transition-colors">
+                    <td className="py-2.5 px-3.5 text-slate-700 dark:text-slate-300 text-[11px] whitespace-nowrap">
                       {new Date(l.timestamp).toLocaleString('es-VE', {
                         day: '2-digit',
                         month: '2-digit',
@@ -654,46 +655,46 @@ export const AuditLogTab: React.FC = () => {
                       })}
                     </td>
                     <td className="py-2.5 px-3 text-center">
-                      <span className="text-[10px] font-black px-2 py-0.5 rounded bg-slate-800/90 text-sky-400 border border-slate-700 font-mono">
+                      <span className="text-[10px] font-black px-2 py-0.5 rounded bg-sky-50 dark:bg-slate-800/90 text-sky-700 dark:text-sky-400 border border-sky-200 dark:border-slate-700 font-mono">
                         {l.semana_ciclo ? `Sem. ${l.semana_ciclo}` : '-'}
                       </span>
                     </td>
                     <td className="py-2.5 px-3">
                       <span className={`text-[10px] font-black px-2 py-0.5 rounded font-sans ${
                         l.modulo === 'AGENCIAS'
-                          ? 'bg-purple-500/10 text-purple-300 border border-purple-500/20'
+                          ? 'bg-purple-500/10 text-purple-600 dark:text-purple-300 border border-purple-500/20'
                           : l.modulo === 'VENTAS'
-                          ? 'bg-emerald-500/10 text-emerald-300 border border-emerald-500/20'
+                          ? 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-300 border border-emerald-500/20'
                           : l.modulo === 'PAGOS'
-                          ? 'bg-sky-500/10 text-sky-300 border border-sky-500/20'
+                          ? 'bg-sky-500/10 text-sky-600 dark:text-sky-300 border border-sky-500/20'
                           : l.modulo === 'GASTOS'
-                          ? 'bg-rose-500/10 text-rose-300 border border-rose-500/20'
+                          ? 'bg-rose-500/10 text-rose-600 dark:text-rose-300 border border-rose-500/20'
                           : l.modulo === 'CIERRES'
-                          ? 'bg-amber-500/10 text-amber-300 border border-amber-500/20'
-                          : 'bg-slate-700/30 text-slate-300 border border-slate-700/50'
+                          ? 'bg-amber-500/10 text-amber-600 dark:text-amber-300 border border-amber-500/20'
+                          : 'bg-slate-100 dark:bg-slate-700/30 text-slate-700 dark:text-slate-300 border border-slate-300 dark:border-slate-700/50'
                       }`}>
                         {l.modulo}
                       </span>
                     </td>
-                    <td className="py-2.5 px-3 font-bold text-white font-sans truncate max-w-[150px]">
+                    <td className="py-2.5 px-3 font-bold text-slate-900 dark:text-white font-sans truncate max-w-[150px]">
                       {l.entidad_afectada}
                     </td>
-                    <td className="py-2.5 px-3 text-slate-300 font-sans text-xs max-w-[260px] truncate" title={l.descripcion}>
+                    <td className="py-2.5 px-3 text-slate-700 dark:text-slate-300 font-sans text-xs max-w-[260px] truncate" title={l.descripcion}>
                       {shortenAuditDescription(l.descripcion)}
                     </td>
-                    <td className="py-2.5 px-3 font-mono font-bold text-right text-emerald-400 whitespace-nowrap">
-                      {extractAuditAmount(l)?.montoStr || <span className="text-slate-600 font-sans font-normal">-</span>}
+                    <td className="py-2.5 px-3 font-mono font-bold text-right text-emerald-600 dark:text-emerald-400 whitespace-nowrap">
+                      {extractAuditAmount(l)?.montoStr || <span className="text-slate-400 dark:text-slate-600 font-sans font-normal">-</span>}
                     </td>
-                    <td className="py-2.5 px-3 text-slate-400 text-[11px] truncate max-w-[140px]" title={l.usuario}>
+                    <td className="py-2.5 px-3 text-slate-600 dark:text-slate-400 text-[11px] truncate max-w-[140px]" title={l.usuario}>
                       {l.usuario}
                     </td>
                     <td className="py-2.5 px-3 text-center">
                       <span className={`text-[9px] font-black px-2 py-0.5 rounded-full font-sans uppercase ${
                         l.impacto_financiero === 'ALTO'
-                          ? 'bg-rose-500/20 text-rose-400 border border-rose-500/30'
+                          ? 'bg-rose-500/10 dark:bg-rose-500/20 text-rose-600 dark:text-rose-400 border border-rose-300 dark:border-rose-500/30'
                           : l.impacto_financiero === 'MEDIO'
-                          ? 'bg-amber-500/20 text-amber-400 border border-amber-500/30'
-                          : 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/30'
+                          ? 'bg-amber-500/10 dark:bg-amber-500/20 text-amber-600 dark:text-amber-400 border border-amber-300 dark:border-amber-500/30'
+                          : 'bg-emerald-500/10 dark:bg-emerald-500/20 text-emerald-600 dark:text-emerald-400 border border-emerald-300 dark:border-emerald-500/30'
                       }`}>
                         {l.impacto_financiero}
                       </span>
@@ -702,12 +703,12 @@ export const AuditLogTab: React.FC = () => {
                       {(l.valor_anterior || l.valor_nuevo) ? (
                         <button
                           onClick={() => setSelectedEntry(l)}
-                          className="px-2 py-1 rounded bg-slate-800 hover:bg-slate-700 text-[10px] font-bold text-slate-200 transition-colors cursor-pointer"
+                          className="px-2 py-1 rounded bg-slate-200 hover:bg-slate-300 dark:bg-slate-800 dark:hover:bg-slate-700 text-[10px] font-bold text-slate-800 dark:text-slate-200 transition-colors cursor-pointer"
                         >
                           Ver JSON
                         </button>
                       ) : (
-                        <span className="text-slate-600 text-[10px]">-</span>
+                        <span className="text-slate-400 dark:text-slate-600 text-[10px]">-</span>
                       )}
                     </td>
                   </tr>
@@ -721,47 +722,47 @@ export const AuditLogTab: React.FC = () => {
       {/* JSON Comparison Modal */}
       {selectedEntry && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm animate-fade-in">
-          <div className="bg-[#0D1B22] border border-slate-800 rounded-3xl w-full max-w-2xl max-h-[85vh] flex flex-col shadow-2xl overflow-hidden">
-            <div className="p-5 border-b border-slate-800 flex items-center justify-between">
+          <div className="bg-white dark:bg-[#0D1B22] border border-slate-200 dark:border-slate-800 rounded-3xl w-full max-w-2xl max-h-[85vh] flex flex-col shadow-2xl overflow-hidden">
+            <div className="p-5 border-b border-slate-200 dark:border-slate-800 flex items-center justify-between">
               <div>
-                <h3 className="text-sm font-extrabold text-white">Detalle de Modificación</h3>
-                <p className="text-xs text-slate-400">
+                <h3 className="text-sm font-extrabold text-slate-900 dark:text-white">Detalle de Modificación</h3>
+                <p className="text-xs text-slate-500 dark:text-slate-400">
                   {selectedEntry.entidad_afectada} • {selectedEntry.tipo_accion}
                 </p>
               </div>
               <button
                 onClick={() => setSelectedEntry(null)}
-                className="p-1.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-400 hover:text-white transition-colors cursor-pointer"
+                className="p-1.5 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-600 dark:bg-slate-800 dark:hover:bg-slate-700 dark:text-slate-400 dark:hover:text-white transition-colors cursor-pointer"
               >
                 <X className="w-4 h-4" />
               </button>
             </div>
 
             <div className="p-6 overflow-y-auto space-y-4 text-xs">
-              <div className="p-3 rounded-xl bg-[#071217] border border-slate-800 text-slate-300">
+              <div className="p-3 rounded-xl bg-slate-50 dark:bg-[#071217] border border-slate-200 dark:border-slate-800 text-slate-700 dark:text-slate-300">
                 <strong>Descripción:</strong> {selectedEntry.descripcion}
               </div>
 
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div className="space-y-1">
-                  <span className="text-[11px] font-bold text-rose-400">Valor Anterior (Antes):</span>
-                  <pre className="p-3 rounded-xl bg-[#071217] border border-rose-500/20 text-slate-300 font-mono text-[10px] overflow-x-auto max-h-60">
+                  <span className="text-[11px] font-bold text-rose-600 dark:text-rose-400">Valor Anterior (Antes):</span>
+                  <pre className="p-3 rounded-xl bg-slate-50 dark:bg-[#071217] border border-rose-300 dark:border-rose-500/20 text-slate-800 dark:text-slate-300 font-mono text-[10px] overflow-x-auto max-h-60">
                     {JSON.stringify(selectedEntry.valor_anterior, null, 2) || 'N/A'}
                   </pre>
                 </div>
                 <div className="space-y-1">
-                  <span className="text-[11px] font-bold text-emerald-400">Valor Nuevo (Después):</span>
-                  <pre className="p-3 rounded-xl bg-[#071217] border border-emerald-500/20 text-slate-300 font-mono text-[10px] overflow-x-auto max-h-60">
+                  <span className="text-[11px] font-bold text-emerald-600 dark:text-emerald-400">Valor Nuevo (Después):</span>
+                  <pre className="p-3 rounded-xl bg-slate-50 dark:bg-[#071217] border border-emerald-300 dark:border-emerald-500/20 text-slate-800 dark:text-slate-300 font-mono text-[10px] overflow-x-auto max-h-60">
                     {JSON.stringify(selectedEntry.valor_nuevo, null, 2) || 'N/A'}
                   </pre>
                 </div>
               </div>
             </div>
 
-            <div className="p-4 border-t border-slate-800 flex justify-end bg-[#0A161C]">
+            <div className="p-4 border-t border-slate-200 dark:border-slate-800 flex justify-end bg-slate-50 dark:bg-[#0A161C]">
               <button
                 onClick={() => setSelectedEntry(null)}
-                className="px-4 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-white font-bold text-xs transition-colors cursor-pointer"
+                className="px-4 py-2 rounded-xl bg-slate-200 hover:bg-slate-300 text-slate-800 dark:bg-slate-800 dark:hover:bg-slate-700 dark:text-white font-bold text-xs transition-colors cursor-pointer"
               >
                 Cerrar
               </button>

@@ -22,6 +22,7 @@ export const TODOS_LOS_MODULOS_CMS: ModuleId[] = [
   'Cierre ',
   'Auditoría',
   'Ajustes',
+  'Usuarios',
 ];
 
 export const ALL_MODULES = TODOS_LOS_MODULOS_CMS;
@@ -45,6 +46,7 @@ export const PLANES_MODULOS_DEFAULT: Record<PlanType, ModuleId[]> = {
     'Cierre ',
     'Auditoría',
     'Ajustes',
+    'Usuarios',
   ],
   profesional: [
     'Inicio',
@@ -59,15 +61,16 @@ export const PLANES_MODULOS_DEFAULT: Record<PlanType, ModuleId[]> = {
     'Cargar Ventas',
     'Pagos Agencias',
     'Gastos por Agencia',
-    'Gastos Administrativos',
     'Saldo Agencias',
     'Venta Real',
     'Pagos a Proveedores',
     'Reporte Proveedores',
     'Config. Proveedores',
+    'Gastos Administrativos',
     'Cierre ',
     'Auditoría',
     'Ajustes',
+    'Usuarios',
   ],
   elite: [...TODOS_LOS_MODULOS_CMS],
 };

@@ -4,6 +4,7 @@ import { useAuth } from '../../context/AuthContext';
 import { formatCurrency, formatDate, normalizarMoneda, cleanReference } from '../../utils/formatters';
 import type { Agency, Currency } from '../../types';
 import { loadCurrencies, type CurrencyConfig } from '../../utils/currencies';
+import { UI_LOCK } from '../../styles/uiDesignLock';
 import { notificationService } from '../../utils/notificationService';
 import { realtimeBroadcast } from '../../utils/realtimeBroadcast';
 import {
@@ -172,10 +173,20 @@ export const ExpensesTab: React.FC = () => {
     loadData();
   }, [effectiveUserId, systemCycle?.desde, systemCycle?.hasta, systemCycle?.semana]);
 
+  const activeCurrenciesList = useMemo(() => {
+    if (currencies && currencies.length > 0) {
+      return currencies.map((c) => (c.codigo || '').trim().toUpperCase()).filter(Boolean);
+    }
+    return ['BS', 'USD', 'COP'];
+  }, [currencies]);
+
   // Expenses totals by currency (scoped to current view filter)
   const currencyTotals = useMemo(() => {
-    let bs = 0, usd = 0, cop = 0;
-    let pendBs = 0, pendUsd = 0, pendCop = 0;
+    const totals: Record<string, { total: number; pend: number }> = {};
+    activeCurrenciesList.forEach((c) => {
+      totals[c] = { total: 0, pend: 0 };
+    });
+
     const targetList = expenses.filter((e) => {
       if (filterPeriod === 'ciclo' && e.tabla === 'cda_gastos_diarios') {
         const fStr = e.fecha.slice(0, 10);
@@ -185,18 +196,18 @@ export const ExpensesTab: React.FC = () => {
     });
 
     targetList.forEach((e) => {
+      const m = normalizarMoneda(e.moneda);
+      if (!totals[m]) {
+        totals[m] = { total: 0, pend: 0 };
+      }
       if (e.confirmado) {
-        if (e.moneda === 'BS') bs += e.monto;
-        else if (e.moneda === 'USD') usd += e.monto;
-        else if (e.moneda === 'COP') cop += e.monto;
+        totals[m].total += e.monto;
       } else {
-        if (e.moneda === 'BS') pendBs += e.monto;
-        else if (e.moneda === 'USD') pendUsd += e.monto;
-        else if (e.moneda === 'COP') pendCop += e.monto;
+        totals[m].pend += e.monto;
       }
     });
-    return { bs, usd, cop, pendBs, pendUsd, pendCop };
-  }, [expenses, filterPeriod, systemCycle.desde, systemCycle.hasta]);
+    return totals;
+  }, [expenses, filterPeriod, systemCycle.desde, systemCycle.hasta, activeCurrenciesList]);
 
   // Filtered expenses list
   const filteredExpenses = useMemo(() => {
@@ -384,17 +395,17 @@ export const ExpensesTab: React.FC = () => {
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
           <div className="flex flex-wrap items-center gap-2">
-            <span className="p-2 rounded-xl bg-rose-500/10 text-rose-400 border border-rose-500/20">
+            <span className="p-2 rounded-xl bg-rose-500/10 text-rose-600 dark:text-rose-400 border border-rose-500/20">
               <Banknote className="w-5 h-5" />
             </span>
-            <h2 className="text-xl sm:text-2xl font-black text-white">
+            <h2 className="text-xl sm:text-2xl font-black text-slate-900 dark:text-white">
               Gastos por Agencia
             </h2>
-            <span className="text-[11px] px-2.5 py-1 rounded-full bg-amber-500/10 text-amber-400 border border-amber-500/20 font-mono font-bold">
+            <span className="text-[11px] px-2.5 py-1 rounded-full bg-amber-50 dark:bg-amber-950/40 text-amber-700 dark:text-amber-400 border border-amber-200 dark:border-amber-800/50 font-mono font-bold">
               {systemCycle.tipo === 'SEMANAL' ? `Semana ${systemCycle.semana}` : `Operación Diaria ${systemCycle.semana}`} ({systemCycle.desde} al {systemCycle.hasta})
             </span>
           </div>
-          <p className="text-xs sm:text-sm text-slate-400 mt-1">
+          <p className="text-xs sm:text-sm text-slate-500 dark:text-slate-400 mt-1">
             Control y registro de gastos operacionales descontables en el estado de cuenta de cada agencia para el ciclo operativo.
           </p>
         </div>
@@ -402,7 +413,7 @@ export const ExpensesTab: React.FC = () => {
         <button
           onClick={() => loadData()}
           disabled={isLoading}
-          className="px-3.5 py-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-semibold flex items-center gap-1.5 transition-all border border-slate-700 cursor-pointer disabled:opacity-50"
+          className={UI_LOCK.buttonSecondary + ' text-xs font-semibold flex items-center gap-1.5'}
         >
           <RefreshCw className={`w-3.5 h-3.5 ${isLoading ? 'animate-spin' : ''}`} />
           Actualizar
@@ -413,10 +424,10 @@ export const ExpensesTab: React.FC = () => {
         <div
           className={`p-4 rounded-2xl border flex items-center gap-3 text-sm animate-fade-in ${
             message.type === 'success'
-              ? 'bg-emerald-500/10 border-emerald-500/20 text-emerald-400'
+              ? 'bg-emerald-50 dark:bg-emerald-950/20 border-emerald-200 dark:border-emerald-500/20 text-emerald-800 dark:text-emerald-400'
               : message.type === 'info'
-              ? 'bg-amber-500/10 border-amber-500/20 text-amber-400'
-              : 'bg-rose-500/10 border-rose-500/20 text-rose-400'
+              ? 'bg-amber-50 dark:bg-amber-950/20 border-amber-200 dark:border-amber-500/20 text-amber-800 dark:text-amber-300'
+              : 'bg-rose-50 dark:bg-rose-950/20 border-rose-200 dark:border-rose-500/20 text-rose-800 dark:text-rose-400'
           }`}
         >
           {message.type === 'success' ? (
@@ -431,72 +442,45 @@ export const ExpensesTab: React.FC = () => {
       )}
 
       {/* Totals by Currency Cards */}
-      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-        <div className="bg-[#0D1B22] border border-slate-800 rounded-2xl p-4 text-center">
-          <div className="text-[11px] font-bold uppercase tracking-wider text-slate-400">
-            Total Gastos (BS) {filterPeriod === 'ciclo' ? `• Semana ${systemCycle.semana}` : '• Histórico'}
-          </div>
-          <div className="text-xl font-black text-white font-mono mt-1">
-            {formatCurrency(currencyTotals.bs, 'BS')}
-          </div>
-          {currencyTotals.pendBs > 0 && (
-            <div className="mt-1.5">
-              <span className="px-2 py-0.5 rounded-full bg-amber-500/15 text-amber-400 text-[10px] font-bold border border-amber-500/30">
-                ⏳ {formatCurrency(currencyTotals.pendBs, 'BS')} por confirmar
-              </span>
+      <div className={UI_LOCK.kpiGrid(activeCurrenciesList.length)}>
+        {activeCurrenciesList.map((curr) => {
+          const cData = currencyTotals[curr] || { total: 0, pend: 0 };
+          return (
+            <div key={curr} className={UI_LOCK.card + ' p-4 text-center shadow-sm flex flex-col justify-between'}>
+              <div className="text-[11px] font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400">
+                Total Gastos ({curr}) {filterPeriod === 'ciclo' ? `• Semana ${systemCycle.semana}` : '• Histórico'}
+              </div>
+              <div className="text-xl font-black text-slate-900 dark:text-white font-mono mt-1">
+                {formatCurrency(cData.total, curr as any)}
+              </div>
+              {cData.pend > 0 && (
+                <div className="mt-1.5">
+                  <span className="px-2 py-0.5 rounded-full bg-amber-50 dark:bg-amber-500/15 text-amber-800 dark:text-amber-400 text-[10px] font-bold border border-amber-200 dark:border-amber-500/30">
+                    ⏳ {formatCurrency(cData.pend, curr as any)} por confirmar
+                  </span>
+                </div>
+              )}
             </div>
-          )}
-        </div>
-
-        <div className="bg-[#0D1B22] border border-slate-800 rounded-2xl p-4 text-center">
-          <div className="text-[11px] font-bold uppercase tracking-wider text-slate-400">
-            Total Gastos (USD) {filterPeriod === 'ciclo' ? `• Semana ${systemCycle.semana}` : '• Histórico'}
-          </div>
-          <div className="text-xl font-black text-emerald-400 font-mono mt-1">
-            {formatCurrency(currencyTotals.usd, 'USD')}
-          </div>
-          {currencyTotals.pendUsd > 0 && (
-            <div className="mt-1.5">
-              <span className="px-2 py-0.5 rounded-full bg-amber-500/15 text-amber-400 text-[10px] font-bold border border-amber-500/30">
-                ⏳ {formatCurrency(currencyTotals.pendUsd, 'USD')} por confirmar
-              </span>
-            </div>
-          )}
-        </div>
-
-        <div className="bg-[#0D1B22] border border-slate-800 rounded-2xl p-4 text-center">
-          <div className="text-[11px] font-bold uppercase tracking-wider text-slate-400">
-            Total Gastos (COP) {filterPeriod === 'ciclo' ? `• Semana ${systemCycle.semana}` : '• Histórico'}
-          </div>
-          <div className="text-xl font-black text-cyan-400 font-mono mt-1">
-            {formatCurrency(currencyTotals.cop, 'COP')}
-          </div>
-          {currencyTotals.pendCop > 0 && (
-            <div className="mt-1.5">
-              <span className="px-2 py-0.5 rounded-full bg-amber-500/15 text-amber-400 text-[10px] font-bold border border-amber-500/30">
-                ⏳ {formatCurrency(currencyTotals.pendCop, 'COP')} por confirmar
-              </span>
-            </div>
-          )}
-        </div>
+          );
+        })}
       </div>
 
       {/* Manual Expense Form */}
-      <div id="tour-gastos-form" className="bg-[#0D1B22] border border-slate-800 rounded-3xl p-6 shadow-xl space-y-4">
-        <h3 className="text-sm font-bold text-white flex items-center gap-2">
-          <Plus className="w-4 h-4 text-emerald-400" />
+      <div id="tour-gastos-form" className={UI_LOCK.card + ' p-6 shadow-md space-y-4'}>
+        <h3 className="text-sm font-bold text-slate-900 dark:text-white flex items-center gap-2">
+          <Plus className="w-4 h-4 text-emerald-600 dark:text-emerald-400" />
           Registrar Gasto por Agencia
         </h3>
 
         <form onSubmit={handleSaveExpense} className="space-y-4">
           <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-4">
             <div className="space-y-1">
-              <label className="text-xs font-semibold text-slate-300">Agencia *</label>
+              <label className="text-xs font-semibold text-slate-700 dark:text-slate-300">Agencia *</label>
               <select
                 value={formAgencia}
                 onChange={(e) => setFormAgencia(e.target.value)}
                 required
-                className="w-full bg-[#071217] border border-slate-700 rounded-xl px-3 py-2.5 text-xs text-white focus:outline-none focus:border-emerald-500 cursor-pointer"
+                className={UI_LOCK.select}
               >
                 <option value="">-- Seleccione una Agencia --</option>
                 {agencies.map((a) => (
@@ -508,12 +492,12 @@ export const ExpensesTab: React.FC = () => {
             </div>
 
             <div className="space-y-1">
-              <label className="text-xs font-semibold text-slate-300">Moneda *</label>
+              <label className="text-xs font-semibold text-slate-700 dark:text-slate-300">Moneda *</label>
               <select
                 value={formMoneda}
                 onChange={(e) => setFormMoneda(e.target.value)}
                 required
-                className="w-full bg-[#071217] border border-slate-700 rounded-xl px-3 py-2.5 text-xs text-white focus:outline-none focus:border-rose-500 cursor-pointer"
+                className={UI_LOCK.select}
               >
                 {availableAgencyCurrencies.map((m) => (
                   <option key={m} value={m}>
@@ -524,7 +508,7 @@ export const ExpensesTab: React.FC = () => {
             </div>
 
             <div className="space-y-1">
-              <label className="text-xs font-semibold text-slate-300">Monto *</label>
+              <label className="text-xs font-semibold text-slate-700 dark:text-slate-300">Monto *</label>
               <input
                 type="number"
                 step="0.01"
@@ -533,42 +517,42 @@ export const ExpensesTab: React.FC = () => {
                 placeholder="0.00"
                 value={formMonto}
                 onChange={(e) => setFormMonto(e.target.value)}
-                className="w-full bg-[#071217] border border-slate-700 rounded-xl px-3 py-2.5 text-xs text-white font-mono focus:outline-none focus:border-rose-500"
+                className={UI_LOCK.input + ' font-mono'}
               />
             </div>
 
             <div className="space-y-1">
-              <label className="text-xs font-semibold text-slate-300">Fecha</label>
+              <label className="text-xs font-semibold text-slate-700 dark:text-slate-300">Fecha</label>
               <input
                 type="date"
                 value={formFecha}
                 onChange={(e) => setFormFecha(e.target.value)}
-                className="w-full bg-[#071217] border border-slate-700 rounded-xl px-3 py-2.5 text-xs text-white focus:outline-none focus:border-rose-500"
+                className={UI_LOCK.input}
               />
             </div>
           </div>
 
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div className="space-y-1">
-              <label className="text-xs font-semibold text-slate-300">Concepto / Descripción *</label>
+              <label className="text-xs font-semibold text-slate-700 dark:text-slate-300">Concepto / Descripción *</label>
               <input
                 type="text"
                 required
                 placeholder="Ej: Pago de internet, papelería, mantenimiento..."
                 value={formConcepto}
                 onChange={(e) => setFormConcepto(e.target.value)}
-                className="w-full bg-[#071217] border border-slate-700 rounded-xl px-3 py-2.5 text-xs text-white focus:outline-none focus:border-rose-500"
+                className={UI_LOCK.input}
               />
             </div>
 
             <div className="space-y-1">
-              <label className="text-xs font-semibold text-slate-300">Referencia / Comprobante</label>
+              <label className="text-xs font-semibold text-slate-700 dark:text-slate-300">Referencia / Comprobante</label>
               <input
                 type="text"
                 placeholder="Ej: FACTURA 4920"
                 value={formReferencia}
                 onChange={(e) => setFormReferencia(e.target.value)}
-                className="w-full bg-[#071217] border border-slate-700 rounded-xl px-3 py-2.5 text-xs text-white focus:outline-none focus:border-rose-500"
+                className={UI_LOCK.input}
               />
             </div>
           </div>
@@ -580,9 +564,9 @@ export const ExpensesTab: React.FC = () => {
               id="gasto_conf_directa"
               checked={formConfirmDirecta}
               onChange={(e) => setFormConfirmDirecta(e.target.checked)}
-              className="w-4 h-4 rounded border-slate-700 text-rose-500 focus:ring-rose-500 bg-[#071217] cursor-pointer"
+              className="w-4 h-4 rounded border-slate-300 dark:border-slate-700 text-emerald-600 focus:ring-emerald-500 bg-white dark:bg-[#071217] cursor-pointer"
             />
-            <label htmlFor="gasto_conf_directa" className="text-xs font-semibold text-slate-300 cursor-pointer flex items-center gap-1">
+            <label htmlFor="gasto_conf_directa" className="text-xs font-semibold text-slate-700 dark:text-slate-300 cursor-pointer flex items-center gap-1">
               <span>⚡</span> Confirmar de inmediato (omitir Pizarra de Confirmaciones)
             </label>
           </div>
@@ -591,7 +575,7 @@ export const ExpensesTab: React.FC = () => {
             <button
               type="submit"
               disabled={isProcessing}
-              className="px-6 py-2.5 rounded-xl bg-gradient-to-r from-emerald-500 to-teal-600 hover:from-emerald-400 hover:to-teal-500 text-slate-950 font-black text-xs shadow-lg shadow-emerald-500/20 flex items-center gap-2 transition-all cursor-pointer disabled:opacity-50"
+              className={UI_LOCK.buttonPrimary + ' text-xs flex items-center gap-2'}
             >
               <Plus className="w-4 h-4" />
               {isProcessing ? 'Guardando...' : 'Registrar Gasto por Agencia'}
@@ -601,27 +585,27 @@ export const ExpensesTab: React.FC = () => {
       </div>
 
       {/* Expenses Table */}
-      <div id="tour-gastos-table" className="bg-[#0D1B22] border border-slate-800 rounded-3xl overflow-hidden shadow-xl">
-        <div className="p-4 sm:p-6 border-b border-slate-800 flex flex-col gap-4">
+      <div id="tour-gastos-table" className={UI_LOCK.card + ' overflow-hidden shadow-sm'}>
+        <div className="p-4 sm:p-6 border-b border-slate-200 dark:border-slate-800 flex flex-col gap-4">
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
             <div className="flex items-center gap-2">
-              <h4 className="text-sm font-bold text-white uppercase tracking-wider">
+              <h4 className="text-sm font-bold text-slate-900 dark:text-white uppercase tracking-wider">
                 Gastos Registrados por Agencia ({filteredExpenses.length})
               </h4>
-              <span className="text-xs text-slate-500 font-mono">
+              <span className="text-xs text-slate-400 dark:text-slate-500 font-mono">
                 {filterPeriod === 'ciclo' ? `(Semana ${systemCycle.semana})` : `(Histórico)`}
               </span>
             </div>
 
             {/* Period Selector: Ciclo Actual vs Histórico */}
-            <div className="inline-flex rounded-xl bg-[#071217] p-1 border border-slate-800 text-xs font-semibold self-start sm:self-auto">
+            <div className="inline-flex rounded-xl bg-slate-100 dark:bg-[#071217] p-1 border border-slate-200 dark:border-slate-800 text-xs font-semibold self-start sm:self-auto">
               <button
                 type="button"
                 onClick={() => setFilterPeriod('ciclo')}
                 className={`px-3 py-1.5 rounded-lg transition-all cursor-pointer ${
                   filterPeriod === 'ciclo'
-                    ? 'bg-emerald-500 text-slate-950 font-black shadow-sm'
-                    : 'text-slate-400 hover:text-white'
+                    ? 'bg-emerald-600 text-white shadow-sm'
+                    : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
                 }`}
               >
                 🎯 Ciclo Actual (Semana {systemCycle.semana})
@@ -631,8 +615,8 @@ export const ExpensesTab: React.FC = () => {
                 onClick={() => setFilterPeriod('todos')}
                 className={`px-3 py-1.5 rounded-lg transition-all cursor-pointer ${
                   filterPeriod === 'todos'
-                    ? 'bg-emerald-500 text-slate-950 font-black shadow-sm'
-                    : 'text-slate-400 hover:text-white'
+                    ? 'bg-emerald-600 text-white shadow-sm'
+                    : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
                 }`}
               >
                 📜 Histórico Completo ({expenses.length})
@@ -643,20 +627,20 @@ export const ExpensesTab: React.FC = () => {
           {/* Search and Dropdown Filters */}
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
             <div className="relative">
-              <Search className="w-3.5 h-3.5 absolute left-3 top-1/2 -translate-y-1/2 text-slate-500" />
+              <Search className="w-3.5 h-3.5 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 dark:text-slate-500" />
               <input
                 type="text"
                 placeholder="Buscar por concepto o referencia..."
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
-                className="w-full bg-[#071217] border border-slate-700 rounded-xl pl-8 pr-3 py-2 text-xs text-white placeholder:text-slate-600 focus:outline-none focus:border-rose-500"
+                className={UI_LOCK.input + ' pl-8 text-xs'}
               />
             </div>
 
             <select
               value={filterAgency}
               onChange={(e) => setFilterAgency(e.target.value)}
-              className="bg-[#071217] border border-slate-700 rounded-xl px-3 py-2 text-xs text-white focus:outline-none focus:border-rose-500 cursor-pointer"
+              className={UI_LOCK.select}
             >
               <option value="Todas">Todas las Agencias</option>
               {agencies.map((a) => (
@@ -669,12 +653,12 @@ export const ExpensesTab: React.FC = () => {
             <select
               value={filterCurrency}
               onChange={(e) => setFilterCurrency(e.target.value)}
-              className="bg-[#071217] border border-slate-700 rounded-xl px-3 py-2 text-xs text-white focus:outline-none focus:border-rose-500 cursor-pointer"
+              className={UI_LOCK.select}
             >
               <option value="Todas">Todas las Monedas</option>
-              <option value="BS">BS (Bolívares)</option>
-              <option value="USD">USD (Dólares)</option>
-              <option value="COP">COP (Pesos)</option>
+              {activeCurrenciesList.map((c) => (
+                <option key={c} value={c}>{c}</option>
+              ))}
             </select>
           </div>
         </div>
@@ -682,8 +666,8 @@ export const ExpensesTab: React.FC = () => {
         <div className="overflow-x-auto">
           {filteredExpenses.length === 0 ? (
             <div className="p-10 text-center space-y-2">
-              <Banknote className="w-8 h-8 text-slate-600 mx-auto" />
-              <p className="text-xs font-semibold text-slate-300">
+              <Banknote className="w-8 h-8 text-slate-400 dark:text-slate-600 mx-auto" />
+              <p className="text-xs font-semibold text-slate-600 dark:text-slate-300">
                 {filterPeriod === 'ciclo'
                   ? `No hay gastos registrados en el ciclo operativo actual (Semana ${systemCycle.semana}: ${systemCycle.desde} al ${systemCycle.hasta}).`
                   : 'No se encontraron gastos con los filtros seleccionados.'}
@@ -692,7 +676,7 @@ export const ExpensesTab: React.FC = () => {
                 <button
                   type="button"
                   onClick={() => setFilterPeriod('todos')}
-                  className="text-xs text-rose-400 hover:underline pt-1 inline-block cursor-pointer font-medium"
+                  className="text-xs text-rose-600 dark:text-rose-400 hover:underline pt-1 inline-block cursor-pointer font-medium"
                 >
                   Ver los {expenses.length} gastos del historial anterior
                 </button>
@@ -700,7 +684,7 @@ export const ExpensesTab: React.FC = () => {
             </div>
           ) : (
             <table className="w-full text-left text-xs">
-              <thead className="bg-[#071217] text-slate-400 border-b border-slate-800 font-bold uppercase tracking-wider">
+              <thead className={UI_LOCK.tableThead}>
                 <tr>
                   <th className="py-3.5 px-4">Agencia</th>
                   <th className="py-3.5 px-4">Concepto</th>
@@ -711,31 +695,31 @@ export const ExpensesTab: React.FC = () => {
                   <th className="py-3.5 px-4 text-center">Acciones</th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-slate-800/80 font-mono">
+              <tbody className="divide-y divide-slate-100 dark:divide-slate-800/80 font-mono">
                 {filteredExpenses.map((ex) => (
-                  <tr key={`${ex.tabla}_${ex.id}`} className="hover:bg-slate-800/30 transition-colors">
-                    <td className="py-3.5 px-4 font-sans font-bold text-white">{ex.agencia}</td>
-                    <td className="py-3.5 px-4 font-sans text-slate-300">{ex.concepto}</td>
-                    <td className="py-3.5 px-4 text-slate-400 text-xs font-mono">{ex.referencia}</td>
-                    <td className="py-3.5 px-4 text-right font-bold text-rose-400">
+                  <tr key={`${ex.tabla}_${ex.id}`} className={UI_LOCK.tableTr}>
+                    <td className="py-3.5 px-4 font-sans font-bold text-slate-900 dark:text-white">{ex.agencia}</td>
+                    <td className="py-3.5 px-4 font-sans text-slate-700 dark:text-slate-300">{ex.concepto}</td>
+                    <td className="py-3.5 px-4 text-slate-500 dark:text-slate-400 text-xs font-mono">{ex.referencia}</td>
+                    <td className="py-3.5 px-4 text-right font-bold text-rose-600 dark:text-rose-400">
                       {formatCurrency(ex.monto, ex.moneda)}
                     </td>
                     <td className="py-3.5 px-4 text-center font-sans">
                       {ex.confirmado ? (
-                        <span className="px-2 py-0.5 rounded-full bg-emerald-500/15 text-emerald-400 text-[10px] font-bold border border-emerald-500/30">
+                        <span className="px-2 py-0.5 rounded-full bg-emerald-50 dark:bg-emerald-500/15 text-emerald-700 dark:text-emerald-400 text-[10px] font-bold border border-emerald-200 dark:border-emerald-500/30">
                           ✅ Confirmado
                         </span>
                       ) : (
-                        <span className="px-2 py-0.5 rounded-full bg-amber-500/15 text-amber-400 text-[10px] font-bold border border-amber-500/30">
+                        <span className="px-2 py-0.5 rounded-full bg-amber-50 dark:bg-amber-500/15 text-amber-800 dark:text-amber-400 text-[10px] font-bold border border-amber-200 dark:border-amber-500/30">
                           ⏳ Pendiente
                         </span>
                       )}
                     </td>
-                    <td className="py-3.5 px-4 text-slate-500 font-sans">{formatDate(ex.fecha)}</td>
+                    <td className="py-3.5 px-4 text-slate-500 dark:text-slate-400 font-sans">{formatDate(ex.fecha)}</td>
                     <td className="py-3.5 px-4 text-center">
                       <button
                         onClick={() => handleDeleteExpense(ex)}
-                        className="p-1.5 rounded-lg text-slate-400 hover:text-rose-400 hover:bg-rose-500/10 transition-colors cursor-pointer"
+                        className="p-1.5 rounded-lg text-slate-400 hover:text-rose-600 dark:hover:text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-500/10 transition-colors cursor-pointer"
                         title="Eliminar Gasto"
                       >
                         <Trash2 className="w-3.5 h-3.5" />

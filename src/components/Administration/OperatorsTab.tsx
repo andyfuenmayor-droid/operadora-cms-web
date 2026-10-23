@@ -4,6 +4,7 @@ import { useAuth } from '../../context/AuthContext';
 import { useTheme } from '../../context/ThemeContext';
 import { formatCurrency, formatDate } from '../../utils/formatters';
 import { loadCurrencies, type CurrencyConfig } from '../../utils/currencies';
+import { UI_LOCK } from '../../styles/uiDesignLock';
 import {
   Trophy,
   Save,
@@ -81,12 +82,12 @@ export const OperatorsTab: React.FC<OperatorsTabProps> = ({ initialSubTab = 'rep
   const [participacionPct, setParticipacionPct] = useState('0');
   const [saldoInicialManual, setSaldoInicialManual] = useState('0');
 
-  // Filter in Reporte Tab
-  const [reportCurrencyFilter, setReportCurrencyFilter] = useState<'ALL' | 'BS' | 'USD' | 'COP'>('ALL');
+  // Filter in Reporte Tab (100% Dynamic)
+  const [reportCurrencyFilter, setReportCurrencyFilter] = useState<string>('ALL');
 
-  // Payment Form States
+  // Payment Form States (100% Dynamic)
   const [paySistema, setPaySistema] = useState('');
-  const [payMoneda, setPayMoneda] = useState<'BS' | 'USD' | 'COP'>('BS');
+  const [payMoneda, setPayMoneda] = useState<string>('BS');
   const [payTipo, setPayTipo] = useState<'PAGO_OPERADORA' | 'ABONO_OPERADORA'>('PAGO_OPERADORA');
   const [payMonto, setPayMonto] = useState('');
   const [payMetodo, setPayMetodo] = useState('TRANSFERENCIA');
@@ -134,6 +135,9 @@ export const OperatorsTab: React.FC<OperatorsTabProps> = ({ initialSubTab = 'rep
 
       const currs = await loadCurrencies(effectiveUserId);
       setActiveCurrencies(currs);
+      if (currs.length > 0 && !currs.some((c) => c.codigo === payMoneda)) {
+        setPayMoneda(currs[0].codigo);
+      }
 
       // Parse operator payments
       const rawPayments = (payRes.data || []).map((p: any) => {
@@ -374,9 +378,9 @@ export const OperatorsTab: React.FC<OperatorsTabProps> = ({ initialSubTab = 'rep
     return rows;
   }, [availableSystems, systemConfigs, sales, operatorPayments, reportCurrencyFilter]);
 
-  // Totals grouped strictly by currency (never mixed)
+  // Totals grouped strictly by currency (never mixed, 100% dynamic)
   const totalsByCurrency = useMemo(() => {
-    const currs: ('BS' | 'USD' | 'COP')[] = ['BS', 'USD', 'COP'];
+    const currs = activeCurrencies.length > 0 ? activeCurrencies.map((c) => c.codigo) : ['BS', 'USD', 'COP'];
     const result: Record<string, {
       venta: number;
       premios: number;
@@ -417,10 +421,10 @@ export const OperatorsTab: React.FC<OperatorsTabProps> = ({ initialSubTab = 'rep
     });
 
     return result;
-  }, [reportRows]);
+  }, [reportRows, activeCurrencies]);
 
   const activeCurrenciesWithData = useMemo(() => {
-    const list = activeCurrencies.length > 0 ? activeCurrencies.map((c) => c.codigo) : (['BS', 'USD', 'COP'] as const);
+    const list = activeCurrencies.length > 0 ? activeCurrencies.map((c) => c.codigo) : ['BS', 'USD', 'COP'];
     return list.filter((c) => {
       if (reportCurrencyFilter !== 'ALL' && reportCurrencyFilter !== c) return false;
       const t = totalsByCurrency[c];
@@ -651,15 +655,15 @@ export const OperatorsTab: React.FC<OperatorsTabProps> = ({ initialSubTab = 'rep
   return (
     <div className="space-y-6 max-w-6xl mx-auto">
       {/* Header */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-slate-800 pb-4">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-slate-200 dark:border-slate-800 pb-4">
         <div>
-          <h2 className="text-xl sm:text-2xl font-black text-white flex items-center gap-2">
-            <span className="p-2 rounded-xl bg-amber-500/10 text-amber-400 border border-amber-500/20">
+          <h2 className="text-xl sm:text-2xl font-black text-slate-900 dark:text-white flex items-center gap-2">
+            <span className="p-2 rounded-xl bg-amber-500/10 text-amber-600 dark:text-amber-400 border border-amber-500/20">
               <Trophy className="w-5 h-5" />
             </span>
             <span>Liquidación y Reporte de Operadora</span>
           </h2>
-          <p className="text-xs sm:text-sm text-slate-400 mt-1">
+          <p className="text-xs sm:text-sm text-slate-500 dark:text-slate-400 mt-1">
             Gestión comercial y conciliación de cuentas corrientes entre la Operadora (Casa Matriz) y el Comercializador.
           </p>
         </div>
@@ -667,7 +671,7 @@ export const OperatorsTab: React.FC<OperatorsTabProps> = ({ initialSubTab = 'rep
         <button
           onClick={() => loadData()}
           disabled={isLoading}
-          className="px-3.5 py-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-semibold flex items-center gap-1.5 transition-all border border-slate-700 cursor-pointer disabled:opacity-50 self-start sm:self-auto"
+          className="px-3.5 py-2.5 rounded-xl bg-white hover:bg-slate-100 text-slate-700 dark:bg-slate-800 dark:hover:bg-slate-700 dark:text-slate-300 text-xs font-semibold flex items-center gap-1.5 transition-all border border-slate-200 dark:border-slate-700 cursor-pointer disabled:opacity-50 self-start sm:self-auto shadow-sm"
         >
           <RefreshCw className={`w-3.5 h-3.5 ${isLoading ? 'animate-spin' : ''}`} />
           Actualizar
@@ -680,8 +684,8 @@ export const OperatorsTab: React.FC<OperatorsTabProps> = ({ initialSubTab = 'rep
           onClick={() => setActiveSubTab('reporte')}
           className={`px-4 py-2 rounded-xl text-xs font-bold flex items-center gap-2 transition-all cursor-pointer ${
             activeSubTab === 'reporte'
-              ? 'bg-emerald-500 text-slate-950 font-black shadow-md'
-              : 'bg-[#0D1B22] text-slate-400 hover:text-white border border-slate-800'
+              ? 'bg-emerald-600 text-white font-black shadow-md'
+              : 'bg-white hover:bg-slate-100 text-slate-600 dark:bg-slate-900/60 dark:hover:bg-slate-800 dark:text-slate-400 dark:hover:text-white border border-slate-200 dark:border-slate-800'
           }`}
         >
           <FileText className="w-4 h-4" />
@@ -692,8 +696,8 @@ export const OperatorsTab: React.FC<OperatorsTabProps> = ({ initialSubTab = 'rep
           onClick={() => setActiveSubTab('pagos')}
           className={`px-4 py-2 rounded-xl text-xs font-bold flex items-center gap-2 transition-all cursor-pointer ${
             activeSubTab === 'pagos'
-              ? 'bg-cyan-500 text-slate-950 font-black shadow-md'
-              : 'bg-[#0D1B22] text-slate-400 hover:text-white border border-slate-800'
+              ? 'bg-emerald-600 text-white font-black shadow-md'
+              : 'bg-white hover:bg-slate-100 text-slate-600 dark:bg-slate-900/60 dark:hover:bg-slate-800 dark:text-slate-400 dark:hover:text-white border border-slate-200 dark:border-slate-800'
           }`}
         >
           <CreditCard className="w-4 h-4" />
@@ -704,8 +708,8 @@ export const OperatorsTab: React.FC<OperatorsTabProps> = ({ initialSubTab = 'rep
           onClick={() => setActiveSubTab('cierres')}
           className={`px-4 py-2 rounded-xl text-xs font-bold flex items-center gap-2 transition-all cursor-pointer ${
             activeSubTab === 'cierres'
-              ? 'bg-purple-600 text-white font-black shadow-md'
-              : 'bg-[#0D1B22] text-slate-400 hover:text-white border border-slate-800'
+              ? 'bg-emerald-600 text-white font-black shadow-md'
+              : 'bg-white hover:bg-slate-100 text-slate-600 dark:bg-slate-900/60 dark:hover:bg-slate-800 dark:text-slate-400 dark:hover:text-white border border-slate-200 dark:border-slate-800'
           }`}
         >
           <History className="w-4 h-4" />
@@ -716,8 +720,8 @@ export const OperatorsTab: React.FC<OperatorsTabProps> = ({ initialSubTab = 'rep
           onClick={() => setActiveSubTab('venta')}
           className={`px-4 py-2 rounded-xl text-xs font-bold flex items-center gap-2 transition-all cursor-pointer ${
             activeSubTab === 'venta'
-              ? 'bg-amber-500 text-slate-950 font-black shadow-md'
-              : 'bg-[#0D1B22] text-slate-400 hover:text-white border border-slate-800'
+              ? 'bg-emerald-600 text-white font-black shadow-md'
+              : 'bg-white hover:bg-slate-100 text-slate-600 dark:bg-slate-900/60 dark:hover:bg-slate-800 dark:text-slate-400 dark:hover:text-white border border-slate-200 dark:border-slate-800'
           }`}
         >
           <TrendingUp className="w-4 h-4" />
@@ -726,17 +730,11 @@ export const OperatorsTab: React.FC<OperatorsTabProps> = ({ initialSubTab = 'rep
       </div>
 
       {message && (
-        <div
-          className={`p-4 rounded-2xl border flex items-center gap-3 text-sm animate-fade-in ${
-            message.type === 'success'
-              ? 'bg-emerald-500/10 border-emerald-500/20 text-emerald-400'
-              : 'bg-rose-500/10 border-rose-500/20 text-rose-400'
-          }`}
-        >
+        <div className={message.type === 'success' ? UI_LOCK.successBanner : UI_LOCK.errorBanner}>
           {message.type === 'success' ? (
-            <CheckCircle2 className="w-5 h-5 shrink-0" />
+            <CheckCircle2 className="w-5 h-5 shrink-0 text-emerald-600 dark:text-emerald-400" />
           ) : (
-            <AlertTriangle className="w-5 h-5 shrink-0" />
+            <AlertTriangle className="w-5 h-5 shrink-0 text-rose-600 dark:text-rose-400" />
           )}
           <span>{message.text}</span>
         </div>
@@ -748,23 +746,23 @@ export const OperatorsTab: React.FC<OperatorsTabProps> = ({ initialSubTab = 'rep
       {activeSubTab === 'venta' && (
         <div className="space-y-6">
           {availableSystems.length === 0 ? (
-            <div className="bg-[#0D1B22] border border-slate-800 rounded-3xl p-12 text-center space-y-3">
-              <Trophy className="w-12 h-12 text-slate-600 mx-auto" />
-              <h4 className="text-base font-bold text-white">No hay sistemas o ventas registradas</h4>
-              <p className="text-xs text-slate-400 max-w-sm mx-auto">
+            <div className={`${UI_LOCK.card} p-12 text-center space-y-3`}>
+              <Trophy className="w-12 h-12 text-slate-400 dark:text-slate-600 mx-auto" />
+              <h4 className="text-base font-bold text-slate-900 dark:text-white">No hay sistemas o ventas registradas</h4>
+              <p className="text-xs text-slate-500 dark:text-slate-400 max-w-sm mx-auto">
                 Registra proveedores en el módulo de Config. Proveedores o importa ventas en Cargar Ventas.
               </p>
             </div>
           ) : (
-            <div className="bg-[#0D1B22] border border-slate-800 rounded-3xl p-6 sm:p-8 shadow-xl space-y-6">
+            <div className={`${UI_LOCK.card} p-6 sm:p-8 space-y-6`}>
               {/* Selectors: Sistema & Moneda */}
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div className="space-y-1.5">
-                  <label className="text-xs font-semibold text-slate-300">🎯 Seleccionar Sistema / Proveedor</label>
+                  <label className="text-xs font-semibold text-slate-700 dark:text-slate-300">🎯 Seleccionar Sistema / Proveedor</label>
                   <select
                     value={selectedSistema}
                     onChange={(e) => setSelectedSistema(e.target.value)}
-                    className="w-full bg-[#071217] border border-slate-700 rounded-xl px-4 py-2.5 text-xs text-white font-bold focus:outline-none focus:border-amber-500"
+                    className={UI_LOCK.select}
                   >
                     {availableSystems.map((s) => (
                       <option key={s} value={s}>
@@ -775,15 +773,15 @@ export const OperatorsTab: React.FC<OperatorsTabProps> = ({ initialSubTab = 'rep
                 </div>
 
                 <div className="space-y-1.5">
-                  <label className="text-xs font-semibold text-slate-300">🪙 Moneda</label>
+                  <label className="text-xs font-semibold text-slate-700 dark:text-slate-300">🪙 Moneda</label>
                   <select
                     value={selectedMoneda}
                     onChange={(e) => setSelectedMoneda(e.target.value)}
-                    className="w-full bg-[#071217] border border-slate-700 rounded-xl px-4 py-2.5 text-xs text-white font-bold focus:outline-none focus:border-amber-500"
+                    className={UI_LOCK.select}
                   >
                     {availableCurrencies.map((m) => (
                       <option key={m} value={m}>
-                        {m === 'BS' ? '🇻🇪 BS' : m === 'USD' ? '💵 USD' : '🇨🇴 COP'}
+                        {m === 'BS' ? '🇻🇪 BS' : m === 'USD' ? '💵 USD' : m === 'COP' ? '🇨🇴 COP' : m}
                       </option>
                     ))}
                   </select>
@@ -792,50 +790,50 @@ export const OperatorsTab: React.FC<OperatorsTabProps> = ({ initialSubTab = 'rep
 
               {/* Aggregates Metrics Banner */}
               <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 pt-2">
-                <div className="bg-[#071217] border border-slate-800 rounded-2xl p-4 text-center">
-                  <div className="text-[11px] font-bold uppercase tracking-wider text-slate-400">Venta Bruta</div>
-                  <div className="text-xl sm:text-2xl font-black text-white font-mono mt-1">
+                <div className="bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-2xl p-4 text-center">
+                  <div className="text-[11px] font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400">Venta Bruta</div>
+                  <div className="text-xl sm:text-2xl font-black text-slate-900 dark:text-white font-mono mt-1">
                     {formatCurrency(financialData.ventaBruta, selectedMoneda as any)}
                   </div>
                 </div>
 
-                <div className="bg-[#071217] border border-slate-800 rounded-2xl p-4 text-center">
-                  <div className="text-[11px] font-bold uppercase tracking-wider text-rose-400">Premios Pagados</div>
-                  <div className="text-xl sm:text-2xl font-black text-rose-400 font-mono mt-1">
+                <div className="bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-2xl p-4 text-center">
+                  <div className="text-[11px] font-bold uppercase tracking-wider text-rose-600 dark:text-rose-400">Premios Pagados</div>
+                  <div className="text-xl sm:text-2xl font-black text-rose-600 dark:text-rose-400 font-mono mt-1">
                     {formatCurrency(financialData.premios, selectedMoneda as any)}
                   </div>
                 </div>
 
-                <div className="bg-[#071217] border border-slate-800 rounded-2xl p-4 text-center">
-                  <div className="text-[11px] font-bold uppercase tracking-wider text-slate-300">Utilidad Bruta (GGR)</div>
-                  <div className="text-xl sm:text-2xl font-black text-white font-mono mt-1">
+                <div className="bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-2xl p-4 text-center">
+                  <div className="text-[11px] font-bold uppercase tracking-wider text-slate-700 dark:text-slate-300">Utilidad Bruta (GGR)</div>
+                  <div className="text-xl sm:text-2xl font-black text-slate-900 dark:text-white font-mono mt-1">
                     {formatCurrency(financialData.utilidadBruta, selectedMoneda as any)}
                   </div>
                 </div>
               </div>
 
               {/* Commercializer Conditions Form */}
-              <form onSubmit={handleSaveSettlement} className="space-y-6 pt-2 border-t border-slate-800">
+              <form onSubmit={handleSaveSettlement} className="space-y-6 pt-2 border-t border-slate-200 dark:border-slate-800">
                 <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
-                  <h4 className="text-xs font-bold uppercase tracking-wider text-amber-400 flex items-center gap-1.5">
+                  <h4 className="text-xs font-bold uppercase tracking-wider text-amber-700 dark:text-amber-400 flex items-center gap-1.5">
                     <TrendingUp className="w-4 h-4" />
                     <span>Condiciones del Comercializador (Configuración de Proveedores)</span>
                   </h4>
-                  <span className="text-[11px] text-slate-400 flex items-center gap-1.5 bg-[#071217] px-3 py-1 rounded-xl border border-slate-800">
-                    <Lock className="w-3.5 h-3.5 text-amber-400 shrink-0" />
+                  <span className="text-[11px] text-slate-500 dark:text-slate-400 flex items-center gap-1.5 bg-slate-50 dark:bg-slate-950 px-3 py-1 rounded-xl border border-slate-200 dark:border-slate-800">
+                    <Lock className="w-3.5 h-3.5 text-amber-500 shrink-0" />
                     <span>Valores protegidos • Solo se modifican en <strong>Catálogos &gt; Config. Proveedores</strong></span>
                   </span>
                 </div>
 
                 <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
                   {/* Comisión Comercializador (Proveedor) */}
-                  <div className="space-y-1.5 bg-[#071217] p-3.5 rounded-2xl border border-amber-500/30">
+                  <div className="space-y-1.5 bg-amber-50/50 dark:bg-amber-950/20 p-3.5 rounded-2xl border border-amber-200 dark:border-amber-500/30">
                     <div className="flex items-center justify-between">
-                      <label className="text-xs font-bold text-amber-300 flex items-center gap-1">
+                      <label className="text-xs font-bold text-amber-900 dark:text-amber-300 flex items-center gap-1">
                         <Percent className="w-3.5 h-3.5" />
                         <span>Comisión Proveedor</span>
                       </label>
-                      <span className="text-[10px] px-2 py-0.5 rounded bg-amber-500/10 text-amber-400 border border-amber-500/20 font-mono font-bold flex items-center gap-1">
+                      <span className="text-[10px] px-2 py-0.5 rounded bg-amber-500/10 text-amber-700 dark:text-amber-400 border border-amber-500/20 font-mono font-bold flex items-center gap-1">
                         <Lock className="w-2.5 h-2.5" />
                         Bloqueada ({comisionPct}%)
                       </span>
@@ -846,22 +844,22 @@ export const OperatorsTab: React.FC<OperatorsTabProps> = ({ initialSubTab = 'rep
                         readOnly
                         disabled
                         value={`${comisionPct}%`}
-                        className="w-full bg-[#0D1B22]/90 border border-amber-500/30 rounded-xl px-3.5 py-2 text-xs text-amber-200 font-mono font-black cursor-not-allowed select-none"
+                        className="w-full bg-white/90 dark:bg-slate-900/90 border border-amber-300 dark:border-amber-500/30 rounded-xl px-3.5 py-2 text-xs text-amber-900 dark:text-amber-200 font-mono font-black cursor-not-allowed select-none"
                       />
                       <span className="absolute right-3 top-1/2 -translate-y-1/2 text-[10px] text-slate-500 font-mono">
                         {financialData.comisionAgenciasPct}% a Agencias
                       </span>
                     </div>
-                    <div className="text-[10px] text-slate-400 space-y-0.5 pt-1.5 border-t border-slate-800">
+                    <div className="text-[10px] text-slate-500 dark:text-slate-400 space-y-0.5 pt-1.5 border-t border-amber-200 dark:border-slate-800">
                       <div className="flex justify-between">
                         <span>• Otorgada ({comisionPct}%):</span>
-                        <strong className="text-slate-300 font-mono">{formatCurrency(financialData.comisionCompletaProveedor, selectedMoneda as any)}</strong>
+                        <strong className="text-slate-800 dark:text-slate-300 font-mono">{formatCurrency(financialData.comisionCompletaProveedor, selectedMoneda as any)}</strong>
                       </div>
                       <div className="flex justify-between">
                         <span>• (-) Agencias ({financialData.comisionAgenciasPct}%):</span>
-                        <strong className="text-rose-400 font-mono">-{formatCurrency(financialData.comisionAgencias, selectedMoneda as any)}</strong>
+                        <strong className="text-rose-600 dark:text-rose-400 font-mono">-{formatCurrency(financialData.comisionAgencias, selectedMoneda as any)}</strong>
                       </div>
-                      <div className="flex justify-between font-bold text-amber-300 pt-1 border-t border-slate-800/80">
+                      <div className="flex justify-between font-bold text-amber-800 dark:text-amber-300 pt-1 border-t border-amber-200 dark:border-slate-800/80">
                         <span>(=) Diferencial ({financialData.diferencialPct}%):</span>
                         <strong className="font-mono">{formatCurrency(financialData.diferencialComision, selectedMoneda as any)}</strong>
                       </div>
@@ -869,13 +867,13 @@ export const OperatorsTab: React.FC<OperatorsTabProps> = ({ initialSubTab = 'rep
                   </div>
 
                   {/* Participación Comercializador */}
-                  <div className="space-y-1.5 bg-[#071217] p-3.5 rounded-2xl border border-indigo-500/30">
+                  <div className="space-y-1.5 bg-indigo-50/50 dark:bg-indigo-950/20 p-3.5 rounded-2xl border border-indigo-200 dark:border-indigo-500/30">
                     <div className="flex items-center justify-between">
-                      <label className="text-xs font-bold text-indigo-300 flex items-center gap-1">
+                      <label className="text-xs font-bold text-indigo-900 dark:text-indigo-300 flex items-center gap-1">
                         <Percent className="w-3.5 h-3.5" />
                         <span>Participación Comercializador</span>
                       </label>
-                      <span className="text-[10px] px-2 py-0.5 rounded bg-indigo-500/10 text-indigo-300 border border-indigo-500/20 font-mono font-bold flex items-center gap-1">
+                      <span className="text-[10px] px-2 py-0.5 rounded bg-indigo-500/10 text-indigo-700 dark:text-indigo-300 border border-indigo-500/20 font-mono font-bold flex items-center gap-1">
                         <Lock className="w-2.5 h-2.5" />
                         Bloqueada ({participacionPct}%)
                       </span>
@@ -886,40 +884,40 @@ export const OperatorsTab: React.FC<OperatorsTabProps> = ({ initialSubTab = 'rep
                         readOnly
                         disabled
                         value={`${participacionPct}%`}
-                        className="w-full bg-[#0D1B22]/90 border border-indigo-500/30 rounded-xl px-3.5 py-2 text-xs text-indigo-200 font-mono font-black cursor-not-allowed select-none"
+                        className="w-full bg-white/90 dark:bg-slate-900/90 border border-indigo-300 dark:border-indigo-500/30 rounded-xl px-3.5 py-2 text-xs text-indigo-900 dark:text-indigo-200 font-mono font-black cursor-not-allowed select-none"
                       />
                       <span className="absolute right-3 top-1/2 -translate-y-1/2 text-[10px] text-slate-500 font-mono">
                         Casa {financialData.operadoraPartPct}%
                       </span>
                     </div>
-                    <div className="text-[10px] text-slate-400 space-y-0.5 pt-1.5 border-t border-slate-800">
+                    <div className="text-[10px] text-slate-500 dark:text-slate-400 space-y-0.5 pt-1.5 border-t border-indigo-200 dark:border-slate-800">
                       <div className="flex justify-between">
                         <span>• Base Neta (GGR - Com {comisionPct}%):</span>
-                        <strong className={`font-mono ${financialData.baseUtilidad >= 0 ? 'text-slate-300' : 'text-rose-400'}`}>
+                        <strong className={`font-mono ${financialData.baseUtilidad >= 0 ? 'text-slate-800 dark:text-slate-300' : 'text-rose-600 dark:text-rose-400'}`}>
                           {formatCurrency(financialData.baseUtilidad, selectedMoneda as any)}
                         </strong>
                       </div>
-                      <div className="flex justify-between font-bold text-indigo-300 pt-1 border-t border-slate-800/80">
+                      <div className="flex justify-between font-bold text-indigo-800 dark:text-indigo-300 pt-1 border-t border-indigo-200 dark:border-slate-800/80">
                         <span>(±) Tu {participacionPct}%:</span>
-                        <strong className={`font-mono ${financialData.participacionComercializador >= 0 ? 'text-indigo-300' : 'text-rose-400'}`}>
+                        <strong className={`font-mono ${financialData.participacionComercializador >= 0 ? 'text-indigo-800 dark:text-indigo-300' : 'text-rose-600 dark:text-rose-400'}`}>
                           {formatCurrency(financialData.participacionComercializador, selectedMoneda as any)}
                         </strong>
                       </div>
-                      <div className="flex justify-between text-slate-400">
+                      <div className="flex justify-between text-slate-600 dark:text-slate-400">
                         <span>• Operadora ({financialData.operadoraPartPct}%):</span>
-                        <strong className="text-emerald-400 font-mono">{formatCurrency(financialData.utilidadNetaOperadora, selectedMoneda as any)}</strong>
+                        <strong className="text-emerald-600 dark:text-emerald-400 font-mono">{formatCurrency(financialData.utilidadNetaOperadora, selectedMoneda as any)}</strong>
                       </div>
                     </div>
                   </div>
 
                   {/* Saldo Inicial Proveedor */}
-                  <div className="space-y-1.5 bg-[#071217] p-3.5 rounded-2xl border border-slate-700">
+                  <div className="space-y-1.5 bg-slate-50 dark:bg-slate-950 p-3.5 rounded-2xl border border-slate-200 dark:border-slate-700">
                     <div className="flex items-center justify-between">
-                      <label className="text-xs font-bold text-slate-300 flex items-center gap-1">
-                        <Wallet className="w-3.5 h-3.5 text-emerald-400" />
+                      <label className="text-xs font-bold text-slate-700 dark:text-slate-300 flex items-center gap-1">
+                        <Wallet className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400" />
                         <span>Saldo Inicial (Arrastre)</span>
                       </label>
-                      <span className="text-[10px] px-2 py-0.5 rounded bg-slate-800 text-slate-400 font-mono font-bold flex items-center gap-1">
+                      <span className="text-[10px] px-2 py-0.5 rounded bg-slate-200 dark:bg-slate-800 text-slate-700 dark:text-slate-400 font-mono font-bold flex items-center gap-1">
                         <Lock className="w-2.5 h-2.5" />
                         {selectedMoneda}
                       </span>
@@ -930,10 +928,10 @@ export const OperatorsTab: React.FC<OperatorsTabProps> = ({ initialSubTab = 'rep
                         readOnly
                         disabled
                         value={formatCurrency(Number(saldoInicialManual) || 0, selectedMoneda as any)}
-                        className="w-full bg-[#0D1B22]/90 border border-slate-700 rounded-xl px-3.5 py-2 text-xs text-emerald-300 font-mono font-bold cursor-not-allowed select-none"
+                        className="w-full bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl px-3.5 py-2 text-xs text-emerald-700 dark:text-emerald-300 font-mono font-bold cursor-not-allowed select-none"
                       />
                     </div>
-                    <div className="text-[10px] text-slate-400 space-y-0.5 pt-1.5 border-t border-slate-800">
+                    <div className="text-[10px] text-slate-500 dark:text-slate-400 space-y-0.5 pt-1.5 border-t border-slate-200 dark:border-slate-800">
                       <div>Arrastre fijado en Config. Proveedores.</div>
                     </div>
                   </div>
@@ -942,77 +940,77 @@ export const OperatorsTab: React.FC<OperatorsTabProps> = ({ initialSubTab = 'rep
                 {/* Net Breakdown Cards */}
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                   {/* Ganancia Comercializador */}
-                  <div className="p-5 rounded-2xl bg-gradient-to-br from-amber-500/10 via-[#071217] to-amber-500/5 border border-amber-500/40 space-y-3">
+                  <div className="p-5 rounded-2xl bg-amber-50/80 dark:bg-amber-950/20 border border-amber-300 dark:border-amber-500/40 space-y-3">
                     <div className="flex items-center justify-between">
-                      <div className="text-xs font-black uppercase tracking-wider text-amber-400 flex items-center gap-1.5">
+                      <div className="text-xs font-black uppercase tracking-wider text-amber-800 dark:text-amber-400 flex items-center gap-1.5">
                         <Trophy className="w-4 h-4" />
                         <span>Total Ganancia Comercializador</span>
                       </div>
-                      <span className="text-[10px] font-bold px-2 py-0.5 rounded bg-amber-500/20 text-amber-300 border border-amber-500/30">
+                      <span className="text-[10px] font-bold px-2 py-0.5 rounded bg-amber-500/20 text-amber-800 dark:text-amber-300 border border-amber-500/30">
                         Tu Utilidad
                       </span>
                     </div>
 
-                    <div className="text-2xl sm:text-3xl font-black font-mono text-amber-300">
+                    <div className="text-2xl sm:text-3xl font-black font-mono text-amber-800 dark:text-amber-300">
                       {formatCurrency(financialData.gananciaTotalComercializador, selectedMoneda as any)}
                     </div>
 
-                    <div className="bg-[#0D1B22] p-3 rounded-xl border border-amber-500/20 space-y-1 text-xs font-mono">
-                      <div className="flex justify-between text-slate-300">
+                    <div className="bg-white dark:bg-slate-900 p-3 rounded-xl border border-amber-200 dark:border-amber-500/20 space-y-1 text-xs font-mono">
+                      <div className="flex justify-between text-slate-700 dark:text-slate-300">
                         <span>(+) Diferencial de Comisión:</span>
-                        <strong className="text-amber-300 font-bold">{formatCurrency(financialData.diferencialComision, selectedMoneda as any)}</strong>
+                        <strong className="text-amber-700 dark:text-amber-300 font-bold">{formatCurrency(financialData.diferencialComision, selectedMoneda as any)}</strong>
                       </div>
                       <div className="text-[10px] text-slate-500 pl-2">
                         ({comisionPct}% Proveedor - {financialData.comisionAgenciasPct}% Agencias = +{financialData.diferencialPct}%)
                       </div>
-                      <div className="flex justify-between text-slate-300 pt-1 border-t border-slate-800">
+                      <div className="flex justify-between text-slate-700 dark:text-slate-300 pt-1 border-t border-slate-200 dark:border-slate-800">
                         <span>(±) Participación Comercializador ({participacionPct}%):</span>
-                        <strong className={financialData.participacionComercializador >= 0 ? 'text-indigo-300 font-bold' : 'text-rose-400 font-bold'}>
+                        <strong className={financialData.participacionComercializador >= 0 ? 'text-indigo-700 dark:text-indigo-300 font-bold' : 'text-rose-600 dark:text-rose-400 font-bold'}>
                           {formatCurrency(financialData.participacionComercializador, selectedMoneda as any)}
                         </strong>
                       </div>
                       <div className="text-[10px] text-slate-500 pl-2">
                         (Sobre Base Neta de Utilidad: {formatCurrency(financialData.baseUtilidad, selectedMoneda as any)})
                       </div>
-                      <div className="flex justify-between text-white font-bold pt-1.5 border-t border-amber-500/30 text-sm">
+                      <div className="flex justify-between text-slate-900 dark:text-white font-bold pt-1.5 border-t border-amber-300 dark:border-amber-500/30 text-sm">
                         <span>(=) Ganancia Total Final:</span>
-                        <span className="text-amber-300">{formatCurrency(financialData.gananciaTotalComercializador, selectedMoneda as any)}</span>
+                        <span className="text-amber-800 dark:text-amber-300">{formatCurrency(financialData.gananciaTotalComercializador, selectedMoneda as any)}</span>
                       </div>
                     </div>
                   </div>
 
                   {/* Utilidad Operadora */}
-                  <div className="p-5 rounded-2xl bg-gradient-to-br from-emerald-500/10 via-[#071217] to-emerald-500/5 border border-emerald-500/40 space-y-3">
+                  <div className="p-5 rounded-2xl bg-emerald-50/80 dark:bg-emerald-950/20 border border-emerald-300 dark:border-emerald-500/40 space-y-3">
                     <div className="flex items-center justify-between">
-                      <div className="text-xs font-black uppercase tracking-wider text-emerald-400 flex items-center gap-1.5">
+                      <div className="text-xs font-black uppercase tracking-wider text-emerald-800 dark:text-emerald-400 flex items-center gap-1.5">
                         <Layers className="w-4 h-4" />
                         <span>Liquidación Casa Operadora (Proveedor)</span>
                       </div>
-                      <span className="text-[10px] font-bold px-2 py-0.5 rounded bg-emerald-500/20 text-emerald-300 border border-emerald-500/30">
+                      <span className="text-[10px] font-bold px-2 py-0.5 rounded bg-emerald-500/20 text-emerald-800 dark:text-emerald-300 border border-emerald-500/30">
                         Casa Matriz ({financialData.operadoraPartPct}%)
                       </span>
                     </div>
 
-                    <div className={`text-2xl sm:text-3xl font-black font-mono ${financialData.utilidadNetaOperadora >= 0 ? 'text-emerald-300' : 'text-rose-400'}`}>
+                    <div className={`text-2xl sm:text-3xl font-black font-mono ${financialData.utilidadNetaOperadora >= 0 ? 'text-emerald-700 dark:text-emerald-300' : 'text-rose-600 dark:text-rose-400'}`}>
                       {formatCurrency(financialData.utilidadNetaOperadora, selectedMoneda as any)}
                     </div>
 
-                    <div className="bg-[#0D1B22] p-3 rounded-xl border border-emerald-500/20 space-y-1 text-xs font-mono">
-                      <div className="flex justify-between text-slate-300">
+                    <div className="bg-white dark:bg-slate-900 p-3 rounded-xl border border-emerald-200 dark:border-emerald-500/20 space-y-1 text-xs font-mono">
+                      <div className="flex justify-between text-slate-700 dark:text-slate-300">
                         <span>Venta Bruta:</span>
-                        <strong className="text-white font-bold">{formatCurrency(financialData.ventaBruta, selectedMoneda as any)}</strong>
+                        <strong className="text-slate-900 dark:text-white font-bold">{formatCurrency(financialData.ventaBruta, selectedMoneda as any)}</strong>
                       </div>
-                      <div className="flex justify-between text-slate-300">
+                      <div className="flex justify-between text-slate-700 dark:text-slate-300">
                         <span>(-) Premios Pagados:</span>
-                        <strong className="text-rose-400 font-bold">-{formatCurrency(financialData.premios, selectedMoneda as any)}</strong>
+                        <strong className="text-rose-600 dark:text-rose-400 font-bold">-{formatCurrency(financialData.premios, selectedMoneda as any)}</strong>
                       </div>
-                      <div className="flex justify-between text-slate-300">
+                      <div className="flex justify-between text-slate-700 dark:text-slate-300">
                         <span>(-) Comisión Completa Proveedor ({comisionPct}%):</span>
-                        <strong className="text-amber-400 font-bold">-{formatCurrency(financialData.comisionCompletaProveedor, selectedMoneda as any)}</strong>
+                        <strong className="text-amber-700 dark:text-amber-400 font-bold">-{formatCurrency(financialData.comisionCompletaProveedor, selectedMoneda as any)}</strong>
                       </div>
-                      <div className="flex justify-between text-emerald-400 font-bold pt-1.5 border-t border-emerald-500/30 text-sm">
+                      <div className="flex justify-between text-emerald-800 dark:text-emerald-400 font-bold pt-1.5 border-t border-emerald-200 dark:border-emerald-500/30 text-sm">
                         <span>(=) Utilidad Neta Casa ({financialData.operadoraPartPct}%):</span>
-                        <span className={financialData.utilidadNetaOperadora >= 0 ? 'text-emerald-300' : 'text-rose-400'}>
+                        <span className={financialData.utilidadNetaOperadora >= 0 ? 'text-emerald-700 dark:text-emerald-300' : 'text-rose-600 dark:text-rose-400'}>
                           {formatCurrency(financialData.utilidadNetaOperadora, selectedMoneda as any)}
                         </span>
                       </div>
@@ -1021,16 +1019,16 @@ export const OperatorsTab: React.FC<OperatorsTabProps> = ({ initialSubTab = 'rep
                 </div>
 
                 {/* Estado de Cuenta & Cuadre con Pagos */}
-                <div className="p-5 rounded-2xl bg-[#071217] border border-cyan-500/30 space-y-4">
-                  <div className="text-xs font-bold uppercase tracking-wider text-cyan-400 flex items-center justify-between">
+                <div className="p-5 rounded-2xl bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 space-y-4">
+                  <div className="text-xs font-bold uppercase tracking-wider text-slate-800 dark:text-slate-200 flex items-center justify-between">
                     <span className="flex items-center gap-1.5">
-                      <CreditCard className="w-4 h-4" />
+                      <CreditCard className="w-4 h-4 text-emerald-600 dark:text-emerald-400" />
                       Cuenta Corriente con el Proveedor (Conciliación de Cartera)
                     </span>
                     <button
                       type="button"
                       onClick={() => setActiveSubTab('pagos')}
-                      className="text-[11px] text-cyan-400 hover:underline cursor-pointer flex items-center gap-1"
+                      className="text-[11px] text-emerald-600 dark:text-emerald-400 hover:underline cursor-pointer flex items-center gap-1 font-semibold"
                     >
                       <Plus className="w-3 h-3" />
                       Registrar Pago a Operador
@@ -1038,26 +1036,26 @@ export const OperatorsTab: React.FC<OperatorsTabProps> = ({ initialSubTab = 'rep
                   </div>
 
                   <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 text-xs font-mono">
-                    <div className="p-3 rounded-xl bg-[#0D1B22] border border-slate-800">
-                      <div className="text-[10px] text-slate-400">Saldo Inicial (Arrastre)</div>
-                      <div className="font-bold text-white text-sm mt-1">{formatCurrency(financialData.saldoInicial, selectedMoneda as any)}</div>
+                    <div className="p-3 rounded-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800">
+                      <div className="text-[10px] text-slate-500 dark:text-slate-400">Saldo Inicial (Arrastre)</div>
+                      <div className="font-bold text-slate-900 dark:text-white text-sm mt-1">{formatCurrency(financialData.saldoInicial, selectedMoneda as any)}</div>
                     </div>
-                    <div className="p-3 rounded-xl bg-[#0D1B22] border border-slate-800">
-                      <div className="text-[10px] text-slate-400">(±) Utilidad Neta Operadora</div>
-                      <div className={`font-bold text-sm mt-1 ${financialData.utilidadNetaOperadora >= 0 ? 'text-emerald-400' : 'text-rose-400'}`}>
+                    <div className="p-3 rounded-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800">
+                      <div className="text-[10px] text-slate-500 dark:text-slate-400">(±) Utilidad Neta Operadora</div>
+                      <div className={`font-bold text-sm mt-1 ${financialData.utilidadNetaOperadora >= 0 ? 'text-emerald-600 dark:text-emerald-400' : 'text-rose-600 dark:text-rose-400'}`}>
                         {formatCurrency(financialData.utilidadNetaOperadora, selectedMoneda as any)}
                       </div>
                     </div>
-                    <div className="p-3 rounded-xl bg-[#0D1B22] border border-slate-800">
-                      <div className="text-[10px] text-slate-400">(-) Pagos Realizados</div>
-                      <div className="font-bold text-rose-400 text-sm mt-1">{formatCurrency(financialData.pagosNetos, selectedMoneda as any)}</div>
+                    <div className="p-3 rounded-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800">
+                      <div className="text-[10px] text-slate-500 dark:text-slate-400">(-) Pagos Realizados</div>
+                      <div className="font-bold text-rose-600 dark:text-rose-400 text-sm mt-1">{formatCurrency(financialData.pagosNetos, selectedMoneda as any)}</div>
                     </div>
-                    <div className="p-3 rounded-xl bg-[#0D1B22] border border-cyan-500/40">
-                      <div className="text-[10px] text-cyan-400 font-bold">(=) Balance Final</div>
-                      <div className={`font-black text-base mt-1 ${financialData.balanceFinal > 0 ? 'text-rose-400' : financialData.balanceFinal < 0 ? 'text-cyan-400' : 'text-emerald-400'}`}>
+                    <div className="p-3 rounded-xl bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-700">
+                      <div className="text-[10px] text-slate-700 dark:text-slate-300 font-bold">(=) Balance Final</div>
+                      <div className={`font-black text-base mt-1 ${financialData.balanceFinal > 0 ? 'text-rose-600 dark:text-rose-400' : financialData.balanceFinal < 0 ? 'text-sky-600 dark:text-sky-400' : 'text-emerald-600 dark:text-emerald-400'}`}>
                         {formatCurrency(financialData.balanceFinal, selectedMoneda as any)}
                       </div>
-                      <span className="text-[9px] font-sans text-slate-400 block mt-0.5">
+                      <span className="text-[9px] font-sans text-slate-500 dark:text-slate-400 block mt-0.5">
                         {financialData.balanceFinal > 0 ? '🔴 Por Pagar a Operadora' : financialData.balanceFinal < 0 ? '🟢 A Favor Comercializador' : '✅ Cuenta al Día'}
                       </span>
                     </div>
@@ -1068,9 +1066,9 @@ export const OperatorsTab: React.FC<OperatorsTabProps> = ({ initialSubTab = 'rep
                   <button
                     type="submit"
                     disabled={isProcessing}
-                    className="px-6 py-3 rounded-xl bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-400 hover:to-amber-500 text-slate-950 font-bold text-xs shadow-lg shadow-amber-500/20 flex items-center gap-2 transition-all cursor-pointer disabled:opacity-50"
+                    className={UI_LOCK.buttonPrimary}
                   >
-                    <Save className="w-4 h-4" />
+                    <Save className="w-4 h-4 inline mr-2" />
                     {isProcessing ? 'Guardando...' : 'Guardar Cierre con Operadora'}
                   </button>
                 </div>
@@ -1085,19 +1083,19 @@ export const OperatorsTab: React.FC<OperatorsTabProps> = ({ initialSubTab = 'rep
           ============================================================== */}
       {activeSubTab === 'reporte' && (
         <div className="space-y-6">
-          {/* Controls: Currency filter and Export */}
-          <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-4 bg-[#0D1B22] border border-slate-800 p-4 rounded-2xl">
+          {/* Controls: Dynamic Currency filter and Export */}
+          <div className={`${UI_LOCK.card} p-4 flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-4`}>
             <div className="flex items-center gap-2">
-              <span className="text-xs font-semibold text-slate-300">Moneda:</span>
-              <div className="flex items-center gap-1 bg-[#071217] p-1 rounded-xl border border-slate-800">
-                {(['ALL', 'BS', 'USD', 'COP'] as const).map((curr) => (
+              <span className="text-xs font-semibold text-slate-700 dark:text-slate-300">Moneda:</span>
+              <div className="flex items-center gap-1 bg-slate-100 dark:bg-slate-950 p-1 rounded-xl border border-slate-200 dark:border-slate-800">
+                {['ALL', ...(activeCurrencies.length > 0 ? activeCurrencies.map(c => c.codigo) : ['BS', 'USD', 'COP'])].map((curr) => (
                   <button
                     key={curr}
                     onClick={() => setReportCurrencyFilter(curr)}
                     className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer ${
                       reportCurrencyFilter === curr
-                        ? 'bg-emerald-500 text-slate-950 shadow'
-                        : 'text-slate-400 hover:text-white'
+                        ? 'bg-emerald-600 text-white shadow'
+                        : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
                     }`}
                   >
                     {curr === 'ALL' ? 'Todas' : curr}
@@ -1108,38 +1106,38 @@ export const OperatorsTab: React.FC<OperatorsTabProps> = ({ initialSubTab = 'rep
 
             <button
               onClick={handleShareWhatsApp}
-              className="px-4 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs flex items-center gap-2 transition-all cursor-pointer shadow-md"
+              className={UI_LOCK.buttonPrimary}
             >
-              <Share2 className="w-4 h-4" />
+              <Share2 className="w-4 h-4 inline mr-2" />
               <span>Enviar Reporte WhatsApp</span>
             </button>
           </div>
 
-          {/* KPI Cards: Separated by currency, never mixed */}
+          {/* KPI Cards: Separated by currency, 100% dynamic */}
           {reportCurrencyFilter !== 'ALL' ? (
             /* Single Currency KPI Cards */
             <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
-              <div className="bg-[#0D1B22] border border-slate-800 p-4 rounded-2xl text-center">
-                <span className="text-[11px] font-bold uppercase text-slate-400 block">Venta Total ({reportCurrencyFilter})</span>
-                <span className="text-xl sm:text-2xl font-black font-mono text-white mt-1 block">
+              <div className={`${UI_LOCK.card} p-4 text-center`}>
+                <span className="text-[11px] font-bold uppercase text-slate-500 dark:text-slate-400 block">Venta Total ({reportCurrencyFilter})</span>
+                <span className="text-xl sm:text-2xl font-black font-mono text-slate-900 dark:text-white mt-1 block">
                   {formatCurrency(totalsByCurrency[reportCurrencyFilter]?.venta || 0, reportCurrencyFilter)}
                 </span>
               </div>
-              <div className="bg-[#0D1B22] border border-slate-800 p-4 rounded-2xl text-center">
-                <span className="text-[11px] font-bold uppercase text-rose-400 block">Premios Pagados ({reportCurrencyFilter})</span>
-                <span className="text-xl sm:text-2xl font-black font-mono text-rose-400 mt-1 block">
+              <div className={`${UI_LOCK.card} p-4 text-center`}>
+                <span className="text-[11px] font-bold uppercase text-rose-600 dark:text-rose-400 block">Premios Pagados ({reportCurrencyFilter})</span>
+                <span className="text-xl sm:text-2xl font-black font-mono text-rose-600 dark:text-rose-400 mt-1 block">
                   {formatCurrency(totalsByCurrency[reportCurrencyFilter]?.premios || 0, reportCurrencyFilter)}
                 </span>
               </div>
-              <div className="bg-[#0D1B22] border border-amber-500/30 p-4 rounded-2xl text-center bg-amber-500/5">
-                <span className="text-[11px] font-bold uppercase text-amber-400 block">Total Comercializador ({reportCurrencyFilter})</span>
-                <span className="text-xl sm:text-2xl font-black font-mono text-amber-300 mt-1 block">
+              <div className={`${UI_LOCK.card} p-4 text-center bg-amber-50/50 dark:bg-amber-950/20 border-amber-200 dark:border-amber-500/30`}>
+                <span className="text-[11px] font-bold uppercase text-amber-800 dark:text-amber-400 block">Total Comercializador ({reportCurrencyFilter})</span>
+                <span className="text-xl sm:text-2xl font-black font-mono text-amber-800 dark:text-amber-300 mt-1 block">
                   {formatCurrency(totalsByCurrency[reportCurrencyFilter]?.totalComercializador || 0, reportCurrencyFilter)}
                 </span>
               </div>
-              <div className="bg-[#0D1B22] border border-emerald-500/30 p-4 rounded-2xl text-center bg-emerald-500/5">
-                <span className="text-[11px] font-bold uppercase text-emerald-400 block">Neto Operadoras ({reportCurrencyFilter})</span>
-                <span className={`text-xl sm:text-2xl font-black font-mono mt-1 block ${(totalsByCurrency[reportCurrencyFilter]?.netoOperadora || 0) >= 0 ? 'text-emerald-300' : 'text-rose-400'}`}>
+              <div className={`${UI_LOCK.card} p-4 text-center bg-emerald-50/50 dark:bg-emerald-950/20 border-emerald-200 dark:border-emerald-500/30`}>
+                <span className="text-[11px] font-bold uppercase text-emerald-800 dark:text-emerald-400 block">Neto Operadoras ({reportCurrencyFilter})</span>
+                <span className={`text-xl sm:text-2xl font-black font-mono mt-1 block ${(totalsByCurrency[reportCurrencyFilter]?.netoOperadora || 0) >= 0 ? 'text-emerald-700 dark:text-emerald-300' : 'text-rose-600 dark:text-rose-400'}`}>
                   {formatCurrency(totalsByCurrency[reportCurrencyFilter]?.netoOperadora || 0, reportCurrencyFilter)}
                 </span>
               </div>
@@ -1148,72 +1146,72 @@ export const OperatorsTab: React.FC<OperatorsTabProps> = ({ initialSubTab = 'rep
             /* Multi-Currency KPI Cards (Separated per Currency, Never Mixed) */
             <div id="tour-reporteprov-cards" className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
               {/* Venta Global por Moneda */}
-              <div className="bg-[#0D1B22] border border-slate-800 p-4 rounded-2xl space-y-2">
-                <div className="flex items-center justify-between border-b border-slate-800 pb-2">
-                  <span className="text-[11px] font-bold uppercase tracking-wider text-slate-400">Venta Global</span>
-                  <span className="text-[10px] text-slate-500 font-mono">Por Moneda</span>
+              <div className={`${UI_LOCK.card} p-4 space-y-2`}>
+                <div className="flex items-center justify-between border-b border-slate-200 dark:border-slate-800 pb-2">
+                  <span className="text-[11px] font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400">Venta Global</span>
+                  <span className="text-[10px] text-slate-400 font-mono">Por Moneda</span>
                 </div>
                 <div className="space-y-1.5 font-mono text-xs">
                   {activeCurrenciesWithData.map((c) => (
                     <div key={c} className="flex justify-between items-center py-0.5">
-                      <span className="text-slate-400 font-sans text-[11px] font-bold">
-                        {c === 'BS' ? '🇻🇪 BS' : c === 'USD' ? '💵 USD' : '🇨🇴 COP'}:
+                      <span className="text-slate-600 dark:text-slate-400 font-sans text-[11px] font-bold">
+                        {c}:
                       </span>
-                      <span className="font-bold text-white text-sm">{formatCurrency(totalsByCurrency[c].venta, c)}</span>
+                      <span className="font-bold text-slate-900 dark:text-white text-sm">{formatCurrency(totalsByCurrency[c].venta, c)}</span>
                     </div>
                   ))}
                 </div>
               </div>
 
               {/* Premios Pagados por Moneda */}
-              <div className="bg-[#0D1B22] border border-slate-800 p-4 rounded-2xl space-y-2">
-                <div className="flex items-center justify-between border-b border-slate-800 pb-2">
-                  <span className="text-[11px] font-bold uppercase tracking-wider text-rose-400">Premios Pagados</span>
-                  <span className="text-[10px] text-slate-500 font-mono">Por Moneda</span>
+              <div className={`${UI_LOCK.card} p-4 space-y-2`}>
+                <div className="flex items-center justify-between border-b border-slate-200 dark:border-slate-800 pb-2">
+                  <span className="text-[11px] font-bold uppercase tracking-wider text-rose-600 dark:text-rose-400">Premios Pagados</span>
+                  <span className="text-[10px] text-slate-400 font-mono">Por Moneda</span>
                 </div>
                 <div className="space-y-1.5 font-mono text-xs">
                   {activeCurrenciesWithData.map((c) => (
                     <div key={c} className="flex justify-between items-center py-0.5">
-                      <span className="text-slate-400 font-sans text-[11px] font-bold">
-                        {c === 'BS' ? '🇻🇪 BS' : c === 'USD' ? '💵 USD' : '🇨🇴 COP'}:
+                      <span className="text-slate-600 dark:text-slate-400 font-sans text-[11px] font-bold">
+                        {c}:
                       </span>
-                      <span className="font-bold text-rose-400 text-sm">{formatCurrency(totalsByCurrency[c].premios, c)}</span>
+                      <span className="font-bold text-rose-600 dark:text-rose-400 text-sm">{formatCurrency(totalsByCurrency[c].premios, c)}</span>
                     </div>
                   ))}
                 </div>
               </div>
 
               {/* Total Comercializador por Moneda */}
-              <div className="bg-[#0D1B22] border border-amber-500/30 p-4 rounded-2xl space-y-2 bg-amber-500/5">
-                <div className="flex items-center justify-between border-b border-amber-500/20 pb-2">
-                  <span className="text-[11px] font-bold uppercase tracking-wider text-amber-400">Total Comercializador</span>
-                  <span className="text-[10px] text-amber-400/70 font-mono">Por Moneda</span>
+              <div className={`${UI_LOCK.card} p-4 space-y-2 bg-amber-50/50 dark:bg-amber-950/20 border-amber-200 dark:border-amber-500/30`}>
+                <div className="flex items-center justify-between border-b border-amber-200 dark:border-amber-500/20 pb-2">
+                  <span className="text-[11px] font-bold uppercase tracking-wider text-amber-800 dark:text-amber-400">Total Comercializador</span>
+                  <span className="text-[10px] text-amber-600/70 dark:text-amber-400/70 font-mono">Por Moneda</span>
                 </div>
                 <div className="space-y-1.5 font-mono text-xs">
                   {activeCurrenciesWithData.map((c) => (
                     <div key={c} className="flex justify-between items-center py-0.5">
-                      <span className="text-slate-400 font-sans text-[11px] font-bold">
-                        {c === 'BS' ? '🇻🇪 BS' : c === 'USD' ? '💵 USD' : '🇨🇴 COP'}:
+                      <span className="text-slate-600 dark:text-slate-400 font-sans text-[11px] font-bold">
+                        {c}:
                       </span>
-                      <span className="font-bold text-amber-300 text-sm">{formatCurrency(totalsByCurrency[c].totalComercializador, c)}</span>
+                      <span className="font-bold text-amber-800 dark:text-amber-300 text-sm">{formatCurrency(totalsByCurrency[c].totalComercializador, c)}</span>
                     </div>
                   ))}
                 </div>
               </div>
 
               {/* Neto Operadoras por Moneda */}
-              <div className="bg-[#0D1B22] border border-emerald-500/30 p-4 rounded-2xl space-y-2 bg-emerald-500/5">
-                <div className="flex items-center justify-between border-b border-emerald-500/20 pb-2">
-                  <span className="text-[11px] font-bold uppercase tracking-wider text-emerald-400">Neto Operadoras</span>
-                  <span className="text-[10px] text-emerald-400/70 font-mono">Por Moneda</span>
+              <div className={`${UI_LOCK.card} p-4 space-y-2 bg-emerald-50/50 dark:bg-emerald-950/20 border-emerald-200 dark:border-emerald-500/30`}>
+                <div className="flex items-center justify-between border-b border-emerald-200 dark:border-emerald-500/20 pb-2">
+                  <span className="text-[11px] font-bold uppercase tracking-wider text-emerald-800 dark:text-emerald-400">Neto Operadoras</span>
+                  <span className="text-[10px] text-emerald-600/70 dark:text-emerald-400/70 font-mono">Por Moneda</span>
                 </div>
                 <div className="space-y-1.5 font-mono text-xs">
                   {activeCurrenciesWithData.map((c) => (
                     <div key={c} className="flex justify-between items-center py-0.5">
-                      <span className="text-slate-400 font-sans text-[11px] font-bold">
-                        {c === 'BS' ? '🇻🇪 BS' : c === 'USD' ? '💵 USD' : '🇨🇴 COP'}:
+                      <span className="text-slate-600 dark:text-slate-400 font-sans text-[11px] font-bold">
+                        {c}:
                       </span>
-                      <span className={`font-bold text-sm ${totalsByCurrency[c].netoOperadora >= 0 ? 'text-emerald-300' : 'text-rose-400'}`}>
+                      <span className={`font-bold text-sm ${totalsByCurrency[c].netoOperadora >= 0 ? 'text-emerald-700 dark:text-emerald-300' : 'text-rose-600 dark:text-rose-400'}`}>
                         {formatCurrency(totalsByCurrency[c].netoOperadora, c)}
                       </span>
                     </div>
@@ -1224,36 +1222,36 @@ export const OperatorsTab: React.FC<OperatorsTabProps> = ({ initialSubTab = 'rep
           )}
 
           {/* Consolidate Table */}
-          <div id="tour-reporteprov-table" className="bg-[#0D1B22] border border-slate-800 rounded-3xl overflow-hidden shadow-xl">
-            <div className="p-4 border-b border-slate-800 flex flex-col sm:flex-row sm:items-center justify-between gap-2">
-              <h4 className="text-xs font-black uppercase tracking-wider text-slate-300">
+          <div id="tour-reporteprov-table" className={UI_LOCK.tableContainer}>
+            <div className="p-4 border-b border-slate-200 dark:border-slate-800 flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+              <h4 className="text-xs font-black uppercase tracking-wider text-slate-800 dark:text-slate-200">
                 Liquidación General Dual por Proveedor y Moneda ({reportRows.length})
               </h4>
-              <span className="text-[11px] text-slate-400">Modelo Opción B: Participación sobre utilidad después de comisión completa 16%</span>
+              <span className="text-[11px] text-slate-500 dark:text-slate-400">Modelo Opción B: Participación sobre utilidad después de comisión completa 16%</span>
             </div>
 
             <div className="overflow-x-auto">
               <table className="w-full text-left border-collapse text-xs">
                 <thead>
-                  <tr className="border-b border-slate-800 bg-[#071217] text-slate-400 font-bold uppercase text-[10px]">
-                    <th className="py-3 px-3 whitespace-nowrap">Sistema</th>
-                    <th className="py-3 px-2 whitespace-nowrap">Moneda</th>
-                    <th className="py-3 px-3 whitespace-nowrap">Venta Bruta</th>
-                    <th className="py-3 px-3 whitespace-nowrap">Premios</th>
-                    <th className="py-3 px-3 whitespace-nowrap">GGR</th>
-                    <th className="py-3 px-3 whitespace-nowrap">Com. Prov.</th>
-                    <th className="py-3 px-3 whitespace-nowrap">Com. Agencias</th>
-                    <th className="py-3 px-3 whitespace-nowrap text-amber-300">Dif. Com.</th>
-                    <th className="py-3 px-3 whitespace-nowrap">Base Neta</th>
-                    <th className="py-3 px-3 whitespace-nowrap text-indigo-300">Part. Comerc.</th>
-                    <th className="py-3 px-3 whitespace-nowrap text-amber-400 font-black">Total Comerc.</th>
-                    <th className="py-3 px-3 whitespace-nowrap text-emerald-400">Neto Casa</th>
-                    <th className="py-3 px-3 whitespace-nowrap">Saldo Inicial</th>
-                    <th className="py-3 px-3 whitespace-nowrap">Pagos</th>
-                    <th className="py-3 px-3 text-right whitespace-nowrap">Balance Final</th>
+                  <tr className={UI_LOCK.tableThead}>
+                    <th className={UI_LOCK.tableTh}>Sistema</th>
+                    <th className={UI_LOCK.tableTh}>Moneda</th>
+                    <th className={UI_LOCK.tableTh}>Venta Bruta</th>
+                    <th className={UI_LOCK.tableTh}>Premios</th>
+                    <th className={UI_LOCK.tableTh}>GGR</th>
+                    <th className={UI_LOCK.tableTh}>Com. Prov.</th>
+                    <th className={UI_LOCK.tableTh}>Com. Agencias</th>
+                    <th className={`${UI_LOCK.tableTh} text-amber-700 dark:text-amber-300`}>Dif. Com.</th>
+                    <th className={UI_LOCK.tableTh}>Base Neta</th>
+                    <th className={`${UI_LOCK.tableTh} text-indigo-700 dark:text-indigo-300`}>Part. Comerc.</th>
+                    <th className={`${UI_LOCK.tableTh} text-amber-800 dark:text-amber-400 font-black`}>Total Comerc.</th>
+                    <th className={`${UI_LOCK.tableTh} text-emerald-700 dark:text-emerald-400`}>Neto Casa</th>
+                    <th className={UI_LOCK.tableTh}>Saldo Inicial</th>
+                    <th className={UI_LOCK.tableTh}>Pagos</th>
+                    <th className={`${UI_LOCK.tableTh} text-right`}>Balance Final</th>
                   </tr>
                 </thead>
-                <tbody className="divide-y divide-slate-800/60 font-mono text-[11px]">
+                <tbody className="divide-y divide-slate-100 dark:divide-slate-800/60 font-mono text-[11px]">
                   {reportRows.length === 0 ? (
                     <tr>
                       <td colSpan={15} className="py-8 text-center text-slate-500 font-sans">
@@ -1262,35 +1260,35 @@ export const OperatorsTab: React.FC<OperatorsTabProps> = ({ initialSubTab = 'rep
                     </tr>
                   ) : (
                     reportRows.map((r, idx) => (
-                      <tr key={idx} className="hover:bg-slate-800/30 transition-colors">
-                        <td className="py-3 px-3 font-sans font-bold text-white whitespace-nowrap">🎰 {r.sistema}</td>
+                      <tr key={idx} className={UI_LOCK.tableTr}>
+                        <td className="py-3 px-3 font-sans font-bold text-slate-900 dark:text-white whitespace-nowrap">🎰 {r.sistema}</td>
                         <td className="py-3 px-2 whitespace-nowrap">
-                          <span className="px-1.5 py-0.5 rounded bg-slate-800 text-slate-300 font-bold text-[10px]">
+                          <span className="px-1.5 py-0.5 rounded bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 font-bold text-[10px]">
                             {r.moneda}
                           </span>
                         </td>
-                        <td className="py-3 px-3 text-white font-bold whitespace-nowrap">{formatCurrency(r.venta, r.moneda)}</td>
-                        <td className="py-3 px-3 text-rose-400 whitespace-nowrap">{formatCurrency(r.premio, r.moneda)}</td>
-                        <td className="py-3 px-3 text-slate-300 whitespace-nowrap">{formatCurrency(r.utilidadBruta, r.moneda)}</td>
-                        <td className="py-3 px-3 text-slate-400 whitespace-nowrap">
-                          {formatCurrency(r.comCompletaProv, r.moneda)} <span className="text-[9px] text-slate-500">({r.comisionPct}%)</span>
+                        <td className="py-3 px-3 text-slate-900 dark:text-white font-bold whitespace-nowrap">{formatCurrency(r.venta, r.moneda)}</td>
+                        <td className="py-3 px-3 text-rose-600 dark:text-rose-400 whitespace-nowrap">{formatCurrency(r.premio, r.moneda)}</td>
+                        <td className="py-3 px-3 text-slate-700 dark:text-slate-300 whitespace-nowrap">{formatCurrency(r.utilidadBruta, r.moneda)}</td>
+                        <td className="py-3 px-3 text-slate-600 dark:text-slate-400 whitespace-nowrap">
+                          {formatCurrency(r.comCompletaProv, r.moneda)} <span className="text-[9px] text-slate-400">({r.comisionPct}%)</span>
                         </td>
-                        <td className="py-3 px-3 text-rose-400 whitespace-nowrap">-{formatCurrency(r.comAgencias, r.moneda)}</td>
-                        <td className="py-3 px-3 text-amber-300 font-bold whitespace-nowrap">{formatCurrency(r.difCom, r.moneda)}</td>
-                        <td className={`py-3 px-3 whitespace-nowrap ${r.baseUtil >= 0 ? 'text-slate-300' : 'text-rose-400'}`}>
+                        <td className="py-3 px-3 text-rose-600 dark:text-rose-400 whitespace-nowrap">-{formatCurrency(r.comAgencias, r.moneda)}</td>
+                        <td className="py-3 px-3 text-amber-700 dark:text-amber-300 font-bold whitespace-nowrap">{formatCurrency(r.difCom, r.moneda)}</td>
+                        <td className={`py-3 px-3 whitespace-nowrap ${r.baseUtil >= 0 ? 'text-slate-700 dark:text-slate-300' : 'text-rose-600 dark:text-rose-400'}`}>
                           {formatCurrency(r.baseUtil, r.moneda)}
                         </td>
-                        <td className={`py-3 px-3 whitespace-nowrap ${r.partCom >= 0 ? 'text-indigo-300' : 'text-rose-400'}`}>
-                          {formatCurrency(r.partCom, r.moneda)} <span className="text-[9px] text-slate-500">({r.participacionPct}%)</span>
+                        <td className={`py-3 px-3 whitespace-nowrap ${r.partCom >= 0 ? 'text-indigo-700 dark:text-indigo-300' : 'text-rose-600 dark:text-rose-400'}`}>
+                          {formatCurrency(r.partCom, r.moneda)} <span className="text-[9px] text-slate-400">({r.participacionPct}%)</span>
                         </td>
-                        <td className="py-3 px-3 text-amber-300 font-black whitespace-nowrap">{formatCurrency(r.totalCom, r.moneda)}</td>
-                        <td className={`py-3 px-3 font-bold whitespace-nowrap ${r.netoOperadora >= 0 ? 'text-emerald-400' : 'text-rose-400'}`}>
+                        <td className="py-3 px-3 text-amber-800 dark:text-amber-300 font-black whitespace-nowrap">{formatCurrency(r.totalCom, r.moneda)}</td>
+                        <td className={`py-3 px-3 font-bold whitespace-nowrap ${r.netoOperadora >= 0 ? 'text-emerald-700 dark:text-emerald-400' : 'text-rose-600 dark:text-rose-400'}`}>
                           {formatCurrency(r.netoOperadora, r.moneda)}
                         </td>
-                        <td className="py-3 px-3 text-slate-400 whitespace-nowrap">{formatCurrency(r.saldoInit, r.moneda)}</td>
-                        <td className="py-3 px-3 text-rose-300 whitespace-nowrap">{formatCurrency(r.pagosNetos, r.moneda)}</td>
+                        <td className="py-3 px-3 text-slate-600 dark:text-slate-400 whitespace-nowrap">{formatCurrency(r.saldoInit, r.moneda)}</td>
+                        <td className="py-3 px-3 text-rose-600 dark:text-rose-300 whitespace-nowrap">{formatCurrency(r.pagosNetos, r.moneda)}</td>
                         <td className="py-3 px-3 text-right whitespace-nowrap">
-                          <span className={`font-black text-xs ${r.balanceFinal > 0 ? 'text-rose-400' : r.balanceFinal < 0 ? 'text-cyan-400' : 'text-emerald-400'}`}>
+                          <span className={`font-black text-xs ${r.balanceFinal > 0 ? 'text-rose-600 dark:text-rose-400' : r.balanceFinal < 0 ? 'text-sky-600 dark:text-sky-400' : 'text-emerald-600 dark:text-emerald-400'}`}>
                             {formatCurrency(r.balanceFinal, r.moneda)}
                           </span>
                         </td>
@@ -1299,29 +1297,29 @@ export const OperatorsTab: React.FC<OperatorsTabProps> = ({ initialSubTab = 'rep
                   )}
                 </tbody>
                 {reportRows.length > 0 && (
-                  <tfoot className="border-t-2 border-slate-700 bg-[#071217] font-mono text-[11px] font-bold">
+                  <tfoot className="border-t-2 border-slate-300 dark:border-slate-700 bg-slate-50 dark:bg-slate-950 font-mono text-[11px] font-bold">
                     {activeCurrenciesWithData.map((c) => {
                       const tot = totalsByCurrency[c];
                       return (
-                        <tr key={`tot-${c}`} className="border-b border-slate-800/80 hover:bg-slate-800/20">
-                          <td className="py-2.5 px-3 font-sans text-amber-400 uppercase tracking-wider whitespace-nowrap">
-                            TOTAL {c === 'BS' ? '🇻🇪 BS' : c === 'USD' ? '💵 USD' : '🇨🇴 COP'}
+                        <tr key={`tot-${c}`} className="border-b border-slate-200 dark:border-slate-800/80 hover:bg-slate-100/50 dark:hover:bg-slate-800/20">
+                          <td className="py-2.5 px-3 font-sans text-amber-800 dark:text-amber-400 uppercase tracking-wider whitespace-nowrap">
+                            TOTAL {c}
                           </td>
-                          <td className="py-2.5 px-2 text-slate-300 whitespace-nowrap">{c}</td>
-                          <td className="py-2.5 px-3 text-white font-black whitespace-nowrap">{formatCurrency(tot.venta, c)}</td>
-                          <td className="py-2.5 px-3 text-rose-400 whitespace-nowrap">{formatCurrency(tot.premios, c)}</td>
-                          <td className="py-2.5 px-3 text-slate-300 whitespace-nowrap">{formatCurrency(tot.ggr, c)}</td>
-                          <td className="py-2.5 px-3 text-slate-400 whitespace-nowrap">{formatCurrency(tot.comCompletaProv, c)}</td>
-                          <td className="py-2.5 px-3 text-rose-400 whitespace-nowrap">-{formatCurrency(tot.comAgencias, c)}</td>
-                          <td className="py-2.5 px-3 text-amber-300 font-bold whitespace-nowrap">{formatCurrency(tot.difCom, c)}</td>
-                          <td className={`py-2.5 px-3 whitespace-nowrap ${tot.baseUtil >= 0 ? 'text-slate-300' : 'text-rose-400'}`}>{formatCurrency(tot.baseUtil, c)}</td>
-                          <td className={`py-2.5 px-3 whitespace-nowrap ${tot.partCom >= 0 ? 'text-indigo-300' : 'text-rose-400'}`}>{formatCurrency(tot.partCom, c)}</td>
-                          <td className="py-2.5 px-3 text-amber-300 font-black whitespace-nowrap">{formatCurrency(tot.totalCom, c)}</td>
-                          <td className={`py-2.5 px-3 whitespace-nowrap ${tot.netoOperadora >= 0 ? 'text-emerald-400' : 'text-rose-400'}`}>{formatCurrency(tot.netoOperadora, c)}</td>
-                          <td className="py-2.5 px-3 text-slate-400 whitespace-nowrap">{formatCurrency(tot.saldoInit, c)}</td>
-                          <td className="py-2.5 px-3 text-rose-300 whitespace-nowrap">{formatCurrency(tot.pagosNetos, c)}</td>
+                          <td className="py-2.5 px-2 text-slate-700 dark:text-slate-300 whitespace-nowrap">{c}</td>
+                          <td className="py-2.5 px-3 text-slate-900 dark:text-white font-black whitespace-nowrap">{formatCurrency(tot.venta, c)}</td>
+                          <td className="py-2.5 px-3 text-rose-600 dark:text-rose-400 whitespace-nowrap">{formatCurrency(tot.premios, c)}</td>
+                          <td className="py-2.5 px-3 text-slate-700 dark:text-slate-300 whitespace-nowrap">{formatCurrency(tot.ggr, c)}</td>
+                          <td className="py-2.5 px-3 text-slate-600 dark:text-slate-400 whitespace-nowrap">{formatCurrency(tot.comCompletaProv, c)}</td>
+                          <td className="py-2.5 px-3 text-rose-600 dark:text-rose-400 whitespace-nowrap">-{formatCurrency(tot.comAgencias, c)}</td>
+                          <td className="py-2.5 px-3 text-amber-700 dark:text-amber-300 font-bold whitespace-nowrap">{formatCurrency(tot.difCom, c)}</td>
+                          <td className={`py-2.5 px-3 whitespace-nowrap ${tot.baseUtil >= 0 ? 'text-slate-700 dark:text-slate-300' : 'text-rose-600 dark:text-rose-400'}`}>{formatCurrency(tot.baseUtil, c)}</td>
+                          <td className={`py-2.5 px-3 whitespace-nowrap ${tot.partCom >= 0 ? 'text-indigo-700 dark:text-indigo-300' : 'text-rose-600 dark:text-rose-400'}`}>{formatCurrency(tot.partCom, c)}</td>
+                          <td className="py-2.5 px-3 text-amber-800 dark:text-amber-300 font-black whitespace-nowrap">{formatCurrency(tot.totalCom, c)}</td>
+                          <td className={`py-2.5 px-3 whitespace-nowrap ${tot.netoOperadora >= 0 ? 'text-emerald-700 dark:text-emerald-400' : 'text-rose-600 dark:text-rose-400'}`}>{formatCurrency(tot.netoOperadora, c)}</td>
+                          <td className="py-2.5 px-3 text-slate-600 dark:text-slate-400 whitespace-nowrap">{formatCurrency(tot.saldoInit, c)}</td>
+                          <td className="py-2.5 px-3 text-rose-600 dark:text-rose-300 whitespace-nowrap">{formatCurrency(tot.pagosNetos, c)}</td>
                           <td className="py-2.5 px-3 text-right whitespace-nowrap">
-                            <span className={`font-black text-xs ${tot.balanceFinal > 0 ? 'text-rose-400' : tot.balanceFinal < 0 ? 'text-cyan-400' : 'text-emerald-400'}`}>
+                            <span className={`font-black text-xs ${tot.balanceFinal > 0 ? 'text-rose-600 dark:text-rose-400' : tot.balanceFinal < 0 ? 'text-sky-600 dark:text-sky-400' : 'text-emerald-600 dark:text-emerald-400'}`}>
                               {formatCurrency(tot.balanceFinal, c)}
                             </span>
                           </td>
@@ -1337,29 +1335,29 @@ export const OperatorsTab: React.FC<OperatorsTabProps> = ({ initialSubTab = 'rep
       )}
 
       {/* ==============================================================
-          TAB 3: PAGOS A PROVEEDORES (REGISTRO Y CUENTA CORRIENTE)
+          TAB 3: PAGOS A PROVEEDORES (REGISTRO Y CUENTA CORRIENTE) - MÓDULO 15
           ============================================================== */}
       {activeSubTab === 'pagos' && (
         <div className="space-y-6">
           {/* Add Payment Form */}
-          <div id="tour-pagosprov-form" className="bg-[#0D1B22] border border-cyan-500/30 rounded-3xl p-6 shadow-xl space-y-4">
+          <div id="tour-pagosprov-form" className={`${UI_LOCK.card} p-6 space-y-4`}>
             <div className="flex flex-wrap items-center justify-between gap-2">
-              <h3 className="text-xs font-extrabold uppercase tracking-wider text-cyan-400 flex items-center gap-2">
+              <h3 className="text-xs font-extrabold uppercase tracking-wider text-emerald-700 dark:text-emerald-400 flex items-center gap-2">
                 <Plus className="w-4 h-4" />
                 <span>Registrar Pago / Abono a Proveedor u Operadora</span>
               </h3>
 
               {/* Tag rápido de Saldo Actual */}
               <div className="flex items-center gap-2">
-                <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400">
+                <span className="text-[10px] font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400">
                   Saldo Actual ({paySistema || 'Proveedor'} - {payMoneda}):
                 </span>
                 <span className={`text-xs font-mono font-black px-2.5 py-0.5 rounded-lg border ${
                   currentPayBalance > 0
-                    ? 'bg-rose-500/10 text-rose-400 border-rose-500/30'
+                    ? 'bg-rose-50 text-rose-700 border-rose-200 dark:bg-rose-500/10 dark:text-rose-400 dark:border-rose-500/30'
                     : currentPayBalance < 0
-                    ? 'bg-cyan-500/10 text-cyan-400 border-cyan-500/30'
-                    : 'bg-emerald-500/10 text-emerald-400 border-emerald-500/30'
+                    ? 'bg-sky-50 text-sky-700 border-sky-200 dark:bg-sky-500/10 dark:text-sky-400 dark:border-sky-500/30'
+                    : 'bg-emerald-50 text-emerald-700 border-emerald-200 dark:bg-emerald-500/10 dark:text-emerald-400 dark:border-emerald-500/30'
                 }`}>
                   {formatCurrency(currentPayBalance, payMoneda)}
                 </span>
@@ -1369,42 +1367,42 @@ export const OperatorsTab: React.FC<OperatorsTabProps> = ({ initialSubTab = 'rep
             {/* Banner Dinámico de Cuenta Corriente del Proveedor Seleccionado */}
             <div className={`p-4 rounded-2xl border transition-all flex flex-wrap items-center justify-between gap-3 ${
               currentPayBalance > 0
-                ? 'bg-rose-950/20 border-rose-500/30'
+                ? 'bg-rose-50 border-rose-200 text-rose-900 dark:bg-rose-950/20 dark:border-rose-500/30 dark:text-rose-300'
                 : currentPayBalance < 0
-                ? 'bg-cyan-950/20 border-cyan-500/30'
-                : 'bg-emerald-950/20 border-emerald-500/30'
+                ? 'bg-sky-50 border-sky-200 text-sky-900 dark:bg-sky-950/20 dark:border-sky-500/30 dark:text-sky-300'
+                : 'bg-emerald-50 border-emerald-200 text-emerald-900 dark:bg-emerald-950/20 dark:border-emerald-500/30 dark:text-emerald-300'
             }`}>
               <div className="flex items-center gap-3">
                 <div className={`w-10 h-10 rounded-2xl flex items-center justify-center font-bold text-sm shadow-inner ${
                   currentPayBalance > 0
-                    ? 'bg-rose-500/20 text-rose-400 border border-rose-500/30'
+                    ? 'bg-rose-100 text-rose-700 dark:bg-rose-500/20 dark:text-rose-400 border border-rose-200 dark:border-rose-500/30'
                     : currentPayBalance < 0
-                    ? 'bg-cyan-500/20 text-cyan-400 border border-cyan-500/30'
-                    : 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/30'
+                    ? 'bg-sky-100 text-sky-700 dark:bg-sky-500/20 dark:text-sky-400 border border-sky-200 dark:border-sky-500/30'
+                    : 'bg-emerald-100 text-emerald-700 dark:bg-emerald-500/20 dark:text-emerald-400 border border-emerald-200 dark:border-emerald-500/30'
                 }`}>
                   <Wallet className="w-5 h-5" />
                 </div>
                 <div>
-                  <div className="text-[11px] font-bold uppercase tracking-wider text-slate-400 flex items-center gap-2">
+                  <div className="text-[11px] font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400 flex items-center gap-2">
                     <span>Cuenta Corriente</span>
-                    <span className="text-white font-extrabold px-1.5 py-0.5 rounded bg-slate-800 text-[10px]">
+                    <span className="text-slate-900 dark:text-white font-extrabold px-1.5 py-0.5 rounded bg-slate-200 dark:bg-slate-800 text-[10px]">
                       🎰 {paySistema || 'Proveedor'}
                     </span>
-                    <span className="text-cyan-400 font-extrabold text-[10px]">
+                    <span className="text-emerald-700 dark:text-emerald-400 font-extrabold text-[10px]">
                       {payMoneda}
                     </span>
                   </div>
                   <div className="flex flex-wrap items-baseline gap-2 mt-0.5">
                     <span className={`text-lg font-black font-mono tracking-tight ${
                       currentPayBalance > 0
-                        ? 'text-rose-400'
+                        ? 'text-rose-600 dark:text-rose-400'
                         : currentPayBalance < 0
-                        ? 'text-cyan-400'
-                        : 'text-emerald-400'
+                        ? 'text-sky-600 dark:text-sky-400'
+                        : 'text-emerald-600 dark:text-emerald-400'
                     }`}>
                       {formatCurrency(currentPayBalance, payMoneda)}
                     </span>
-                    <span className="text-xs font-medium text-slate-400">
+                    <span className="text-xs font-medium text-slate-500 dark:text-slate-400">
                       {currentPayBalance > 0
                         ? '• Deuda pendiente a favor de la Operadora'
                         : currentPayBalance < 0
@@ -1420,7 +1418,7 @@ export const OperatorsTab: React.FC<OperatorsTabProps> = ({ initialSubTab = 'rep
                 <button
                   type="button"
                   onClick={() => setPayMonto(String(currentPayBalance))}
-                  className="px-3.5 py-2 rounded-xl text-xs font-bold bg-rose-500/20 hover:bg-rose-500/30 text-rose-300 border border-rose-500/40 transition-all flex items-center gap-2 shadow-sm active:scale-95 cursor-pointer"
+                  className="px-3.5 py-2 rounded-xl text-xs font-bold bg-rose-100 hover:bg-rose-200 text-rose-800 border border-rose-300 dark:bg-rose-500/20 dark:hover:bg-rose-500/30 dark:text-rose-300 dark:border-rose-500/40 transition-all flex items-center gap-2 shadow-sm active:scale-95 cursor-pointer"
                   title="Cargar saldo exacto en el campo Monto"
                 >
                   <DollarSign className="w-4 h-4" />
@@ -1433,11 +1431,11 @@ export const OperatorsTab: React.FC<OperatorsTabProps> = ({ initialSubTab = 'rep
             <form onSubmit={handleAddPayment} className="space-y-4">
               <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
                 <div className="space-y-1">
-                  <label className="text-xs font-semibold text-slate-300">Proveedor / Sistema *</label>
+                  <label className="text-xs font-semibold text-slate-700 dark:text-slate-300">Proveedor / Sistema *</label>
                   <select
                     value={paySistema}
                     onChange={(e) => setPaySistema(e.target.value)}
-                    className="w-full bg-[#071217] border border-slate-700 rounded-xl px-3 py-2 text-xs text-white font-bold focus:outline-none focus:border-cyan-500"
+                    className={UI_LOCK.select}
                   >
                     {availableSystems.map((s) => (
                       <option key={s} value={s}>
@@ -1448,11 +1446,11 @@ export const OperatorsTab: React.FC<OperatorsTabProps> = ({ initialSubTab = 'rep
                 </div>
 
                 <div className="space-y-1">
-                  <label className="text-xs font-semibold text-slate-300">Tipo de Movimiento</label>
+                  <label className="text-xs font-semibold text-slate-700 dark:text-slate-300">Tipo de Movimiento</label>
                   <select
                     value={payTipo}
                     onChange={(e) => setPayTipo(e.target.value as any)}
-                    className="w-full bg-[#071217] border border-slate-700 rounded-xl px-3 py-2 text-xs text-white font-bold focus:outline-none focus:border-cyan-500"
+                    className={UI_LOCK.select}
                   >
                     <option value="PAGO_OPERADORA">💸 Pago a Operadora (Egreso)</option>
                     <option value="ABONO_OPERADORA">📥 Abono de Operadora (Ingreso/Reposición)</option>
@@ -1460,27 +1458,37 @@ export const OperatorsTab: React.FC<OperatorsTabProps> = ({ initialSubTab = 'rep
                 </div>
 
                 <div className="space-y-1">
-                  <label className="text-xs font-semibold text-slate-300">Moneda</label>
+                  <label className="text-xs font-semibold text-slate-700 dark:text-slate-300">Moneda *</label>
                   <select
                     value={payMoneda}
-                    onChange={(e) => setPayMoneda(e.target.value as any)}
-                    className="w-full bg-[#071217] border border-slate-700 rounded-xl px-3 py-2 text-xs text-white font-bold focus:outline-none focus:border-cyan-500"
+                    onChange={(e) => setPayMoneda(e.target.value)}
+                    className={UI_LOCK.select}
                   >
-                    <option value="BS">🇻🇪 BS (Bolívares)</option>
-                    <option value="USD">💵 USD (Dólares)</option>
-                    <option value="COP">🇨🇴 COP (Pesos)</option>
+                    {activeCurrencies.length > 0 ? (
+                      activeCurrencies.map((c) => (
+                        <option key={c.codigo} value={c.codigo}>
+                          {c.simbolo} {c.codigo} ({c.nombre})
+                        </option>
+                      ))
+                    ) : (
+                      <>
+                        <option value="BS">🇻🇪 BS (Bolívares)</option>
+                        <option value="USD">💵 USD (Dólares)</option>
+                        <option value="COP">🇨🇴 COP (Pesos)</option>
+                      </>
+                    )}
                   </select>
                 </div>
 
                 <div className="space-y-1">
                   <div className="flex items-center justify-between">
-                    <label className="text-xs font-semibold text-slate-300">Monto *</label>
+                    <label className="text-xs font-semibold text-slate-700 dark:text-slate-300">Monto *</label>
                     <span
                       onClick={() => currentPayBalance > 0 && setPayMonto(String(currentPayBalance))}
                       className={`text-[10px] font-bold font-mono transition-colors ${
                         currentPayBalance > 0
-                          ? 'text-rose-400 hover:text-rose-300 cursor-pointer underline'
-                          : 'text-slate-400'
+                          ? 'text-rose-600 dark:text-rose-400 hover:text-rose-500 cursor-pointer underline'
+                          : 'text-slate-500 dark:text-slate-400'
                       }`}
                       title={currentPayBalance > 0 ? "Haz clic para cargar este monto" : "Saldo actual"}
                     >
@@ -1495,41 +1503,41 @@ export const OperatorsTab: React.FC<OperatorsTabProps> = ({ initialSubTab = 'rep
                     value={payMonto}
                     onChange={(e) => setPayMonto(e.target.value)}
                     placeholder="0.00"
-                    className="w-full bg-[#071217] border border-slate-700 rounded-xl px-3 py-2 text-xs text-white font-mono font-bold focus:outline-none focus:border-cyan-500"
+                    className={UI_LOCK.input}
                   />
                 </div>
               </div>
 
               <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
                 <div className="space-y-1">
-                  <label className="text-xs font-semibold text-slate-300">Método / Banco</label>
+                  <label className="text-xs font-semibold text-slate-700 dark:text-slate-300">Método / Banco</label>
                   <input
                     type="text"
                     value={payMetodo}
                     onChange={(e) => setPayMetodo(e.target.value)}
                     placeholder="Ej: Banesco, Zelle, Efectivo"
-                    className="w-full bg-[#071217] border border-slate-700 rounded-xl px-3 py-2 text-xs text-white focus:outline-none focus:border-cyan-500"
+                    className={UI_LOCK.input}
                   />
                 </div>
 
                 <div className="space-y-1">
-                  <label className="text-xs font-semibold text-slate-300">Referencia Bancaria</label>
+                  <label className="text-xs font-semibold text-slate-700 dark:text-slate-300">Referencia Bancaria</label>
                   <input
                     type="text"
                     value={payReferencia}
                     onChange={(e) => setPayReferencia(e.target.value)}
                     placeholder="Ej: Ref #482910"
-                    className="w-full bg-[#071217] border border-slate-700 rounded-xl px-3 py-2 text-xs text-white font-mono focus:outline-none focus:border-cyan-500"
+                    className={UI_LOCK.input}
                   />
                 </div>
 
                 <div className="space-y-1">
-                  <label className="text-xs font-semibold text-slate-300">Fecha del Pago</label>
+                  <label className="text-xs font-semibold text-slate-700 dark:text-slate-300">Fecha del Pago</label>
                   <input
                     type="date"
                     value={payFecha}
                     onChange={(e) => setPayFecha(e.target.value)}
-                    className="w-full bg-[#071217] border border-slate-700 rounded-xl px-3 py-2 text-xs text-white focus:outline-none focus:border-cyan-500"
+                    className={UI_LOCK.input}
                   />
                 </div>
               </div>
@@ -1538,7 +1546,7 @@ export const OperatorsTab: React.FC<OperatorsTabProps> = ({ initialSubTab = 'rep
                 <button
                   type="submit"
                   disabled={isProcessing}
-                  className="px-6 py-2.5 rounded-xl bg-cyan-600 hover:bg-cyan-500 text-white font-bold text-xs shadow-md transition-all cursor-pointer disabled:opacity-50"
+                  className={UI_LOCK.buttonPrimary}
                 >
                   {isProcessing ? 'Registrando...' : 'Registrar Movimiento'}
                 </button>
@@ -1547,9 +1555,9 @@ export const OperatorsTab: React.FC<OperatorsTabProps> = ({ initialSubTab = 'rep
           </div>
 
           {/* Payments List Table */}
-          <div className="bg-[#0D1B22] border border-slate-800 rounded-3xl overflow-hidden shadow-xl">
-            <div className="p-4 border-b border-slate-800 flex items-center justify-between">
-              <h4 className="text-xs font-black uppercase tracking-wider text-slate-300">
+          <div className={UI_LOCK.tableContainer}>
+            <div className="p-4 border-b border-slate-200 dark:border-slate-800 flex items-center justify-between">
+              <h4 className="text-xs font-black uppercase tracking-wider text-slate-800 dark:text-slate-200">
                 Historial de Pagos y Abonos de Operadora ({operatorPayments.length})
               </h4>
             </div>
@@ -1557,17 +1565,17 @@ export const OperatorsTab: React.FC<OperatorsTabProps> = ({ initialSubTab = 'rep
             <div className="overflow-x-auto">
               <table className="w-full text-left border-collapse text-xs">
                 <thead>
-                  <tr className="border-b border-slate-800 bg-[#071217] text-slate-400 font-bold uppercase text-[11px]">
-                    <th className="py-3 px-4">Fecha</th>
-                    <th className="py-3 px-4">Proveedor / Sistema</th>
-                    <th className="py-3 px-4">Tipo</th>
-                    <th className="py-3 px-4">Moneda</th>
-                    <th className="py-3 px-4">Monto</th>
-                    <th className="py-3 px-4">Referencia</th>
-                    <th className="py-3 px-4 text-right">Acción</th>
+                  <tr className={UI_LOCK.tableThead}>
+                    <th className={UI_LOCK.tableTh}>Fecha</th>
+                    <th className={UI_LOCK.tableTh}>Proveedor / Sistema</th>
+                    <th className={UI_LOCK.tableTh}>Tipo</th>
+                    <th className={UI_LOCK.tableTh}>Moneda</th>
+                    <th className={UI_LOCK.tableTh}>Monto</th>
+                    <th className={UI_LOCK.tableTh}>Referencia</th>
+                    <th className={`${UI_LOCK.tableTh} text-right`}>Acción</th>
                   </tr>
                 </thead>
-                <tbody className="divide-y divide-slate-800/60 font-mono">
+                <tbody className="divide-y divide-slate-100 dark:divide-slate-800/60 font-mono">
                   {operatorPayments.length === 0 ? (
                     <tr>
                       <td colSpan={7} className="py-8 text-center text-slate-500 font-sans">
@@ -1576,27 +1584,27 @@ export const OperatorsTab: React.FC<OperatorsTabProps> = ({ initialSubTab = 'rep
                     </tr>
                   ) : (
                     operatorPayments.map((p) => (
-                      <tr key={p.id} className="hover:bg-slate-800/30 transition-colors">
-                        <td className="py-3 px-4 font-sans text-slate-300">{formatDate(p.fecha)}</td>
-                        <td className="py-3 px-4 font-sans font-bold text-white">🎰 {p.sistema}</td>
+                      <tr key={p.id} className={UI_LOCK.tableTr}>
+                        <td className="py-3 px-4 font-sans text-slate-600 dark:text-slate-300">{formatDate(p.fecha)}</td>
+                        <td className="py-3 px-4 font-sans font-bold text-slate-900 dark:text-white">🎰 {p.sistema}</td>
                         <td className="py-3 px-4">
                           <span
                             className={`px-2 py-0.5 rounded text-[10px] font-bold ${
                               p.tipo_pago === 'PAGO_OPERADORA'
-                                ? 'bg-rose-500/10 text-rose-300 border border-rose-500/30'
-                                : 'bg-emerald-500/10 text-emerald-300 border border-emerald-500/30'
+                                ? 'bg-rose-100 text-rose-700 border border-rose-200 dark:bg-rose-500/10 dark:text-rose-300 dark:border-rose-500/30'
+                                : 'bg-emerald-100 text-emerald-700 border border-emerald-200 dark:bg-emerald-500/10 dark:text-emerald-300 dark:border-emerald-500/30'
                             }`}
                           >
                             {p.tipo_pago === 'PAGO_OPERADORA' ? '💸 Pago Operadora' : '📥 Abono Operadora'}
                           </span>
                         </td>
-                        <td className="py-3 px-4 text-slate-300">{p.moneda}</td>
-                        <td className="py-3 px-4 font-black text-white">{formatCurrency(p.monto, p.moneda as any)}</td>
-                        <td className="py-3 px-4 text-slate-400">{p.referencia}</td>
+                        <td className="py-3 px-4 text-slate-700 dark:text-slate-300">{p.moneda}</td>
+                        <td className="py-3 px-4 font-black text-slate-900 dark:text-white">{formatCurrency(p.monto, p.moneda as any)}</td>
+                        <td className="py-3 px-4 text-slate-500 dark:text-slate-400">{p.referencia}</td>
                         <td className="py-3 px-4 text-right">
                           <button
                             onClick={() => handleDeletePayment(p.id)}
-                            className="p-1.5 rounded-lg hover:bg-rose-500/20 text-slate-400 hover:text-rose-400 transition-colors cursor-pointer"
+                            className="p-1.5 rounded-lg hover:bg-rose-500/20 text-slate-400 hover:text-rose-600 dark:hover:text-rose-400 transition-colors cursor-pointer"
                             title="Eliminar pago"
                           >
                             <Trash2 className="w-3.5 h-3.5" />
@@ -1616,9 +1624,9 @@ export const OperatorsTab: React.FC<OperatorsTabProps> = ({ initialSubTab = 'rep
           TAB 4: HISTORIAL DE CIERRES OPERADORA
           ============================================================== */}
       {activeSubTab === 'cierres' && (
-        <div className="bg-[#0D1B22] border border-slate-800 rounded-3xl p-6 shadow-xl space-y-4">
-          <h4 className="text-xs font-bold uppercase tracking-wider text-slate-400 flex items-center gap-2">
-            <History className="w-4 h-4 text-amber-400" />
+        <div className={`${UI_LOCK.card} p-6 space-y-4`}>
+          <h4 className="text-xs font-bold uppercase tracking-wider text-slate-700 dark:text-slate-400 flex items-center gap-2">
+            <History className="w-4 h-4 text-amber-500" />
             Historial de Liquidaciones Guardadas ({history.length})
           </h4>
 
@@ -1631,17 +1639,17 @@ export const OperatorsTab: React.FC<OperatorsTabProps> = ({ initialSubTab = 'rep
               {history.map((h) => (
                 <div
                   key={h.id}
-                  className="bg-[#071217] border border-slate-800 rounded-2xl p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs font-mono"
+                  className="bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-2xl p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs font-mono"
                 >
                   <div className="space-y-0.5">
                     <div className="flex items-center gap-2 font-sans">
-                      <span className="font-bold text-white text-sm">🎰 {h.sistema}</span>
+                      <span className="font-bold text-slate-900 dark:text-white text-sm">🎰 {h.sistema}</span>
                       <span className="text-slate-500">• 📅 {formatDate(h.fecha)}</span>
-                      <span className="px-2 py-0.5 rounded bg-slate-800 text-slate-300 text-[10px] font-bold">
+                      <span className="px-2 py-0.5 rounded bg-slate-200 dark:bg-slate-800 text-slate-700 dark:text-slate-300 text-[10px] font-bold">
                         {h.moneda}
                       </span>
                     </div>
-                    <div className="text-slate-400 text-[11px]">
+                    <div className="text-slate-500 dark:text-slate-400 text-[11px]">
                       Venta: {formatCurrency(h.venta_bruta, h.moneda as any)} | Premios: {formatCurrency(h.premios, h.moneda as any)} | Com. Comercializador: {formatCurrency(h.comision_manual, h.moneda as any)}
                     </div>
                   </div>
@@ -1649,7 +1657,7 @@ export const OperatorsTab: React.FC<OperatorsTabProps> = ({ initialSubTab = 'rep
                   <div className="text-right">
                     <div
                       className={`text-sm font-black ${
-                        h.utilidad_final_casa >= 0 ? 'text-emerald-400' : 'text-rose-400'
+                        h.utilidad_final_casa >= 0 ? 'text-emerald-600 dark:text-emerald-400' : 'text-rose-600 dark:text-rose-400'
                       }`}
                     >
                       {formatCurrency(h.utilidad_final_casa, h.moneda as any)}

@@ -5,6 +5,7 @@ import { useAuth } from '../../context/AuthContext';
 import { formatCurrency, formatDate, cleanAgencyName, normalizarMoneda } from '../../utils/formatters';
 import type { DailySaleItem, Agency, BetSystem, Currency } from '../../types';
 import { loadCurrencies } from '../../utils/currencies';
+import { UI_LOCK } from '../../styles/uiDesignLock';
 import {
   TrendingUp,
   FileSpreadsheet,
@@ -1515,13 +1516,13 @@ export const SalesEntryTab: React.FC = () => {
       {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
-          <h2 className="text-xl sm:text-2xl font-black text-white flex items-center gap-2">
-            <span className="p-2 rounded-xl bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">
+          <h2 className="text-xl sm:text-2xl font-black text-slate-900 dark:text-white flex items-center gap-2">
+            <span className="p-2 rounded-xl bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20">
               <TrendingUp className="w-5 h-5" />
             </span>
             Gestión de Ventas y Movimientos
           </h2>
-          <p className="text-xs sm:text-sm text-slate-400 mt-1">
+          <p className="text-xs sm:text-sm text-slate-500 dark:text-slate-400 mt-1">
             Registro diario de venta bruta, comisiones, premios y utilidades por sistema y moneda en el ciclo activo.
           </p>
         </div>
@@ -1530,7 +1531,7 @@ export const SalesEntryTab: React.FC = () => {
           <button
             onClick={() => loadData()}
             disabled={isLoading}
-            className="px-3.5 py-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-semibold flex items-center gap-1.5 transition-all border border-slate-700 cursor-pointer disabled:opacity-50"
+            className={UI_LOCK.buttonSecondary + ' text-xs flex items-center gap-1.5'}
           >
             <RefreshCw className={`w-3.5 h-3.5 ${isLoading ? 'animate-spin' : ''}`} />
             Actualizar
@@ -1540,7 +1541,7 @@ export const SalesEntryTab: React.FC = () => {
             <button
               onClick={handleClearAllActiveSales}
               disabled={isProcessing}
-              className="px-3.5 py-2.5 rounded-xl bg-rose-500/10 hover:bg-rose-500/20 text-rose-400 border border-rose-500/30 font-bold text-xs flex items-center gap-1.5 transition-all cursor-pointer disabled:opacity-50"
+              className="px-3.5 py-2.5 rounded-xl bg-rose-500/10 hover:bg-rose-500/20 text-rose-600 dark:text-rose-400 border border-rose-500/30 font-bold text-xs flex items-center gap-1.5 transition-all cursor-pointer disabled:opacity-50"
               title="Vaciar todas las ventas cargadas en el ciclo activo"
             >
               <Trash2 className="w-3.5 h-3.5" />
@@ -1551,7 +1552,7 @@ export const SalesEntryTab: React.FC = () => {
           <button
             onClick={handleRestoreCycleFromS41Acta}
             disabled={isProcessing}
-            className="px-3.5 py-2.5 rounded-xl bg-amber-500/10 hover:bg-amber-500/20 text-amber-400 border border-amber-500/30 font-bold text-xs flex items-center gap-1.5 transition-all cursor-pointer disabled:opacity-50"
+            className="px-3.5 py-2.5 rounded-xl bg-amber-500/10 hover:bg-amber-500/20 text-amber-700 dark:text-amber-400 border border-amber-500/30 font-bold text-xs flex items-center gap-1.5 transition-all cursor-pointer disabled:opacity-50"
             title="Sincronizar arrastres del Acta Oficial S41 y fijar Semana 42"
           >
             <Sparkles className="w-3.5 h-3.5" />
@@ -1567,7 +1568,7 @@ export const SalesEntryTab: React.FC = () => {
               }
               setIsBulkOpen(!isBulkOpen);
             }}
-            className="px-4 py-2.5 rounded-xl bg-cyan-500/10 hover:bg-cyan-500/20 text-cyan-400 border border-cyan-500/30 font-bold text-xs flex items-center gap-2 transition-all cursor-pointer"
+            className="px-4 py-2.5 rounded-xl bg-cyan-500/10 hover:bg-cyan-500/20 text-cyan-700 dark:text-cyan-400 border border-cyan-500/30 font-bold text-xs flex items-center gap-2 transition-all cursor-pointer"
           >
             <FileSpreadsheet className="w-4 h-4" />
             Carga Masiva (Excel/CSV/PDF)
@@ -1579,8 +1580,8 @@ export const SalesEntryTab: React.FC = () => {
         <div
           className={`p-4 rounded-2xl border flex items-center gap-3 text-sm animate-fade-in ${
             message.type === 'success'
-              ? 'bg-emerald-500/10 border-emerald-500/20 text-emerald-400'
-              : 'bg-rose-500/10 border-rose-500/20 text-rose-400'
+              ? 'bg-emerald-50 dark:bg-emerald-950/20 border-emerald-200 dark:border-emerald-500/20 text-emerald-800 dark:text-emerald-400'
+              : 'bg-rose-50 dark:bg-rose-950/20 border-rose-200 dark:border-rose-500/20 text-rose-800 dark:text-rose-400'
           }`}
         >
           {message.type === 'success' ? (
@@ -1593,14 +1594,14 @@ export const SalesEntryTab: React.FC = () => {
       )}
 
       {String(systemCycle.semana) === '41' && (
-        <div className="p-4 rounded-2xl bg-gradient-to-r from-amber-500/20 via-[#0D1B22] to-amber-500/10 border border-amber-500/30 flex flex-col sm:flex-row items-center justify-between gap-3 text-amber-300 shadow-xl">
+        <div className="p-4 rounded-2xl bg-amber-50 dark:bg-amber-950/30 border border-amber-300 dark:border-amber-700/60 flex flex-col sm:flex-row items-center justify-between gap-3 text-amber-900 dark:text-amber-200 shadow-sm">
           <div className="flex items-center gap-3">
-            <AlertTriangle className="w-5 h-5 shrink-0 text-amber-400" />
+            <AlertTriangle className="w-5 h-5 shrink-0 text-amber-600 dark:text-amber-400" />
             <div>
-              <div className="font-bold text-xs sm:text-sm text-white">
+              <div className="font-bold text-xs sm:text-sm text-slate-900 dark:text-white">
                 Semana 41 cerrada previamente (Acta Inmutable disponible en el Histórico)
               </div>
-              <div className="text-xs text-amber-200/80">
+              <div className="text-xs text-amber-800 dark:text-amber-200/80">
                 Las ventas cargadas en este panel corresponden a la Semana 42. Aplica los saldos finales auditados de la Semana 41 para que el sistema opere en la Semana 42 (12/10 al 18/10).
               </div>
             </div>
@@ -1608,7 +1609,7 @@ export const SalesEntryTab: React.FC = () => {
           <button
             onClick={handleRestoreCycleFromS41Acta}
             disabled={isProcessing}
-            className="px-4 py-2.5 rounded-xl bg-amber-500 hover:bg-amber-400 text-slate-950 font-black text-xs flex items-center gap-2 transition-all cursor-pointer shadow-lg shadow-amber-500/20 shrink-0"
+            className="px-4 py-2.5 rounded-xl bg-amber-500 hover:bg-amber-400 text-slate-950 font-black text-xs flex items-center gap-2 transition-all cursor-pointer shadow-sm shrink-0"
           >
             <Sparkles className="w-4 h-4" />
             Activar Semana 42 con Arrastres del Acta
@@ -1618,10 +1619,10 @@ export const SalesEntryTab: React.FC = () => {
 
       {/* Bulk Upload Expander */}
       {isBulkOpen && (
-        <div className="bg-[#0D1B22] border border-cyan-500/30 rounded-3xl p-6 shadow-xl space-y-4 animate-fade-in">
+        <div className={UI_LOCK.card + ' p-6 shadow-xl space-y-4 animate-fade-in'}>
           <div className="flex items-center justify-between">
-            <h3 className="text-sm font-bold text-white flex items-center gap-2">
-              <Upload className="w-4 h-4 text-cyan-400" />
+            <h3 className="text-sm font-bold text-slate-900 dark:text-white flex items-center gap-2">
+              <Upload className="w-4 h-4 text-cyan-600 dark:text-cyan-400" />
               Importar Reporte de Sistema (Excel / CSV / PDF)
             </h3>
             <button
@@ -1629,7 +1630,7 @@ export const SalesEntryTab: React.FC = () => {
                 setIsBulkOpen(false);
                 resetBulkArea();
               }}
-              className="text-slate-400 hover:text-white text-xs font-bold px-2 py-1"
+              className="text-slate-400 hover:text-slate-700 dark:hover:text-white text-xs font-bold px-2 py-1"
             >
               ✕
             </button>
@@ -1637,7 +1638,7 @@ export const SalesEntryTab: React.FC = () => {
 
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
             <div className="space-y-1.5">
-              <label className="text-xs font-semibold text-slate-300">Fecha del Reporte:</label>
+              <label className="text-xs font-semibold text-slate-700 dark:text-slate-300">Fecha del Reporte:</label>
               <input
                 type="date"
                 value={bulkFileDate}
@@ -1646,12 +1647,12 @@ export const SalesEntryTab: React.FC = () => {
                   setBulkFileDate(newDate);
                   setBulkRows((prev) => prev.map((r) => ({ ...r, fecha: newDate })));
                 }}
-                className="w-full bg-[#071217] border border-slate-700 rounded-xl px-3 py-2 text-xs text-white focus:outline-none focus:border-cyan-500"
+                className={UI_LOCK.input}
               />
             </div>
 
             <div className="space-y-1.5">
-              <label className="text-xs font-semibold text-slate-300">Sistema / Proveedor:</label>
+              <label className="text-xs font-semibold text-slate-700 dark:text-slate-300">Sistema / Proveedor:</label>
               <select
                 value={bulkSystem}
                 onChange={(e) => {
@@ -1661,7 +1662,7 @@ export const SalesEntryTab: React.FC = () => {
                     setBulkRows((prev) => prev.map((r) => ({ ...r, sistema: sVal })));
                   }
                 }}
-                className="w-full bg-[#071217] border border-slate-700 rounded-xl px-3 py-2 text-xs text-white focus:outline-none focus:border-cyan-500 cursor-pointer"
+                className={UI_LOCK.select}
               >
                 <option value="AUTO">✨ Auto-detectar Sistema</option>
                 {availableSystemsList.map((sName) => (
@@ -1673,7 +1674,7 @@ export const SalesEntryTab: React.FC = () => {
             </div>
 
             <div className="space-y-1.5">
-              <label className="text-xs font-semibold text-slate-300">Moneda:</label>
+              <label className="text-xs font-semibold text-slate-700 dark:text-slate-300">Moneda:</label>
               <select
                 value={bulkCurrency}
                 onChange={(e) => {
@@ -1683,7 +1684,7 @@ export const SalesEntryTab: React.FC = () => {
                     setBulkRows((prev) => prev.map((r) => ({ ...r, moneda: mVal })));
                   }
                 }}
-                className="w-full bg-[#071217] border border-slate-700 rounded-xl px-3 py-2 text-xs text-white focus:outline-none focus:border-cyan-500 cursor-pointer"
+                className={UI_LOCK.select}
               >
                 <option value="AUTO">✨ Auto-detectar Moneda</option>
                 {availableCurrenciesList.map((m) => (
@@ -1695,7 +1696,7 @@ export const SalesEntryTab: React.FC = () => {
             </div>
 
             <div className="space-y-1.5">
-              <label className="text-xs font-semibold text-slate-300">Archivo Excel / CSV / PDF:</label>
+              <label className="text-xs font-semibold text-slate-700 dark:text-slate-300">Archivo Excel / CSV / PDF:</label>
               <input
                 type="file"
                 accept=".xlsx,.xls,.csv,.txt,.pdf"
@@ -1704,14 +1705,14 @@ export const SalesEntryTab: React.FC = () => {
                   resetBulkArea();
                 }}
                 onChange={handleFileUpload}
-                className="w-full text-xs text-slate-400 file:mr-2 file:py-1.5 file:px-3 file:rounded-xl file:border-0 file:text-xs file:font-semibold file:bg-cyan-500/20 file:text-cyan-300 hover:file:bg-cyan-500/30 cursor-pointer"
+                className="w-full text-xs text-slate-500 dark:text-slate-400 file:mr-2 file:py-1.5 file:px-3 file:rounded-xl file:border-0 file:text-xs file:font-semibold file:bg-emerald-500/10 file:text-emerald-700 dark:file:text-emerald-300 hover:file:bg-emerald-500/20 cursor-pointer"
               />
             </div>
           </div>
 
           {bulkUnmatched.length > 0 && (
-            <div className="p-3 bg-amber-500/10 border border-amber-500/20 rounded-xl text-xs text-amber-300 flex items-start gap-2">
-              <AlertTriangle className="w-4 h-4 shrink-0 text-amber-400 mt-0.5" />
+            <div className="p-3 bg-amber-50 dark:bg-amber-500/10 border border-amber-300 dark:border-amber-500/20 rounded-xl text-xs text-amber-800 dark:text-amber-300 flex items-start gap-2">
+              <AlertTriangle className="w-4 h-4 shrink-0 text-amber-600 dark:text-amber-400 mt-0.5" />
               <div>
                 <strong>Aviso de Equivalencias:</strong> Se encontraron {bulkUnmatched.length} registros que no coinciden con ninguna agencia ({bulkUnmatched.slice(0, 4).join(', ')}{bulkUnmatched.length > 4 ? '...' : ''}). Para que se carguen automáticamente, configura su ID/correo en la agencia correspondiente dentro de <strong>Agencias</strong>.
               </div>
@@ -1719,8 +1720,8 @@ export const SalesEntryTab: React.FC = () => {
           )}
 
           {bulkError && (
-            <div className="p-3 bg-rose-500/10 border border-rose-500/20 rounded-xl text-xs text-rose-300 flex items-start gap-2 animate-fade-in">
-              <AlertCircle className="w-4 h-4 shrink-0 text-rose-400 mt-0.5" />
+            <div className="p-3 bg-rose-50 dark:bg-rose-500/10 border border-rose-300 dark:border-rose-500/20 rounded-xl text-xs text-rose-800 dark:text-rose-300 flex items-start gap-2 animate-fade-in">
+              <AlertCircle className="w-4 h-4 shrink-0 text-rose-600 dark:text-rose-400 mt-0.5" />
               <span>{bulkError}</span>
             </div>
           )}
@@ -1728,17 +1729,17 @@ export const SalesEntryTab: React.FC = () => {
           {bulkRows.length > 0 && (
             <div className="space-y-3 pt-2">
               <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-1 text-xs">
-                <span className="text-emerald-400 font-bold">
+                <span className="text-emerald-600 dark:text-emerald-400 font-bold">
                   ✓ Se reconocieron {bulkRows.length} {bulkRows.length === 1 ? 'agencia' : 'agencias'} para importar:
                 </span>
-                <span className="text-slate-400 text-[11px]">
+                <span className="text-slate-500 dark:text-slate-400 text-[11px]">
                   Puedes modificar la moneda o comisión de cada fila si lo deseas antes de guardar.
                 </span>
               </div>
 
-              <div className="max-h-56 overflow-y-auto border border-slate-800 rounded-xl bg-[#071217]">
+              <div className="max-h-56 overflow-y-auto border border-slate-200 dark:border-slate-800 rounded-xl bg-white dark:bg-[#071217]">
                 <table className="w-full text-left text-[11px]">
-                  <thead className="text-slate-400 border-b border-slate-800 uppercase font-mono sticky top-0 bg-[#071217]">
+                  <thead className={UI_LOCK.tableThead + ' uppercase font-mono sticky top-0'}>
                     <tr>
                       <th className="p-2">Agencia</th>
                       <th className="p-2">Sistema</th>
@@ -1750,16 +1751,16 @@ export const SalesEntryTab: React.FC = () => {
                       <th className="p-2 text-center">Acción</th>
                     </tr>
                   </thead>
-                  <tbody className="divide-y divide-slate-800/80 font-mono">
+                  <tbody className="divide-y divide-slate-100 dark:divide-slate-800/80 font-mono">
                     {bulkRows.map((r, i) => (
-                      <tr key={i} className="hover:bg-slate-800/30 transition-colors">
-                        <td className="p-2 font-sans font-semibold text-white">{r.agencia}</td>
-                        <td className="p-2 text-cyan-300 font-mono">{r.sistema}</td>
+                      <tr key={i} className={UI_LOCK.tableTr}>
+                        <td className="p-2 font-sans font-semibold text-slate-900 dark:text-white">{r.agencia}</td>
+                        <td className="p-2 text-emerald-600 dark:text-emerald-400 font-mono font-bold">{r.sistema}</td>
                         <td className="p-2">
                           <select
                             value={r.moneda}
                             onChange={(e) => handleUpdateBulkRow(i, 'moneda', e.target.value)}
-                            className="bg-[#0D1B22] border border-slate-700 rounded-lg px-2 py-1 text-[11px] text-amber-300 font-bold focus:outline-none focus:border-cyan-500 cursor-pointer"
+                            className={UI_LOCK.select + ' text-[11px] py-0.5 px-2 font-bold'}
                           >
                             {availableCurrenciesList.map((m) => (
                               <option key={m.code} value={m.code}>
@@ -1768,7 +1769,7 @@ export const SalesEntryTab: React.FC = () => {
                             ))}
                           </select>
                         </td>
-                        <td className="p-2 text-right text-white font-medium">{formatCurrency(r.venta, r.moneda)}</td>
+                        <td className="p-2 text-right text-slate-900 dark:text-white font-medium">{formatCurrency(r.venta, r.moneda)}</td>
                         <td className="p-2 text-right">
                           {editingComIndex === i ? (
                             <div className="inline-flex items-center justify-end gap-1">
@@ -1782,9 +1783,9 @@ export const SalesEntryTab: React.FC = () => {
                                 onKeyDown={(e) => {
                                   if (e.key === 'Enter') setEditingComIndex(null);
                                 }}
-                                className="w-24 bg-[#071217] border border-cyan-500 rounded-lg px-2 py-0.5 text-right text-emerald-400 font-mono text-xs focus:outline-none"
+                                className={UI_LOCK.input + ' w-24 py-0.5 px-2 text-right text-emerald-600 dark:text-emerald-400 font-mono text-xs'}
                               />
-                              <span className="text-[11px] font-bold text-slate-400 font-mono">
+                              <span className="text-[11px] font-bold text-slate-500 dark:text-slate-400 font-mono">
                                 {normalizarMoneda(r.moneda) === 'BS' ? 'Bs.' : normalizarMoneda(r.moneda) === 'COP' ? 'COP' : '$'}
                               </span>
                             </div>
@@ -1792,23 +1793,23 @@ export const SalesEntryTab: React.FC = () => {
                             <button
                               type="button"
                               onClick={() => setEditingComIndex(i)}
-                              className="inline-flex items-center justify-end gap-1.5 hover:bg-slate-800/60 px-1.5 py-0.5 rounded transition-all group cursor-pointer text-right"
+                              className="inline-flex items-center justify-end gap-1.5 hover:bg-slate-100 dark:hover:bg-slate-800/60 px-1.5 py-0.5 rounded transition-all group cursor-pointer text-right"
                               title="Click para modificar comisión"
                             >
-                              <span className="text-emerald-400 font-medium">
+                              <span className="text-emerald-600 dark:text-emerald-400 font-medium">
                                 {formatCurrency(r.comision, r.moneda)}
                               </span>
-                              <Edit2 className="w-3 h-3 text-slate-500 opacity-30 group-hover:opacity-100 transition-opacity" />
+                              <Edit2 className="w-3 h-3 text-slate-400 opacity-40 group-hover:opacity-100 transition-opacity" />
                             </button>
                           )}
                         </td>
-                        <td className="p-2 text-right text-rose-400 font-medium">{formatCurrency(r.premios, r.moneda)}</td>
-                        <td className="p-2 text-right font-bold text-white">{formatCurrency(r.neto, r.moneda)}</td>
+                        <td className="p-2 text-right text-rose-600 dark:text-rose-400 font-medium">{formatCurrency(r.premios, r.moneda)}</td>
+                        <td className="p-2 text-right font-bold text-slate-900 dark:text-white">{formatCurrency(r.neto, r.moneda)}</td>
                         <td className="p-2 text-center">
                           <button
                             type="button"
                             onClick={() => handleRemoveBulkRow(i)}
-                            className="text-slate-500 hover:text-rose-400 p-1 rounded transition-colors cursor-pointer"
+                            className="text-slate-400 hover:text-rose-500 p-1 rounded transition-colors cursor-pointer"
                             title="Descartar esta fila"
                           >
                             ✕
@@ -1824,14 +1825,14 @@ export const SalesEntryTab: React.FC = () => {
                 <button
                   type="button"
                   onClick={resetBulkArea}
-                  className="px-4 py-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 font-semibold text-xs transition-all cursor-pointer"
+                  className={UI_LOCK.buttonSecondary + ' text-xs font-semibold'}
                 >
                   Limpiar Lista
                 </button>
                 <button
                   onClick={handleSaveBulk}
                   disabled={isProcessing}
-                  className="px-5 py-2.5 rounded-xl bg-cyan-600 hover:bg-cyan-500 text-white font-bold text-xs shadow-lg shadow-cyan-600/20 flex items-center gap-1.5 transition-all cursor-pointer disabled:opacity-50"
+                  className={UI_LOCK.buttonPrimary + ' text-xs flex items-center gap-1.5'}
                 >
                   <Upload className="w-3.5 h-3.5" />
                   {isProcessing ? 'Guardando...' : `Guardar ${bulkRows.length} Registros`}
@@ -1845,16 +1846,16 @@ export const SalesEntryTab: React.FC = () => {
       {/* Consolidated Financial Cards by System & Currency (Horizontal Linear View) */}
       <div className="space-y-3">
         <div className="flex items-center justify-between">
-          <h3 className="text-xs font-bold uppercase tracking-wider text-slate-400">
+          <h3 className="text-xs font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400">
             Consolidado General de Cargas (Ciclo Activo)
           </h3>
-          <span className="text-[11px] font-mono text-emerald-400 bg-emerald-500/10 border border-emerald-500/20 px-2 py-0.5 rounded-lg">
+          <span className="text-[11px] font-mono text-emerald-600 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-500/10 border border-emerald-200 dark:border-emerald-500/20 px-2 py-0.5 rounded-lg">
             {groupedMetrics.length} {groupedMetrics.length === 1 ? 'Combinación' : 'Combinaciones'} Sistema-Moneda
           </span>
         </div>
 
         {groupedMetrics.length === 0 ? (
-          <div className="bg-[#0D1B22] border border-slate-800 rounded-2xl p-6 text-center text-xs text-slate-400">
+          <div className={UI_LOCK.card + ' p-6 text-center text-xs text-slate-500 dark:text-slate-400'}>
             No hay movimientos de venta registrados para este ciclo.
           </div>
         ) : (
@@ -1862,56 +1863,56 @@ export const SalesEntryTab: React.FC = () => {
             {groupedMetrics.map((gm) => (
               <div
                 key={gm.key}
-                className="bg-[#0D1B22] border border-slate-800 hover:border-slate-700/80 rounded-2xl p-3.5 sm:p-4 shadow-lg transition-all"
+                className={UI_LOCK.card + ' p-3.5 sm:p-4 shadow-sm hover:shadow transition-all'}
               >
                 <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-3">
                   <div className="flex items-center gap-2.5 lg:w-48 shrink-0">
-                    <span className="w-2.5 h-2.5 rounded-full bg-emerald-400 shadow-[0_0_8px_rgba(52,211,153,0.6)] shrink-0" />
+                    <span className="w-2.5 h-2.5 rounded-full bg-emerald-500 shadow-[0_0_8px_rgba(52,211,153,0.6)] shrink-0" />
                     <div>
-                      <span className="text-sm font-black text-white block truncate">📍 {gm.key}</span>
+                      <span className="text-sm font-black text-slate-900 dark:text-white block truncate">📍 {gm.key}</span>
                       <span className="text-[10px] text-slate-500 uppercase font-mono font-bold">Resumen Consolidado</span>
                     </div>
                   </div>
 
                   <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-6 gap-2 flex-1 font-mono text-center">
-                    <div className="bg-[#071217] p-2 rounded-xl border border-slate-800/80">
-                      <span className="text-[9px] text-slate-400 uppercase font-bold block font-sans">Venta</span>
-                      <strong className="text-white text-xs sm:text-sm">
+                    <div className="bg-slate-50 dark:bg-[#071217] p-2 rounded-xl border border-slate-200/80 dark:border-slate-800/80">
+                      <span className="text-[9px] text-slate-500 dark:text-slate-400 uppercase font-bold block font-sans">Venta</span>
+                      <strong className="text-slate-900 dark:text-white text-xs sm:text-sm">
                         {gm.venta.toLocaleString('es-VE', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                       </strong>
                     </div>
 
-                    <div className="bg-[#071217] p-2 rounded-xl border border-slate-800/80">
-                      <span className="text-[9px] text-slate-400 uppercase font-bold block font-sans">Comisión</span>
-                      <strong className="text-emerald-400 text-xs sm:text-sm">
+                    <div className="bg-slate-50 dark:bg-[#071217] p-2 rounded-xl border border-slate-200/80 dark:border-slate-800/80">
+                      <span className="text-[9px] text-slate-500 dark:text-slate-400 uppercase font-bold block font-sans">Comisión</span>
+                      <strong className="text-emerald-600 dark:text-emerald-400 text-xs sm:text-sm">
                         {gm.comision.toLocaleString('es-VE', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                       </strong>
                     </div>
 
-                    <div className="bg-[#071217] p-2 rounded-xl border border-slate-800/80">
-                      <span className="text-[9px] text-slate-400 uppercase font-bold block font-sans">Premios</span>
-                      <strong className="text-rose-400 text-xs sm:text-sm">
+                    <div className="bg-slate-50 dark:bg-[#071217] p-2 rounded-xl border border-slate-200/80 dark:border-slate-800/80">
+                      <span className="text-[9px] text-slate-500 dark:text-slate-400 uppercase font-bold block font-sans">Premios</span>
+                      <strong className="text-rose-600 dark:text-rose-400 text-xs sm:text-sm">
                         {gm.premios.toLocaleString('es-VE', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                       </strong>
                     </div>
 
-                    <div className="bg-[#071217] p-2 rounded-xl border border-slate-800/80">
-                      <span className="text-[9px] text-slate-400 uppercase font-bold block font-sans">Neto</span>
-                      <strong className={`text-xs sm:text-sm ${gm.neto >= 0 ? 'text-white' : 'text-rose-400'}`}>
+                    <div className="bg-slate-50 dark:bg-[#071217] p-2 rounded-xl border border-slate-200/80 dark:border-slate-800/80">
+                      <span className="text-[9px] text-slate-500 dark:text-slate-400 uppercase font-bold block font-sans">Neto</span>
+                      <strong className={`text-xs sm:text-sm ${gm.neto >= 0 ? 'text-slate-900 dark:text-white' : 'text-rose-600 dark:text-rose-400'}`}>
                         {gm.neto.toLocaleString('es-VE', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                       </strong>
                     </div>
 
-                    <div className="bg-[#071217] p-2 rounded-xl border border-slate-800/80">
-                      <span className="text-[9px] text-slate-400 uppercase font-bold block font-sans">Util. Op</span>
-                      <strong className={`text-xs sm:text-sm ${gm.util_op >= 0 ? 'text-cyan-400' : 'text-rose-400'}`}>
+                    <div className="bg-slate-50 dark:bg-[#071217] p-2 rounded-xl border border-slate-200/80 dark:border-slate-800/80">
+                      <span className="text-[9px] text-slate-500 dark:text-slate-400 uppercase font-bold block font-sans">Util. Op</span>
+                      <strong className={`text-xs sm:text-sm ${gm.util_op >= 0 ? 'text-cyan-600 dark:text-cyan-400' : 'text-rose-600 dark:text-rose-400'}`}>
                         {gm.util_op.toLocaleString('es-VE', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                       </strong>
                     </div>
 
-                    <div className="bg-[#071217] p-2 rounded-xl border border-slate-800/80">
-                      <span className="text-[9px] text-slate-400 uppercase font-bold block font-sans">Util. Ag</span>
-                      <strong className={`text-xs sm:text-sm ${gm.util_ag >= 0 ? 'text-amber-400' : 'text-rose-400'}`}>
+                    <div className="bg-slate-50 dark:bg-[#071217] p-2 rounded-xl border border-slate-200/80 dark:border-slate-800/80">
+                      <span className="text-[9px] text-slate-500 dark:text-slate-400 uppercase font-bold block font-sans">Util. Ag</span>
+                      <strong className={`text-xs sm:text-sm ${gm.util_ag >= 0 ? 'text-amber-600 dark:text-amber-400' : 'text-rose-600 dark:text-rose-400'}`}>
                         {gm.util_ag.toLocaleString('es-VE', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                       </strong>
                     </div>
@@ -1924,25 +1925,25 @@ export const SalesEntryTab: React.FC = () => {
       </div>
 
       {/* Manual Multi-System Agency Sales Entry Section */}
-      <div className="bg-[#0D1B22] border border-purple-500/30 rounded-3xl p-5 sm:p-6 shadow-2xl space-y-5">
+      <div className={UI_LOCK.card + ' p-5 sm:p-6 shadow-md space-y-5'}>
         {/* Header & Agency Picker */}
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-2 border-b border-slate-800/80">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-2 border-b border-slate-200 dark:border-slate-800/80">
           <div>
-            <h3 className="text-base sm:text-xl font-black text-white flex items-center gap-2">
-              <span className="text-purple-400 text-lg">➕</span>
-              Registro Manual: <span className="text-purple-300 font-extrabold">{formAgencia || 'Seleccione Agencia'}</span>
+            <h3 className="text-base sm:text-xl font-black text-slate-900 dark:text-white flex items-center gap-2">
+              <span className="text-emerald-600 dark:text-emerald-400 text-lg">➕</span>
+              Registro Manual: <span className="text-emerald-600 dark:text-emerald-400 font-extrabold">{formAgencia || 'Seleccione Agencia'}</span>
             </h3>
-            <p className="text-xs text-slate-400 mt-0.5">
+            <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
               Carga directa por sistema y moneda para la agencia seleccionada.
             </p>
           </div>
 
           <div className="flex items-center gap-2">
-            <span className="text-xs font-bold text-slate-300 shrink-0">🎯 Agencia:</span>
+            <span className="text-xs font-bold text-slate-700 dark:text-slate-300 shrink-0">🎯 Agencia:</span>
             <select
               value={formAgencia}
               onChange={(e) => setFormAgencia(e.target.value)}
-              className="bg-[#071217] border border-purple-500/40 focus:border-purple-400 rounded-xl px-3.5 py-2 text-xs font-bold text-white focus:outline-none cursor-pointer min-w-[200px]"
+              className={UI_LOCK.select + ' min-w-[200px]'}
             >
               {agencies.map((a) => (
                 <option key={a.id} value={a.nombre_agencia}>
@@ -1954,22 +1955,22 @@ export const SalesEntryTab: React.FC = () => {
         </div>
 
         {/* Date Selector Row */}
-        <div className="bg-[#071217] border border-slate-800 rounded-2xl p-3 sm:p-3.5 flex flex-col sm:flex-row sm:items-center gap-3">
-          <label className="text-xs font-bold text-slate-300 flex items-center gap-2 shrink-0">
+        <div className="bg-slate-50 dark:bg-[#071217] border border-slate-200 dark:border-slate-800 rounded-2xl p-3 sm:p-3.5 flex flex-col sm:flex-row sm:items-center gap-3">
+          <label className="text-xs font-bold text-slate-700 dark:text-slate-300 flex items-center gap-2 shrink-0">
             <span>📅</span> Asignar carga al día:
           </label>
           <input
             type="date"
             value={formFecha}
             onChange={(e) => setFormFecha(e.target.value)}
-            className="bg-[#0D1B22] border border-slate-700 rounded-xl px-3.5 py-2 text-xs font-mono text-white focus:outline-none focus:border-purple-500 w-full sm:w-64"
+            className={UI_LOCK.input + ' w-full sm:w-64 font-mono'}
           />
         </div>
 
         {/* Systems Cards List */}
         <div className="space-y-4">
           {agencySystemsList.length === 0 ? (
-            <div className="bg-[#071217] border border-slate-800 rounded-2xl p-6 text-center text-xs text-slate-400">
+            <div className="bg-slate-50 dark:bg-[#071217] border border-slate-200 dark:border-slate-800 rounded-2xl p-6 text-center text-xs text-slate-500 dark:text-slate-400">
               No hay sistemas configurados para esta agencia.
             </div>
           ) : (
@@ -1980,18 +1981,18 @@ export const SalesEntryTab: React.FC = () => {
               return (
                 <div
                   key={sist}
-                  className="bg-[#071217]/90 border border-slate-800 hover:border-purple-500/30 rounded-2xl p-4 sm:p-5 shadow-lg space-y-4 transition-all"
+                  className="bg-slate-50/70 dark:bg-[#071217]/90 border border-slate-200 dark:border-slate-800 hover:border-emerald-500/30 rounded-2xl p-4 sm:p-5 shadow-sm space-y-4 transition-all"
                 >
-                  <div className="flex items-center justify-between border-b border-slate-800/80 pb-2.5">
-                    <h4 className="text-sm sm:text-base font-black text-white flex items-center gap-2">
+                  <div className="flex items-center justify-between border-b border-slate-200 dark:border-slate-800/80 pb-2.5">
+                    <h4 className="text-sm sm:text-base font-black text-slate-900 dark:text-white flex items-center gap-2">
                       <span className="text-rose-500 text-base">📍</span>
-                      Sistema: <span className="text-white font-extrabold tracking-wide">{sist}</span>
+                      Sistema: <span className="font-extrabold tracking-wide">{sist}</span>
                     </h4>
                     <div className="flex items-center gap-2">
-                      <span className="text-[11px] font-mono text-slate-400 bg-slate-800/80 px-2 py-0.5 rounded-lg border border-slate-700/60">
-                        Comisión base: <strong className="text-emerald-400">{comPct}%</strong>
+                      <span className="text-[11px] font-mono text-slate-600 dark:text-slate-400 bg-slate-200/80 dark:bg-slate-800/80 px-2 py-0.5 rounded-lg border border-slate-300 dark:border-slate-700/60">
+                        Comisión base: <strong className="text-emerald-600 dark:text-emerald-400">{comPct}%</strong>
                       </span>
-                      <span className="text-[11px] font-mono text-purple-300 bg-purple-950/40 px-2 py-0.5 rounded-lg border border-purple-800/50">
+                      <span className="text-[11px] font-mono text-emerald-700 dark:text-emerald-300 bg-emerald-50 dark:bg-emerald-950/40 px-2 py-0.5 rounded-lg border border-emerald-200 dark:border-emerald-800/50">
                         {activeCurrs.join(', ')}
                       </span>
                     </div>
@@ -2015,9 +2016,9 @@ export const SalesEntryTab: React.FC = () => {
                         >
                           {/* Venta */}
                           <div className="space-y-1">
-                            <label className="text-xs font-bold text-slate-300 flex items-center justify-between">
+                            <label className="text-xs font-bold text-slate-700 dark:text-slate-300 flex items-center justify-between">
                               <span>Venta {mon}</span>
-                              <span className="text-[10px] text-emerald-400 font-mono font-normal">({monComPct}%)</span>
+                              <span className="text-[10px] text-emerald-600 dark:text-emerald-400 font-mono font-normal">({monComPct}%)</span>
                             </label>
                             <input
                               type="number"
@@ -2026,13 +2027,13 @@ export const SalesEntryTab: React.FC = () => {
                               placeholder="0,00"
                               value={row.venta}
                               onChange={(e) => handleVentaChange(sist, mon, e.target.value)}
-                              className="w-full bg-[#0D1B22] border border-slate-700 rounded-xl px-3 py-2.5 text-xs text-white font-mono focus:outline-none focus:border-purple-500"
+                              className={UI_LOCK.input + ' font-mono'}
                             />
                           </div>
 
                           {/* Comisión */}
                           <div className="space-y-1">
-                            <label className="text-xs font-bold text-slate-300">Comisión {mon}</label>
+                            <label className="text-xs font-bold text-slate-700 dark:text-slate-300">Comisión {mon}</label>
                             <input
                               type="number"
                               step="0.01"
@@ -2040,13 +2041,13 @@ export const SalesEntryTab: React.FC = () => {
                               placeholder="0,00"
                               value={row.comision}
                               onChange={(e) => handleComisionChange(sist, mon, e.target.value)}
-                              className="w-full bg-[#0D1B22] border border-slate-700 rounded-xl px-3 py-2.5 text-xs text-emerald-400 font-mono focus:outline-none focus:border-purple-500"
+                              className={UI_LOCK.input + ' text-emerald-600 dark:text-emerald-400 font-mono'}
                             />
                           </div>
 
                           {/* Premios */}
                           <div className="space-y-1">
-                            <label className="text-xs font-bold text-slate-300">Premios {mon}</label>
+                            <label className="text-xs font-bold text-slate-700 dark:text-slate-300">Premios {mon}</label>
                             <input
                               type="number"
                               step="0.01"
@@ -2054,16 +2055,16 @@ export const SalesEntryTab: React.FC = () => {
                               placeholder="0,00"
                               value={row.premios}
                               onChange={(e) => handlePremiosChange(sist, mon, e.target.value)}
-                              className="w-full bg-[#0D1B22] border border-slate-700 rounded-xl px-3 py-2.5 text-xs text-rose-400 font-mono focus:outline-none focus:border-purple-500"
+                              className={UI_LOCK.input + ' text-rose-600 dark:text-rose-400 font-mono'}
                             />
                           </div>
 
                           {/* Neto Calculado */}
                           <div className="space-y-1">
-                            <label className="text-[11px] font-bold text-slate-400 uppercase tracking-wide">
+                            <label className="text-[11px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wide">
                               Neto Calculado
                             </label>
-                            <div className={`text-lg sm:text-xl font-black font-mono tracking-tight ${neto >= 0 ? 'text-white' : 'text-rose-400'}`}>
+                            <div className={`text-lg sm:text-xl font-black font-mono tracking-tight ${neto >= 0 ? 'text-slate-900 dark:text-white' : 'text-rose-600 dark:text-rose-400'}`}>
                               {neto.toLocaleString('es-VE', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                             </div>
                           </div>
@@ -2076,8 +2077,8 @@ export const SalesEntryTab: React.FC = () => {
                               onClick={() => handleSaveSystemRow(sist, mon)}
                               className={`w-full sm:w-auto px-4 py-2.5 rounded-xl font-bold text-xs flex items-center justify-center gap-1.5 transition-all cursor-pointer disabled:opacity-40 ${
                                 isSaved
-                                  ? 'bg-emerald-500/20 hover:bg-emerald-500/30 text-emerald-400 border border-emerald-500/40'
-                                  : 'bg-purple-600 hover:bg-purple-500 text-white shadow-lg shadow-purple-600/20'
+                                  ? 'bg-emerald-500/15 hover:bg-emerald-500/25 text-emerald-700 dark:text-emerald-400 border border-emerald-500/40'
+                                  : UI_LOCK.buttonPrimary + ' text-xs'
                               }`}
                             >
                               <Upload className="w-3.5 h-3.5" />
@@ -2095,11 +2096,11 @@ export const SalesEntryTab: React.FC = () => {
         </div>
 
         {/* Action Buttons: Clean Screen and Bulk Save */}
-        <div className="flex flex-wrap items-center justify-between gap-3 pt-3 border-t border-slate-800">
+        <div className="flex flex-wrap items-center justify-between gap-3 pt-3 border-t border-slate-200 dark:border-slate-800">
           <button
             type="button"
             onClick={handleClearScreen}
-            className="px-4 py-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 font-bold text-xs flex items-center gap-1.5 transition-all border border-slate-700 cursor-pointer"
+            className={UI_LOCK.buttonSecondary + ' text-xs font-bold flex items-center gap-1.5'}
           >
             🧹 LIMPIAR PANTALLA
           </button>
@@ -2108,7 +2109,7 @@ export const SalesEntryTab: React.FC = () => {
             type="button"
             disabled={isProcessing}
             onClick={handleSaveAllSystems}
-            className="px-6 py-2.5 rounded-xl bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-500 hover:to-indigo-500 text-white font-bold text-xs shadow-lg shadow-purple-600/20 flex items-center gap-2 transition-all cursor-pointer disabled:opacity-50"
+            className={UI_LOCK.buttonPrimary + ' text-xs flex items-center gap-2'}
           >
             <Upload className="w-4 h-4" />
             {isProcessing ? 'Guardando...' : '💾 GUARDAR TODOS LOS SISTEMAS'}
@@ -2119,14 +2120,14 @@ export const SalesEntryTab: React.FC = () => {
       {/* Detailed Sales Records Separated by Currency */}
       <div className="space-y-4">
         {/* Filter and Currency Tabs Bar */}
-        <div className="bg-[#0D1B22] border border-slate-800 rounded-2xl p-4 flex flex-col md:flex-row items-center justify-between gap-4 shadow-lg">
+        <div className={UI_LOCK.card + ' p-4 flex flex-col md:flex-row items-center justify-between gap-4 shadow-sm'}>
           <div className="flex flex-wrap items-center gap-2 w-full md:w-auto">
             <button
               onClick={() => setActiveCurrencyTab('TODAS')}
               className={`px-3.5 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer flex items-center gap-1.5 ${
                 activeCurrencyTab === 'TODAS'
-                  ? 'bg-emerald-500 text-slate-950 shadow-md shadow-emerald-500/20'
-                  : 'bg-slate-800/80 hover:bg-slate-700 text-slate-300'
+                  ? 'bg-emerald-600 text-white shadow-sm'
+                  : 'bg-slate-100 hover:bg-slate-200 text-slate-700 dark:bg-slate-800/80 dark:hover:bg-slate-700 dark:text-slate-300'
               }`}
             >
               <Coins className="w-3.5 h-3.5" />
@@ -2142,14 +2143,14 @@ export const SalesEntryTab: React.FC = () => {
                   onClick={() => setActiveCurrencyTab(curr)}
                   className={`px-3.5 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer flex items-center gap-1.5 ${
                     activeCurrencyTab === curr
-                      ? 'bg-emerald-500 text-slate-950 shadow-md shadow-emerald-500/20'
-                      : 'bg-slate-800/80 hover:bg-slate-700 text-slate-300'
+                      ? 'bg-emerald-600 text-white shadow-sm'
+                      : 'bg-slate-100 hover:bg-slate-200 text-slate-700 dark:bg-slate-800/80 dark:hover:bg-slate-700 dark:text-slate-300'
                   }`}
                 >
                   <span>{flag}</span>
                   <span>{curr}</span>
                   <span className={`px-1.5 py-0.2 rounded-md text-[10px] font-mono ${
-                    activeCurrencyTab === curr ? 'bg-black/30 text-slate-900' : 'bg-slate-900 text-slate-400'
+                    activeCurrencyTab === curr ? 'bg-black/20 text-white' : 'bg-slate-200 text-slate-700 dark:bg-slate-900 dark:text-slate-400'
                   }`}>
                     {count}
                   </span>
@@ -2159,11 +2160,11 @@ export const SalesEntryTab: React.FC = () => {
           </div>
 
           <div className="flex items-center gap-2 w-full md:w-auto justify-end">
-            <span className="text-xs text-slate-400 font-semibold">Filtrar por Agencia:</span>
+            <span className="text-xs text-slate-500 dark:text-slate-400 font-semibold">Filtrar por Agencia:</span>
             <select
               value={filterAgency}
               onChange={(e) => setFilterAgency(e.target.value)}
-              className="bg-[#071217] border border-slate-700 rounded-xl px-3 py-1.5 text-xs text-white focus:outline-none focus:border-emerald-500 cursor-pointer"
+              className={UI_LOCK.select}
             >
               <option value="Todas">Todas las Agencias</option>
               {agencies.map((a) => (
@@ -2177,7 +2178,7 @@ export const SalesEntryTab: React.FC = () => {
 
         {/* Currency Tables List */}
         {currencyList.length === 0 ? (
-          <div className="bg-[#0D1B22] border border-slate-800 rounded-3xl p-8 text-center text-xs text-slate-400">
+          <div className={UI_LOCK.card + ' p-8 text-center text-xs text-slate-500 dark:text-slate-400'}>
             No se encontraron movimientos registrados para la selección actual.
           </div>
         ) : (
@@ -2196,30 +2197,30 @@ export const SalesEntryTab: React.FC = () => {
             return (
               <div
                 key={curr}
-                className="bg-[#0D1B22] border border-slate-800 rounded-3xl overflow-hidden shadow-xl"
+                className={UI_LOCK.card + ' overflow-hidden shadow-sm'}
               >
                 {/* Currency Table Header */}
-                <div className="p-4 sm:p-5 border-b border-slate-800 bg-gradient-to-r from-slate-900/90 to-slate-900/40 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
+                <div className="p-4 sm:p-5 border-b border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-900/60 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
                   <div className="flex items-center gap-2.5">
                     <span className="text-xl">{flag}</span>
                     <div>
-                      <h4 className="text-sm font-black text-white tracking-wide flex items-center gap-2">
+                      <h4 className="text-sm font-black text-slate-900 dark:text-white tracking-wide flex items-center gap-2">
                         Movimientos en {curr === 'BS' ? 'Bolívares (BS)' : curr === 'COP' ? 'Pesos Colombianos (COP)' : curr === 'USD' ? 'Dólares (USD)' : curr}
-                        <span className="text-[11px] px-2 py-0.5 rounded-full bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 font-mono font-bold">
+                        <span className="text-[11px] px-2 py-0.5 rounded-full bg-emerald-50 dark:bg-emerald-500/10 text-emerald-700 dark:text-emerald-400 border border-emerald-200 dark:border-emerald-500/20 font-mono font-bold">
                           {items.length} {items.length === 1 ? 'registro' : 'registros'}
                         </span>
                       </h4>
                     </div>
                   </div>
 
-                  <div className="text-right text-[11px] text-slate-400 font-mono">
-                    Neto Acumulado: <strong className={totalNeto >= 0 ? 'text-emerald-400' : 'text-rose-400'}>{formatCurrency(totalNeto, curr)}</strong>
+                  <div className="text-right text-[11px] text-slate-500 dark:text-slate-400 font-mono">
+                    Neto Acumulado: <strong className={totalNeto >= 0 ? 'text-emerald-600 dark:text-emerald-400' : 'text-rose-600 dark:text-rose-400'}>{formatCurrency(totalNeto, curr)}</strong>
                   </div>
                 </div>
 
                 <div className="overflow-x-auto">
                   <table className="w-full text-left text-xs">
-                    <thead className="bg-[#071217] text-slate-400 border-b border-slate-800 font-bold uppercase tracking-wider text-[11px]">
+                    <thead className={UI_LOCK.tableThead}>
                       <tr>
                         <th className="py-3 px-3 text-center w-10">Nº</th>
                         <th className="py-3 px-4">Agencia</th>
@@ -2234,33 +2235,33 @@ export const SalesEntryTab: React.FC = () => {
                         <th className="py-3 px-4 text-center">Acciones</th>
                       </tr>
                     </thead>
-                    <tbody className="divide-y divide-slate-800/80 font-mono text-[12px]">
+                    <tbody className="divide-y divide-slate-100 dark:divide-slate-800/80 font-mono text-[12px]">
                       {items.map((s, index) => (
-                        <tr key={s.id} className="hover:bg-slate-800/30 transition-colors">
-                          <td className="py-3 px-3 text-center text-slate-500 text-[11px]">{index + 1}</td>
-                          <td className="py-3 px-4 font-sans font-bold text-white">{s.agencia}</td>
-                          <td className="py-3 px-4 text-slate-300">
-                            <span className="px-2 py-0.5 rounded bg-slate-800/80 border border-slate-700/60 text-[11px] font-bold">
+                        <tr key={s.id} className={UI_LOCK.tableTr}>
+                          <td className="py-3 px-3 text-center text-slate-400 dark:text-slate-500 text-[11px]">{index + 1}</td>
+                          <td className="py-3 px-4 font-sans font-bold text-slate-900 dark:text-white">{s.agencia}</td>
+                          <td className="py-3 px-4 text-slate-600 dark:text-slate-300">
+                            <span className="px-2 py-0.5 rounded bg-slate-100 dark:bg-slate-800/80 border border-slate-200 dark:border-slate-700/60 text-[11px] font-bold">
                               {s.sistema}
                             </span>
                           </td>
-                          <td className="py-3 px-4 text-slate-400 font-sans text-[11px]">{formatDate(s.fecha)}</td>
-                          <td className="py-3 px-4 text-right text-white font-bold">{formatCurrency(s.venta || 0, s.moneda)}</td>
-                          <td className="py-3 px-4 text-right text-emerald-400">{formatCurrency(s.comision || 0, s.moneda)}</td>
-                          <td className="py-3 px-4 text-right text-rose-400">{formatCurrency(s.premios || 0, s.moneda)}</td>
-                          <td className={`py-3 px-4 text-right font-bold ${parseNum(s.neto) >= 0 ? 'text-white' : 'text-rose-400'}`}>
+                          <td className="py-3 px-4 text-slate-500 dark:text-slate-400 font-sans text-[11px]">{formatDate(s.fecha)}</td>
+                          <td className="py-3 px-4 text-right text-slate-900 dark:text-white font-bold">{formatCurrency(s.venta || 0, s.moneda)}</td>
+                          <td className="py-3 px-4 text-right text-emerald-600 dark:text-emerald-400">{formatCurrency(s.comision || 0, s.moneda)}</td>
+                          <td className="py-3 px-4 text-right text-rose-600 dark:text-rose-400">{formatCurrency(s.premios || 0, s.moneda)}</td>
+                          <td className={`py-3 px-4 text-right font-bold ${parseNum(s.neto) >= 0 ? 'text-slate-900 dark:text-white' : 'text-rose-600 dark:text-rose-400'}`}>
                             {formatCurrency(s.neto || 0, s.moneda)}
                           </td>
-                          <td className={`py-3 px-4 text-right font-bold ${parseNum(s.util_op) >= 0 ? 'text-cyan-400' : 'text-rose-400'}`}>
+                          <td className={`py-3 px-4 text-right font-bold ${parseNum(s.util_op) >= 0 ? 'text-cyan-600 dark:text-cyan-400' : 'text-rose-600 dark:text-rose-400'}`}>
                             {formatCurrency(s.util_op || 0, s.moneda)}
                           </td>
-                          <td className={`py-3 px-4 text-right ${parseNum(s.util_ag) >= 0 ? 'text-amber-400' : 'text-rose-400'}`}>
+                          <td className={`py-3 px-4 text-right ${parseNum(s.util_ag) >= 0 ? 'text-amber-600 dark:text-amber-400' : 'text-rose-600 dark:text-rose-400'}`}>
                             {formatCurrency(s.util_ag || 0, s.moneda)}
                           </td>
                           <td className="py-3 px-4 text-center">
                             <button
                               onClick={() => handleDeleteSale(s.id)}
-                              className="p-1.5 rounded-lg text-slate-400 hover:text-rose-400 hover:bg-rose-500/10 transition-colors cursor-pointer"
+                              className="p-1.5 rounded-lg text-slate-400 hover:text-rose-600 hover:bg-rose-50 dark:hover:text-rose-400 dark:hover:bg-rose-500/10 transition-colors cursor-pointer"
                               title="Eliminar movimiento"
                             >
                               <Trash2 className="w-3.5 h-3.5" />
@@ -2269,24 +2270,24 @@ export const SalesEntryTab: React.FC = () => {
                         </tr>
                       ))}
                     </tbody>
-                    <tfoot className="bg-[#071217] font-bold border-t-2 border-slate-700 text-white font-mono text-[12px]">
+                    <tfoot className="bg-slate-50 dark:bg-[#071217] font-bold border-t-2 border-slate-200 dark:border-slate-700 text-slate-900 dark:text-white font-mono text-[12px]">
                       <tr>
-                        <td colSpan={4} className="py-3 px-4 font-sans uppercase tracking-wider text-emerald-400 text-xs font-black">
+                        <td colSpan={4} className="py-3 px-4 font-sans uppercase tracking-wider text-emerald-700 dark:text-emerald-400 text-xs font-black">
                           ⭐ TOTAL {curr} ({items.length} {items.length === 1 ? 'movimiento' : 'movimientos'})
                         </td>
-                        <td className="py-3 px-4 text-right text-white font-black">{formatCurrency(totalVenta, curr)}</td>
-                        <td className="py-3 px-4 text-right text-emerald-400">{formatCurrency(totalComision, curr)}</td>
-                        <td className="py-3 px-4 text-right text-rose-400">{formatCurrency(totalPremios, curr)}</td>
-                        <td className={`py-3 px-4 text-right font-black ${totalNeto >= 0 ? 'text-white' : 'text-rose-400'}`}>
+                        <td className="py-3 px-4 text-right text-slate-900 dark:text-white font-black">{formatCurrency(totalVenta, curr)}</td>
+                        <td className="py-3 px-4 text-right text-emerald-600 dark:text-emerald-400">{formatCurrency(totalComision, curr)}</td>
+                        <td className="py-3 px-4 text-right text-rose-600 dark:text-rose-400">{formatCurrency(totalPremios, curr)}</td>
+                        <td className={`py-3 px-4 text-right font-black ${totalNeto >= 0 ? 'text-slate-900 dark:text-white' : 'text-rose-600 dark:text-rose-400'}`}>
                           {formatCurrency(totalNeto, curr)}
                         </td>
-                        <td className={`py-3 px-4 text-right font-black ${totalUtilOp >= 0 ? 'text-cyan-400' : 'text-rose-400'}`}>
+                        <td className={`py-3 px-4 text-right font-black ${totalUtilOp >= 0 ? 'text-cyan-600 dark:text-cyan-400' : 'text-rose-600 dark:text-rose-400'}`}>
                           {formatCurrency(totalUtilOp, curr)}
                         </td>
-                        <td className={`py-3 px-4 text-right font-black ${totalUtilAg >= 0 ? 'text-amber-400' : 'text-rose-400'}`}>
+                        <td className={`py-3 px-4 text-right font-black ${totalUtilAg >= 0 ? 'text-amber-600 dark:text-amber-400' : 'text-rose-600 dark:text-rose-400'}`}>
                           {formatCurrency(totalUtilAg, curr)}
                         </td>
-                        <td className="py-3 px-4 text-center text-slate-500">—</td>
+                        <td className="py-3 px-4 text-center text-slate-400 dark:text-slate-500">—</td>
                       </tr>
                     </tfoot>
                   </table>

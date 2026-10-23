@@ -3,6 +3,7 @@ import { supabase } from '../../lib/supabase';
 import { useAuth } from '../../context/AuthContext';
 import { formatCurrency } from '../../utils/formatters';
 import { loadCurrencies, getCurrencyBadgeClasses, getCurrencyFlag, type CurrencyConfig } from '../../utils/currencies';
+import { UI_LOCK } from '../../styles/uiDesignLock';
 import type { Agency, BetSystem, Grupo } from '../../types';
 import {
   Handshake,
@@ -52,7 +53,7 @@ export const GroupsTab: React.FC = () => {
   const [telefono, setTelefono] = useState('');
   const [emailAcceso, setEmailAcceso] = useState('');
   const [passwordAcceso, setPasswordAcceso] = useState('1234');
-  const [selectedMonedas, setSelectedMonedas] = useState<string[]>(['BS', 'USD', 'COP']);
+  const [selectedMonedas, setSelectedMonedas] = useState<string[]>([]);
   const [comisionDefault, setComisionDefault] = useState('15');
   const [participacionDefault, setParticipacionDefault] = useState('30');
   const [condicionesSistemas, setCondicionesSistemas] = useState<Record<string, { comision?: number; participacion?: number }>>({});
@@ -133,14 +134,19 @@ export const GroupsTab: React.FC = () => {
     setTelefono('');
     setEmailAcceso('');
     setPasswordAcceso('1234');
-    setSelectedMonedas(currencies.length > 0 ? currencies.map((c) => c.codigo) : ['BS', 'USD', 'COP']);
+    const activeCodes = currencies.map((c) => c.codigo);
+    setSelectedMonedas(activeCodes);
     setComisionDefault('15');
     setParticipacionDefault('30');
     setCondicionesSistemas({});
     setSaldoBs('0');
     setSaldoUsd('0');
     setSaldoCop('0');
-    setSaldosDinamicos({});
+    const initialDyn: Record<string, string> = {};
+    activeCodes.forEach((c) => {
+      initialDyn[c] = '0';
+    });
+    setSaldosDinamicos(initialDyn);
     setIsModalOpen(true);
   };
 
@@ -153,9 +159,9 @@ export const GroupsTab: React.FC = () => {
     setTelefono(grp.telefono || '');
     setEmailAcceso(grp.email_acceso || '');
     setPasswordAcceso(grp.password_acceso || '1234');
-    const activeCodes = currencies.length > 0 ? currencies.map((c) => c.codigo) : ['BS', 'USD', 'COP'];
+    const activeCodes = currencies.map((c) => c.codigo);
     const assigned = grp.monedas ? grp.monedas.split(',').map((m) => m.trim().toUpperCase()).filter(Boolean) : activeCodes;
-    setSelectedMonedas(assigned.filter((m) => activeCodes.includes(m)));
+    setSelectedMonedas(assigned.length > 0 ? assigned : activeCodes);
     setComisionDefault(String(grp.comision_pct_default ?? 15));
     setParticipacionDefault(String(grp.participacion_pct_default ?? 30));
 
@@ -167,10 +173,6 @@ export const GroupsTab: React.FC = () => {
     }
     setCondicionesSistemas(conds);
 
-    setSaldoBs(String(grp.saldo_inicial_bs || 0));
-    setSaldoUsd(String(grp.saldo_inicial_usd || 0));
-    setSaldoCop(String(grp.saldo_inicial_cop || 0));
-
     let dynSaldos: Record<string, any> = {};
     try {
       dynSaldos = typeof grp.saldos_iniciales_json === 'string' ? JSON.parse(grp.saldos_iniciales_json) : (grp.saldos_iniciales_json || {});
@@ -178,6 +180,9 @@ export const GroupsTab: React.FC = () => {
       dynSaldos = {};
     }
     const formattedDyn: Record<string, string> = {};
+    if (grp.saldo_inicial_bs) formattedDyn['BS'] = String(grp.saldo_inicial_bs);
+    if (grp.saldo_inicial_usd) formattedDyn['USD'] = String(grp.saldo_inicial_usd);
+    if (grp.saldo_inicial_cop) formattedDyn['COP'] = String(grp.saldo_inicial_cop);
     Object.entries(dynSaldos).forEach(([k, v]) => {
       formattedDyn[k] = String(v);
     });
@@ -207,9 +212,9 @@ export const GroupsTab: React.FC = () => {
 
     try {
       const parsedDynSaldos: Record<string, number> = {};
-      Object.entries(saldosDinamicos).forEach(([k, v]) => {
-        const num = parseFloat(v);
-        if (!isNaN(num)) parsedDynSaldos[k] = num;
+      selectedMonedas.forEach((m) => {
+        const num = parseFloat(saldosDinamicos[m] || '0');
+        parsedDynSaldos[m] = isNaN(num) ? 0 : num;
       });
 
       const payload: Partial<Grupo> = {
@@ -224,9 +229,9 @@ export const GroupsTab: React.FC = () => {
         comision_pct_default: parseFloat(comisionDefault) || 0,
         participacion_pct_default: parseFloat(participacionDefault) || 0,
         condiciones_sistemas: JSON.stringify(condicionesSistemas),
-        saldo_inicial_bs: parseFloat(saldoBs) || 0,
-        saldo_inicial_usd: parseFloat(saldoUsd) || 0,
-        saldo_inicial_cop: parseFloat(saldoCop) || 0,
+        saldo_inicial_bs: parsedDynSaldos['BS'] ?? 0,
+        saldo_inicial_usd: parsedDynSaldos['USD'] ?? 0,
+        saldo_inicial_cop: parsedDynSaldos['COP'] ?? 0,
         saldos_iniciales_json: JSON.stringify(parsedDynSaldos),
         activo: editingGroup?.activo ?? true,
       };
@@ -387,30 +392,34 @@ export const GroupsTab: React.FC = () => {
   return (
     <div className="space-y-6 max-w-7xl mx-auto">
       {/* Header */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-slate-800 pb-4">
-        <div>
-          <h2 className="text-xl font-black text-white flex items-center gap-2">
-            <Handshake className="w-6 h-6 text-emerald-400" />
-            <span>Gestión de Grupos (Intermediarios / Sub-Comercializadores)</span>
-          </h2>
-          <p className="text-xs text-slate-400 mt-1">
-            Administra redes de agencias intermediadas, asigna comisiones de diferencial (overriding) y liquida utilidades compartidas.
-          </p>
+      <div className={UI_LOCK.headerCard}>
+        <div className="flex items-center gap-3">
+          <div className="p-2.5 rounded-xl bg-emerald-50 text-emerald-700 border border-emerald-200 dark:bg-emerald-500/10 dark:text-emerald-400 dark:border-emerald-500/20">
+            <Handshake className="w-5 h-5" />
+          </div>
+          <div>
+            <h2 className="text-xl font-bold text-slate-900 dark:text-white">
+              Gestión de Grupos (Intermediarios / Sub-Comercializadores)
+            </h2>
+            <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
+              Administra redes de agencias intermediadas, asigna comisiones de diferencial (overriding) y liquida utilidades compartidas.
+            </p>
+          </div>
         </div>
 
         <div className="flex items-center gap-2">
           <button
             onClick={loadData}
             disabled={loading}
-            className="p-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 transition-colors flex items-center gap-1.5 text-xs font-bold cursor-pointer"
+            className="p-2.5 rounded-xl bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-300 transition-colors flex items-center gap-1.5 text-xs font-semibold border border-slate-300 dark:border-slate-700 cursor-pointer"
           >
-            <RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin text-emerald-400' : ''}`} />
+            <RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin text-emerald-500' : ''}`} />
             <span className="hidden sm:inline">Refrescar</span>
           </button>
 
           <button
             onClick={handleOpenCreate}
-            className="py-2.5 px-4 rounded-xl bg-emerald-500 hover:bg-emerald-400 text-black font-black text-xs tracking-wide transition-all shadow-lg flex items-center gap-2 cursor-pointer"
+            className={UI_LOCK.buttonPrimary + ' text-xs'}
           >
             <Plus className="w-4 h-4" />
             <span>NUEVO GRUPO</span>
@@ -423,8 +432,8 @@ export const GroupsTab: React.FC = () => {
         <div
           className={`p-3.5 rounded-xl border text-xs font-semibold flex items-center gap-2 ${
             message.type === 'success'
-              ? 'bg-emerald-500/10 border-emerald-500/30 text-emerald-400'
-              : 'bg-rose-500/10 border-rose-500/30 text-rose-400'
+              ? 'bg-emerald-50 border-emerald-200 text-emerald-800 dark:bg-emerald-500/10 dark:border-emerald-500/30 dark:text-emerald-400'
+              : 'bg-rose-50 border-rose-200 text-rose-800 dark:bg-rose-500/10 dark:border-rose-500/30 dark:text-rose-400'
           }`}
         >
           {message.type === 'success' ? <CheckCircle2 className="w-4 h-4 shrink-0" /> : <AlertTriangle className="w-4 h-4 shrink-0" />}
@@ -435,36 +444,36 @@ export const GroupsTab: React.FC = () => {
       {/* Search & Stats Bar */}
       <div className="flex flex-col sm:flex-row items-center justify-between gap-3">
         <div className="relative w-full sm:w-80">
-          <Search className="w-4 h-4 absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-500" />
+          <Search className="w-4 h-4 absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400" />
           <input
             type="text"
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
             placeholder="Buscar por grupo, código o responsable..."
-            className="w-full bg-[#0D1B22] border border-slate-800 rounded-xl pl-9 pr-3.5 py-2 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-emerald-500 font-medium"
+            className={UI_LOCK.input + ' pl-9 text-xs font-medium'}
           />
         </div>
 
-        <div className="flex items-center gap-3 text-xs text-slate-400 self-end sm:self-auto font-mono">
-          <span>Total Grupos: <strong className="text-white">{groups.length}</strong></span>
+        <div className="flex items-center gap-3 text-xs text-slate-500 dark:text-slate-400 self-end sm:self-auto font-mono">
+          <span>Total Grupos: <strong className="text-slate-900 dark:text-white">{groups.length}</strong></span>
           <span>•</span>
-          <span>Activos: <strong className="text-emerald-400">{groups.filter((g) => g.activo !== false).length}</strong></span>
+          <span>Activos: <strong className="text-emerald-600 dark:text-emerald-400">{groups.filter((g) => g.activo !== false).length}</strong></span>
           <span>•</span>
-          <span>Agencias en Grupos: <strong className="text-cyan-400">{agencies.filter((a) => Boolean(a.grupo_id || a.grupo_nombre)).length}</strong></span>
+          <span>Agencias en Grupos: <strong className="text-cyan-600 dark:text-cyan-400">{agencies.filter((a) => Boolean(a.grupo_id || a.grupo_nombre)).length}</strong></span>
         </div>
       </div>
 
       {/* Groups Grid / Cards */}
       {filteredGroups.length === 0 ? (
-        <div className="bg-[#0D1B22] border border-slate-800 rounded-2xl p-12 text-center">
-          <Handshake className="w-12 h-12 text-slate-600 mx-auto mb-3" />
-          <h3 className="text-base font-bold text-white mb-1">No hay grupos registrados</h3>
-          <p className="text-xs text-slate-400 max-w-md mx-auto mb-5">
+        <div className={UI_LOCK.card + ' p-12 text-center'}>
+          <Handshake className="w-12 h-12 text-slate-400 dark:text-slate-600 mx-auto mb-3" />
+          <h3 className="text-base font-bold text-slate-900 dark:text-white mb-1">No hay grupos registrados</h3>
+          <p className="text-xs text-slate-500 dark:text-slate-400 max-w-md mx-auto mb-5">
             Crea intermediarios o sub-comercializadores para agrupar agencias y liquidar comisiones y utilidades diferenciales.
           </p>
           <button
             onClick={handleOpenCreate}
-            className="inline-flex items-center gap-2 py-2.5 px-5 rounded-xl bg-emerald-500 hover:bg-emerald-400 text-black font-black text-xs cursor-pointer"
+            className={UI_LOCK.buttonPrimary + ' text-xs'}
           >
             <Plus className="w-4 h-4" />
             <span>CREAR PRIMER GRUPO</span>
@@ -477,13 +486,13 @@ export const GroupsTab: React.FC = () => {
               (a) => a.grupo_id === grp.id || a.grupo_nombre?.toUpperCase() === grp.nombre_grupo.toUpperCase()
             ).length;
 
-            const grpMonedas = grp.monedas ? grp.monedas.split(',').map((m) => m.trim().toUpperCase()) : ['BS', 'USD', 'COP'];
+            const grpMonedas = grp.monedas ? grp.monedas.split(',').map((m) => m.trim().toUpperCase()).filter(Boolean) : currencies.map(c => c.codigo);
 
             return (
               <div
                 key={grp.id}
-                className={`bg-[#0D1B22] border rounded-2xl p-4 transition-all flex flex-col justify-between shadow-lg ${
-                  grp.activo !== false ? 'border-slate-800 hover:border-emerald-500/40' : 'border-rose-900/30 opacity-70'
+                className={UI_LOCK.card + ` p-4 transition-all flex flex-col justify-between hover:border-emerald-500/40 ${
+                  grp.activo !== false ? '' : 'border-rose-300 dark:border-rose-900/30 opacity-70'
                 }`}
               >
                 <div>
@@ -491,17 +500,17 @@ export const GroupsTab: React.FC = () => {
                   <div className="flex items-start justify-between gap-2 mb-2">
                     <div>
                       <div className="flex items-center gap-1.5">
-                        <span className="text-sm font-black text-white tracking-wide">{grp.nombre_grupo}</span>
+                        <span className="text-sm font-black text-slate-900 dark:text-white tracking-wide">{grp.nombre_grupo}</span>
                         {grp.codigo && (
-                          <span className="px-1.5 py-0.5 rounded text-[10px] font-mono font-bold bg-slate-800 text-slate-400">
+                          <span className="px-1.5 py-0.5 rounded text-[10px] font-mono font-bold bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400">
                             {grp.codigo}
                           </span>
                         )}
                       </div>
                       {grp.responsable && (
-                        <p className="text-xs text-slate-400 mt-0.5 flex items-center gap-1">
+                        <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5 flex items-center gap-1">
                           <span>Resp:</span>
-                          <strong className="text-slate-200">{grp.responsable}</strong>
+                          <strong className="text-slate-800 dark:text-slate-200">{grp.responsable}</strong>
                         </p>
                       )}
                     </div>
@@ -509,8 +518,8 @@ export const GroupsTab: React.FC = () => {
                     <span
                       className={`px-2 py-0.5 rounded text-[10px] font-bold shrink-0 ${
                         grp.activo !== false
-                          ? 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20'
-                          : 'bg-rose-500/10 text-rose-400 border border-rose-500/20'
+                          ? 'bg-emerald-50 text-emerald-700 border border-emerald-200 dark:bg-emerald-500/10 dark:text-emerald-400 dark:border-emerald-500/20'
+                          : 'bg-rose-50 text-rose-700 border border-rose-200 dark:bg-rose-500/10 dark:text-rose-400 dark:border-rose-500/20'
                       }`}
                     >
                       {grp.activo !== false ? 'ACTIVO' : 'INACTIVO'}
@@ -518,20 +527,20 @@ export const GroupsTab: React.FC = () => {
                   </div>
 
                   {/* Conditions Pills */}
-                  <div className="grid grid-cols-2 gap-2 my-3 p-2.5 rounded-xl bg-[#071217] border border-slate-800/80 text-xs">
+                  <div className="grid grid-cols-2 gap-2 my-3 p-2.5 rounded-xl bg-slate-50 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-800/80 text-xs">
                     <div>
-                      <span className="text-[10px] text-slate-500 font-bold block uppercase">Comisión Default</span>
-                      <strong className="text-emerald-400 font-mono text-sm">{grp.comision_pct_default || 0}%</strong>
+                      <span className="text-[10px] text-slate-500 dark:text-slate-400 font-bold block uppercase">Comisión Default</span>
+                      <strong className="text-emerald-600 dark:text-emerald-400 font-mono text-sm">{grp.comision_pct_default || 0}%</strong>
                     </div>
                     <div>
-                      <span className="text-[10px] text-slate-500 font-bold block uppercase">Participación</span>
-                      <strong className="text-cyan-400 font-mono text-sm">{grp.participacion_pct_default || 0}%</strong>
+                      <span className="text-[10px] text-slate-500 dark:text-slate-400 font-bold block uppercase">Participación</span>
+                      <strong className="text-cyan-600 dark:text-cyan-400 font-mono text-sm">{grp.participacion_pct_default || 0}%</strong>
                     </div>
                   </div>
 
                   {/* Assigned Currencies */}
                   <div className="mb-3">
-                    <span className="text-[10px] font-bold text-slate-500 uppercase block mb-1">Divisas Activas:</span>
+                    <span className="text-[10px] font-bold text-slate-500 dark:text-slate-400 uppercase block mb-1">Divisas Activas:</span>
                     <div className="flex flex-wrap gap-1">
                       {grpMonedas.map((m) => (
                         <span
@@ -546,22 +555,22 @@ export const GroupsTab: React.FC = () => {
                   </div>
 
                   {/* Daughter Agencies Tag */}
-                  <div className="flex items-center justify-between text-xs py-2 border-t border-slate-800/60 font-mono">
-                    <span className="text-slate-400 flex items-center gap-1">
-                      <Store className="w-3.5 h-3.5 text-cyan-400" />
+                  <div className="flex items-center justify-between text-xs py-2 border-t border-slate-200 dark:border-slate-800/60 font-mono">
+                    <span className="text-slate-500 dark:text-slate-400 flex items-center gap-1">
+                      <Store className="w-3.5 h-3.5 text-cyan-600 dark:text-cyan-400" />
                       <span>Agencias Hijas:</span>
                     </span>
-                    <span className="font-bold text-white px-2 py-0.5 rounded bg-slate-800">
+                    <span className="font-bold text-slate-800 dark:text-white px-2 py-0.5 rounded bg-slate-100 dark:bg-slate-800">
                       {daughterCount} agencias
                     </span>
                   </div>
                 </div>
 
                 {/* Card Actions */}
-                <div className="flex items-center justify-between gap-2 pt-3 border-t border-slate-800 mt-2">
+                <div className="flex items-center justify-between gap-2 pt-3 border-t border-slate-200 dark:border-slate-800 mt-2">
                   <button
                     onClick={() => handleOpenTreeManager(grp)}
-                    className="flex-1 py-1.5 px-2.5 rounded-xl bg-cyan-950/60 hover:bg-cyan-900/80 text-cyan-300 border border-cyan-800/50 text-xs font-bold flex items-center justify-center gap-1.5 transition-colors cursor-pointer"
+                    className="flex-1 py-1.5 px-2.5 rounded-xl bg-cyan-50 hover:bg-cyan-100 dark:bg-cyan-950/60 dark:hover:bg-cyan-900/80 text-cyan-800 dark:text-cyan-300 border border-cyan-200 dark:border-cyan-800/50 text-xs font-bold flex items-center justify-center gap-1.5 transition-colors cursor-pointer"
                     title="Asignar agencias a este grupo"
                   >
                     <Users className="w-3.5 h-3.5" />
@@ -570,7 +579,7 @@ export const GroupsTab: React.FC = () => {
 
                   <button
                     onClick={() => handleOpenEdit(grp)}
-                    className="p-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 transition-colors cursor-pointer"
+                    className="p-1.5 rounded-lg bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-300 border border-slate-200 dark:border-slate-700 transition-colors cursor-pointer"
                     title="Editar Grupo"
                   >
                     <Edit2 className="w-4 h-4" />
@@ -578,8 +587,8 @@ export const GroupsTab: React.FC = () => {
 
                   <button
                     onClick={() => handleToggleActive(grp)}
-                    className={`p-1.5 rounded-lg transition-colors cursor-pointer ${
-                      grp.activo !== false ? 'hover:bg-rose-500/20 text-slate-400 hover:text-rose-400' : 'hover:bg-emerald-500/20 text-emerald-400'
+                    className={`p-1.5 rounded-lg border border-slate-200 dark:border-slate-700 transition-colors cursor-pointer ${
+                      grp.activo !== false ? 'hover:bg-rose-50 text-slate-500 hover:text-rose-600 dark:text-slate-400 dark:hover:text-rose-400 dark:hover:bg-rose-500/20' : 'hover:bg-emerald-50 text-emerald-600 dark:text-emerald-400 dark:hover:bg-emerald-500/20'
                     }`}
                     title={grp.activo !== false ? 'Desactivar Grupo' : 'Activar Grupo'}
                   >
@@ -597,24 +606,24 @@ export const GroupsTab: React.FC = () => {
       {/* ========================================================================= */}
       {isModalOpen && (
         <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-3 overflow-y-auto">
-          <div className="bg-[#0D1B22] border border-slate-800 rounded-3xl w-full max-w-3xl shadow-2xl overflow-hidden my-6">
-            <div className="p-5 border-b border-slate-800 flex items-center justify-between bg-gradient-to-r from-emerald-950/30 to-slate-900">
+          <div className="bg-white dark:bg-[#111827] border border-slate-200 dark:border-slate-800 rounded-3xl w-full max-w-3xl shadow-2xl overflow-hidden my-6">
+            <div className="p-5 border-b border-slate-200 dark:border-slate-800 flex items-center justify-between bg-slate-50 dark:bg-slate-900/60">
               <div className="flex items-center gap-2.5">
-                <div className="p-2 rounded-xl bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">
+                <div className="p-2 rounded-xl bg-emerald-50 text-emerald-700 border border-emerald-200 dark:bg-emerald-500/10 dark:text-emerald-400 dark:border-emerald-500/20">
                   <Handshake className="w-5 h-5" />
                 </div>
                 <div>
-                  <h3 className="text-base font-black text-white">
+                  <h3 className="text-base font-bold text-slate-900 dark:text-white">
                     {editingGroup ? `Editar Grupo: ${editingGroup.nombre_grupo}` : 'Nuevo Grupo (Intermediario)'}
                   </h3>
-                  <p className="text-[11px] text-slate-400">
+                  <p className="text-[11px] text-slate-500 dark:text-slate-400">
                     Define la configuración financiera y comisiones para esta red de agencias.
                   </p>
                 </div>
               </div>
               <button
                 onClick={() => setIsModalOpen(false)}
-                className="p-2 rounded-xl text-slate-400 hover:text-white hover:bg-slate-800 transition-colors cursor-pointer"
+                className="p-2 rounded-xl text-slate-400 hover:text-slate-700 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors cursor-pointer"
               >
                 <X className="w-5 h-5" />
               </button>
@@ -623,64 +632,64 @@ export const GroupsTab: React.FC = () => {
             <form onSubmit={handleSaveGroup} className="p-6 space-y-5 text-xs">
               {/* Sección 1: Datos Generales */}
               <div className="space-y-3">
-                <h4 className="text-[11px] font-black uppercase text-emerald-400 tracking-wider flex items-center gap-1.5">
+                <h4 className="text-[11px] font-bold uppercase text-emerald-600 dark:text-emerald-400 tracking-wider flex items-center gap-1.5">
                   <Building2 className="w-4 h-4" />
                   <span>1. Datos Generales del Grupo</span>
                 </h4>
 
                 <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
                   <div className="sm:col-span-2">
-                    <label className="block text-slate-400 font-bold mb-1">Nombre del Grupo / Razón Social *</label>
+                    <label className="block text-slate-700 dark:text-slate-300 font-bold mb-1">Nombre del Grupo / Razón Social *</label>
                     <input
                       type="text"
                       value={nombreGrupo}
                       onChange={(e) => setNombreGrupo(e.target.value)}
                       placeholder="Ej: GRUPO OCCIDENTE, CONSORCIO MARACAIBO"
-                      className="w-full bg-[#071217] border border-slate-700 rounded-xl px-3 py-2 text-white font-bold uppercase focus:outline-none focus:border-emerald-500"
+                      className={UI_LOCK.input + ' font-bold uppercase'}
                       required
                     />
                   </div>
 
                   <div>
-                    <label className="block text-slate-400 font-bold mb-1">Código / Sigla</label>
+                    <label className="block text-slate-700 dark:text-slate-300 font-bold mb-1">Código / Sigla</label>
                     <input
                       type="text"
                       value={codigo}
                       onChange={(e) => setCodigo(e.target.value)}
                       placeholder="Ej: G-OCC, C-MCB"
-                      className="w-full bg-[#071217] border border-slate-700 rounded-xl px-3 py-2 text-white font-bold uppercase focus:outline-none focus:border-emerald-500"
+                      className={UI_LOCK.input + ' font-bold uppercase'}
                     />
                   </div>
                 </div>
 
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                   <div>
-                    <label className="block text-slate-400 font-bold mb-1">Responsable / Representante</label>
+                    <label className="block text-slate-700 dark:text-slate-300 font-bold mb-1">Responsable / Representante</label>
                     <input
                       type="text"
                       value={responsable}
                       onChange={(e) => setResponsable(e.target.value)}
                       placeholder="Ej: Juan Pérez"
-                      className="w-full bg-[#071217] border border-slate-700 rounded-xl px-3 py-2 text-white focus:outline-none focus:border-emerald-500"
+                      className={UI_LOCK.input}
                     />
                   </div>
 
                   <div>
-                    <label className="block text-slate-400 font-bold mb-1">Teléfono / WhatsApp</label>
+                    <label className="block text-slate-700 dark:text-slate-300 font-bold mb-1">Teléfono / WhatsApp</label>
                     <input
                       type="text"
                       value={telefono}
                       onChange={(e) => setTelefono(e.target.value)}
                       placeholder="Ej: +58 414 1234567"
-                      className="w-full bg-[#071217] border border-slate-700 rounded-xl px-3 py-2 text-white focus:outline-none focus:border-emerald-500 font-mono"
+                      className={UI_LOCK.input + ' font-mono'}
                     />
                   </div>
                 </div>
               </div>
 
               {/* Sección 2: Monedas Habilitadas */}
-              <div className="space-y-2 pt-2 border-t border-slate-800">
-                <label className="block text-slate-400 font-bold">
+              <div className="space-y-2 pt-2 border-t border-slate-200 dark:border-slate-800">
+                <label className="block text-slate-700 dark:text-slate-300 font-bold">
                   2. Divisas Autorizadas para el Grupo (Multi-Divisa Dinámica)
                 </label>
                 <div className="flex flex-wrap gap-2">
@@ -693,13 +702,13 @@ export const GroupsTab: React.FC = () => {
                         onClick={() => toggleMoneda(c.codigo)}
                         className={`px-3 py-1.5 rounded-xl text-xs font-bold flex items-center gap-1.5 border transition-all cursor-pointer ${
                           isSelected
-                            ? 'bg-emerald-500/20 text-emerald-300 border-emerald-500 shadow-sm'
-                            : 'bg-slate-800/60 text-slate-400 border-slate-700 hover:bg-slate-800'
+                            ? 'bg-emerald-50 dark:bg-emerald-500/20 text-emerald-800 dark:text-emerald-300 border-emerald-500 shadow-sm'
+                            : 'bg-slate-100 dark:bg-slate-800/60 text-slate-600 dark:text-slate-400 border-slate-300 dark:border-slate-700 hover:bg-slate-200 dark:hover:bg-slate-800'
                         }`}
                       >
                         <span>{getCurrencyFlag(c.codigo)}</span>
                         <span>{c.codigo}</span>
-                        {isSelected && <Check className="w-3.5 h-3.5 text-emerald-400 ml-0.5" />}
+                        {isSelected && <Check className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400 ml-0.5" />}
                       </button>
                     );
                   })}
@@ -707,15 +716,15 @@ export const GroupsTab: React.FC = () => {
               </div>
 
               {/* Sección 3: Reglas de Liquidación y Overriding */}
-              <div className="space-y-3 pt-2 border-t border-slate-800">
-                <h4 className="text-[11px] font-black uppercase text-cyan-400 tracking-wider flex items-center gap-1.5">
+              <div className="space-y-3 pt-2 border-t border-slate-200 dark:border-slate-800">
+                <h4 className="text-[11px] font-bold uppercase text-cyan-600 dark:text-cyan-400 tracking-wider flex items-center gap-1.5">
                   <Percent className="w-4 h-4" />
                   <span>3. Porcentajes de Comisión y Participación al Grupo</span>
                 </h4>
 
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                  <div className="p-3 rounded-xl bg-[#071217] border border-slate-800">
-                    <label className="block text-slate-400 font-bold mb-1">
+                  <div className="p-3 rounded-xl bg-slate-50 dark:bg-slate-800/40 border border-slate-200 dark:border-slate-800">
+                    <label className="block text-slate-700 dark:text-slate-300 font-bold mb-1">
                       % Comisión Pactada al Grupo (Base) *
                     </label>
                     <div className="relative">
@@ -726,18 +735,18 @@ export const GroupsTab: React.FC = () => {
                         max="100"
                         value={comisionDefault}
                         onChange={(e) => setComisionDefault(e.target.value)}
-                        className="w-full bg-[#0D1B22] border border-slate-700 rounded-xl px-3 py-2 text-white font-mono font-bold text-sm focus:outline-none focus:border-cyan-500"
+                        className={UI_LOCK.input + ' font-mono font-bold text-sm'}
                         required
                       />
-                      <span className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-500 font-bold">%</span>
+                      <span className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 font-bold">%</span>
                     </div>
-                    <p className="text-[10px] text-slate-500 mt-1">
+                    <p className="text-[10px] text-slate-500 dark:text-slate-400 mt-1">
                       El grupo gana: <code>% Grupo - % Agencia Hija</code> sobre la venta.
                     </p>
                   </div>
 
-                  <div className="p-3 rounded-xl bg-[#071217] border border-slate-800">
-                    <label className="block text-slate-400 font-bold mb-1">
+                  <div className="p-3 rounded-xl bg-slate-50 dark:bg-slate-800/40 border border-slate-200 dark:border-slate-800">
+                    <label className="block text-slate-700 dark:text-slate-300 font-bold mb-1">
                       % Participación en Utilidad Neta (Base) *
                     </label>
                     <div className="relative">
@@ -748,12 +757,12 @@ export const GroupsTab: React.FC = () => {
                         max="100"
                         value={participacionDefault}
                         onChange={(e) => setParticipacionDefault(e.target.value)}
-                        className="w-full bg-[#0D1B22] border border-slate-700 rounded-xl px-3 py-2 text-white font-mono font-bold text-sm focus:outline-none focus:border-cyan-500"
+                        className={UI_LOCK.input + ' font-mono font-bold text-sm'}
                         required
                       />
-                      <span className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-500 font-bold">%</span>
+                      <span className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 font-bold">%</span>
                     </div>
-                    <p className="text-[10px] text-slate-500 mt-1">
+                    <p className="text-[10px] text-slate-500 dark:text-slate-400 mt-1">
                       Reparto sobre la utilidad limpia tras premios y comisiones.
                     </p>
                   </div>
@@ -761,8 +770,8 @@ export const GroupsTab: React.FC = () => {
 
                 {/* Overriding conditions per system/operator */}
                 {systems.length > 0 && (
-                  <div className="mt-3 p-3.5 rounded-2xl bg-[#071217] border border-slate-800 space-y-2.5">
-                    <span className="text-[10px] font-bold text-slate-400 uppercase block">
+                  <div className="mt-3 p-3.5 rounded-2xl bg-slate-50 dark:bg-slate-800/30 border border-slate-200 dark:border-slate-800 space-y-2.5">
+                    <span className="text-[10px] font-bold text-slate-600 dark:text-slate-400 uppercase block">
                       Condiciones Específicas por Casa Operadora / Sistema (Opcional):
                     </span>
                     <div className="space-y-2 max-h-48 overflow-y-auto pr-1">
@@ -771,9 +780,9 @@ export const GroupsTab: React.FC = () => {
                         return (
                           <div
                             key={sys.nombre_sistema}
-                            className="flex items-center justify-between gap-3 p-2 rounded-xl bg-[#0D1B22] border border-slate-800"
+                            className="flex items-center justify-between gap-3 p-2 rounded-xl bg-white dark:bg-slate-800/80 border border-slate-200 dark:border-slate-700"
                           >
-                            <span className="font-bold text-white text-xs">{sys.nombre_sistema}</span>
+                            <span className="font-bold text-slate-800 dark:text-white text-xs">{sys.nombre_sistema}</span>
                             <div className="flex items-center gap-2">
                               <div className="flex items-center gap-1">
                                 <span className="text-[10px] text-slate-500">Com:</span>
@@ -792,7 +801,7 @@ export const GroupsTab: React.FC = () => {
                                       },
                                     }));
                                   }}
-                                  className="w-16 bg-[#071217] border border-slate-700 rounded-lg px-2 py-1 text-xs text-white font-mono font-bold text-right"
+                                  className="w-16 bg-slate-50 dark:bg-[#071217] border border-slate-300 dark:border-slate-700 rounded-lg px-2 py-1 text-xs text-slate-900 dark:text-white font-mono font-bold text-right"
                                 />
                                 <span className="text-[10px] text-slate-500">%</span>
                               </div>
@@ -814,7 +823,7 @@ export const GroupsTab: React.FC = () => {
                                       },
                                     }));
                                   }}
-                                  className="w-16 bg-[#071217] border border-slate-700 rounded-lg px-2 py-1 text-xs text-white font-mono font-bold text-right"
+                                  className="w-16 bg-slate-50 dark:bg-[#071217] border border-slate-300 dark:border-slate-700 rounded-lg px-2 py-1 text-xs text-slate-900 dark:text-white font-mono font-bold text-right"
                                 />
                                 <span className="text-[10px] text-slate-500">%</span>
                               </div>
@@ -827,81 +836,44 @@ export const GroupsTab: React.FC = () => {
                 )}
               </div>
 
-              {/* Sección 4: Arrastres Iniciales */}
-              <div className="space-y-3 pt-2 border-t border-slate-800">
-                <h4 className="text-[11px] font-black uppercase text-amber-400 tracking-wider flex items-center gap-1.5">
+              {/* Sección 4: Arrastres Iniciales Dinámicos */}
+              <div className="space-y-3 pt-2 border-t border-slate-200 dark:border-slate-800">
+                <h4 className="text-[11px] font-bold uppercase text-amber-600 dark:text-amber-400 tracking-wider flex items-center gap-1.5">
                   <DollarSign className="w-4 h-4" />
                   <span>4. Saldos Iniciales / Arrastre del Grupo</span>
                 </h4>
 
-                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-                  <div>
-                    <label className="block text-slate-400 font-bold mb-1">Arrastre Inicial BS</label>
-                    <input
-                      type="number"
-                      step="0.01"
-                      value={saldoBs}
-                      onChange={(e) => setSaldoBs(e.target.value)}
-                      className="w-full bg-[#071217] border border-slate-700 rounded-xl px-3 py-2 text-white font-mono font-bold focus:outline-none focus:border-amber-500"
-                    />
-                  </div>
-
-                  <div>
-                    <label className="block text-slate-400 font-bold mb-1">Arrastre Inicial USD</label>
-                    <input
-                      type="number"
-                      step="0.01"
-                      value={saldoUsd}
-                      onChange={(e) => setSaldoUsd(e.target.value)}
-                      className="w-full bg-[#071217] border border-slate-700 rounded-xl px-3 py-2 text-white font-mono font-bold focus:outline-none focus:border-amber-500"
-                    />
-                  </div>
-
-                  <div>
-                    <label className="block text-slate-400 font-bold mb-1">Arrastre Inicial COP</label>
-                    <input
-                      type="number"
-                      step="1"
-                      value={saldoCop}
-                      onChange={(e) => setSaldoCop(e.target.value)}
-                      className="w-full bg-[#071217] border border-slate-700 rounded-xl px-3 py-2 text-white font-mono font-bold focus:outline-none focus:border-amber-500"
-                    />
-                  </div>
+                <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3">
+                  {selectedMonedas.map((cur) => (
+                    <div key={cur} className="p-3 rounded-xl bg-slate-50 dark:bg-slate-800/40 border border-slate-200 dark:border-slate-800">
+                      <label className="block text-slate-700 dark:text-slate-300 font-bold mb-1 flex items-center gap-1.5">
+                        <span>{getCurrencyFlag(cur)}</span>
+                        <span>Arrastre Inicial ({cur})</span>
+                      </label>
+                      <input
+                        type="number"
+                        step="0.01"
+                        value={saldosDinamicos[cur] || ''}
+                        onChange={(e) =>
+                          setSaldosDinamicos((prev) => ({
+                            ...prev,
+                            [cur]: e.target.value,
+                          }))
+                        }
+                        placeholder="0.00"
+                        className={UI_LOCK.input + ' font-mono font-bold'}
+                      />
+                    </div>
+                  ))}
                 </div>
-
-                {/* Additional dynamic currencies initial balances */}
-                {selectedMonedas.filter((m) => !['BS', 'USD', 'COP'].includes(m)).length > 0 && (
-                  <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 pt-1">
-                    {selectedMonedas
-                      .filter((m) => !['BS', 'USD', 'COP'].includes(m))
-                      .map((cur) => (
-                        <div key={cur}>
-                          <label className="block text-slate-400 font-bold mb-1">Arrastre Inicial {cur}</label>
-                          <input
-                            type="number"
-                            step="0.01"
-                            value={saldosDinamicos[cur] || ''}
-                            onChange={(e) =>
-                              setSaldosDinamicos((prev) => ({
-                                ...prev,
-                                [cur]: e.target.value,
-                              }))
-                            }
-                            placeholder="0.00"
-                            className="w-full bg-[#071217] border border-slate-700 rounded-xl px-3 py-2 text-white font-mono font-bold focus:outline-none focus:border-cyan-500"
-                          />
-                        </div>
-                      ))}
-                  </div>
-                )}
               </div>
 
               {/* Botones de acción modal */}
-              <div className="flex items-center justify-end gap-3 pt-4 border-t border-slate-800">
+              <div className="flex items-center justify-end gap-3 pt-4 border-t border-slate-200 dark:border-slate-800">
                 <button
                   type="button"
                   onClick={() => setIsModalOpen(false)}
-                  className="px-5 py-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 font-bold text-xs transition-colors cursor-pointer"
+                  className="px-4 py-2 rounded-xl text-xs font-semibold text-slate-600 hover:text-slate-900 hover:bg-slate-100 dark:text-slate-400 dark:hover:text-white dark:hover:bg-slate-800 transition-colors cursor-pointer"
                 >
                   Cancelar
                 </button>
@@ -909,10 +881,10 @@ export const GroupsTab: React.FC = () => {
                 <button
                   type="submit"
                   disabled={saving}
-                  className="px-6 py-2.5 rounded-xl bg-emerald-500 hover:bg-emerald-400 text-black font-black text-xs transition-all shadow-lg flex items-center gap-2 cursor-pointer disabled:opacity-50"
+                  className={UI_LOCK.buttonPrimary + ' text-xs'}
                 >
                   {saving ? (
-                    <div className="w-4 h-4 border-2 border-black border-t-transparent rounded-full animate-spin" />
+                    <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
                   ) : (
                     <>
                       <Save className="w-4 h-4" />
@@ -931,24 +903,24 @@ export const GroupsTab: React.FC = () => {
       {/* ========================================================================= */}
       {treeModalGroup && (
         <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-3 overflow-y-auto">
-          <div className="bg-[#0D1B22] border border-slate-800 rounded-3xl w-full max-w-2xl shadow-2xl overflow-hidden my-6">
-            <div className="p-5 border-b border-slate-800 flex items-center justify-between bg-gradient-to-r from-cyan-950/30 to-slate-900">
+          <div className="bg-white dark:bg-[#111827] border border-slate-200 dark:border-slate-800 rounded-3xl w-full max-w-2xl shadow-2xl overflow-hidden my-6">
+            <div className="p-5 border-b border-slate-200 dark:border-slate-800 flex items-center justify-between bg-slate-50 dark:bg-slate-900/60">
               <div className="flex items-center gap-2.5">
-                <div className="p-2 rounded-xl bg-cyan-500/10 text-cyan-400 border border-cyan-500/20">
+                <div className="p-2 rounded-xl bg-cyan-50 text-cyan-700 border border-cyan-200 dark:bg-cyan-500/10 dark:text-cyan-400 dark:border-cyan-500/20">
                   <Users className="w-5 h-5" />
                 </div>
                 <div>
-                  <h3 className="text-base font-black text-white">
+                  <h3 className="text-base font-bold text-slate-900 dark:text-white">
                     Asignar Agencias: {treeModalGroup.nombre_grupo}
                   </h3>
-                  <p className="text-[11px] text-slate-400">
+                  <p className="text-[11px] text-slate-500 dark:text-slate-400">
                     Selecciona en lote las agencias que operan bajo este intermediario.
                   </p>
                 </div>
               </div>
               <button
                 onClick={() => setTreeModalGroup(null)}
-                className="p-2 rounded-xl text-slate-400 hover:text-white hover:bg-slate-800 transition-colors cursor-pointer"
+                className="p-2 rounded-xl text-slate-400 hover:text-slate-700 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors cursor-pointer"
               >
                 <X className="w-5 h-5" />
               </button>
@@ -957,26 +929,26 @@ export const GroupsTab: React.FC = () => {
             <div className="p-5 space-y-4">
               {/* Buscador de agencias */}
               <div className="relative">
-                <Search className="w-4 h-4 absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-500" />
+                <Search className="w-4 h-4 absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400" />
                 <input
                   type="text"
                   value={treeSearch}
                   onChange={(e) => setTreeSearch(e.target.value)}
                   placeholder="Filtrar agencias por nombre..."
-                  className="w-full bg-[#071217] border border-slate-700 rounded-xl pl-9 pr-3.5 py-2 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-cyan-500"
+                  className={UI_LOCK.input + ' pl-9 text-xs'}
                 />
               </div>
 
               {/* Acciones de selección rápida */}
-              <div className="flex items-center justify-between text-xs text-slate-400 font-mono">
+              <div className="flex items-center justify-between text-xs text-slate-500 dark:text-slate-400 font-mono">
                 <span>
-                  Seleccionadas: <strong className="text-cyan-400">{selectedAgencyIds.length}</strong> de {agencies.length}
+                  Seleccionadas: <strong className="text-cyan-600 dark:text-cyan-400">{selectedAgencyIds.length}</strong> de {agencies.length}
                 </span>
                 <div className="flex items-center gap-2">
                   <button
                     type="button"
                     onClick={() => setSelectedAgencyIds(agencies.map((a) => a.id))}
-                    className="text-[11px] text-cyan-400 hover:underline font-bold"
+                    className="text-[11px] text-cyan-600 dark:text-cyan-400 hover:underline font-bold"
                   >
                     Marcar Todas
                   </button>
@@ -984,7 +956,7 @@ export const GroupsTab: React.FC = () => {
                   <button
                     type="button"
                     onClick={() => setSelectedAgencyIds([])}
-                    className="text-[11px] text-slate-400 hover:underline font-bold"
+                    className="text-[11px] text-slate-500 dark:text-slate-400 hover:underline font-bold"
                   >
                     Desmarcar
                   </button>
@@ -992,7 +964,7 @@ export const GroupsTab: React.FC = () => {
               </div>
 
               {/* Lista con scroll y checkboxes */}
-              <div className="border border-slate-800 rounded-2xl bg-[#071217] max-h-80 overflow-y-auto divide-y divide-slate-800/60 p-1">
+              <div className="border border-slate-200 dark:border-slate-800 rounded-2xl bg-slate-50/50 dark:bg-[#071217] max-h-80 overflow-y-auto divide-y divide-slate-200 dark:divide-slate-800/60 p-1">
                 {agencies
                   .filter((a) => a.nombre_agencia.toLowerCase().includes(treeSearch.toLowerCase()))
                   .map((ag) => {
@@ -1006,7 +978,7 @@ export const GroupsTab: React.FC = () => {
                       <label
                         key={ag.id}
                         className={`flex items-center justify-between p-3 rounded-xl cursor-pointer transition-colors ${
-                          isChecked ? 'bg-cyan-950/30' : 'hover:bg-slate-800/40'
+                          isChecked ? 'bg-cyan-50 dark:bg-cyan-950/30' : 'hover:bg-slate-100 dark:hover:bg-slate-800/40'
                         }`}
                       >
                         <div className="flex items-center gap-3">
@@ -1018,12 +990,12 @@ export const GroupsTab: React.FC = () => {
                                 isChecked ? prev.filter((id) => id !== ag.id) : [...prev, ag.id]
                               );
                             }}
-                            className="w-4 h-4 rounded text-cyan-500 focus:ring-0 bg-[#0D1B22] border-slate-700 cursor-pointer"
+                            className="w-4 h-4 rounded text-emerald-600 focus:ring-0 cursor-pointer"
                           />
                           <div>
-                            <span className="text-xs font-black text-white">{ag.nombre_agencia}</span>
+                            <span className="text-xs font-bold text-slate-900 dark:text-white">{ag.nombre_agencia}</span>
                             {currentOtherGroup && (
-                              <span className="text-[10px] text-amber-400 block font-mono">
+                              <span className="text-[10px] text-amber-600 dark:text-amber-400 block font-mono">
                                 Actualmente en: {currentOtherGroup}
                               </span>
                             )}
@@ -1031,7 +1003,7 @@ export const GroupsTab: React.FC = () => {
                         </div>
 
                         <div className="flex items-center gap-2">
-                          <span className="text-[10px] text-slate-400 font-mono">
+                          <span className="text-[10px] text-slate-500 dark:text-slate-400 font-mono">
                             Com: {ag.comision || 0}% • Part: {ag.participacion_ag || 0}%
                           </span>
                         </div>
@@ -1041,11 +1013,11 @@ export const GroupsTab: React.FC = () => {
               </div>
 
               {/* Botones de acción modal árbol */}
-              <div className="flex items-center justify-end gap-3 pt-3 border-t border-slate-800">
+              <div className="flex items-center justify-end gap-3 pt-3 border-t border-slate-200 dark:border-slate-800">
                 <button
                   type="button"
                   onClick={() => setTreeModalGroup(null)}
-                  className="px-5 py-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 font-bold text-xs cursor-pointer"
+                  className="px-4 py-2 rounded-xl text-xs font-semibold text-slate-600 hover:text-slate-900 hover:bg-slate-100 dark:text-slate-400 dark:hover:text-white dark:hover:bg-slate-800 transition-colors cursor-pointer"
                 >
                   Cancelar
                 </button>
@@ -1054,10 +1026,10 @@ export const GroupsTab: React.FC = () => {
                   type="button"
                   onClick={handleSaveTreeAssignment}
                   disabled={savingTree}
-                  className="px-6 py-2.5 rounded-xl bg-cyan-500 hover:bg-cyan-400 text-black font-black text-xs transition-all shadow-lg flex items-center gap-2 cursor-pointer disabled:opacity-50"
+                  className={UI_LOCK.buttonPrimary + ' text-xs'}
                 >
                   {savingTree ? (
-                    <div className="w-4 h-4 border-2 border-black border-t-transparent rounded-full animate-spin" />
+                    <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
                   ) : (
                     <>
                       <CheckCheck className="w-4 h-4" />

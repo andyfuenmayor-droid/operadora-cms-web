@@ -181,12 +181,12 @@ export const Header: React.FC<HeaderProps> = ({ currentModule, onOpenMobile }) =
   }, []);
 
   return (
-    <header className="sticky top-0 z-30 bg-[#071217]/90 backdrop-blur-md border-b border-slate-800/80 px-4 sm:px-6 py-3 flex items-center justify-between gap-3">
+    <header className="sticky top-0 z-30 bg-white/95 dark:bg-[#071217]/90 backdrop-blur-md border-b border-slate-200 dark:border-slate-800/80 px-4 sm:px-6 py-3 flex items-center justify-between gap-3 transition-colors">
       {/* Left: Hamburger + Current Title */}
       <div className="flex items-center gap-3">
         <button
           onClick={onOpenMobile}
-          className="p-1.5 rounded-xl bg-slate-800/80 hover:bg-slate-700 text-slate-300 hover:text-white lg:hidden cursor-pointer"
+          className="p-1.5 rounded-xl bg-slate-100 hover:bg-slate-200 dark:bg-slate-800/80 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-300 hover:text-slate-900 dark:hover:text-white lg:hidden cursor-pointer"
         >
           <Menu className="w-5 h-5" />
         </button>
@@ -195,7 +195,7 @@ export const Header: React.FC<HeaderProps> = ({ currentModule, onOpenMobile }) =
           <div className="lg:hidden mr-1">
             <Logo className="h-6 w-auto" />
           </div>
-          <h1 className="text-base sm:text-lg font-black text-white tracking-tight flex items-center gap-2">
+          <h1 className="text-base sm:text-lg font-black text-slate-900 dark:text-white tracking-tight flex items-center gap-2">
             <span>{currentModule}</span>
           </h1>
         </div>
@@ -213,22 +213,22 @@ export const Header: React.FC<HeaderProps> = ({ currentModule, onOpenMobile }) =
           }}
           className={`px-2.5 py-1.5 rounded-xl border text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer shadow-sm ${
             hasNotificationPerm
-              ? 'bg-amber-500/10 border-amber-500/30 text-amber-400 hover:bg-amber-500/20'
-              : 'bg-slate-800/80 border-slate-700 text-slate-400 hover:text-white'
+              ? 'bg-amber-500/10 border-amber-500/30 text-amber-600 dark:text-amber-400 hover:bg-amber-500/20'
+              : 'bg-slate-100 hover:bg-slate-200 dark:bg-slate-800/80 dark:hover:bg-slate-700 border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
           }`}
           title="Probar sonido y alertas visuales"
         >
-          <Bell className="w-3.5 h-3.5 text-amber-400" />
+          <Bell className="w-3.5 h-3.5 text-amber-500 dark:text-amber-400" />
           <span className="hidden sm:inline">{hasNotificationPerm ? 'Alertas ON' : 'Activar Alertas'}</span>
         </button>
 
         {systemCycle && (
-          <div className="hidden sm:flex items-center gap-2 bg-[#0D1B22] border border-slate-800 px-3 py-1.5 rounded-xl text-xs">
-            <Calendar className="w-3.5 h-3.5 text-emerald-400 shrink-0" />
-            <span className="font-bold text-slate-300">
+          <div className="hidden sm:flex items-center gap-2 bg-slate-100 dark:bg-[#0D1B22] border border-slate-200 dark:border-slate-800 px-3 py-1.5 rounded-xl text-xs">
+            <Calendar className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400 shrink-0" />
+            <span className="font-bold text-slate-800 dark:text-slate-300">
               Semana {systemCycle.semana}:
             </span>
-            <span className="text-slate-400 font-mono text-[11px]">
+            <span className="text-slate-500 dark:text-slate-400 font-mono text-[11px]">
               {formatDate(systemCycle.desde)} al {formatDate(systemCycle.hasta)}
             </span>
             <button

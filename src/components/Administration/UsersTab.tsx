@@ -280,13 +280,13 @@ export const UsersTab: React.FC = () => {
       {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
-          <h2 className="text-xl sm:text-2xl font-black text-white flex items-center gap-2">
-            <span className="p-2 rounded-xl bg-purple-500/10 text-purple-400 border border-purple-500/20">
+          <h2 className="text-xl sm:text-2xl font-black text-slate-900 dark:text-white flex items-center gap-2">
+            <span className="p-2 rounded-xl bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20">
               <Users className="w-5 h-5" />
             </span>
             Gestión de Usuarios y Accesos
           </h2>
-          <p className="text-xs sm:text-sm text-slate-400 mt-1">
+          <p className="text-xs sm:text-sm text-slate-500 dark:text-slate-400 mt-1">
             Administra los usuarios secundarios autorizados para acceder a tu plataforma comercial y personaliza sus permisos por módulo.
           </p>
         </div>
@@ -295,7 +295,7 @@ export const UsersTab: React.FC = () => {
           <button
             onClick={() => loadData()}
             disabled={isLoading}
-            className="px-3.5 py-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-semibold flex items-center gap-1.5 transition-all border border-slate-700 cursor-pointer disabled:opacity-50"
+            className="px-3.5 py-2.5 rounded-xl bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-300 text-xs font-semibold flex items-center gap-1.5 transition-all border border-slate-200 dark:border-slate-700 cursor-pointer disabled:opacity-50 shadow-xs"
           >
             <RefreshCw className={`w-3.5 h-3.5 ${isLoading ? 'animate-spin' : ''}`} />
             Actualizar
@@ -304,7 +304,7 @@ export const UsersTab: React.FC = () => {
           <button
             id="tour-usuarios-btn"
             onClick={handleOpenNew}
-            className="px-4 py-2.5 rounded-xl bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-500 hover:to-indigo-500 text-white font-bold text-xs shadow-lg shadow-purple-600/20 flex items-center gap-2 transition-all cursor-pointer"
+            className="px-4 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs shadow-md shadow-emerald-600/20 flex items-center gap-2 transition-all cursor-pointer"
           >
             <UserPlus className="w-4 h-4" />
             Nuevo Usuario
@@ -316,8 +316,8 @@ export const UsersTab: React.FC = () => {
         <div
           className={`p-4 rounded-2xl border flex items-center gap-3 text-sm animate-fade-in ${
             message.type === 'success'
-              ? 'bg-emerald-500/10 border-emerald-500/20 text-emerald-400'
-              : 'bg-rose-500/10 border-rose-500/20 text-rose-400'
+              ? 'bg-emerald-500/10 border-emerald-500/20 text-emerald-600 dark:text-emerald-400'
+              : 'bg-rose-500/10 border-rose-500/20 text-rose-600 dark:text-rose-400'
           }`}
         >
           {message.type === 'success' ? (
@@ -331,32 +331,32 @@ export const UsersTab: React.FC = () => {
 
       {/* Search Bar */}
       <div className="relative">
-        <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+        <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 dark:text-slate-500" />
         <input
           type="text"
           placeholder="Buscar usuario por correo o rol..."
           value={searchQuery}
           onChange={(e) => setSearchQuery(e.target.value)}
-          className="w-full bg-[#0D1B22] border border-slate-800 rounded-2xl pl-9 pr-4 py-3 text-xs text-white focus:outline-none focus:border-purple-500"
+          className="w-full bg-white dark:bg-[#0D1B22] border border-slate-200 dark:border-slate-800 rounded-2xl pl-9 pr-4 py-3 text-xs text-slate-900 dark:text-white placeholder:text-slate-400 dark:placeholder:text-slate-500 focus:outline-none focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500/20 shadow-xs"
         />
       </div>
 
       {/* Users List */}
       {isLoading ? (
-        <div className="text-center py-16 bg-[#0D1B22] border border-slate-800 rounded-3xl">
-          <RefreshCw className="w-8 h-8 text-purple-400 animate-spin mx-auto mb-3" />
-          <p className="text-sm text-slate-400 font-medium">Cargando usuarios...</p>
+        <div className="text-center py-16 bg-white dark:bg-[#0D1B22] border border-slate-200 dark:border-slate-800 rounded-3xl shadow-sm">
+          <RefreshCw className="w-8 h-8 text-emerald-500 animate-spin mx-auto mb-3" />
+          <p className="text-sm text-slate-500 dark:text-slate-400 font-medium">Cargando usuarios...</p>
         </div>
       ) : filteredUsers.length === 0 ? (
-        <div className="text-center py-16 bg-[#0D1B22] border border-slate-800 rounded-3xl space-y-3">
-          <Users className="w-12 h-12 text-slate-600 mx-auto" />
-          <h4 className="text-base font-bold text-white">No hay usuarios secundarios registrados</h4>
-          <p className="text-xs text-slate-400 max-w-sm mx-auto">
+        <div className="text-center py-16 bg-white dark:bg-[#0D1B22] border border-slate-200 dark:border-slate-800 rounded-3xl space-y-3 shadow-sm">
+          <Users className="w-12 h-12 text-slate-400 dark:text-slate-600 mx-auto" />
+          <h4 className="text-base font-bold text-slate-900 dark:text-white">No hay usuarios secundarios registrados</h4>
+          <p className="text-xs text-slate-500 dark:text-slate-400 max-w-sm mx-auto">
             Puedes crear usuarios secundarios con contraseñas propias y restringir los módulos a los que tienen acceso.
           </p>
           <button
             onClick={handleOpenNew}
-            className="px-4 py-2 rounded-xl bg-purple-500/20 text-purple-400 border border-purple-500/30 text-xs font-bold hover:bg-purple-500/30 cursor-pointer transition-all inline-flex items-center gap-1.5"
+            className="px-4 py-2 rounded-xl bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20 text-xs font-bold hover:bg-emerald-500/20 cursor-pointer transition-all inline-flex items-center gap-1.5"
           >
             <UserPlus className="w-3.5 h-3.5" />
             Crear Primer Usuario
@@ -370,25 +370,25 @@ export const UsersTab: React.FC = () => {
             return (
               <div
                 key={u.id}
-                className="bg-[#0D1B22] border border-slate-800 hover:border-slate-700 rounded-2xl p-4 sm:p-5 transition-all flex flex-col md:flex-row md:items-center justify-between gap-4"
+                className="bg-white dark:bg-[#0D1B22] border border-slate-200 dark:border-slate-800 hover:border-slate-300 dark:hover:border-slate-700 rounded-2xl p-4 sm:p-5 transition-all flex flex-col md:flex-row md:items-center justify-between gap-4 shadow-sm"
               >
                 <div className="space-y-1.5 flex-1">
                   <div className="flex items-center gap-2">
-                    <span className="text-base font-black text-white">{u.email}</span>
-                    <span className="px-2.5 py-0.5 rounded-full bg-purple-500/15 text-purple-400 text-[10px] font-bold border border-purple-500/30">
+                    <span className="text-base font-black text-slate-900 dark:text-white">{u.email}</span>
+                    <span className="px-2.5 py-0.5 rounded-full bg-emerald-500/10 text-emerald-700 dark:text-emerald-400 text-[10px] font-bold border border-emerald-500/20">
                       {u.rol || 'Empleado'}
                     </span>
                   </div>
 
-                  <div className="text-xs text-slate-400 pt-1">
-                    <span className="text-[11px] font-bold text-slate-400 block mb-1">
+                  <div className="text-xs text-slate-500 dark:text-slate-400 pt-1">
+                    <span className="text-[11px] font-bold text-slate-600 dark:text-slate-400 block mb-1">
                       Módulos Permitidos ({accList.length}):
                     </span>
                     <div className="flex flex-wrap gap-1">
                       {accList.map((m) => (
                         <span
                           key={m}
-                          className="px-2 py-0.5 rounded-md bg-slate-800 text-slate-300 text-[10px] font-semibold border border-slate-700"
+                          className="px-2 py-0.5 rounded-md bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 text-[10px] font-semibold border border-slate-200 dark:border-slate-700"
                         >
                           {m}
                         </span>
@@ -397,18 +397,18 @@ export const UsersTab: React.FC = () => {
                   </div>
                 </div>
 
-                <div className="flex items-center gap-2 pt-3 md:pt-0 border-t md:border-t-0 border-slate-800 justify-end">
+                <div className="flex items-center gap-2 pt-3 md:pt-0 border-t md:border-t-0 border-slate-200 dark:border-slate-800 justify-end">
                   <button
                     onClick={() => handleOpenEdit(u)}
-                    className="px-3 py-1.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-semibold flex items-center gap-1.5 transition-all border border-slate-700 cursor-pointer"
+                    className="px-3 py-1.5 rounded-xl bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-300 text-xs font-semibold flex items-center gap-1.5 transition-all border border-slate-200 dark:border-slate-700 cursor-pointer shadow-xs"
                   >
-                    <Edit2 className="w-3.5 h-3.5 text-purple-400" />
+                    <Edit2 className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400" />
                     Permisos
                   </button>
 
                   <button
                     onClick={() => setDeleteUserItem(u)}
-                    className="px-3 py-1.5 rounded-xl bg-rose-500/10 hover:bg-rose-500/20 text-rose-400 text-xs font-semibold flex items-center gap-1.5 transition-all border border-rose-500/20 cursor-pointer"
+                    className="px-3 py-1.5 rounded-xl bg-rose-500/10 hover:bg-rose-500/20 text-rose-600 dark:text-rose-400 text-xs font-semibold flex items-center gap-1.5 transition-all border border-rose-500/20 cursor-pointer"
                   >
                     <Trash2 className="w-3.5 h-3.5" />
                     Borrar
@@ -425,15 +425,15 @@ export const UsersTab: React.FC = () => {
       ========================================================================= */}
       {isNewModalOpen && (
         <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4 overflow-y-auto">
-          <div className="bg-[#0D1B22] border border-slate-800 rounded-3xl p-6 sm:p-8 max-w-xl w-full space-y-5 shadow-2xl animate-fade-in my-8">
-            <div className="flex items-center justify-between pb-3 border-b border-slate-800">
-              <h3 className="text-base font-bold text-white flex items-center gap-2">
-                <UserPlus className="w-5 h-5 text-purple-400" />
+          <div className="bg-white dark:bg-[#0D1B22] border border-slate-200 dark:border-slate-800 rounded-3xl p-6 sm:p-8 max-w-xl w-full space-y-5 shadow-2xl animate-fade-in my-8">
+            <div className="flex items-center justify-between pb-3 border-b border-slate-200 dark:border-slate-800">
+              <h3 className="text-base font-bold text-slate-900 dark:text-white flex items-center gap-2">
+                <UserPlus className="w-5 h-5 text-emerald-600 dark:text-emerald-400" />
                 Registrar Nuevo Usuario Secundario
               </h3>
               <button
                 onClick={() => setIsNewModalOpen(false)}
-                className="text-slate-400 hover:text-white text-xs font-bold"
+                className="text-slate-400 hover:text-slate-600 dark:hover:text-white text-xs font-bold p-1 rounded cursor-pointer"
               >
                 ✕
               </button>
@@ -441,49 +441,49 @@ export const UsersTab: React.FC = () => {
 
             <form onSubmit={handleCreateSubUser} className="space-y-4">
               <div className="space-y-1.5">
-                <label className="text-xs font-semibold text-slate-300">Correo Electrónico (Login) *</label>
+                <label className="text-xs font-semibold text-slate-700 dark:text-slate-300">Correo Electrónico (Login) *</label>
                 <input
                   type="email"
                   required
                   placeholder="ejemplo@correo.com"
                   value={newEmail}
                   onChange={(e) => setNewEmail(e.target.value)}
-                  className="w-full bg-[#071217] border border-slate-700 rounded-xl px-4 py-2.5 text-xs text-white focus:outline-none focus:border-purple-500 font-mono"
+                  className="w-full bg-slate-50 dark:bg-[#071217] border border-slate-200 dark:border-slate-700 rounded-xl px-4 py-2.5 text-xs text-slate-900 dark:text-white focus:outline-none focus:border-emerald-500 font-mono"
                 />
               </div>
 
               <div className="grid grid-cols-2 gap-4">
                 <div className="space-y-1.5">
-                  <label className="text-xs font-semibold text-slate-300">Contraseña *</label>
+                  <label className="text-xs font-semibold text-slate-700 dark:text-slate-300">Contraseña *</label>
                   <input
                     type="password"
                     required
                     placeholder="Mínimo 6 caracteres"
                     value={newPassword}
                     onChange={(e) => setNewPassword(e.target.value)}
-                    className="w-full bg-[#071217] border border-slate-700 rounded-xl px-4 py-2.5 text-xs text-white focus:outline-none focus:border-purple-500"
+                    className="w-full bg-slate-50 dark:bg-[#071217] border border-slate-200 dark:border-slate-700 rounded-xl px-4 py-2.5 text-xs text-slate-900 dark:text-white focus:outline-none focus:border-emerald-500"
                   />
                 </div>
 
                 <div className="space-y-1.5">
-                  <label className="text-xs font-semibold text-slate-300">Confirmar Contraseña *</label>
+                  <label className="text-xs font-semibold text-slate-700 dark:text-slate-300">Confirmar Contraseña *</label>
                   <input
                     type="password"
                     required
                     placeholder="Repita la contraseña"
                     value={newPasswordConfirm}
                     onChange={(e) => setNewPasswordConfirm(e.target.value)}
-                    className="w-full bg-[#071217] border border-slate-700 rounded-xl px-4 py-2.5 text-xs text-white focus:outline-none focus:border-purple-500"
+                    className="w-full bg-slate-50 dark:bg-[#071217] border border-slate-200 dark:border-slate-700 rounded-xl px-4 py-2.5 text-xs text-slate-900 dark:text-white focus:outline-none focus:border-emerald-500"
                   />
                 </div>
               </div>
 
               <div className="space-y-1.5">
-                <label className="text-xs font-semibold text-slate-300">Rol / Cargo</label>
+                <label className="text-xs font-semibold text-slate-700 dark:text-slate-300">Rol / Cargo</label>
                 <select
                   value={newRol}
                   onChange={(e) => setNewRol(e.target.value)}
-                  className="w-full bg-[#071217] border border-slate-700 rounded-xl px-4 py-2.5 text-xs text-white focus:outline-none focus:border-purple-500"
+                  className="w-full bg-slate-50 dark:bg-[#071217] border border-slate-200 dark:border-slate-700 rounded-xl px-4 py-2.5 text-xs text-slate-900 dark:text-white focus:outline-none focus:border-emerald-500 cursor-pointer"
                 >
                   {AVAILABLE_ROLES.map((r) => (
                     <option key={r} value={r}>
@@ -494,12 +494,12 @@ export const UsersTab: React.FC = () => {
               </div>
 
               {/* Permission Checkboxes */}
-              <div className="space-y-2 pt-2 border-t border-slate-800">
-                <label className="text-xs font-semibold text-slate-300 block">
+              <div className="space-y-2 pt-2 border-t border-slate-200 dark:border-slate-800">
+                <label className="text-xs font-semibold text-slate-700 dark:text-slate-300 block">
                   Módulos y Vistas Autorizadas:
                 </label>
 
-                <div className="grid grid-cols-2 gap-2 p-3 bg-[#071217] rounded-xl border border-slate-800 max-h-48 overflow-y-auto">
+                <div className="grid grid-cols-2 gap-2 p-3 bg-slate-50 dark:bg-[#071217] rounded-xl border border-slate-200 dark:border-slate-800 max-h-48 overflow-y-auto">
                   {assignableModules.map((m: ModuleId) => {
                     const isChecked = newAccesos.includes(m);
                     return (
@@ -507,8 +507,8 @@ export const UsersTab: React.FC = () => {
                         key={m}
                         className={`flex items-center gap-2 p-2 rounded-lg text-xs cursor-pointer transition-colors ${
                           isChecked
-                            ? 'bg-purple-500/15 text-purple-300 font-semibold'
-                            : 'text-slate-400 hover:bg-slate-800/50'
+                            ? 'bg-emerald-500/15 text-emerald-700 dark:text-emerald-300 font-semibold'
+                            : 'text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800/50'
                         }`}
                       >
                         <input
@@ -518,7 +518,7 @@ export const UsersTab: React.FC = () => {
                             if (e.target.checked) setNewAccesos([...newAccesos, m]);
                             else setNewAccesos(newAccesos.filter((item) => item !== m));
                           }}
-                          className="rounded text-purple-500 bg-slate-900 border-slate-700 focus:ring-0"
+                          className="rounded text-emerald-600 bg-white dark:bg-slate-900 border-slate-300 dark:border-slate-700 focus:ring-0"
                         />
                         <span className="truncate">{m}</span>
                       </label>
@@ -527,11 +527,11 @@ export const UsersTab: React.FC = () => {
                 </div>
               </div>
 
-              <div className="flex justify-end pt-3 border-t border-slate-800">
+              <div className="flex justify-end pt-3 border-t border-slate-200 dark:border-slate-800">
                 <button
                   type="submit"
                   disabled={isProcessing}
-                  className="px-6 py-2.5 rounded-xl bg-purple-600 hover:bg-purple-500 text-white font-bold text-xs shadow-lg shadow-purple-600/20 transition-all cursor-pointer disabled:opacity-50"
+                  className="px-6 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs shadow-md shadow-emerald-600/20 transition-all cursor-pointer disabled:opacity-50"
                 >
                   {isProcessing ? 'Creando...' : 'Crear Usuario'}
                 </button>
@@ -546,18 +546,18 @@ export const UsersTab: React.FC = () => {
       ========================================================================= */}
       {editUserItem && (
         <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4 overflow-y-auto">
-          <div className="bg-[#0D1B22] border border-slate-800 rounded-3xl p-6 sm:p-8 max-w-xl w-full space-y-5 shadow-2xl animate-fade-in my-8">
-            <div className="flex items-center justify-between pb-3 border-b border-slate-800">
+          <div className="bg-white dark:bg-[#0D1B22] border border-slate-200 dark:border-slate-800 rounded-3xl p-6 sm:p-8 max-w-xl w-full space-y-5 shadow-2xl animate-fade-in my-8">
+            <div className="flex items-center justify-between pb-3 border-b border-slate-200 dark:border-slate-800">
               <div>
-                <h3 className="text-base font-bold text-white flex items-center gap-2">
-                  <Shield className="w-5 h-5 text-purple-400" />
+                <h3 className="text-base font-bold text-slate-900 dark:text-white flex items-center gap-2">
+                  <Shield className="w-5 h-5 text-emerald-600 dark:text-emerald-400" />
                   Editar Permisos: {editUserItem.email}
                 </h3>
-                <p className="text-xs text-slate-400">Actualiza el rol y módulos autorizados.</p>
+                <p className="text-xs text-slate-500 dark:text-slate-400">Actualiza el rol y módulos autorizados.</p>
               </div>
               <button
                 onClick={() => setEditUserItem(null)}
-                className="text-slate-400 hover:text-white text-xs font-bold"
+                className="text-slate-400 hover:text-slate-600 dark:hover:text-white text-xs font-bold p-1 rounded cursor-pointer"
               >
                 ✕
               </button>
@@ -565,11 +565,11 @@ export const UsersTab: React.FC = () => {
 
             <form onSubmit={handleSaveEditPermissions} className="space-y-4">
               <div className="space-y-1.5">
-                <label className="text-xs font-semibold text-slate-300">Rol / Cargo</label>
+                <label className="text-xs font-semibold text-slate-700 dark:text-slate-300">Rol / Cargo</label>
                 <select
                   value={editRol}
                   onChange={(e) => setEditRol(e.target.value)}
-                  className="w-full bg-[#071217] border border-slate-700 rounded-xl px-4 py-2.5 text-xs text-white focus:outline-none focus:border-purple-500"
+                  className="w-full bg-slate-50 dark:bg-[#071217] border border-slate-200 dark:border-slate-700 rounded-xl px-4 py-2.5 text-xs text-slate-900 dark:text-white focus:outline-none focus:border-emerald-500 cursor-pointer"
                 >
                   {AVAILABLE_ROLES.map((r) => (
                     <option key={r} value={r}>
@@ -580,12 +580,12 @@ export const UsersTab: React.FC = () => {
               </div>
 
               {/* Permission Checkboxes */}
-              <div className="space-y-2 pt-2 border-t border-slate-800">
-                <label className="text-xs font-semibold text-slate-300 block">
+              <div className="space-y-2 pt-2 border-t border-slate-200 dark:border-slate-800">
+                <label className="text-xs font-semibold text-slate-700 dark:text-slate-300 block">
                   Módulos y Vistas Autorizadas:
                 </label>
 
-                <div className="grid grid-cols-2 gap-2 p-3 bg-[#071217] rounded-xl border border-slate-800 max-h-48 overflow-y-auto">
+                <div className="grid grid-cols-2 gap-2 p-3 bg-slate-50 dark:bg-[#071217] rounded-xl border border-slate-200 dark:border-slate-800 max-h-48 overflow-y-auto">
                   {assignableModules.map((m: ModuleId) => {
                     const isChecked = editAccesos.includes(m);
                     return (
@@ -593,8 +593,8 @@ export const UsersTab: React.FC = () => {
                         key={m}
                         className={`flex items-center gap-2 p-2 rounded-lg text-xs cursor-pointer transition-colors ${
                           isChecked
-                            ? 'bg-purple-500/15 text-purple-300 font-semibold'
-                            : 'text-slate-400 hover:bg-slate-800/50'
+                            ? 'bg-emerald-500/15 text-emerald-700 dark:text-emerald-300 font-semibold'
+                            : 'text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800/50'
                         }`}
                       >
                         <input
@@ -604,7 +604,7 @@ export const UsersTab: React.FC = () => {
                             if (e.target.checked) setEditAccesos([...editAccesos, m]);
                             else setEditAccesos(editAccesos.filter((item) => item !== m));
                           }}
-                          className="rounded text-purple-500 bg-slate-900 border-slate-700 focus:ring-0"
+                          className="rounded text-emerald-600 bg-white dark:bg-slate-900 border-slate-300 dark:border-slate-700 focus:ring-0"
                         />
                         <span className="truncate">{m}</span>
                       </label>
@@ -613,11 +613,11 @@ export const UsersTab: React.FC = () => {
                 </div>
               </div>
 
-              <div className="flex justify-end pt-3 border-t border-slate-800">
+              <div className="flex justify-end pt-3 border-t border-slate-200 dark:border-slate-800">
                 <button
                   type="submit"
                   disabled={isProcessing}
-                  className="px-6 py-2.5 rounded-xl bg-purple-600 hover:bg-purple-500 text-white font-bold text-xs shadow-lg shadow-purple-600/20 transition-all cursor-pointer disabled:opacity-50"
+                  className="px-6 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs shadow-md shadow-emerald-600/20 transition-all cursor-pointer disabled:opacity-50"
                 >
                   {isProcessing ? 'Guardando...' : 'Guardar Permisos'}
                 </button>
@@ -632,18 +632,18 @@ export const UsersTab: React.FC = () => {
       ========================================================================= */}
       {deleteUserItem && (
         <div className="fixed inset-0 z-50 bg-black/70 backdrop-blur-sm flex items-center justify-center p-4">
-          <div className="bg-[#0D1B22] border border-rose-500/30 rounded-3xl p-6 max-w-sm w-full space-y-4 shadow-2xl animate-fade-in">
+          <div className="bg-white dark:bg-[#0D1B22] border border-rose-300 dark:border-rose-500/30 rounded-3xl p-6 max-w-sm w-full space-y-4 shadow-2xl animate-fade-in">
             <div className="flex items-center gap-3">
-              <div className="p-3 rounded-2xl bg-rose-500/10 text-rose-400 border border-rose-500/20">
+              <div className="p-3 rounded-2xl bg-rose-500/10 text-rose-600 dark:text-rose-400 border border-rose-500/20">
                 <AlertTriangle className="w-6 h-6" />
               </div>
               <div>
-                <h3 className="text-base font-bold text-white">¿Eliminar Usuario?</h3>
-                <p className="text-xs text-slate-400">{deleteUserItem.email}</p>
+                <h3 className="text-base font-bold text-slate-900 dark:text-white">¿Eliminar Usuario?</h3>
+                <p className="text-xs text-slate-500 dark:text-slate-400">{deleteUserItem.email}</p>
               </div>
             </div>
 
-            <p className="text-xs text-slate-300">
+            <p className="text-xs text-slate-600 dark:text-slate-300">
               Esta acción revocará todos los accesos del usuario y desactivará su cuenta.
             </p>
 
@@ -651,7 +651,7 @@ export const UsersTab: React.FC = () => {
               <button
                 type="button"
                 onClick={() => setDeleteUserItem(null)}
-                className="px-4 py-2 rounded-xl text-xs font-semibold text-slate-400 hover:text-white"
+                className="px-4 py-2 rounded-xl text-xs font-semibold text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white cursor-pointer"
               >
                 Cancelar
               </button>
@@ -659,7 +659,7 @@ export const UsersTab: React.FC = () => {
                 type="button"
                 onClick={handleDeleteSubUser}
                 disabled={isProcessing}
-                className="px-5 py-2.5 rounded-xl bg-rose-600 hover:bg-rose-500 text-white font-bold text-xs shadow-lg shadow-rose-600/20 transition-all cursor-pointer disabled:opacity-50"
+                className="px-5 py-2.5 rounded-xl bg-rose-600 hover:bg-rose-500 text-white font-bold text-xs shadow-md shadow-rose-600/20 transition-all cursor-pointer disabled:opacity-50"
               >
                 {isProcessing ? 'Eliminando...' : 'Sí, Eliminar'}
               </button>
@@ -670,3 +670,4 @@ export const UsersTab: React.FC = () => {
     </div>
   );
 };
+

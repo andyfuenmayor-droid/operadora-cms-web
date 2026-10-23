@@ -41,6 +41,45 @@ npm run test:closure
 ```
 Y verificar que la compilación global termine exitosa:
 ```bash
-npm run build
-```
 Si el test falla en rojo, la IA debe revertir el cambio de inmediato y reportar la discrepancia.
+
+---
+
+### 4. Ley Permanente e Inmutable de Diseño Visual (UI Design Lock)
+1. **Orden del Menú Lateral Intocable (22 Menús en este orden exacto):**
+   1. `Inicio` (HomeDashboard.tsx)
+   2. `Confirmaciones` (ConfirmationsQuick.tsx)
+   3. `Confirmados` (ConfirmationsReport.tsx)
+   4. `Sistemas` (SystemsTab.tsx)
+   5. `Monedas` (CurrenciesTab.tsx)
+   6. `Cuentas Bancarias` (BankAccountsTab.tsx)
+   7. `Agencias` (AgenciesTab.tsx)
+   8. `Grupos` (GroupsTab.tsx)
+   9. `Cobradores` (CollectorsTab.tsx)
+   10. `Cargar Ventas` (SalesEntryTab.tsx)
+   11. `Pagos Agencias` (PaymentsTab.tsx)
+   12. `Gastos por Agencia` (ExpensesTab.tsx)
+   13. `Saldo Agencias` (AccountBalancesTab.tsx)
+   14. `Venta Real` (RealSalesTab.tsx)
+   15. `Pagos a Proveedores` (OperatorsTab.tsx / pagos)
+   16. `Reporte Proveedores` (OperatorsTab.tsx / reporte)
+   17. `Config. Proveedores` (SystemsTab.tsx)
+   18. `Gastos Administrativos` (AdministrativeExpensesTab.tsx)
+   19. `Cierre ` (WeeklyClosureTab.tsx y PreClosureAuditTab.tsx)
+   20. `Auditoría` (AuditLogTab.tsx)
+   21. `Ajustes` (CycleSettingsTab.tsx)
+   22. `Usuarios` (UsersTab.tsx)
+
+2. **Paridad Estricta Modo Claro / Modo Oscuro:**
+   - Modo Claro: `bg-slate-50`, tarjetas `bg-white border-slate-200/80 text-slate-900 shadow-sm`.
+   - Modo Oscuro: `dark:bg-[#0b1120]` / `dark:bg-slate-950`, tarjetas `dark:bg-[#111827]` / `dark:bg-slate-900 dark:border-slate-800 dark:text-slate-100`.
+   - Prohibido gradientes oscuros fijos en Modo Claro (ej. banners de semana cerrada en Cargar Ventas y Cierre).
+     Usar: Light `bg-amber-50 border border-amber-300 text-amber-900` | Dark `dark:bg-amber-950/30 dark:border-amber-700/60 dark:text-amber-200`.
+
+3. **Monedas 100% Dinámicas:**
+   - Prohibido arrays fijos `['BS', 'USD', 'COP']`. Todas las pantallas deben leer de `loadCurrencies(effectiveUserId)` o `getActiveCurrencies()`.
+   - Grids de KPIs deben adaptarse dinámicamente a 1, 2, 3 o 4+ columnas.
+
+4. **Botón Primario Esmeralda Único:**
+   - Estilo obligatorio: `bg-emerald-600 hover:bg-emerald-500 text-white font-semibold rounded-xl px-5 py-2.5 shadow-sm transition-all`.
+   - Prohibido inventar colores sin el texto explícito del usuario `"CAMBIO VISUAL AUTORIZADO"`.

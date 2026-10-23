@@ -1511,13 +1511,13 @@ export const WeeklyClosureTab: React.FC = () => {
       )}
 
       {/* Sub-tabs Navigation */}
-      <div className="flex items-center gap-2 border-b border-slate-800 pb-3">
+      <div className="flex items-center gap-2 border-b border-slate-200 dark:border-slate-800 pb-3">
         <button
           onClick={() => setActiveSubTab('precierre')}
           className={`px-4 py-2.5 rounded-xl text-xs sm:text-sm font-bold flex items-center gap-2 transition-all cursor-pointer ${
             activeSubTab === 'precierre'
-              ? 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/30'
-              : 'text-slate-400 hover:text-white hover:bg-slate-800/60'
+              ? 'bg-emerald-500/15 dark:bg-emerald-500/10 text-emerald-800 dark:text-emerald-400 border border-emerald-500/30'
+              : 'text-slate-600 hover:text-slate-900 hover:bg-slate-100 dark:text-slate-400 dark:hover:text-white dark:hover:bg-slate-800/60'
           }`}
         >
           <Layers className="w-4 h-4" />
@@ -1528,8 +1528,8 @@ export const WeeklyClosureTab: React.FC = () => {
           onClick={() => setActiveSubTab('cierre')}
           className={`px-4 py-2.5 rounded-xl text-xs sm:text-sm font-bold flex items-center gap-2 transition-all cursor-pointer ${
             activeSubTab === 'cierre'
-              ? 'bg-amber-500/10 text-amber-400 border border-amber-500/30'
-              : 'text-slate-400 hover:text-white hover:bg-slate-800/60'
+              ? 'bg-amber-500/15 dark:bg-amber-500/10 text-amber-800 dark:text-amber-400 border border-amber-500/30'
+              : 'text-slate-600 hover:text-slate-900 hover:bg-slate-100 dark:text-slate-400 dark:hover:text-white dark:hover:bg-slate-800/60'
           }`}
         >
           <Lock className="w-4 h-4" />
@@ -1543,8 +1543,8 @@ export const WeeklyClosureTab: React.FC = () => {
           }}
           className={`px-4 py-2.5 rounded-xl text-xs sm:text-sm font-bold flex items-center gap-2 transition-all cursor-pointer ${
             activeSubTab === 'historico_actas'
-              ? 'bg-sky-500/10 text-sky-400 border border-sky-500/30'
-              : 'text-slate-400 hover:text-white hover:bg-slate-800/60'
+              ? 'bg-sky-500/15 dark:bg-sky-500/10 text-sky-800 dark:text-sky-400 border border-sky-500/30'
+              : 'text-slate-600 hover:text-slate-900 hover:bg-slate-100 dark:text-slate-400 dark:hover:text-white dark:hover:bg-slate-800/60'
           }`}
         >
           <FileText className="w-4 h-4" />
@@ -1555,8 +1555,8 @@ export const WeeklyClosureTab: React.FC = () => {
           onClick={() => setActiveSubTab('auditoria')}
           className={`px-4 py-2.5 rounded-xl text-xs sm:text-sm font-bold flex items-center gap-2 transition-all cursor-pointer ${
             activeSubTab === 'auditoria'
-              ? 'bg-amber-500/10 text-amber-400 border border-amber-500/30'
-              : 'text-slate-400 hover:text-white hover:bg-slate-800/60'
+              ? 'bg-purple-500/15 dark:bg-purple-500/10 text-purple-800 dark:text-purple-400 border border-purple-500/30'
+              : 'text-slate-600 hover:text-slate-900 hover:bg-slate-100 dark:text-slate-400 dark:hover:text-white dark:hover:bg-slate-800/60'
           }`}
         >
           <ShieldCheck className="w-4 h-4" />
@@ -1571,20 +1571,20 @@ export const WeeklyClosureTab: React.FC = () => {
       ) : activeSubTab === 'historico_actas' ? (
         <div className="space-y-6">
           {/* Header Banner */}
-          <div className="bg-gradient-to-r from-[#0D1B22] via-[#0F242C] to-[#0D1B22] border border-slate-800 rounded-3xl p-6 shadow-2xl relative overflow-hidden">
+          <div className="bg-white dark:bg-[#0D1B22] border border-slate-200/80 dark:border-slate-800 rounded-2xl p-6 shadow-sm relative overflow-hidden transition-colors">
             <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4 relative z-10">
               <div className="space-y-1">
-                <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-sky-500/10 border border-sky-500/30 text-sky-400 text-xs font-bold">
+                <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-sky-50 dark:bg-sky-500/10 border border-sky-200 dark:border-sky-500/30 text-sky-700 dark:text-sky-400 text-xs font-bold">
                   <FileText className="w-3.5 h-3.5" />
                   <span>Archivo Maestro de Documentos Oficiales</span>
                 </div>
-                <h2 className="text-xl sm:text-2xl font-black text-white tracking-tight flex items-center gap-2.5">
+                <h2 className="text-xl sm:text-2xl font-black text-slate-900 dark:text-white tracking-tight flex items-center gap-2.5">
                   <span>Repositorio Histórico de Actas de Cierre</span>
-                  <span className="text-xs px-2.5 py-0.5 rounded-full bg-slate-800 text-slate-300 font-mono font-normal">
+                  <span className="text-xs px-2.5 py-0.5 rounded-full bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 font-mono font-normal">
                     {historicalClosures.length} cierres archivados
                   </span>
                 </h2>
-                <p className="text-xs sm:text-sm text-slate-400 max-w-2xl">
+                <p className="text-xs sm:text-sm text-slate-500 dark:text-slate-400 max-w-2xl">
                   Consulte, vuelva a abrir e imprima en PDF el Acta General de Entrega, el Acta de Casas Operadoras o el Finiquito Individual por Agencia para cualquier semana cerrada.
                 </p>
               </div>
@@ -1592,9 +1592,9 @@ export const WeeklyClosureTab: React.FC = () => {
               <button
                 onClick={() => loadHistoricalClosures()}
                 disabled={isLoading}
-                className="px-4 py-2.5 rounded-2xl bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white font-bold text-xs flex items-center gap-2 transition-all border border-slate-700 cursor-pointer self-start lg:self-auto"
+                className="px-4 py-2.5 rounded-2xl bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-300 hover:text-slate-900 dark:hover:text-white font-bold text-xs flex items-center gap-2 transition-all border border-slate-200 dark:border-slate-700 cursor-pointer self-start lg:self-auto"
               >
-                <RefreshCw className={`w-4 h-4 ${isLoading ? 'animate-spin text-sky-400' : ''}`} />
+                <RefreshCw className={`w-4 h-4 ${isLoading ? 'animate-spin text-sky-500 dark:text-sky-400' : ''}`} />
                 <span>Actualizar Histórico</span>
               </button>
             </div>
@@ -1614,19 +1614,19 @@ export const WeeklyClosureTab: React.FC = () => {
                 return (
                   <div
                     key={closure.periodo || idx}
-                    className="bg-[#0D1B22] border border-slate-800 hover:border-slate-700/80 rounded-3xl p-6 shadow-xl transition-all space-y-4"
+                    className="bg-white dark:bg-[#0D1B22] border border-slate-200/80 dark:border-slate-800 hover:border-slate-300 dark:hover:border-slate-700/80 rounded-3xl p-6 shadow-sm transition-all space-y-4"
                   >
-                    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-slate-800/80 pb-4">
+                    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-slate-200 dark:border-slate-800/80 pb-4">
                       <div>
                         <div className="flex items-center gap-2">
-                          <span className="text-xs font-black uppercase tracking-wider text-sky-400 bg-sky-500/10 px-2.5 py-0.5 rounded-full border border-sky-500/20">
+                          <span className="text-xs font-black uppercase tracking-wider text-sky-700 dark:text-sky-400 bg-sky-50 dark:bg-sky-500/10 px-2.5 py-0.5 rounded-full border border-sky-200 dark:border-sky-500/20">
                             Cierre Auditado
                           </span>
-                          <span className="text-xs text-slate-400 font-mono">
+                          <span className="text-xs text-slate-500 dark:text-slate-400 font-mono">
                             {closure.fecha_cierre ? formatDate(closure.fecha_cierre) : ''}
                           </span>
                         </div>
-                        <h3 className="text-base sm:text-lg font-black text-white mt-1">
+                        <h3 className="text-base sm:text-lg font-black text-slate-900 dark:text-white mt-1">
                           {closure.periodo}
                         </h3>
                       </div>
@@ -1790,24 +1790,24 @@ export const WeeklyClosureTab: React.FC = () => {
 
                     {/* Snapshot Summary Chips */}
                     <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 text-xs">
-                      <div className="bg-[#071217] p-3 rounded-2xl border border-slate-800">
-                        <span className="text-[10px] text-slate-400 uppercase font-bold block">Agencias Cerradas</span>
-                        <span className="text-sm font-black text-white font-mono">{totalAgencias}</span>
+                      <div className="bg-slate-50 dark:bg-[#071217] p-3 rounded-2xl border border-slate-200 dark:border-slate-800">
+                        <span className="text-[10px] text-slate-500 dark:text-slate-400 uppercase font-bold block">Agencias Cerradas</span>
+                        <span className="text-sm font-black text-slate-900 dark:text-white font-mono">{totalAgencias}</span>
                       </div>
-                      <div className="bg-[#071217] p-3 rounded-2xl border border-slate-800">
-                        <span className="text-[10px] text-slate-400 uppercase font-bold block">Casas Operadoras</span>
-                        <span className="text-sm font-black text-white font-mono">{totalOperadoras}</span>
+                      <div className="bg-slate-50 dark:bg-[#071217] p-3 rounded-2xl border border-slate-200 dark:border-slate-800">
+                        <span className="text-[10px] text-slate-500 dark:text-slate-400 uppercase font-bold block">Casas Operadoras</span>
+                        <span className="text-sm font-black text-slate-900 dark:text-white font-mono">{totalOperadoras}</span>
                       </div>
-                      <div className="bg-[#071217] p-3 rounded-2xl border border-slate-800">
-                        <span className="text-[10px] text-slate-400 uppercase font-bold block">Monedas Auditadas</span>
-                        <span className="text-sm font-bold text-slate-200">BS • USD • COP</span>
+                      <div className="bg-slate-50 dark:bg-[#071217] p-3 rounded-2xl border border-slate-200 dark:border-slate-800">
+                        <span className="text-[10px] text-slate-500 dark:text-slate-400 uppercase font-bold block">Monedas Auditadas</span>
+                        <span className="text-sm font-bold text-slate-800 dark:text-slate-200">{activeCurrencyCodes.join(' • ')}</span>
                       </div>
-                      <div className="bg-[#071217] p-3 rounded-2xl border border-slate-800 flex items-center justify-between">
+                      <div className="bg-slate-50 dark:bg-[#071217] p-3 rounded-2xl border border-slate-200 dark:border-slate-800 flex items-center justify-between">
                         <div>
-                          <span className="text-[10px] text-slate-400 uppercase font-bold block">Estado</span>
-                          <span className="text-xs font-black text-emerald-400">INMUTABLE</span>
+                          <span className="text-[10px] text-slate-500 dark:text-slate-400 uppercase font-bold block">Estado</span>
+                          <span className="text-xs font-black text-emerald-600 dark:text-emerald-400">INMUTABLE</span>
                         </div>
-                        <ShieldCheck className="w-5 h-5 text-emerald-400 shrink-0" />
+                        <ShieldCheck className="w-5 h-5 text-emerald-600 dark:text-emerald-400 shrink-0" />
                       </div>
                     </div>
                   </div>
@@ -1819,38 +1819,38 @@ export const WeeklyClosureTab: React.FC = () => {
       ) : (
         <div className="space-y-8">
           {/* Unified Cycle Banner */}
-          <div className="bg-gradient-to-r from-amber-950/30 via-[#0D1B22] to-slate-900 border border-amber-500/30 rounded-3xl p-6 relative overflow-hidden shadow-2xl">
+          <div className="bg-white dark:bg-[#0D1B22] border border-amber-300 dark:border-amber-500/30 rounded-3xl p-6 relative overflow-hidden shadow-sm transition-colors">
             <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4 relative z-10">
               <div>
-                <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-gradient-to-r from-emerald-500/10 to-amber-500/10 border border-emerald-500/30 text-emerald-400 text-[11px] font-bold uppercase tracking-wider">
-                  <Sparkles className="w-3.5 h-3.5 text-amber-400" />
+                <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-emerald-50 dark:bg-emerald-500/10 border border-emerald-200 dark:border-emerald-500/30 text-emerald-700 dark:text-emerald-400 text-[11px] font-bold uppercase tracking-wider">
+                  <Sparkles className="w-3.5 h-3.5 text-amber-500" />
                   <span>Auditoría de Balances y Cierre Maestro Integral</span>
                 </div>
-                <h3 className="text-lg sm:text-xl font-black text-white mt-2 flex items-center gap-2">
+                <h3 className="text-lg sm:text-xl font-black text-slate-900 dark:text-white mt-2 flex items-center gap-2">
                   <span>{systemCycle.tipo === 'SEMANAL' ? `Semana ${systemCycle.semana}` : `Operación Diaria ${systemCycle.semana}`}</span>
-                  <span className="text-xs font-mono font-normal text-slate-400 bg-slate-800/80 px-2.5 py-0.5 rounded-full border border-slate-700">
+                  <span className="text-xs font-mono font-normal text-slate-600 dark:text-slate-400 bg-slate-100 dark:bg-slate-800/80 px-2.5 py-0.5 rounded-full border border-slate-200 dark:border-slate-700">
                     Ciclo Activo
                   </span>
                 </h3>
-                <p className="text-xs text-slate-400 font-mono mt-1">
-                  Rango del ciclo: <strong className="text-amber-300">{systemCycle.desde}</strong> al{' '}
-                  <strong className="text-amber-300">{systemCycle.hasta}</strong>
+                <p className="text-xs text-slate-500 dark:text-slate-400 font-mono mt-1">
+                  Rango del ciclo: <strong className="text-amber-600 dark:text-amber-300">{systemCycle.desde}</strong> al{' '}
+                  <strong className="text-amber-600 dark:text-amber-300">{systemCycle.hasta}</strong>
                 </p>
               </div>
 
               {/* Unified Stats Chips */}
               <div className="flex flex-wrap items-center gap-3">
-                <div className="bg-[#071217]/90 border border-slate-800 rounded-2xl px-4 py-2.5">
-                  <span className="text-[10px] text-slate-400 block font-bold uppercase">🏢 Agencias</span>
-                  <span className="text-base font-black text-emerald-400 font-mono">{agencies.length} activas</span>
+                <div className="bg-slate-50 dark:bg-[#071217]/90 border border-slate-200 dark:border-slate-800 rounded-2xl px-4 py-2.5">
+                  <span className="text-[10px] text-slate-500 dark:text-slate-400 block font-bold uppercase">🏢 Agencias</span>
+                  <span className="text-base font-black text-emerald-600 dark:text-emerald-400 font-mono">{agencies.length} activas</span>
                 </div>
-                <div className="bg-[#071217]/90 border border-slate-800 rounded-2xl px-4 py-2.5">
-                  <span className="text-[10px] text-slate-400 block font-bold uppercase">🌐 Operadoras</span>
-                  <span className="text-base font-black text-amber-400 font-mono">{operatorClosureGroups.length} casas ({operatorClosureRows.length} liq.)</span>
+                <div className="bg-slate-50 dark:bg-[#071217]/90 border border-slate-200 dark:border-slate-800 rounded-2xl px-4 py-2.5">
+                  <span className="text-[10px] text-slate-500 dark:text-slate-400 block font-bold uppercase">🌐 Operadoras</span>
+                  <span className="text-base font-black text-amber-600 dark:text-amber-400 font-mono">{operatorClosureGroups.length} casas ({operatorClosureRows.length} liq.)</span>
                 </div>
-                <div className="bg-[#071217]/90 border border-slate-800 rounded-2xl px-4 py-2.5">
-                  <span className="text-[10px] text-slate-400 block font-bold uppercase">💰 Monedas</span>
-                  <span className="text-base font-black text-white font-mono">BS • USD • COP</span>
+                <div className="bg-slate-50 dark:bg-[#071217]/90 border border-slate-200 dark:border-slate-800 rounded-2xl px-4 py-2.5">
+                  <span className="text-[10px] text-slate-500 dark:text-slate-400 block font-bold uppercase">💰 Monedas</span>
+                  <span className="text-base font-black text-slate-900 dark:text-white font-mono">{activeCurrencyCodes.join(' • ')}</span>
                 </div>
               </div>
             </div>

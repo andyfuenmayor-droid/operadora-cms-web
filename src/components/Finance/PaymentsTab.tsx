@@ -5,6 +5,7 @@ import { formatCurrency, formatDate, normalizarMoneda, cleanReference } from '..
 import { getConsolidatedExpenses, getConsolidatedPayments, type ConsolidatedPaymentItem } from '../../utils/consolidations';
 import type { Agency, Currency, BankAccount } from '../../types';
 import { loadCurrencies, type CurrencyConfig } from '../../utils/currencies';
+import { UI_LOCK } from '../../styles/uiDesignLock';
 import { notificationService } from '../../utils/notificationService';
 import { realtimeBroadcast } from '../../utils/realtimeBroadcast';
 import {
@@ -482,13 +483,19 @@ export const PaymentsTab: React.FC = () => {
     }
   }, [bankAccountOptions, formBancoSel]);
 
+  const activeCurrenciesList = useMemo(() => {
+    if (currencies && currencies.length > 0) {
+      return currencies.map((c) => (c.codigo || '').trim().toUpperCase()).filter(Boolean);
+    }
+    return ['BS', 'USD', 'COP'];
+  }, [currencies]);
+
   // Currency Totals: Dinero Entrante Confirmado vs En Tránsito (scoped to active period)
   const currencyTotals = useMemo(() => {
-    const totals = {
-      BS: { confirmado: 0, transito: 0, total: 0 },
-      USD: { confirmado: 0, transito: 0, total: 0 },
-      COP: { confirmado: 0, transito: 0, total: 0 },
-    };
+    const totals: Record<string, { confirmado: number; transito: number; total: number }> = {};
+    activeCurrenciesList.forEach((c) => {
+      totals[c] = { confirmado: 0, transito: 0, total: 0 };
+    });
 
     payments.forEach((p) => {
       if (filterPeriod === 'ciclo') {
@@ -497,8 +504,10 @@ export const PaymentsTab: React.FC = () => {
         if (!enRango) return;
       }
 
-      const m = p.moneda as 'BS' | 'USD' | 'COP';
-      if (!totals[m]) return;
+      const m = normalizarMoneda(p.moneda);
+      if (!totals[m]) {
+        totals[m] = { confirmado: 0, transito: 0, total: 0 };
+      }
 
       if (p.confirmado) {
         totals[m].confirmado += p.monto;
@@ -509,7 +518,7 @@ export const PaymentsTab: React.FC = () => {
     });
 
     return totals;
-  }, [payments, filterPeriod, systemCycle.desde, systemCycle.hasta]);
+  }, [payments, filterPeriod, systemCycle.desde, systemCycle.hasta, activeCurrenciesList]);
 
   // Method metrics summary (scoped to period, with confirmed vs transit breakdown)
   const methodMetrics = useMemo(() => {
@@ -922,17 +931,17 @@ export const PaymentsTab: React.FC = () => {
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
           <div className="flex flex-wrap items-center gap-2">
-            <span className="p-2 rounded-xl bg-cyan-500/10 text-cyan-400 border border-cyan-500/20">
+            <span className="p-2 rounded-xl bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20">
               <CreditCard className="w-5 h-5" />
             </span>
-            <h2 className="text-xl sm:text-2xl font-black text-white">
+            <h2 className="text-xl sm:text-2xl font-black text-slate-900 dark:text-white">
               Gestión de Cobranzas y Pagos
             </h2>
-            <span className="text-[11px] px-2.5 py-1 rounded-full bg-cyan-500/10 text-cyan-400 border border-cyan-500/20 font-mono font-bold">
+            <span className="text-[11px] px-2.5 py-1 rounded-full bg-emerald-50 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800/50 font-mono font-bold">
               {systemCycle.tipo === 'SEMANAL' ? `Semana ${systemCycle.semana}` : `Operación Diaria ${systemCycle.semana}`} ({systemCycle.desde} al {systemCycle.hasta})
             </span>
           </div>
-          <p className="text-xs sm:text-sm text-slate-400 mt-1">
+          <p className="text-xs sm:text-sm text-slate-500 dark:text-slate-400 mt-1">
             Registro de cobros recibidos y abonos de premios para el balance de agencias del ciclo operativo.
           </p>
         </div>
@@ -941,17 +950,17 @@ export const PaymentsTab: React.FC = () => {
           {/* Connect Apps / API Button */}
           <button
             onClick={() => setShowApiModal(true)}
-            className="px-3.5 py-2.5 rounded-xl bg-purple-500/10 hover:bg-purple-500/20 text-purple-300 text-xs font-semibold flex items-center gap-1.5 transition-all border border-purple-500/30 cursor-pointer shadow-sm"
+            className={UI_LOCK.buttonSecondary + ' text-xs font-semibold flex items-center gap-1.5'}
             title="Credenciales y webhook de API para conectar aplicaciones externas"
           >
-            <Code2 className="w-3.5 h-3.5 text-purple-400" />
+            <Code2 className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400" />
             <span>Conectar Apps / API</span>
           </button>
 
           <button
             onClick={() => loadData()}
             disabled={isLoading}
-            className="px-3.5 py-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-semibold flex items-center gap-1.5 transition-all border border-slate-700 cursor-pointer disabled:opacity-50"
+            className={UI_LOCK.buttonSecondary + ' text-xs font-semibold flex items-center gap-1.5'}
           >
             <RefreshCw className={`w-3.5 h-3.5 ${isLoading ? 'animate-spin' : ''}`} />
             Actualizar
@@ -963,10 +972,10 @@ export const PaymentsTab: React.FC = () => {
         <div
           className={`p-4 rounded-2xl border flex items-center gap-3 text-sm animate-fade-in ${
             message.type === 'success'
-              ? 'bg-emerald-500/10 border-emerald-500/20 text-emerald-400'
+              ? 'bg-emerald-50 dark:bg-emerald-950/20 border-emerald-200 dark:border-emerald-500/20 text-emerald-800 dark:text-emerald-400'
               : message.type === 'info'
-              ? 'bg-amber-500/10 border-amber-500/20 text-amber-300'
-              : 'bg-rose-500/10 border-rose-500/20 text-rose-400'
+              ? 'bg-amber-50 dark:bg-amber-950/20 border-amber-200 dark:border-amber-500/20 text-amber-800 dark:text-amber-300'
+              : 'bg-rose-50 dark:bg-rose-950/20 border-rose-200 dark:border-rose-500/20 text-rose-800 dark:text-rose-400'
           }`}
         >
           {message.type === 'success' ? (
@@ -983,127 +992,71 @@ export const PaymentsTab: React.FC = () => {
       {/* KPI Overview by Currency: Dinero Entrante Confirmado vs En Tránsito */}
       <div className="space-y-3">
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
-          <h3 className="text-xs font-bold uppercase tracking-wider text-slate-400 flex items-center gap-1.5">
-            <Coins className="w-4 h-4 text-cyan-400" />
+          <h3 className="text-xs font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400 flex items-center gap-1.5">
+            <Coins className="w-4 h-4 text-emerald-600 dark:text-emerald-400" />
             Ingresos Totales por Moneda {filterPeriod === 'ciclo' ? `• Semana ${systemCycle.semana}` : '• Histórico'}
           </h3>
-          <span className="text-[11px] font-mono text-slate-500">
+          <span className="text-[11px] font-mono text-slate-400 dark:text-slate-500">
             Identificación de Dinero Entrante vs Fondos en Tránsito
           </span>
         </div>
 
-        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-          {/* Card BS */}
-          <div className="bg-[#0D1B22] border border-slate-800 rounded-2xl p-4 shadow-lg flex flex-col justify-between">
-            <div>
-              <div className="flex items-center justify-between">
-                <span className="text-[11px] font-bold uppercase tracking-wider text-slate-400">Cobros Recibidos (BS)</span>
-                <span className="px-2 py-0.5 rounded-full bg-cyan-500/10 text-cyan-400 text-[10px] font-bold border border-cyan-500/20 font-mono">
-                  BS
-                </span>
-              </div>
-              <div className="mt-2">
-                <div className="text-[11px] text-slate-400 font-semibold flex items-center gap-1">
-                  <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400" /> Dinero Entrante (Confirmado):
+        <div className={UI_LOCK.kpiGrid(activeCurrenciesList.length)}>
+          {activeCurrenciesList.map((curr) => {
+            const data = currencyTotals[curr] || { confirmado: 0, transito: 0, total: 0 };
+            return (
+              <div key={curr} className={UI_LOCK.card + ' p-4 shadow-sm flex flex-col justify-between'}>
+                <div>
+                  <div className="flex items-center justify-between">
+                    <span className="text-[11px] font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400">
+                      Cobros Recibidos ({curr})
+                    </span>
+                    <span className="px-2 py-0.5 rounded-full bg-emerald-50 dark:bg-emerald-500/10 text-emerald-700 dark:text-emerald-400 text-[10px] font-bold border border-emerald-200 dark:border-emerald-500/20 font-mono">
+                      {curr}
+                    </span>
+                  </div>
+                  <div className="mt-2">
+                    <div className="text-[11px] text-slate-500 dark:text-slate-400 font-semibold flex items-center gap-1">
+                      <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400" /> Dinero Entrante (Confirmado):
+                    </div>
+                    <div className="text-xl sm:text-2xl font-black text-slate-900 dark:text-white font-mono mt-0.5">
+                      {formatCurrency(data.confirmado, curr as any)}
+                    </div>
+                  </div>
                 </div>
-                <div className="text-xl sm:text-2xl font-black text-white font-mono mt-0.5">
-                  {formatCurrency(currencyTotals.BS.confirmado, 'BS')}
-                </div>
-              </div>
-            </div>
-            <div className="mt-3 pt-2.5 border-t border-slate-800/80 flex items-center justify-between">
-              <span className="text-[11px] text-slate-400 flex items-center gap-1">
-                <Clock className="w-3 h-3 text-amber-400" /> En Tránsito:
-              </span>
-              {currencyTotals.BS.transito > 0 ? (
-                <span className="px-2 py-0.5 rounded-full bg-amber-500/15 text-amber-400 text-[10px] font-bold border border-amber-500/30 font-mono animate-pulse">
-                  ⏳ {formatCurrency(currencyTotals.BS.transito, 'BS')}
-                </span>
-              ) : (
-                <span className="text-[10px] font-mono text-slate-500 font-semibold">0,00 Bs.</span>
-              )}
-            </div>
-          </div>
-
-          {/* Card USD */}
-          <div className="bg-[#0D1B22] border border-slate-800 rounded-2xl p-4 shadow-lg flex flex-col justify-between">
-            <div>
-              <div className="flex items-center justify-between">
-                <span className="text-[11px] font-bold uppercase tracking-wider text-slate-400">Cobros Recibidos (USD)</span>
-                <span className="px-2 py-0.5 rounded-full bg-emerald-500/10 text-emerald-400 text-[10px] font-bold border border-emerald-500/20 font-mono">
-                  USD
-                </span>
-              </div>
-              <div className="mt-2">
-                <div className="text-[11px] text-slate-400 font-semibold flex items-center gap-1">
-                  <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400" /> Dinero Entrante (Confirmado):
-                </div>
-                <div className="text-xl sm:text-2xl font-black text-emerald-400 font-mono mt-0.5">
-                  {formatCurrency(currencyTotals.USD.confirmado, 'USD')}
+                <div className="mt-3 pt-2.5 border-t border-slate-100 dark:border-slate-800/80 flex items-center justify-between">
+                  <span className="text-[11px] text-slate-500 dark:text-slate-400 flex items-center gap-1">
+                    <Clock className="w-3 h-3 text-amber-500" /> En Tránsito:
+                  </span>
+                  {data.transito > 0 ? (
+                    <span className="px-2 py-0.5 rounded-full bg-amber-50 dark:bg-amber-500/15 text-amber-800 dark:text-amber-400 text-[10px] font-bold border border-amber-300 dark:border-amber-500/30 font-mono animate-pulse">
+                      ⏳ {formatCurrency(data.transito, curr as any)}
+                    </span>
+                  ) : (
+                    <span className="text-[10px] font-mono text-slate-400 font-semibold">
+                      {formatCurrency(0, curr as any)}
+                    </span>
+                  )}
                 </div>
               </div>
-            </div>
-            <div className="mt-3 pt-2.5 border-t border-slate-800/80 flex items-center justify-between">
-              <span className="text-[11px] text-slate-400 flex items-center gap-1">
-                <Clock className="w-3 h-3 text-amber-400" /> En Tránsito:
-              </span>
-              {currencyTotals.USD.transito > 0 ? (
-                <span className="px-2 py-0.5 rounded-full bg-amber-500/15 text-amber-400 text-[10px] font-bold border border-amber-500/30 font-mono animate-pulse">
-                  ⏳ {formatCurrency(currencyTotals.USD.transito, 'USD')}
-                </span>
-              ) : (
-                <span className="text-[10px] font-mono text-slate-500 font-semibold">$0.00</span>
-              )}
-            </div>
-          </div>
-
-          {/* Card COP */}
-          <div className="bg-[#0D1B22] border border-slate-800 rounded-2xl p-4 shadow-lg flex flex-col justify-between">
-            <div>
-              <div className="flex items-center justify-between">
-                <span className="text-[11px] font-bold uppercase tracking-wider text-slate-400">Cobros Recibidos (COP)</span>
-                <span className="px-2 py-0.5 rounded-full bg-cyan-500/10 text-cyan-400 text-[10px] font-bold border border-cyan-500/20 font-mono">
-                  COP
-                </span>
-              </div>
-              <div className="mt-2">
-                <div className="text-[11px] text-slate-400 font-semibold flex items-center gap-1">
-                  <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400" /> Dinero Entrante (Confirmado):
-                </div>
-                <div className="text-xl sm:text-2xl font-black text-cyan-400 font-mono mt-0.5">
-                  {formatCurrency(currencyTotals.COP.confirmado, 'COP')}
-                </div>
-              </div>
-            </div>
-            <div className="mt-3 pt-2.5 border-t border-slate-800/80 flex items-center justify-between">
-              <span className="text-[11px] text-slate-400 flex items-center gap-1">
-                <Clock className="w-3 h-3 text-amber-400" /> En Tránsito:
-              </span>
-              {currencyTotals.COP.transito > 0 ? (
-                <span className="px-2 py-0.5 rounded-full bg-amber-500/15 text-amber-400 text-[10px] font-bold border border-amber-500/30 font-mono animate-pulse">
-                  ⏳ {formatCurrency(currencyTotals.COP.transito, 'COP')}
-                </span>
-              ) : (
-                <span className="text-[10px] font-mono text-slate-500 font-semibold">0.00 COP</span>
-              )}
-            </div>
-          </div>
+            );
+          })}
         </div>
       </div>
 
       {/* Income Summary by Method Cards */}
       <div className="space-y-3">
         <div className="flex items-center justify-between">
-          <h3 className="text-xs font-bold uppercase tracking-wider text-slate-400">
+          <h3 className="text-xs font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400">
             Resumen de Ingresos por Método de Pago {filterPeriod === 'ciclo' ? `• Semana ${systemCycle.semana}` : '• Histórico'}
           </h3>
-          <span className="text-[11px] text-slate-500 font-mono">
+          <span className="text-[11px] text-slate-400 dark:text-slate-500 font-mono">
             {methodMetrics.length} canal(es) activo(s)
           </span>
         </div>
 
         {methodMetrics.length === 0 ? (
-          <div className="bg-[#0D1B22] border border-slate-800 rounded-2xl p-6 text-center text-xs text-slate-400">
+          <div className={UI_LOCK.card + ' p-6 text-center text-xs text-slate-500 dark:text-slate-400'}>
             No hay pagos registrados para este ciclo.
           </div>
         ) : (
@@ -1111,23 +1064,23 @@ export const PaymentsTab: React.FC = () => {
             {methodMetrics.map((m) => (
               <div
                 key={m.key}
-                className="bg-[#0D1B22] border border-slate-800 rounded-2xl p-3.5 text-center shadow-lg flex flex-col justify-between"
+                className={UI_LOCK.card + ' p-3.5 text-center shadow-sm flex flex-col justify-between'}
               >
                 <div>
-                  <div className="text-[10px] font-bold uppercase tracking-wider text-slate-400 truncate" title={m.key}>
+                  <div className="text-[10px] font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400 truncate" title={m.key}>
                     {m.key}
                   </div>
-                  <div className="text-sm font-black text-white font-mono mt-1" title="Dinero Entrante (Confirmado)">
+                  <div className="text-sm font-black text-slate-900 dark:text-white font-mono mt-1" title="Dinero Entrante (Confirmado)">
                     {m.confirmado.toLocaleString('es-VE', { minimumFractionDigits: 2 })}
                   </div>
                 </div>
-                <div className="mt-2 pt-1.5 border-t border-slate-800/80">
+                <div className="mt-2 pt-1.5 border-t border-slate-100 dark:border-slate-800/80">
                   {m.transito > 0 ? (
-                    <span className="text-[10px] font-bold font-mono text-amber-400 truncate block" title={`En tránsito: ${m.transito.toLocaleString('es-VE', { minimumFractionDigits: 2 })}`}>
+                    <span className="text-[10px] font-bold font-mono text-amber-500 truncate block" title={`En tránsito: ${m.transito.toLocaleString('es-VE', { minimumFractionDigits: 2 })}`}>
                       ⏳ {m.transito.toLocaleString('es-VE', { minimumFractionDigits: 0 })} en tránsito
                     </span>
                   ) : (
-                    <span className="text-[9px] font-semibold text-emerald-400/80 block">
+                    <span className="text-[9px] font-semibold text-emerald-600 dark:text-emerald-400/80 block">
                       ✅ Confirmado
                     </span>
                   )}
@@ -1139,22 +1092,22 @@ export const PaymentsTab: React.FC = () => {
       </div>
 
       {/* Redesigned Payment Entry Form matching Streamlit pagos_gastos.py */}
-      <div id="tour-pagos-form" className="bg-[#0D1B22] border border-slate-800 rounded-3xl p-5 sm:p-6 shadow-2xl space-y-5">
+      <div id="tour-pagos-form" className={UI_LOCK.card + ' p-5 sm:p-6 shadow-md space-y-5'}>
         {/* Header & Agency Picker with Neutral Initial Option */}
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-2 border-b border-slate-800">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-2 border-b border-slate-200 dark:border-slate-800">
           <div>
-            <h3 className="text-base sm:text-lg font-black text-white flex items-center gap-2">
+            <h3 className="text-base sm:text-lg font-black text-slate-900 dark:text-white flex items-center gap-2">
               <span className="text-xl">📝</span>
               Nuevo Registro de Pago
             </h3>
           </div>
 
           <div className="flex items-center gap-2">
-            <span className="text-xs font-bold text-slate-300 shrink-0">🎯 Seleccionar Agencia:</span>
+            <span className="text-xs font-bold text-slate-700 dark:text-slate-300 shrink-0">🎯 Seleccionar Agencia:</span>
             <select
               value={formAgencia}
               onChange={(e) => setFormAgencia(e.target.value)}
-              className="bg-[#071217] border border-slate-700 focus:border-cyan-500 rounded-xl px-3.5 py-2 text-xs font-bold text-white focus:outline-none cursor-pointer min-w-[240px]"
+              className={UI_LOCK.select + ' min-w-[240px]'}
             >
               <option value="">-- Seleccione una Agencia --</option>
               {agencies.map((a) => (
@@ -1169,8 +1122,8 @@ export const PaymentsTab: React.FC = () => {
         {/* Live Agency Balances Banner */}
         {selectedAgencyObj ? (
           <div className="space-y-2 animate-fade-in">
-            <h4 className="text-xs font-bold text-slate-300 uppercase tracking-wider flex items-center gap-1.5">
-              <span>📄</span> Estado Actual: <span className="text-white font-black">{formAgencia}</span>
+            <h4 className="text-xs font-bold text-slate-700 dark:text-slate-300 uppercase tracking-wider flex items-center gap-1.5">
+              <span>📄</span> Estado Actual: <span className="text-slate-900 dark:text-white font-black">{formAgencia}</span>
             </h4>
 
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
@@ -1182,20 +1135,20 @@ export const PaymentsTab: React.FC = () => {
                 const isDeuda = bal > 0.05;
 
                 return (
-                  <div key={m} className="bg-[#071217] border border-slate-800 p-3.5 rounded-2xl flex flex-col justify-between shadow-md">
+                  <div key={m} className="bg-slate-50 dark:bg-[#071217] border border-slate-200 dark:border-slate-800 p-3.5 rounded-2xl flex flex-col justify-between shadow-sm">
                     <div>
                       <div className="flex justify-between items-center gap-1">
-                        <span className="text-[11px] font-bold text-slate-400 uppercase">Saldo {m}</span>
+                        <span className="text-[11px] font-bold text-slate-500 dark:text-slate-400 uppercase">Saldo {m}</span>
                         {isFavor ? (
-                          <span className="text-[9px] font-black uppercase px-2 py-0.5 rounded-full bg-cyan-500/20 text-cyan-400 border border-cyan-500/30">
+                          <span className="text-[9px] font-black uppercase px-2 py-0.5 rounded-full bg-cyan-50 dark:bg-cyan-500/20 text-cyan-700 dark:text-cyan-400 border border-cyan-200 dark:border-cyan-500/30">
                             🔵 A Favor Agencia
                           </span>
                         ) : isDeuda ? (
-                          <span className="text-[9px] font-black uppercase px-2 py-0.5 rounded-full bg-rose-500/20 text-rose-400 border border-rose-500/30">
+                          <span className="text-[9px] font-black uppercase px-2 py-0.5 rounded-full bg-rose-50 dark:bg-rose-500/20 text-rose-700 dark:text-rose-400 border border-rose-200 dark:border-rose-500/30">
                             🔴 Debe a Operadora
                           </span>
                         ) : (
-                          <span className="text-[9px] font-black uppercase px-2 py-0.5 rounded-full bg-emerald-500/20 text-emerald-400 border border-emerald-500/30">
+                          <span className="text-[9px] font-black uppercase px-2 py-0.5 rounded-full bg-emerald-50 dark:bg-emerald-500/20 text-emerald-700 dark:text-emerald-400 border border-emerald-200 dark:border-emerald-500/30">
                             🟢 Al Día
                           </span>
                         )}
@@ -1203,36 +1156,36 @@ export const PaymentsTab: React.FC = () => {
 
                       <div
                         className={`text-xl sm:text-2xl font-black font-mono mt-1 ${
-                          isFavor ? 'text-cyan-400' : isDeuda ? 'text-rose-400' : 'text-emerald-400'
+                          isFavor ? 'text-cyan-600 dark:text-cyan-400' : isDeuda ? 'text-rose-600 dark:text-rose-400' : 'text-emerald-600 dark:text-emerald-400'
                         }`}
                       >
                         {bal.toLocaleString('es-VE', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} {m === 'BS' ? 'Bs.' : m}
                       </div>
 
                       {det && (
-                        <div className="mt-2.5 pt-2 border-t border-slate-800/80 text-[10px] text-slate-400 space-y-0.5 font-mono">
+                        <div className="mt-2.5 pt-2 border-t border-slate-200 dark:border-slate-800/80 text-[10px] text-slate-500 dark:text-slate-400 space-y-0.5 font-mono">
                           <div className="flex justify-between">
                             <span>Arrastre Inicial:</span>
-                            <span className="text-slate-300 font-semibold">{formatCurrency(det.sIni, m as any)}</span>
+                            <span className="text-slate-700 dark:text-slate-300 font-semibold">{formatCurrency(det.sIni, m as any)}</span>
                           </div>
                           <div className="flex justify-between">
                             <span>Venta Neta (+):</span>
-                            <span className="text-emerald-400 font-semibold">+{formatCurrency(det.vNeto, m as any)}</span>
+                            <span className="text-emerald-600 dark:text-emerald-400 font-semibold">+{formatCurrency(det.vNeto, m as any)}</span>
                           </div>
                           {det.gTot > 0 && (
                             <div className="flex justify-between">
                               <span>Gastos (-):</span>
-                              <span className="text-rose-400 font-semibold">-{formatCurrency(det.gTot, m as any)}</span>
+                              <span className="text-rose-600 dark:text-rose-400 font-semibold">-{formatCurrency(det.gTot, m as any)}</span>
                             </div>
                           )}
                           <div className="flex justify-between">
                             <span>Cobros Ciclo (-):</span>
-                            <span className="text-cyan-400 font-semibold">-{formatCurrency(det.pCobros, m as any)}</span>
+                            <span className="text-cyan-600 dark:text-cyan-400 font-semibold">-{formatCurrency(det.pCobros, m as any)}</span>
                           </div>
                           {det.pPremios > 0 && (
                             <div className="flex justify-between">
                               <span>Premios Repuestos (+):</span>
-                              <span className="text-amber-400 font-semibold">+{formatCurrency(det.pPremios, m as any)}</span>
+                              <span className="text-amber-600 dark:text-amber-400 font-semibold">+{formatCurrency(det.pPremios, m as any)}</span>
                             </div>
                           )}
                         </div>
@@ -1240,8 +1193,8 @@ export const PaymentsTab: React.FC = () => {
                     </div>
 
                     {transit > 0 && (
-                      <div className="mt-2.5 pt-1.5 border-t border-slate-800/80">
-                        <span className="text-[10px] font-bold font-mono text-amber-400 block">
+                      <div className="mt-2.5 pt-1.5 border-t border-slate-200 dark:border-slate-800/80">
+                        <span className="text-[10px] font-bold font-mono text-amber-500 block">
                           ⏳ {transit.toLocaleString('es-VE', { minimumFractionDigits: 2 })} en tránsito
                         </span>
                       </div>
@@ -1253,32 +1206,32 @@ export const PaymentsTab: React.FC = () => {
           </div>
         ) : (
           <div className="space-y-2">
-            <h4 className="text-xs font-bold text-slate-400 uppercase tracking-wider flex items-center gap-1.5">
-              <span>📄</span> Estado Actual: <span className="text-amber-400 font-bold">Ninguna agencia seleccionada</span>
+            <h4 className="text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider flex items-center gap-1.5">
+              <span>📄</span> Estado Actual: <span className="text-amber-600 dark:text-amber-400 font-bold">Ninguna agencia seleccionada</span>
             </h4>
 
-            <div className="bg-[#071217] border border-dashed border-slate-800 rounded-2xl p-5 text-center">
-              <Building2 className="w-6 h-6 text-slate-500 mx-auto mb-1.5 opacity-60" />
-              <p className="text-xs font-bold text-white">Opción neutral por defecto</p>
-              <p className="text-[11px] text-slate-400 mt-0.5 max-w-md mx-auto">
-                Seleccione una agencia en el selector para consultar sus saldos en vivo (BS, USD, COP) y registrar el pago.
+            <div className="bg-slate-50 dark:bg-[#071217] border border-dashed border-slate-200 dark:border-slate-800 rounded-2xl p-5 text-center">
+              <Building2 className="w-6 h-6 text-slate-400 dark:text-slate-500 mx-auto mb-1.5 opacity-60" />
+              <p className="text-xs font-bold text-slate-900 dark:text-white">Opción neutral por defecto</p>
+              <p className="text-[11px] text-slate-500 dark:text-slate-400 mt-0.5 max-w-md mx-auto">
+                Seleccione una agencia en el selector para consultar sus saldos en vivo ({activeCurrenciesList.join(', ')}) y registrar el pago.
               </p>
             </div>
           </div>
         )}
 
-        <form onSubmit={handleSavePayment} className="space-y-4 pt-2 border-t border-slate-800">
+        <form onSubmit={handleSavePayment} className="space-y-4 pt-2 border-t border-slate-200 dark:border-slate-800">
           {/* Row of Currency, Payment Channel and Operation Type */}
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
             <div className="space-y-1">
-              <label className="text-xs font-bold text-slate-300 flex items-center gap-1.5">
+              <label className="text-xs font-bold text-slate-700 dark:text-slate-300 flex items-center gap-1.5">
                 <span>🟡</span> Moneda
               </label>
               <select
                 value={formMoneda}
                 onChange={(e) => setFormMoneda(e.target.value)}
                 required
-                className="w-full bg-[#071217] border border-slate-700 rounded-xl px-3 py-2.5 text-xs text-white font-bold focus:outline-none focus:border-cyan-500 cursor-pointer"
+                className={UI_LOCK.select}
               >
                 {availableAgencyCurrencies.map((m) => (
                   <option key={m} value={m}>
@@ -1289,14 +1242,14 @@ export const PaymentsTab: React.FC = () => {
             </div>
 
             <div className="space-y-1">
-              <label className="text-xs font-bold text-slate-300 flex items-center gap-1.5">
+              <label className="text-xs font-bold text-slate-700 dark:text-slate-300 flex items-center gap-1.5">
                 <span>💳</span> Forma de Pago / Canal
               </label>
               <select
                 value={formMetodo}
                 onChange={(e) => setFormMetodo(e.target.value as any)}
                 required
-                className="w-full bg-[#071217] border border-slate-700 rounded-xl px-3 py-2.5 text-xs text-white font-bold focus:outline-none focus:border-cyan-500 cursor-pointer"
+                className={UI_LOCK.select}
               >
                 <option value="BANCO">BANCO</option>
                 <option value="TRANSFERENCIA BANCARIA">TRANSFERENCIA BANCARIA</option>
@@ -1307,14 +1260,14 @@ export const PaymentsTab: React.FC = () => {
             </div>
 
             <div className="space-y-1">
-              <label className="text-xs font-bold text-slate-300 flex items-center gap-1.5">
+              <label className="text-xs font-bold text-slate-700 dark:text-slate-300 flex items-center gap-1.5">
                 <span>📑</span> Tipo de Operación
               </label>
               <select
                 value={formTipoOperacion}
                 onChange={(e) => setFormTipoOperacion(e.target.value as any)}
                 required
-                className="w-full bg-[#071217] border border-slate-700 rounded-xl px-3 py-2.5 text-xs text-white font-bold focus:outline-none focus:border-cyan-500 cursor-pointer"
+                className={UI_LOCK.select}
               >
                 <option value="Pago">Pago</option>
                 <option value="Pago de Premios">Pago de Premios</option>
@@ -1324,14 +1277,14 @@ export const PaymentsTab: React.FC = () => {
 
           {/* Conditional Bank / Account Selector */}
           <div className="space-y-1">
-            <label className="text-xs font-bold text-slate-300 flex items-center gap-1.5">
+            <label className="text-xs font-bold text-slate-700 dark:text-slate-300 flex items-center gap-1.5">
               <span>🏛️</span> {formTipoOperacion === 'Pago de Premios' ? 'Cuenta a Debitar' : 'Banco / Cuenta Destino'}
             </label>
             <select
               value={formBancoSel}
               onChange={(e) => setFormBancoSel(e.target.value)}
               disabled={formMetodo === 'EFECTIVO' || formMetodo === 'OTRO'}
-              className="w-full bg-[#071217] border border-slate-700 rounded-xl px-3 py-2.5 text-xs text-white font-bold focus:outline-none focus:border-cyan-500 disabled:opacity-60 cursor-pointer"
+              className={UI_LOCK.select + ' disabled:opacity-50'}
             >
               {bankAccountOptions.map((opt) => (
                 <option key={opt} value={opt}>
@@ -1344,7 +1297,7 @@ export const PaymentsTab: React.FC = () => {
           {/* Amount, Reference and Date */}
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
             <div className="space-y-1">
-              <label className="text-xs font-bold text-slate-300">Monto *</label>
+              <label className="text-xs font-bold text-slate-700 dark:text-slate-300">Monto *</label>
               <input
                 type="number"
                 step="0.01"
@@ -1353,19 +1306,19 @@ export const PaymentsTab: React.FC = () => {
                 placeholder="0,00"
                 value={formMonto}
                 onChange={(e) => setFormMonto(e.target.value)}
-                className="w-full bg-[#071217] border border-slate-700 rounded-xl px-3 py-2.5 text-xs text-white font-mono focus:outline-none focus:border-cyan-500"
+                className={UI_LOCK.input + ' font-mono'}
               />
             </div>
 
             {formMetodo !== 'EFECTIVO' ? (
               <div className="space-y-1">
-                <label className="text-xs font-bold text-slate-300">N° Referencia / Comprobante</label>
+                <label className="text-xs font-bold text-slate-700 dark:text-slate-300">N° Referencia / Comprobante</label>
                 <input
                   type="text"
                   placeholder="Ej: 123456"
                   value={formReferencia}
                   onChange={(e) => setFormReferencia(e.target.value)}
-                  className="w-full bg-[#071217] border border-slate-700 rounded-xl px-3 py-2.5 text-xs text-white focus:outline-none focus:border-cyan-500 font-mono"
+                  className={UI_LOCK.input + ' font-mono'}
                 />
               </div>
             ) : (
@@ -1375,18 +1328,18 @@ export const PaymentsTab: React.FC = () => {
                   type="text"
                   disabled
                   value="EFECTIVO"
-                  className="w-full bg-[#071217] border border-slate-800 rounded-xl px-3 py-2.5 text-xs text-slate-500 font-mono cursor-not-allowed"
+                  className={UI_LOCK.input + ' font-mono cursor-not-allowed opacity-60'}
                 />
               </div>
             )}
 
             <div className="space-y-1">
-              <label className="text-xs font-bold text-slate-300">Fecha del Pago</label>
+              <label className="text-xs font-bold text-slate-700 dark:text-slate-300">Fecha del Pago</label>
               <input
                 type="date"
                 value={formFecha}
                 onChange={(e) => setFormFecha(e.target.value)}
-                className="w-full bg-[#071217] border border-slate-700 rounded-xl px-3 py-2.5 text-xs text-white focus:outline-none focus:border-cyan-500 font-mono"
+                className={UI_LOCK.input + ' font-mono'}
               />
             </div>
           </div>
@@ -1398,19 +1351,19 @@ export const PaymentsTab: React.FC = () => {
               id="conf_directa"
               checked={formConfirmDirecta}
               onChange={(e) => setFormConfirmDirecta(e.target.checked)}
-              className="w-4 h-4 rounded border-slate-700 text-cyan-500 focus:ring-cyan-500 bg-[#071217] cursor-pointer"
+              className="w-4 h-4 rounded border-slate-300 dark:border-slate-700 text-emerald-600 focus:ring-emerald-500 bg-white dark:bg-[#071217] cursor-pointer"
             />
-            <label htmlFor="conf_directa" className="text-xs font-semibold text-slate-300 cursor-pointer flex items-center gap-1">
+            <label htmlFor="conf_directa" className="text-xs font-semibold text-slate-700 dark:text-slate-300 cursor-pointer flex items-center gap-1">
               <span>⚡</span> Confirmar de inmediato (omitir Pizarra de Confirmaciones)
             </label>
           </div>
 
           {/* Primary Action Button */}
-          <div className="pt-2">
+          <div className="pt-2 flex justify-end">
             <button
               type="submit"
               disabled={isProcessing}
-              className="w-full py-3 rounded-2xl bg-gradient-to-r from-cyan-500 to-teal-500 hover:from-cyan-400 hover:to-teal-400 text-slate-950 font-black text-sm shadow-xl shadow-cyan-500/20 flex items-center justify-center gap-2 transition-all cursor-pointer disabled:opacity-50"
+              className={UI_LOCK.buttonPrimary + ' text-xs flex items-center justify-center gap-2'}
             >
               <span>🚀</span>
               {isProcessing ? 'Procesando...' : 'REGISTRAR PAGO'}
@@ -1423,7 +1376,7 @@ export const PaymentsTab: React.FC = () => {
           <button
             type="button"
             onClick={handleClearScreen}
-            className="px-4 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 font-bold text-xs flex items-center gap-1.5 transition-all border border-slate-700 cursor-pointer"
+            className={UI_LOCK.buttonSecondary + ' text-xs font-bold flex items-center gap-1.5'}
           >
             🧹 RESTABLECER / LIMPIAR PANTALLA
           </button>
@@ -1431,27 +1384,27 @@ export const PaymentsTab: React.FC = () => {
       </div>
 
       {/* Payments Table */}
-      <div id="tour-pagos-table" className="bg-[#0D1B22] border border-slate-800 rounded-3xl overflow-hidden shadow-xl">
-        <div className="p-4 sm:p-6 border-b border-slate-800 flex flex-col gap-4">
+      <div id="tour-pagos-table" className={UI_LOCK.card + ' overflow-hidden shadow-sm'}>
+        <div className="p-4 sm:p-6 border-b border-slate-200 dark:border-slate-800 flex flex-col gap-4">
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
             <div className="flex items-center gap-2">
-              <h4 className="text-sm font-bold text-white uppercase tracking-wider">
+              <h4 className="text-sm font-bold text-slate-900 dark:text-white uppercase tracking-wider">
                 Pagos y Cobros Registrados ({filteredPayments.length})
               </h4>
-              <span className="text-xs text-slate-500 font-mono">
+              <span className="text-xs text-slate-400 dark:text-slate-500 font-mono">
                 {filterPeriod === 'ciclo' ? `(Semana ${systemCycle.semana})` : `(Histórico)`}
               </span>
             </div>
 
             {/* Period Selector: Ciclo Actual vs Histórico */}
-            <div className="inline-flex rounded-xl bg-[#071217] p-1 border border-slate-800 text-xs font-semibold self-start sm:self-auto">
+            <div className="inline-flex rounded-xl bg-slate-100 dark:bg-[#071217] p-1 border border-slate-200 dark:border-slate-800 text-xs font-semibold self-start sm:self-auto">
               <button
                 type="button"
                 onClick={() => setFilterPeriod('ciclo')}
                 className={`px-3 py-1.5 rounded-lg transition-all cursor-pointer ${
                   filterPeriod === 'ciclo'
-                    ? 'bg-cyan-600 text-white shadow'
-                    : 'text-slate-400 hover:text-white'
+                    ? 'bg-emerald-600 text-white shadow-sm'
+                    : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
                 }`}
               >
                 🎯 Ciclo Actual (Semana {systemCycle.semana})
@@ -1461,8 +1414,8 @@ export const PaymentsTab: React.FC = () => {
                 onClick={() => setFilterPeriod('todos')}
                 className={`px-3 py-1.5 rounded-lg transition-all cursor-pointer ${
                   filterPeriod === 'todos'
-                    ? 'bg-cyan-600 text-white shadow'
-                    : 'text-slate-400 hover:text-white'
+                    ? 'bg-emerald-600 text-white shadow-sm'
+                    : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
                 }`}
               >
                 📜 Histórico Completo ({payments.length})
@@ -1473,13 +1426,13 @@ export const PaymentsTab: React.FC = () => {
           {/* Search, Agency Filter, Method Filter, Status Filter */}
           <div className="grid grid-cols-1 sm:grid-cols-4 gap-3">
             <div className="relative">
-              <Search className="w-3.5 h-3.5 absolute left-3 top-1/2 -translate-y-1/2 text-slate-500" />
+              <Search className="w-3.5 h-3.5 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 dark:text-slate-500" />
               <input
                 type="text"
                 placeholder="Buscar agencia, ref, método..."
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
-                className="w-full bg-[#071217] border border-slate-700 rounded-xl pl-8 pr-3 py-2 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-cyan-500"
+                className={UI_LOCK.input + ' pl-8 text-xs'}
               />
             </div>
 
@@ -1487,7 +1440,7 @@ export const PaymentsTab: React.FC = () => {
               <select
                 value={filterAgency}
                 onChange={(e) => setFilterAgency(e.target.value)}
-                className="w-full bg-[#071217] border border-slate-700 rounded-xl px-3 py-2 text-xs text-white cursor-pointer focus:outline-none focus:border-cyan-500"
+                className={UI_LOCK.select}
               >
                 <option value="Todas">Todas las Agencias</option>
                 {agencies.map((a) => (
@@ -1502,7 +1455,7 @@ export const PaymentsTab: React.FC = () => {
               <select
                 value={filterMethod}
                 onChange={(e) => setFilterMethod(e.target.value)}
-                className="w-full bg-[#071217] border border-slate-700 rounded-xl px-3 py-2 text-xs text-white cursor-pointer focus:outline-none focus:border-cyan-500"
+                className={UI_LOCK.select}
               >
                 <option value="Todos">Todos los Métodos</option>
                 <option value="BANCO">BANCO</option>
@@ -1518,7 +1471,7 @@ export const PaymentsTab: React.FC = () => {
               <select
                 value={filterStatus}
                 onChange={(e) => setFilterStatus(e.target.value as any)}
-                className="w-full bg-[#071217] border border-slate-700 rounded-xl px-3 py-2 text-xs text-white cursor-pointer focus:outline-none focus:border-cyan-500"
+                className={UI_LOCK.select}
               >
                 <option value="Todos">Todos los Estados</option>
                 <option value="Confirmados">✅ Dinero Entrante (Confirmado)</option>
@@ -1531,7 +1484,7 @@ export const PaymentsTab: React.FC = () => {
 
         <div className="overflow-x-auto">
           <table className="w-full text-left text-xs">
-            <thead className="bg-[#071217] text-slate-400 border-b border-slate-800 font-bold uppercase tracking-wider">
+            <thead className={UI_LOCK.tableThead}>
               <tr>
                 <th className="py-3.5 px-4">Agencia</th>
                 <th className="py-3.5 px-4">Método</th>
@@ -1543,7 +1496,7 @@ export const PaymentsTab: React.FC = () => {
                 <th className="py-3.5 px-4 text-center">Acciones</th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-slate-800/80 font-mono">
+            <tbody className="divide-y divide-slate-100 dark:divide-slate-800/80 font-mono">
               {filteredPayments.length === 0 ? (
                 <tr>
                   <td colSpan={8} className="py-8 text-center text-slate-500 font-sans">
@@ -1552,46 +1505,46 @@ export const PaymentsTab: React.FC = () => {
                 </tr>
               ) : (
                 filteredPayments.map((p) => (
-                  <tr key={`${p.tabla}_${p.id}`} className="hover:bg-slate-800/30 transition-colors">
-                    <td className="py-3.5 px-4 font-sans font-bold text-white">{p.agencia}</td>
-                    <td className="py-3.5 px-4 text-slate-300 font-sans">{p.metodo}</td>
+                  <tr key={`${p.tabla}_${p.id}`} className={UI_LOCK.tableTr}>
+                    <td className="py-3.5 px-4 font-sans font-bold text-slate-900 dark:text-white">{p.agencia}</td>
+                    <td className="py-3.5 px-4 text-slate-600 dark:text-slate-300 font-sans">{p.metodo}</td>
                     <td className="py-3.5 px-4 font-sans">
                       <span
                         className={`px-2 py-0.5 rounded-md text-[10px] font-bold ${
                           p.tipo_pago.includes('PREMIO')
-                            ? 'bg-amber-500/10 text-amber-400'
-                            : 'bg-cyan-500/10 text-cyan-400'
+                            ? 'bg-amber-50 dark:bg-amber-500/10 text-amber-700 dark:text-amber-400 border border-amber-200 dark:border-amber-500/20'
+                            : 'bg-emerald-50 dark:bg-emerald-500/10 text-emerald-700 dark:text-emerald-400 border border-emerald-200 dark:border-emerald-500/20'
                         }`}
                       >
                         {p.tipo_pago}
                       </span>
                     </td>
-                    <td className="py-3.5 px-4 text-slate-400 text-xs font-mono" title={p.referencia}>
+                    <td className="py-3.5 px-4 text-slate-500 dark:text-slate-400 text-xs font-mono" title={p.referencia}>
                       {cleanReference(p.referencia)}
                     </td>
-                    <td className="py-3.5 px-4 text-right font-bold text-white">
+                    <td className="py-3.5 px-4 text-right font-bold text-slate-900 dark:text-white">
                       {formatCurrency(p.monto, p.moneda)}
                     </td>
                     <td className="py-3.5 px-4 text-center font-sans">
                       {p.confirmado ? (
-                        <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full bg-emerald-500/15 text-emerald-400 text-[10px] font-bold border border-emerald-500/30">
+                        <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full bg-emerald-50 dark:bg-emerald-500/15 text-emerald-700 dark:text-emerald-400 text-[10px] font-bold border border-emerald-200 dark:border-emerald-500/30">
                           <CheckCircle2 className="w-3 h-3" /> Entrante (Confirmado)
                         </span>
                       ) : p.rechazado ? (
-                        <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full bg-rose-500/15 text-rose-400 text-[10px] font-bold border border-rose-500/30">
+                        <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full bg-rose-50 dark:bg-rose-500/15 text-rose-700 dark:text-rose-400 text-[10px] font-bold border border-rose-200 dark:border-rose-500/30">
                           <XCircle className="w-3 h-3" /> Rechazado
                         </span>
                       ) : (
-                        <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full bg-amber-500/15 text-amber-400 text-[10px] font-bold border border-amber-500/30 animate-pulse">
+                        <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full bg-amber-50 dark:bg-amber-500/15 text-amber-800 dark:text-amber-400 text-[10px] font-bold border border-amber-200 dark:border-amber-500/30 animate-pulse">
                           <Clock className="w-3 h-3" /> En Tránsito
                         </span>
                       )}
                     </td>
-                    <td className="py-3.5 px-4 text-slate-500 font-sans">{formatDate(p.fecha)}</td>
+                    <td className="py-3.5 px-4 text-slate-500 dark:text-slate-400 font-sans">{formatDate(p.fecha)}</td>
                     <td className="py-3.5 px-4 text-center">
                       <button
                         onClick={() => handleDeletePayment(p)}
-                        className="p-1.5 rounded-lg text-slate-400 hover:text-rose-400 hover:bg-rose-500/10 transition-colors cursor-pointer"
+                        className="p-1.5 rounded-lg text-slate-400 hover:text-rose-600 dark:hover:text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-500/10 transition-colors cursor-pointer"
                         title="Eliminar Pago"
                       >
                         <Trash2 className="w-3.5 h-3.5" />

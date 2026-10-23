@@ -24,6 +24,7 @@ import {
   getCurrencyBadgeClasses,
   type CurrencyConfig,
 } from '../../utils/currencies';
+import { UI_LOCK } from '../../styles/uiDesignLock';
 
 export const CurrenciesTab: React.FC = () => {
   const { effectiveUserId } = useAuth();
@@ -272,13 +273,13 @@ export const CurrenciesTab: React.FC = () => {
   return (
     <div className="space-y-6 max-w-6xl mx-auto">
       {/* Header */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-slate-800 pb-4">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-slate-200 dark:border-slate-800 pb-4">
         <div>
-          <h2 className="text-xl font-black text-white flex items-center gap-2">
-            <Coins className="w-5 h-5 text-emerald-400" />
+          <h2 className="text-xl font-black text-slate-900 dark:text-white flex items-center gap-2">
+            <Coins className="w-5 h-5 text-emerald-500 dark:text-emerald-400" />
             <span>Gestión Dinámica de Monedas y Divisas</span>
           </h2>
-          <p className="text-xs text-slate-400 mt-1">
+          <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">
             Administra las monedas operativas de la comercializadora (fiat y cripto). Cada suscriptor tiene control 100% independiente sobre qué monedas operar, editar o eliminar.
           </p>
         </div>
@@ -286,45 +287,45 @@ export const CurrenciesTab: React.FC = () => {
           <button
             onClick={handleResetDefaults}
             disabled={loading || saving}
-            className="p-2.5 rounded-xl bg-amber-500/10 hover:bg-amber-500/20 border border-amber-500/30 text-amber-300 transition-colors cursor-pointer flex items-center gap-2 text-xs font-bold disabled:opacity-50"
+            className="p-2.5 rounded-xl bg-amber-50 hover:bg-amber-100 dark:bg-amber-500/10 dark:hover:bg-amber-500/20 border border-amber-200 dark:border-amber-500/30 text-amber-700 dark:text-amber-300 transition-colors cursor-pointer flex items-center gap-2 text-xs font-bold disabled:opacity-50"
             title="Restaurar monedas base estándar (BS, USD, COP)"
           >
-            <RotateCcw className="w-4 h-4 text-amber-400" />
+            <RotateCcw className="w-4 h-4 text-amber-500 dark:text-amber-400" />
             <span>Restaurar Base (BS/USD/COP)</span>
           </button>
           <button
             onClick={fetchCurrencies}
             disabled={loading}
-            className="p-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 transition-colors cursor-pointer flex items-center gap-2 text-xs font-bold"
+            className="p-2.5 rounded-xl bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-300 transition-colors cursor-pointer flex items-center gap-2 text-xs font-bold"
           >
-            <RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin text-emerald-400' : ''}`} />
+            <RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin text-emerald-500 dark:text-emerald-400' : ''}`} />
             <span>Actualizar</span>
           </button>
         </div>
       </div>
 
       {/* Explanatory banner */}
-      <div className="bg-gradient-to-r from-emerald-950/40 via-slate-900 to-cyan-950/40 border border-emerald-500/30 rounded-2xl p-4 text-xs text-slate-300 flex items-start gap-3 shadow-md">
-        <Sparkles className="w-5 h-5 text-emerald-400 shrink-0 mt-0.5" />
+      <div className="bg-emerald-50 dark:bg-emerald-950/30 border border-emerald-200 dark:border-emerald-500/30 rounded-2xl p-4 text-xs text-emerald-900 dark:text-slate-300 flex items-start gap-3 shadow-xs">
+        <Sparkles className="w-5 h-5 text-emerald-600 dark:text-emerald-400 shrink-0 mt-0.5" />
         <div>
-          <p className="font-bold text-emerald-300 mb-1">Arquitectura Multi-Empresa SaaS 100% Dinámica</p>
-          <p className="text-slate-400 leading-relaxed">
+          <p className="font-bold text-emerald-800 dark:text-emerald-300 mb-1">Arquitectura Multi-Empresa SaaS 100% Dinámica</p>
+          <p className="text-emerald-700 dark:text-slate-400 leading-relaxed">
             Todas las divisas (incluidas <strong>BS, USD y COP</strong>) son totalmente editables y eliminables según las operaciones de su empresa. Las monedas activas se sincronizan automáticamente con los selectores de Agencias, Grupos, Sistemas/Operadoras, Cuentas Bancarias, Pagos, Gastos y Centro de Cierre.
           </p>
         </div>
       </div>
 
       {/* Form: Add Currency */}
-      <div id="tour-monedas-form" className="bg-[#0D1B22] border border-slate-800 rounded-2xl p-5 shadow-lg">
-        <h3 className="text-xs font-extrabold uppercase tracking-wider text-slate-300 mb-4 flex items-center gap-2">
-          <Plus className="w-4 h-4 text-emerald-400" />
+      <div id="tour-monedas-form" className="bg-white dark:bg-[#0D1B22] border border-slate-200/80 dark:border-slate-800 rounded-2xl p-5 shadow-sm">
+        <h3 className="text-xs font-extrabold uppercase tracking-wider text-slate-800 dark:text-slate-300 mb-4 flex items-center gap-2">
+          <Plus className="w-4 h-4 text-emerald-500 dark:text-emerald-400" />
           <span>Añadir Nueva Moneda al Sistema</span>
         </h3>
 
         <form onSubmit={handleAddCurrency} className="space-y-4">
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
             <div>
-              <label className="block text-[11px] font-bold uppercase text-slate-400 mb-1">
+              <label className="block text-[11px] font-bold uppercase text-slate-600 dark:text-slate-400 mb-1">
                 Código ISO / Siglas *
               </label>
               <input
@@ -332,13 +333,13 @@ export const CurrenciesTab: React.FC = () => {
                 value={codigo}
                 onChange={(e) => setCodigo(e.target.value)}
                 placeholder="Ej: USDT, EUR, BRL"
-                className="w-full bg-[#071217] border border-slate-700 rounded-xl px-3.5 py-2.5 text-sm text-white placeholder-slate-500 uppercase focus:outline-none focus:border-emerald-500 font-black tracking-wider"
+                className="w-full bg-white dark:bg-[#071217] border border-slate-300 dark:border-slate-700 rounded-xl px-3.5 py-2.5 text-sm text-slate-900 dark:text-white placeholder-slate-400 dark:placeholder-slate-500 uppercase focus:outline-hidden focus:border-emerald-500 font-black tracking-wider"
                 required
               />
             </div>
 
             <div>
-              <label className="block text-[11px] font-bold uppercase text-slate-400 mb-1">
+              <label className="block text-[11px] font-bold uppercase text-slate-600 dark:text-slate-400 mb-1">
                 Nombre de la Moneda
               </label>
               <input
@@ -346,12 +347,12 @@ export const CurrenciesTab: React.FC = () => {
                 value={nombre}
                 onChange={(e) => setNombre(e.target.value)}
                 placeholder="Ej: Tether USD, Euro"
-                className="w-full bg-[#071217] border border-slate-700 rounded-xl px-3.5 py-2.5 text-sm text-white placeholder-slate-500 focus:outline-none focus:border-emerald-500 font-semibold"
+                className="w-full bg-white dark:bg-[#071217] border border-slate-300 dark:border-slate-700 rounded-xl px-3.5 py-2.5 text-sm text-slate-900 dark:text-white placeholder-slate-400 dark:placeholder-slate-500 focus:outline-hidden focus:border-emerald-500 font-semibold"
               />
             </div>
 
             <div>
-              <label className="block text-[11px] font-bold uppercase text-slate-400 mb-1">
+              <label className="block text-[11px] font-bold uppercase text-slate-600 dark:text-slate-400 mb-1">
                 Símbolo / Prefijo
               </label>
               <input
@@ -359,18 +360,18 @@ export const CurrenciesTab: React.FC = () => {
                 value={simbolo}
                 onChange={(e) => setSimbolo(e.target.value)}
                 placeholder="Ej: ₮, €, R$"
-                className="w-full bg-[#071217] border border-slate-700 rounded-xl px-3.5 py-2.5 text-sm text-white placeholder-slate-500 focus:outline-none focus:border-emerald-500 font-bold"
+                className="w-full bg-white dark:bg-[#071217] border border-slate-300 dark:border-slate-700 rounded-xl px-3.5 py-2.5 text-sm text-slate-900 dark:text-white placeholder-slate-400 dark:placeholder-slate-500 focus:outline-hidden focus:border-emerald-500 font-bold"
               />
             </div>
 
             <div>
-              <label className="block text-[11px] font-bold uppercase text-slate-400 mb-1">
+              <label className="block text-[11px] font-bold uppercase text-slate-600 dark:text-slate-400 mb-1">
                 Decimales
               </label>
               <select
                 value={decimales}
                 onChange={(e) => setDecimales(e.target.value)}
-                className="w-full bg-[#071217] border border-slate-700 rounded-xl px-3.5 py-2.5 text-sm text-white focus:outline-none focus:border-emerald-500 font-bold"
+                className="w-full bg-white dark:bg-[#071217] border border-slate-300 dark:border-slate-700 rounded-xl px-3.5 py-2.5 text-sm text-slate-900 dark:text-white focus:outline-hidden focus:border-emerald-500 font-bold"
               >
                 <option value="2">2 decimales (Estándar / USD / USDT / EUR)</option>
                 <option value="0">0 decimales (Sin centavos / COP / CLP)</option>
@@ -383,10 +384,10 @@ export const CurrenciesTab: React.FC = () => {
             <button
               type="submit"
               disabled={saving}
-              className="py-2.5 px-6 rounded-xl bg-emerald-500 hover:bg-emerald-400 text-black font-black text-xs tracking-wide transition-all shadow-md flex items-center justify-center gap-2 cursor-pointer disabled:opacity-50"
+              className={UI_LOCK.buttonPrimary + ' text-xs'}
             >
               {saving ? (
-                <div className="w-4 h-4 border-2 border-black border-t-transparent rounded-full animate-spin" />
+                <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
               ) : (
                 <>
                   <Plus className="w-4 h-4" />
@@ -398,14 +399,14 @@ export const CurrenciesTab: React.FC = () => {
         </form>
 
         {errorMsg && (
-          <div className="mt-4 p-3 rounded-xl bg-rose-500/10 border border-rose-500/30 text-rose-400 text-xs font-semibold flex items-center gap-2">
+          <div className="mt-4 p-3 rounded-xl bg-rose-50 text-rose-700 border border-rose-200 dark:bg-rose-500/10 dark:border-rose-500/30 dark:text-rose-400 text-xs font-semibold flex items-center gap-2">
             <AlertCircle className="w-4 h-4 shrink-0" />
             <span>{errorMsg}</span>
           </div>
         )}
 
         {successMsg && (
-          <div className="mt-4 p-3 rounded-xl bg-emerald-500/10 border border-emerald-500/30 text-emerald-400 text-xs font-semibold flex items-center gap-2">
+          <div className="mt-4 p-3 rounded-xl bg-emerald-50 text-emerald-700 border border-emerald-200 dark:bg-emerald-500/10 dark:border-emerald-500/30 dark:text-emerald-400 text-xs font-semibold flex items-center gap-2">
             <CheckCircle2 className="w-4 h-4 shrink-0" />
             <span>{successMsg}</span>
           </div>
@@ -413,11 +414,11 @@ export const CurrenciesTab: React.FC = () => {
       </div>
 
       {/* Currencies Grid / Table */}
-      <div id="tour-monedas-table" className="bg-[#0D1B22] border border-slate-800 rounded-2xl overflow-hidden shadow-lg">
-        <div className="p-4 border-b border-slate-800 flex items-center justify-between">
+      <div id="tour-monedas-table" className="bg-white dark:bg-[#0D1B22] border border-slate-200/80 dark:border-slate-800 rounded-2xl overflow-hidden shadow-sm">
+        <div className="p-4 border-b border-slate-200 dark:border-slate-800 flex items-center justify-between">
           <div className="flex items-center gap-2">
-            <Globe className="w-4 h-4 text-cyan-400" />
-            <h4 className="text-xs font-extrabold uppercase tracking-wider text-slate-300">
+            <Globe className="w-4 h-4 text-emerald-600 dark:text-cyan-400" />
+            <h4 className="text-xs font-extrabold uppercase tracking-wider text-slate-800 dark:text-slate-300">
               Monedas Habilitadas en el Ecosistema ({currencies.length})
             </h4>
           </div>
@@ -426,7 +427,7 @@ export const CurrenciesTab: React.FC = () => {
         <div className="overflow-x-auto">
           <table className="w-full text-left border-collapse text-xs">
             <thead>
-              <tr className="border-b border-slate-800 bg-[#071217] text-slate-400 font-bold uppercase text-[11px]">
+              <tr className="border-b border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-[#071217] text-slate-600 dark:text-slate-400 font-bold uppercase text-[11px]">
                 <th className="py-3.5 px-4 w-32">Divisa</th>
                 <th className="py-3.5 px-4">Nombre Oficial</th>
                 <th className="py-3.5 px-4 w-28">Símbolo</th>
@@ -435,7 +436,7 @@ export const CurrenciesTab: React.FC = () => {
                 <th className="py-3.5 px-4 text-right w-28">Acciones</th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-slate-800/60 font-sans">
+            <tbody className="divide-y divide-slate-200/80 dark:divide-slate-800/60 font-sans">
               {currencies.length === 0 ? (
                 <tr>
                   <td colSpan={6} className="py-8 text-center text-slate-500">
@@ -448,25 +449,25 @@ export const CurrenciesTab: React.FC = () => {
                   const badgeClasses = getCurrencyBadgeClasses(c.codigo);
 
                   return (
-                    <tr key={c.codigo} className="hover:bg-slate-800/30 transition-colors">
+                    <tr key={c.codigo} className="hover:bg-slate-50/80 dark:hover:bg-slate-800/30 transition-colors">
                       <td className="py-3 px-4 font-black text-sm tracking-wide">
                         <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-black ${badgeClasses}`}>
                           <span>{flag}</span>
                           <span>{c.codigo}</span>
                         </span>
                       </td>
-                      <td className="py-3 px-4 font-semibold text-white">
+                      <td className="py-3 px-4 font-semibold text-slate-900 dark:text-white">
                         {c.nombre || c.codigo}
                       </td>
-                      <td className="py-3 px-4 font-mono font-bold text-slate-300">
+                      <td className="py-3 px-4 font-mono font-bold text-slate-700 dark:text-slate-300">
                         {c.simbolo || c.codigo}
                       </td>
-                      <td className="py-3 px-4 font-mono text-slate-400">
+                      <td className="py-3 px-4 font-mono text-slate-500 dark:text-slate-400">
                         {c.decimales ?? 2}
                       </td>
                       <td className="py-3 px-4">
-                        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-bold bg-emerald-950/60 text-emerald-300 border border-emerald-800/40">
-                          <CheckCircle2 className="w-3 h-3 text-emerald-400" />
+                        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-bold bg-emerald-50 text-emerald-700 border border-emerald-200 dark:bg-emerald-950/60 dark:text-emerald-300 dark:border-emerald-800/40">
+                          <CheckCircle2 className="w-3 h-3 text-emerald-500 dark:text-emerald-400" />
                           <span>Habilitada</span>
                         </span>
                       </td>
@@ -474,7 +475,7 @@ export const CurrenciesTab: React.FC = () => {
                         <div className="flex items-center justify-end gap-1.5">
                           <button
                             onClick={() => handleStartEdit(c)}
-                            className="p-1.5 rounded-lg hover:bg-slate-700 text-slate-300 hover:text-cyan-400 transition-colors cursor-pointer"
+                            className="p-1.5 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-700 text-slate-500 dark:text-slate-300 hover:text-emerald-600 dark:hover:text-cyan-400 transition-colors cursor-pointer"
                             title={`Editar ${c.codigo}`}
                           >
                             <Pencil className="w-4 h-4" />
@@ -484,8 +485,8 @@ export const CurrenciesTab: React.FC = () => {
                             disabled={currencies.length <= 1}
                             className={`p-1.5 rounded-lg transition-colors cursor-pointer ${
                               currencies.length <= 1
-                                ? 'opacity-30 cursor-not-allowed text-slate-600'
-                                : 'hover:bg-rose-500/20 text-slate-400 hover:text-rose-400'
+                                ? 'opacity-30 cursor-not-allowed text-slate-400 dark:text-slate-600'
+                                : 'hover:bg-rose-50 dark:hover:bg-rose-500/20 text-slate-400 hover:text-rose-600 dark:hover:text-rose-400'
                             }`}
                             title={
                               currencies.length <= 1
@@ -508,31 +509,31 @@ export const CurrenciesTab: React.FC = () => {
 
       {/* Edit Currency Modal */}
       {editingCurrency && (
-        <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4">
-          <div className="bg-[#0D1B22] border border-cyan-500/30 rounded-3xl p-6 max-w-lg w-full space-y-4 shadow-2xl animate-fade-in">
-            <div className="flex items-center justify-between pb-3 border-b border-slate-800">
-              <h3 className="text-sm font-bold text-white flex items-center gap-2">
-                <Pencil className="w-4 h-4 text-cyan-400" />
+        <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-xs flex items-center justify-center p-4">
+          <div className="bg-white dark:bg-[#0D1B22] border border-slate-200 dark:border-emerald-500/30 rounded-3xl p-6 max-w-lg w-full space-y-4 shadow-2xl animate-fade-in">
+            <div className="flex items-center justify-between pb-3 border-b border-slate-200 dark:border-slate-800">
+              <h3 className="text-sm font-bold text-slate-900 dark:text-white flex items-center gap-2">
+                <Pencil className="w-4 h-4 text-emerald-500 dark:text-emerald-400" />
                 <span>
-                  Editar Moneda: <span className="text-emerald-400 font-black">{editingCurrency.codigo}</span>
+                  Editar Moneda: <span className="text-emerald-600 dark:text-emerald-400 font-black">{editingCurrency.codigo}</span>
                 </span>
               </h3>
               <button
                 onClick={() => setEditingCurrency(null)}
-                className="text-slate-400 hover:text-white p-1 rounded-lg hover:bg-slate-800 transition-colors cursor-pointer"
+                className="text-slate-400 hover:text-slate-700 dark:hover:text-white p-1 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors cursor-pointer"
               >
                 <X className="w-4 h-4" />
               </button>
             </div>
 
-            <p className="text-xs text-slate-300">
+            <p className="text-xs text-slate-600 dark:text-slate-300">
               Modifica la nomenclatura oficial, símbolo representativo o precisión decimal de esta moneda para su comercializadora.
             </p>
 
             <form onSubmit={handleSaveEdit} className="space-y-4">
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <div>
-                  <label className="block text-[11px] font-bold uppercase text-slate-400 mb-1">
+                  <label className="block text-[11px] font-bold uppercase text-slate-600 dark:text-slate-400 mb-1">
                     Código ISO / Siglas *
                   </label>
                   <input
@@ -540,13 +541,13 @@ export const CurrenciesTab: React.FC = () => {
                     value={editCodigo}
                     onChange={(e) => setEditCodigo(e.target.value)}
                     placeholder="Ej: USDT"
-                    className="w-full bg-[#071217] border border-slate-700 rounded-xl px-3 py-2 text-sm text-white uppercase focus:outline-none focus:border-cyan-500 font-black tracking-wider"
+                    className="w-full bg-white dark:bg-[#071217] border border-slate-300 dark:border-slate-700 rounded-xl px-3 py-2 text-sm text-slate-900 dark:text-white uppercase focus:outline-hidden focus:border-emerald-500 font-black tracking-wider"
                     required
                   />
                 </div>
 
                 <div>
-                  <label className="block text-[11px] font-bold uppercase text-slate-400 mb-1">
+                  <label className="block text-[11px] font-bold uppercase text-slate-600 dark:text-slate-400 mb-1">
                     Nombre Oficial
                   </label>
                   <input
@@ -554,12 +555,12 @@ export const CurrenciesTab: React.FC = () => {
                     value={editNombre}
                     onChange={(e) => setEditNombre(e.target.value)}
                     placeholder="Ej: Tether USD"
-                    className="w-full bg-[#071217] border border-slate-700 rounded-xl px-3 py-2 text-sm text-white focus:outline-none focus:border-cyan-500 font-semibold"
+                    className="w-full bg-white dark:bg-[#071217] border border-slate-300 dark:border-slate-700 rounded-xl px-3 py-2 text-sm text-slate-900 dark:text-white focus:outline-hidden focus:border-emerald-500 font-semibold"
                   />
                 </div>
 
                 <div>
-                  <label className="block text-[11px] font-bold uppercase text-slate-400 mb-1">
+                  <label className="block text-[11px] font-bold uppercase text-slate-600 dark:text-slate-400 mb-1">
                     Símbolo / Prefijo
                   </label>
                   <input
@@ -567,18 +568,18 @@ export const CurrenciesTab: React.FC = () => {
                     value={editSimbolo}
                     onChange={(e) => setEditSimbolo(e.target.value)}
                     placeholder="Ej: ₮, $, Bs."
-                    className="w-full bg-[#071217] border border-slate-700 rounded-xl px-3 py-2 text-sm text-white focus:outline-none focus:border-cyan-500 font-bold"
+                    className="w-full bg-white dark:bg-[#071217] border border-slate-300 dark:border-slate-700 rounded-xl px-3 py-2 text-sm text-slate-900 dark:text-white focus:outline-hidden focus:border-emerald-500 font-bold"
                   />
                 </div>
 
                 <div>
-                  <label className="block text-[11px] font-bold uppercase text-slate-400 mb-1">
+                  <label className="block text-[11px] font-bold uppercase text-slate-600 dark:text-slate-400 mb-1">
                     Decimales
                   </label>
                   <select
                     value={editDecimales}
                     onChange={(e) => setEditDecimales(e.target.value)}
-                    className="w-full bg-[#071217] border border-slate-700 rounded-xl px-3 py-2 text-sm text-white focus:outline-none focus:border-cyan-500 font-bold"
+                    className="w-full bg-white dark:bg-[#071217] border border-slate-300 dark:border-slate-700 rounded-xl px-3 py-2 text-sm text-slate-900 dark:text-white focus:outline-hidden focus:border-emerald-500 font-bold"
                   >
                     <option value="2">2 decimales (Estándar)</option>
                     <option value="0">0 decimales (Sin centavos)</option>
@@ -587,18 +588,18 @@ export const CurrenciesTab: React.FC = () => {
                 </div>
               </div>
 
-              <div className="flex justify-end gap-2 pt-3 border-t border-slate-800">
+              <div className="flex justify-end gap-2 pt-3 border-t border-slate-200 dark:border-slate-800">
                 <button
                   type="button"
                   onClick={() => setEditingCurrency(null)}
-                  className="px-4 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 font-bold text-xs cursor-pointer transition-colors"
+                  className="px-4 py-2 rounded-xl bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-300 font-bold text-xs cursor-pointer transition-colors"
                 >
                   Cancelar
                 </button>
                 <button
                   type="submit"
                   disabled={saving}
-                  className="px-5 py-2 rounded-xl bg-emerald-500 hover:bg-emerald-400 text-black font-black text-xs flex items-center gap-1.5 cursor-pointer transition-all shadow-md disabled:opacity-50"
+                  className={UI_LOCK.buttonPrimary + ' text-xs'}
                 >
                   <Save className="w-3.5 h-3.5" />
                   <span>{saving ? 'Guardando...' : 'GUARDAR CAMBIOS'}</span>

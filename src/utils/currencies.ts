@@ -7,6 +7,7 @@ export interface CurrencyConfig {
   simbolo: string;
   decimales: number;
   es_default?: boolean;
+  icono?: string;
 }
 
 export type DynamicCurrencyConfig = CurrencyConfig;

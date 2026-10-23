@@ -25,9 +25,8 @@ export const Shell: React.FC<ShellProps> = ({
   useEffect(() => {
     registerTourNavigator(onSelectModule, currentModule);
   }, [onSelectModule, currentModule]);
-
   return (
-    <div className="min-h-screen bg-[#071217] text-slate-100 flex flex-col">
+    <div className="min-h-screen bg-slate-50 dark:bg-[#071217] text-slate-900 dark:text-slate-100 flex flex-col transition-colors">
       {/* Sidebar Navigation */}
       <Sidebar
         currentModule={currentModule}
