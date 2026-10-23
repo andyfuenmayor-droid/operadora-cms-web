@@ -446,6 +446,7 @@ export const WeeklyClosureTab: React.FC = () => {
       rawDailyPayments: payments.filter((p) => p.id.startsWith('pd_')),
       systemCycle: { desde: systemCycle.desde, hasta: systemCycle.hasta },
       participationCalculator: (ag, sistema, mon) => getAgencyCommissionAndParticipation(ag, sistema, mon),
+      customCurrencies: dynamicCurrencies.map((c) => c.codigo),
     });
 
     return rawMatrix.map((r) => ({
@@ -460,7 +461,7 @@ export const WeeklyClosureTab: React.FC = () => {
       cobros: r.bancos + r.efectivo_taquilla,
       saldo_final: r.saldo_final,
     }));
-  }, [agencies, sales, payments, expenses, systemCycle]);
+  }, [agencies, sales, payments, expenses, systemCycle, dynamicCurrencies]);
 
   const nextCyclePreview = useMemo(() => {
     if (!systemCycle.hasta) return { semana: '?', desde: '?', hasta: '?' };

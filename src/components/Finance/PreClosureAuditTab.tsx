@@ -655,8 +655,9 @@ export const PreClosureAuditTab: React.FC = () => {
       rawDailyPayments,
       systemCycle,
       participationCalculator: (ag, sistema, mon) => getAgencyCommissionAndParticipation(ag, sistema, mon),
+      customCurrencies: dynamicCurrencies.map((c) => c.codigo),
     });
-  }, [agencies, sales, payments, expenses, rawDailyPayments, systemCycle]);
+  }, [agencies, sales, payments, expenses, rawDailyPayments, systemCycle, dynamicCurrencies]);
 
   // Totals by currency delegando en el Motor Contable Puro
   const totalsByCurrency = useMemo(() => {

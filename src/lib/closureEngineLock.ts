@@ -219,7 +219,9 @@ export function computeCertifiedAgencyMatrix(params: {
         return sum + utilOp;
       }, 0);
 
-      if (confMon.includes(mon) || Math.abs(sAnt) > 0.01 || agSales.length > 0) {
+      const isBaseCurrency = baseCurrencies.map((c) => normalizarMonedaPura(c)).includes(mon);
+      const isConfiguredAndAllowed = confMon.includes(mon) && isBaseCurrency;
+      if (isConfiguredAndAllowed || Math.abs(sAnt) > 0.01 || agSales.length > 0) {
         // 2. Gastos confirmados en ciclo
         const agExp = expenses.filter((g) => {
           const gNom = String(g.agencia || '').trim().toUpperCase();
@@ -611,7 +613,8 @@ export function computeCertifiedGroupMatrix(params: {
       const hasSales = ventaBrutaArbol > 0 || premiosArbol > 0;
       const hasBalance = Math.abs(sAnt) > 0.01;
       const hasPayments = pagosNetos > 0;
-      const hasDaughters = daughterAgencies.length > 0 && confMon.includes(mon);
+      const isBaseCurrency = baseCurrencies.map((c) => normalizarMonedaPura(c)).includes(mon);
+      const hasDaughters = daughterAgencies.length > 0 && confMon.includes(mon) && isBaseCurrency;
 
       if (hasSales || hasBalance || hasPayments || hasDaughters) {
         const ggr = Math.round((ventaBrutaArbol - premiosArbol) * 100) / 100;

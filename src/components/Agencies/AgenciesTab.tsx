@@ -162,7 +162,11 @@ export const parseAccountDisplay = (
   };
 };
 
-export const parseAgencySystemCombos = (ag: Agency) => {
+export const parseAgencySystemCombos = (
+  ag: Agency,
+  allowedSystems?: string[],
+  allowedCurrencies?: string[]
+) => {
   const combos: { sistema: string; moneda: string; codigo?: string; comision?: number; participacion?: number }[] = [];
   let c: any = {};
   try {
@@ -194,7 +198,8 @@ export const parseAgencySystemCombos = (ag: Agency) => {
 
   if (combos.length === 0) {
     const sisArr = ag.sistemas ? ag.sistemas.split(',').map((s) => s.trim()).filter(Boolean) : [];
-    const monArr = ag.monedas ? ag.monedas.split(',').map((m) => m.trim().toUpperCase()).filter(Boolean) : ['COP'];
+    const fallbackMon = allowedCurrencies && allowedCurrencies.length > 0 ? [allowedCurrencies[0]] : ['USD'];
+    const monArr = ag.monedas ? ag.monedas.split(',').map((m) => m.trim().toUpperCase()).filter(Boolean) : fallbackMon;
     sisArr.forEach((s) => {
       monArr.forEach((m) => {
         const legacy = c?.[s] || {};
@@ -209,7 +214,18 @@ export const parseAgencySystemCombos = (ag: Agency) => {
     });
   }
 
-  return combos;
+  // Filter against active tenant catalogs if provided
+  return combos.filter((combo) => {
+    if (allowedSystems && allowedSystems.length > 0) {
+      const matchSys = allowedSystems.some((s) => s.trim().toUpperCase() === combo.sistema.trim().toUpperCase());
+      if (!matchSys) return false;
+    }
+    if (allowedCurrencies && allowedCurrencies.length > 0) {
+      const matchMon = allowedCurrencies.some((m) => m.trim().toUpperCase() === combo.moneda.trim().toUpperCase());
+      if (!matchMon) return false;
+    }
+    return true;
+  });
 };
 
 export const AgenciesTab: React.FC = () => {
@@ -358,6 +374,10 @@ export const AgenciesTab: React.FC = () => {
   const agencyLimit = profile?.limite_agencias || 5;
   const isLimitReached = agencies.length >= agencyLimit;
 
+  // Active system and currency names for catalog-based filtering
+  const activeSysNames = useMemo(() => systems.map((s) => s.nombre_sistema.trim()), [systems]);
+  const activeMonNames = useMemo(() => currencies.map((c) => c.nombre_moneda.trim().toUpperCase()), [currencies]);
+
   // Active combinations of (Sistema, Moneda)
   const activeCombinations = useMemo(() => {
     const list: { sistema: string; moneda: string; key: string }[] = [];
@@ -429,7 +449,7 @@ export const AgenciesTab: React.FC = () => {
     }
 
     const availableMonedas = currencies.map((m) => m.nombre_moneda).filter(Boolean);
-    const primaryMon = availableMonedas.includes('COP') ? 'COP' : (availableMonedas[0] || 'COP');
+    const primaryMon = availableMonedas.includes('COP') ? 'COP' : (availableMonedas[0] || 'USD');
 
     const initMap: Record<string, string[]> = {};
     systems.forEach((s) => {
@@ -457,8 +477,14 @@ export const AgenciesTab: React.FC = () => {
     setEditModalAgency(ag);
     setFormNombre(ag.nombre_agencia);
 
-    const rawSistemas = ag.sistemas ? ag.sistemas.split(',').map((s) => s.trim()).filter(Boolean) : [];
-    const rawMonedas = ag.monedas ? ag.monedas.split(',').map((m) => m.trim().toUpperCase()).filter(Boolean) : [];
+    const activeSysList = systems.map((s) => s.nombre_sistema.trim());
+    const activeMonList = currencies.map((c) => c.nombre_moneda.trim().toUpperCase());
+
+    const rawSistemas = (ag.sistemas ? ag.sistemas.split(',').map((s) => s.trim()).filter(Boolean) : [])
+      .filter((s) => activeSysList.length === 0 || activeSysList.some((act) => act.toUpperCase() === s.toUpperCase()));
+
+    const rawMonedas = (ag.monedas ? ag.monedas.split(',').map((m) => m.trim().toUpperCase()).filter(Boolean) : [])
+      .filter((m) => activeMonList.length === 0 || activeMonList.some((act) => act.toUpperCase() === m.toUpperCase()));
 
     let cond: Record<string, any> = {};
     try {
@@ -491,6 +517,11 @@ export const AgenciesTab: React.FC = () => {
 
       if (sysPart && monPart) {
         monPart = monPart.toUpperCase();
+        // Skip systems or currencies that were deleted from tenant's catalog
+        const sysActive = activeSysList.length === 0 || activeSysList.some((act) => act.toUpperCase() === sysPart.toUpperCase());
+        const monActive = activeMonList.length === 0 || activeMonList.some((act) => act.toUpperCase() === monPart.toUpperCase());
+        if (!sysActive || !monActive) return;
+
         newSistemaMonedas[sysPart] = Array.from(new Set([...(newSistemaMonedas[sysPart] || []), monPart]));
         const comboKey = `${sysPart}_${monPart}`;
         newCondiciones[comboKey] = { ...val, sistema: sysPart, moneda: monPart };
@@ -498,9 +529,10 @@ export const AgenciesTab: React.FC = () => {
     });
 
     // 2. Handle systems from rawSistemas that were not explicitly bound to currencies in cond
+    const defaultFallbackMon = activeMonList[0] || 'USD';
     rawSistemas.forEach((s) => {
       if (!newSistemaMonedas[s] || newSistemaMonedas[s].length === 0) {
-        const assignedMons = rawMonedas.length > 0 ? [...rawMonedas] : ['COP'];
+        const assignedMons = rawMonedas.length > 0 ? [...rawMonedas] : [defaultFallbackMon];
         newSistemaMonedas[s] = assignedMons;
         assignedMons.forEach((m) => {
           const comboKey = `${s}_${m}`;
@@ -528,7 +560,7 @@ export const AgenciesTab: React.FC = () => {
     setFormSistemaMonedas(newSistemaMonedas);
     setFormCondicionesSistemas(newCondiciones);
     setFormSistemas(rawSistemas);
-    setFormMonedas(rawMonedas.length > 0 ? rawMonedas : ['COP']);
+    setFormMonedas(rawMonedas.length > 0 ? rawMonedas : (activeMonList.length > 0 ? [activeMonList[0]] : ['USD']));
     setFormComision(String(ag.comision !== undefined && ag.comision !== null ? ag.comision : 10));
     setFormParticipacion(String(ag.participacion_ag !== undefined && ag.participacion_ag !== null ? ag.participacion_ag : 0));
 
@@ -1133,7 +1165,8 @@ export const AgenciesTab: React.FC = () => {
               <tbody className="divide-y divide-slate-800/80 font-mono">
                 {filteredAgencies.map((ag) => {
                   const sisArr = ag.sistemas ? ag.sistemas.split(',').map((s) => s.trim()).filter(Boolean) : [];
-                  const monArr = ag.monedas ? ag.monedas.split(',').map((m) => m.trim()).filter(Boolean) : [];
+                  const monArr = (ag.monedas ? ag.monedas.split(',').map((m) => m.trim().toUpperCase()).filter(Boolean) : [])
+                    .filter((m) => activeMonNames.length === 0 || activeMonNames.includes(m));
                   const accArr =
                     ag.cuentas_asignadas && ag.cuentas_asignadas !== 'NINGUNA'
                       ? ag.cuentas_asignadas.split(',').map((c) => c.trim()).filter(Boolean)
@@ -1163,7 +1196,7 @@ export const AgenciesTab: React.FC = () => {
                       {/* Comision / Participacion */}
                       <td className="py-3 px-4 text-center">
                         {(() => {
-                          const combos = parseAgencySystemCombos(ag);
+                          const combos = parseAgencySystemCombos(ag, activeSysNames, activeMonNames);
                           const hasCustom = combos.some(
                             (cb) =>
                               (cb.comision !== undefined && cb.comision !== null && (cb.comision as any) !== '') ||
@@ -1217,7 +1250,7 @@ export const AgenciesTab: React.FC = () => {
                       {/* Sistemas */}
                       <td className="py-3 px-4 font-sans">
                         <div className="flex flex-wrap gap-1.5 items-center">
-                          {parseAgencySystemCombos(ag).map((combo) => {
+                          {parseAgencySystemCombos(ag, activeSysNames, activeMonNames).map((combo) => {
                             const isUsd = combo.moneda.includes('USD') || combo.moneda.includes('$');
                             const isCop = combo.moneda.includes('COP');
                             const monBadge = isUsd
@@ -1370,7 +1403,8 @@ export const AgenciesTab: React.FC = () => {
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           {filteredAgencies.map((ag) => {
             const sisArr = ag.sistemas ? ag.sistemas.split(',').map((s) => s.trim()) : [];
-            const monArr = ag.monedas ? ag.monedas.split(',').map((m) => m.trim()) : [];
+            const monArr = (ag.monedas ? ag.monedas.split(',').map((m) => m.trim().toUpperCase()) : [])
+              .filter((m) => activeMonNames.length === 0 || activeMonNames.includes(m));
             const accArr =
               ag.cuentas_asignadas && ag.cuentas_asignadas !== 'NINGUNA'
                 ? ag.cuentas_asignadas.split(',').map((c) => c.trim())
@@ -1398,7 +1432,7 @@ export const AgenciesTab: React.FC = () => {
 
                     <div className="text-xs text-slate-400 mt-1 flex flex-wrap items-center gap-2 font-mono">
                       {(() => {
-                        const combos = parseAgencySystemCombos(ag);
+                        const combos = parseAgencySystemCombos(ag, activeSysNames, activeMonNames);
                         const hasCustom = combos.some(
                           (cb) =>
                             (cb.comision !== undefined && cb.comision !== null && (cb.comision as any) !== '') ||
@@ -1464,7 +1498,7 @@ export const AgenciesTab: React.FC = () => {
                   <div className="space-y-1.5">
                     <span className="text-[11px] font-bold text-slate-400 block">Sistemas y Monedas:</span>
                     <div className="flex flex-wrap gap-1.5 items-center">
-                      {parseAgencySystemCombos(ag).map((combo) => {
+                      {parseAgencySystemCombos(ag, activeSysNames, activeMonNames).map((combo) => {
                         const isUsd = combo.moneda.includes('USD') || combo.moneda.includes('$');
                         const isCop = combo.moneda.includes('COP');
                         const monBadge = isUsd
