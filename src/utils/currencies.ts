@@ -67,46 +67,139 @@ export function getCurrencyBadgeClasses(currency: string): string {
 }
 
 /**
- * Carga la lista completa de monedas activas desde Supabase con fallback a las predeterminadas
+ * Guarda la lista completa de monedas activas en config_sistema (Supabase/PostgreSQL) y localStorage
+ */
+export async function saveCurrencies(
+  currencies: CurrencyConfig[],
+  userId?: string
+): Promise<void> {
+  if (!currencies || currencies.length === 0) {
+    throw new Error('El sistema debe contar con al menos una moneda activa para operar.');
+  }
+
+  // 1. Guardar en localStorage
+  try {
+    const key = `operadora_catalogo_monedas_${userId || 'default'}`;
+    localStorage.setItem(key, JSON.stringify(currencies));
+    localStorage.setItem('operadora_catalogo_monedas', JSON.stringify(currencies));
+  } catch (e) {
+    console.warn('Error saving currencies to localStorage:', e);
+  }
+
+  // 2. Persistir en config_sistema (Supabase + PostgreSQL)
+  if (userId) {
+    try {
+      const { error } = await supabase.from('config_sistema').upsert(
+        {
+          user_id: userId,
+          parametro: 'catalogo_monedas',
+          valor: JSON.stringify(currencies),
+        },
+        { onConflict: 'user_id,parametro' }
+      );
+      if (error) {
+        console.warn('Could not persist currencies to config_sistema:', error);
+      }
+    } catch (e) {
+      console.warn('Exception persisting currencies to config_sistema:', e);
+    }
+  }
+}
+
+/**
+ * Carga la lista completa de monedas activas desde config_sistema y localStorage
+ * Si es la primera vez que ingresa el suscriptor, inicializa con BS, USD y COP
  */
 export async function loadCurrencies(userId?: string): Promise<CurrencyConfig[]> {
-  const mergedMap = new Map<string, CurrencyConfig>();
+  const localKey = `operadora_catalogo_monedas_${userId || 'default'}`;
 
-  // 1. Agregar monedas base por defecto
-  DEFAULT_CURRENCIES.forEach((c) => mergedMap.set(c.codigo, { ...c }));
+  // 1. Si hay userId, consultar config_sistema
+  if (userId) {
+    try {
+      const { data: cfgRow, error: cfgErr } = await supabase
+        .from('config_sistema')
+        .select('valor')
+        .eq('user_id', userId)
+        .eq('parametro', 'catalogo_monedas')
+        .maybeSingle();
 
-  // 2. Si no hay userId, devolver las predeterminadas
-  if (!userId) {
-    return Array.from(mergedMap.values());
+      if (!cfgErr && cfgRow?.valor) {
+        try {
+          const parsed = JSON.parse(cfgRow.valor);
+          if (Array.isArray(parsed) && parsed.length > 0) {
+            try {
+              localStorage.setItem(localKey, JSON.stringify(parsed));
+              localStorage.setItem('operadora_catalogo_monedas', JSON.stringify(parsed));
+            } catch (_) {}
+            return parsed;
+          }
+        } catch (_) {}
+      }
+    } catch (e) {
+      console.warn('Error fetching currencies from config_sistema:', e);
+    }
   }
 
+  // 2. Intentar desde localStorage
   try {
-    const { data, error } = await supabase
-      .from('monedas')
-      .select('*')
-      .eq('user_id', userId)
-      .order('id', { ascending: true });
-
-    if (!error && Array.isArray(data)) {
-      data.forEach((row: any) => {
-        const rawCode = String(row.Nombre_Moneda || row.nombre_moneda || row.moneda || '').trim().toUpperCase();
-        if (!rawCode) return;
-        const normCode = normalizeCurrency(rawCode);
-        const existing = mergedMap.get(normCode);
-
-        mergedMap.set(normCode, {
-          id: row.id || existing?.id,
-          codigo: normCode,
-          nombre: existing?.nombre || rawCode,
-          simbolo: String(row.Simbolo || row.simbolo || existing?.simbolo || normCode).trim(),
-          decimales: existing?.decimales ?? (normCode === 'COP' ? 0 : 2),
-          es_default: Boolean(existing?.es_default),
-        });
-      });
+    const rawLocal = localStorage.getItem(localKey) || localStorage.getItem('operadora_catalogo_monedas');
+    if (rawLocal) {
+      const parsedLocal = JSON.parse(rawLocal);
+      if (Array.isArray(parsedLocal) && parsedLocal.length > 0) {
+        return parsedLocal;
+      }
     }
   } catch (e) {
-    console.warn('Error loading dynamic currencies from database:', e);
+    console.warn('Error reading currencies from localStorage:', e);
   }
 
-  return Array.from(mergedMap.values());
+  // 3. Fallback inicial (primera vez):
+  // Si existen monedas previas en la tabla legado 'monedas', migrarlas/incorporarlas
+  const initialList: CurrencyConfig[] = DEFAULT_CURRENCIES.map((c) => ({ ...c }));
+
+  if (userId) {
+    try {
+      const { data: legacyData } = await supabase
+        .from('monedas')
+        .select('*')
+        .eq('user_id', userId)
+        .order('id', { ascending: true });
+
+      if (Array.isArray(legacyData) && legacyData.length > 0) {
+        legacyData.forEach((row: any) => {
+          const rawCode = String(row.Nombre_Moneda || row.nombre_moneda || row.moneda || '').trim().toUpperCase();
+          if (!rawCode) return;
+          const normCode = normalizeCurrency(rawCode);
+          const existing = initialList.find((c) => c.codigo === normCode);
+          if (!existing) {
+            initialList.push({
+              id: row.id,
+              codigo: normCode,
+              nombre: rawCode,
+              simbolo: String(row.Simbolo || row.simbolo || normCode).trim(),
+              decimales: normCode === 'COP' ? 0 : 2,
+              es_default: false,
+            });
+          }
+        });
+      }
+    } catch (_) {}
+
+    // Persistir esta configuración inicial para que futuras eliminaciones sean duraderas
+    try {
+      await saveCurrencies(initialList, userId);
+    } catch (_) {}
+  }
+
+  return initialList;
 }
+
+/**
+ * Restablece las monedas base (BS, USD, COP) para el suscriptor
+ */
+export async function resetToDefaultCurrencies(userId?: string): Promise<CurrencyConfig[]> {
+  const initial = DEFAULT_CURRENCIES.map((c) => ({ ...c }));
+  await saveCurrencies(initial, userId);
+  return initial;
+}
+

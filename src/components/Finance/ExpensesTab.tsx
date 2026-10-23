@@ -3,6 +3,7 @@ import { supabase } from '../../lib/supabase';
 import { useAuth } from '../../context/AuthContext';
 import { formatCurrency, formatDate, normalizarMoneda, cleanReference } from '../../utils/formatters';
 import type { Agency, Currency } from '../../types';
+import { loadCurrencies, type CurrencyConfig } from '../../utils/currencies';
 import { notificationService } from '../../utils/notificationService';
 import { realtimeBroadcast } from '../../utils/realtimeBroadcast';
 import {
@@ -39,7 +40,7 @@ export const ExpensesTab: React.FC = () => {
   const [isProcessing, setIsProcessing] = useState(false);
   const [expenses, setExpenses] = useState<ExpenseItem[]>([]);
   const [agencies, setAgencies] = useState<Agency[]>([]);
-  const [currencies, setCurrencies] = useState<Currency[]>([]);
+  const [currencies, setCurrencies] = useState<CurrencyConfig[]>([]);
 
   // Filters
   const [filterPeriod, setFilterPeriod] = useState<'ciclo' | 'todos'>('ciclo');
@@ -67,17 +68,19 @@ export const ExpensesTab: React.FC = () => {
 
   // Available currencies for selected agency
   const availableAgencyCurrencies = useMemo(() => {
-    if (!selectedAgencyObj) return ['BS', 'USD', 'COP'];
+    const activeCodes = currencies.length > 0 ? currencies.map((c) => c.codigo) : ['BS', 'USD', 'COP'];
+    if (!selectedAgencyObj) return activeCodes;
     const raw = String(selectedAgencyObj.monedas || '').toUpperCase();
     const parts = raw
       .split(',')
       .map((m) => m.trim())
-      .filter(Boolean);
+      .filter(Boolean)
+      .filter((m) => activeCodes.includes(m));
     if (parts.length === 0 || parts.includes('TODAS')) {
-      return ['BS', 'USD', 'COP'];
+      return activeCodes;
     }
     return parts;
-  }, [selectedAgencyObj]);
+  }, [selectedAgencyObj, currencies]);
 
   // Ensure formMoneda matches available currencies of the selected agency
   useEffect(() => {
@@ -99,16 +102,16 @@ export const ExpensesTab: React.FC = () => {
     setMessage(null);
 
     try {
-      const [gRes, gdRes, agRes, monRes] = await Promise.all([
+      const [gRes, gdRes, agRes, loadedCurrs] = await Promise.all([
         supabase.from('gastos').select('*').eq('user_id', effectiveUserId).order('id', { ascending: false }),
         supabase.from('cda_gastos_diarios').select('*').eq('user_id', effectiveUserId).order('id', { ascending: false }),
         supabase.from('agencias').select('*').eq('user_id', effectiveUserId).order('id', { ascending: true }),
-        supabase.from('monedas').select('*').eq('user_id', effectiveUserId).order('id', { ascending: true }),
+        loadCurrencies(effectiveUserId),
       ]);
 
       const loadedAgencies = agRes.data || [];
       setAgencies(loadedAgencies);
-      setCurrencies(monRes.data || []);
+      setCurrencies(loadedCurrs || []);
 
       const list: ExpenseItem[] = [];
 

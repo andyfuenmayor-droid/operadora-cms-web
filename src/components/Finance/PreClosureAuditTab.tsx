@@ -48,7 +48,7 @@ import {
   Handshake,
 } from 'lucide-react';
 import type { Grupo } from '../../types';
-import { loadCurrencies, type DynamicCurrencyConfig } from '../../utils/currencies';
+import { loadCurrencies, getCurrencyFlag, type DynamicCurrencyConfig } from '../../utils/currencies';
 import { DeliveryReportModal, type PreClosureAgencyRow } from './DeliveryReportModal';
 import { UnifiedAuditDossierModal } from './UnifiedAuditDossierModal';
 import { OperatorDeliveryReportModal } from './OperatorDeliveryReportModal';
@@ -95,6 +95,9 @@ export const PreClosureAuditTab: React.FC = () => {
   const [groups, setGroups] = useState<Grupo[]>([]);
   const [groupPayments, setGroupPayments] = useState<RawGroupPaymentEntry[]>([]);
   const [dynamicCurrencies, setDynamicCurrencies] = useState<DynamicCurrencyConfig[]>([]);
+  const activeCurrencyCodes = useMemo(() => {
+    return dynamicCurrencies.length > 0 ? dynamicCurrencies.map((c) => c.codigo) : ['BS', 'USD', 'COP'];
+  }, [dynamicCurrencies]);
   const [selectedGroupActa, setSelectedGroupActa] = useState<GroupClosureRow | null>(null);
   const [groupSearchQuery, setGroupSearchQuery] = useState('');
   const [groupStatusFilter, setGroupStatusFilter] = useState<'all' | 'pagar' | 'cobrar' | 'solvente'>('all');
@@ -116,7 +119,7 @@ export const PreClosureAuditTab: React.FC = () => {
   const [operatorStatusFilter, setOperatorStatusFilter] = useState<'all' | 'pagar' | 'cobrar' | 'solvente'>('all');
 
   // Filters
-  const [selectedCurrency, setSelectedCurrency] = useState<'ALL' | 'BS' | 'USD' | 'COP'>('ALL');
+  const [selectedCurrency, setSelectedCurrency] = useState<'ALL' | string>('ALL');
   const [searchQuery, setSearchQuery] = useState('');
   const [statusFilter, setStatusFilter] = useState<'all' | 'pagado' | 'pendiente' | 'favor'>('all');
 
@@ -1555,13 +1558,14 @@ export const PreClosureAuditTab: React.FC = () => {
         <>
           {/* KPI Cards Multi-Moneda */}
       <div id="tour-cierre-cajas" className="grid grid-cols-1 lg:grid-cols-3 gap-5">
-        {['BS', 'USD', 'COP'].map((mon) => {
+        {activeCurrencyCodes.map((mon) => {
           const tot = totalsByCurrency[mon];
           if (!tot) return null;
 
           const isSelected = selectedCurrency === mon;
-          const flag = mon === 'BS' ? '🇻🇪' : mon === 'USD' ? '🇺🇸' : '🇨🇴';
-          const currencyName = mon === 'BS' ? 'Bolívares (BS)' : mon === 'USD' ? 'Dólares (USD)' : 'Pesos (COP)';
+          const currConfig = dynamicCurrencies.find((c) => c.codigo === mon);
+          const flag = getCurrencyFlag(mon);
+          const currencyName = currConfig?.nombre ? `${currConfig.nombre} (${mon})` : mon;
 
           return (
             <div
@@ -1776,7 +1780,7 @@ export const PreClosureAuditTab: React.FC = () => {
           >
             Todas ({auditRows.length})
           </button>
-          {['COP', 'BS', 'USD'].map((mon) => (
+          {activeCurrencyCodes.map((mon) => (
             <button
               key={mon}
               onClick={() => setSelectedCurrency(mon as any)}
@@ -2766,7 +2770,7 @@ export const PreClosureAuditTab: React.FC = () => {
           >
             Todas ({operatorRows.length})
           </button>
-          {['BS', 'USD', 'COP'].map((mon) => (
+          {activeCurrencyCodes.map((mon) => (
             <button
               key={mon}
               onClick={() => setSelectedCurrency(mon as any)}

@@ -24,10 +24,12 @@ import {
   type SystemKeywordsMap,
   type SystemKeywordConfig
 } from '../../utils/systemKeywords';
+import { loadCurrencies, type CurrencyConfig } from '../../utils/currencies';
 
 export const SystemsTab: React.FC = () => {
   const { effectiveUserId } = useAuth();
   const [systems, setSystems] = useState<BetSystem[]>([]);
+  const [activeCurrencies, setActiveCurrencies] = useState<CurrencyConfig[]>([]);
   const [loading, setLoading] = useState(false);
 
   // New System Form States
@@ -61,7 +63,7 @@ export const SystemsTab: React.FC = () => {
     if (!effectiveUserId) return;
     setLoading(true);
     try {
-      const [sysRes, keywordsMap, salesRes] = await Promise.all([
+      const [sysRes, keywordsMap, salesRes, currs] = await Promise.all([
         supabase
           .from('sistemas')
           .select('*')
@@ -71,8 +73,11 @@ export const SystemsTab: React.FC = () => {
         supabase
           .from('carga_actual')
           .select('sistema')
-          .eq('user_id', effectiveUserId)
+          .eq('user_id', effectiveUserId),
+        loadCurrencies(effectiveUserId),
       ]);
+
+      setActiveCurrencies(currs);
 
       let loadedSystems: BetSystem[] = sysRes.data || [];
 
@@ -706,38 +711,44 @@ export const SystemsTab: React.FC = () => {
                 </div>
 
                 <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-                  <div className="space-y-1">
-                    <label className="text-xs font-semibold text-slate-300">🇻🇪 Saldo BS</label>
-                    <input
-                      type="number"
-                      step="0.01"
-                      value={editSaldoInicialBs}
-                      onChange={(e) => setEditSaldoInicialBs(e.target.value)}
-                      className="w-full bg-[#0D1B22] border border-slate-700 rounded-xl px-3 py-2 text-xs text-white font-mono focus:outline-none focus:border-emerald-500"
-                    />
-                  </div>
+                  {(activeCurrencies.length === 0 || activeCurrencies.some((c) => c.codigo === 'BS')) && (
+                    <div className="space-y-1">
+                      <label className="text-xs font-semibold text-slate-300">🇻🇪 Saldo BS</label>
+                      <input
+                        type="number"
+                        step="0.01"
+                        value={editSaldoInicialBs}
+                        onChange={(e) => setEditSaldoInicialBs(e.target.value)}
+                        className="w-full bg-[#0D1B22] border border-slate-700 rounded-xl px-3 py-2 text-xs text-white font-mono focus:outline-none focus:border-emerald-500"
+                      />
+                    </div>
+                  )}
 
-                  <div className="space-y-1">
-                    <label className="text-xs font-semibold text-slate-300">💵 Saldo USD</label>
-                    <input
-                      type="number"
-                      step="0.01"
-                      value={editSaldoInicialUsd}
-                      onChange={(e) => setEditSaldoInicialUsd(e.target.value)}
-                      className="w-full bg-[#0D1B22] border border-slate-700 rounded-xl px-3 py-2 text-xs text-white font-mono focus:outline-none focus:border-emerald-500"
-                    />
-                  </div>
+                  {(activeCurrencies.length === 0 || activeCurrencies.some((c) => c.codigo === 'USD')) && (
+                    <div className="space-y-1">
+                      <label className="text-xs font-semibold text-slate-300">💵 Saldo USD</label>
+                      <input
+                        type="number"
+                        step="0.01"
+                        value={editSaldoInicialUsd}
+                        onChange={(e) => setEditSaldoInicialUsd(e.target.value)}
+                        className="w-full bg-[#0D1B22] border border-slate-700 rounded-xl px-3 py-2 text-xs text-white font-mono focus:outline-none focus:border-emerald-500"
+                      />
+                    </div>
+                  )}
 
-                  <div className="space-y-1">
-                    <label className="text-xs font-semibold text-slate-300">🇨🇴 Saldo COP</label>
-                    <input
-                      type="number"
-                      step="0.01"
-                      value={editSaldoInicialCop}
-                      onChange={(e) => setEditSaldoInicialCop(e.target.value)}
-                      className="w-full bg-[#0D1B22] border border-slate-700 rounded-xl px-3 py-2 text-xs text-white font-mono focus:outline-none focus:border-emerald-500"
-                    />
-                  </div>
+                  {(activeCurrencies.length === 0 || activeCurrencies.some((c) => c.codigo === 'COP')) && (
+                    <div className="space-y-1">
+                      <label className="text-xs font-semibold text-slate-300">🇨🇴 Saldo COP</label>
+                      <input
+                        type="number"
+                        step="0.01"
+                        value={editSaldoInicialCop}
+                        onChange={(e) => setEditSaldoInicialCop(e.target.value)}
+                        className="w-full bg-[#0D1B22] border border-slate-700 rounded-xl px-3 py-2 text-xs text-white font-mono focus:outline-none focus:border-emerald-500"
+                      />
+                    </div>
+                  )}
                 </div>
               </div>
 

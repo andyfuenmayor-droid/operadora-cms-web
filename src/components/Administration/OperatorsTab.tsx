@@ -3,6 +3,7 @@ import { supabase } from '../../lib/supabase';
 import { useAuth } from '../../context/AuthContext';
 import { useTheme } from '../../context/ThemeContext';
 import { formatCurrency, formatDate } from '../../utils/formatters';
+import { loadCurrencies, type CurrencyConfig } from '../../utils/currencies';
 import {
   Trophy,
   Save,
@@ -69,6 +70,7 @@ export const OperatorsTab: React.FC<OperatorsTabProps> = ({ initialSubTab = 'rep
   const [operatorPayments, setOperatorPayments] = useState<OperatorPayment[]>([]);
   const [systemConfigs, setSystemConfigs] = useState<SystemKeywordsMap>({});
   const [registeredSystems, setRegisteredSystems] = useState<string[]>([]);
+  const [activeCurrencies, setActiveCurrencies] = useState<CurrencyConfig[]>([]);
 
   // Selection in Venta Tab
   const [selectedSistema, setSelectedSistema] = useState('');
@@ -130,6 +132,9 @@ export const OperatorsTab: React.FC<OperatorsTabProps> = ({ initialSubTab = 'rep
       setRegisteredSystems(sysList);
       setSystemConfigs(confs);
 
+      const currs = await loadCurrencies(effectiveUserId);
+      setActiveCurrencies(currs);
+
       // Parse operator payments
       const rawPayments = (payRes.data || []).map((p: any) => {
         let sysName = '';
@@ -186,8 +191,9 @@ export const OperatorsTab: React.FC<OperatorsTabProps> = ({ initialSubTab = 'rep
           .map((s) => String(s.moneda || '').toUpperCase())
       )
     ).filter(Boolean).sort();
-    return currs.length > 0 ? currs : ['BS', 'USD', 'COP'];
-  }, [sales, selectedSistema]);
+    const activeCodes = activeCurrencies.length > 0 ? activeCurrencies.map((c) => c.codigo) : ['BS', 'USD', 'COP'];
+    return currs.length > 0 ? currs : activeCodes;
+  }, [sales, selectedSistema, activeCurrencies]);
 
   // Auto-select currency when system changes
   useEffect(() => {
@@ -296,7 +302,7 @@ export const OperatorsTab: React.FC<OperatorsTabProps> = ({ initialSubTab = 'rep
   // Consolidate all systems for the Report Tab
   const reportRows = useMemo(() => {
     const rows: any[] = [];
-    const allCurrencies = ['BS', 'USD', 'COP'];
+    const allCurrencies = activeCurrencies.length > 0 ? activeCurrencies.map((c) => c.codigo) : ['BS', 'USD', 'COP'];
 
     availableSystems.forEach((sys) => {
       const conf = systemConfigs[sys] || {
@@ -414,12 +420,13 @@ export const OperatorsTab: React.FC<OperatorsTabProps> = ({ initialSubTab = 'rep
   }, [reportRows]);
 
   const activeCurrenciesWithData = useMemo(() => {
-    return (['BS', 'USD', 'COP'] as const).filter((c) => {
+    const list = activeCurrencies.length > 0 ? activeCurrencies.map((c) => c.codigo) : (['BS', 'USD', 'COP'] as const);
+    return list.filter((c) => {
       if (reportCurrencyFilter !== 'ALL' && reportCurrencyFilter !== c) return false;
       const t = totalsByCurrency[c];
       return t && (t.count > 0 || t.venta > 0 || t.premios > 0 || t.balanceFinal !== 0);
     });
-  }, [totalsByCurrency, reportCurrencyFilter]);
+  }, [totalsByCurrency, reportCurrencyFilter, activeCurrencies]);
 
   // Saldo actual adeudado al proveedor/sistema en la moneda seleccionada en el formulario de pagos
   const currentPayBalance = useMemo(() => {

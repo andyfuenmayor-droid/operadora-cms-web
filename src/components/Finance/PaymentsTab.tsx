@@ -4,6 +4,7 @@ import { useAuth } from '../../context/AuthContext';
 import { formatCurrency, formatDate, normalizarMoneda, cleanReference } from '../../utils/formatters';
 import { getConsolidatedExpenses, getConsolidatedPayments, type ConsolidatedPaymentItem } from '../../utils/consolidations';
 import type { Agency, Currency, BankAccount } from '../../types';
+import { loadCurrencies, type CurrencyConfig } from '../../utils/currencies';
 import { notificationService } from '../../utils/notificationService';
 import { realtimeBroadcast } from '../../utils/realtimeBroadcast';
 import {
@@ -63,7 +64,7 @@ export const PaymentsTab: React.FC = () => {
   const [isProcessing, setIsProcessing] = useState(false);
   const [payments, setPayments] = useState<PaymentItem[]>([]);
   const [agencies, setAgencies] = useState<Agency[]>([]);
-  const [currencies, setCurrencies] = useState<Currency[]>([]);
+  const [currencies, setCurrencies] = useState<CurrencyConfig[]>([]);
   const [bankAccounts, setBankAccounts] = useState<BankAccount[]>([]);
   const [sales, setSales] = useState<any[]>([]);
   const [expenses, setExpenses] = useState<any[]>([]);
@@ -105,12 +106,12 @@ export const PaymentsTab: React.FC = () => {
     setMessage(null);
 
     try {
-      const [psRes, pbRes, pdRes, agRes, monRes, cbRes, salesRes, gConsolidated, pConsolidated] = await Promise.all([
+      const [psRes, pbRes, pdRes, agRes, loadedCurrs, cbRes, salesRes, gConsolidated, pConsolidated] = await Promise.all([
         supabase.from('pagos_semana').select('*').eq('user_id', effectiveUserId).order('id', { ascending: false }),
         supabase.from('cda_pagos_bancarios').select('*').eq('user_id', effectiveUserId).order('id', { ascending: false }),
         supabase.from('cda_pagos_diarios').select('*').eq('user_id', effectiveUserId).order('id', { ascending: false }),
         supabase.from('agencias').select('*').eq('user_id', effectiveUserId).order('id', { ascending: true }),
-        supabase.from('monedas').select('*').eq('user_id', effectiveUserId).order('id', { ascending: true }),
+        loadCurrencies(effectiveUserId),
         supabase.from('cuentas_bancarias').select('*').eq('user_id', effectiveUserId).order('banco', { ascending: true }),
         supabase.from('carga_actual').select('*').eq('user_id', effectiveUserId),
         getConsolidatedExpenses(effectiveUserId, { fechaDesde: systemCycle.desde, fechaHasta: systemCycle.hasta }),
@@ -119,7 +120,7 @@ export const PaymentsTab: React.FC = () => {
 
       const loadedAgencies = agRes.data || [];
       setAgencies(loadedAgencies);
-      setCurrencies(monRes.data || []);
+      setCurrencies(loadedCurrs || []);
       setBankAccounts(cbRes.data || []);
       setSales(salesRes.data || []);
       setExpenses(gConsolidated);
@@ -327,12 +328,13 @@ export const PaymentsTab: React.FC = () => {
 
   // Available currencies for selected agency
   const availableAgencyCurrencies = useMemo(() => {
-    if (!selectedAgencyObj) return ['BS', 'USD', 'COP'];
+    const activeCodes = currencies.length > 0 ? currencies.map((c) => c.codigo) : ['BS', 'USD', 'COP'];
+    if (!selectedAgencyObj) return activeCodes;
     const assigned = parseList(selectedAgencyObj.monedas);
     if (assigned.length === 0 || assigned.includes('TODAS')) {
-      return currencies.length > 0 ? currencies.map((c) => c.nombre_moneda) : ['BS', 'USD', 'COP'];
+      return activeCodes;
     }
-    return assigned;
+    return assigned.filter((m) => activeCodes.includes(m));
   }, [selectedAgencyObj, currencies]);
 
   // Ensure formMoneda matches available currencies
@@ -1172,10 +1174,10 @@ export const PaymentsTab: React.FC = () => {
             </h4>
 
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-              {(['BS', 'USD', 'COP'] as const).map((m) => {
-                const bal = agencyBalances[m];
-                const det = agencyAuditDetails ? agencyAuditDetails[m] : null;
-                const transit = agencyTransit[m];
+              {availableAgencyCurrencies.map((m) => {
+                const bal = agencyBalances[m as 'BS' | 'USD' | 'COP'] || 0;
+                const det = agencyAuditDetails ? agencyAuditDetails[m as 'BS' | 'USD' | 'COP'] : null;
+                const transit = agencyTransit[m as 'BS' | 'USD' | 'COP'] || 0;
                 const isFavor = bal < -0.05;
                 const isDeuda = bal > 0.05;
 

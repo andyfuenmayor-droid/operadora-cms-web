@@ -111,6 +111,9 @@ export const WeeklyClosureTab: React.FC = () => {
   const [groups, setGroups] = useState<Grupo[]>([]);
   const [groupPayments, setGroupPayments] = useState<RawGroupPaymentEntry[]>([]);
   const [dynamicCurrencies, setDynamicCurrencies] = useState<DynamicCurrencyConfig[]>([]);
+  const activeCurrencyCodes = useMemo(() => {
+    return dynamicCurrencies.length > 0 ? dynamicCurrencies.map((c) => c.codigo) : ['BS', 'USD', 'COP'];
+  }, [dynamicCurrencies]);
 
   const [verifiedCheckMaster, setVerifiedCheckMaster] = useState(false);
   const [message, setMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
@@ -1961,7 +1964,7 @@ export const WeeklyClosureTab: React.FC = () => {
               </div>
 
               <div className="space-y-6">
-                {['BS', 'USD', 'COP'].map((mon) => {
+                {activeCurrencyCodes.map((mon) => {
                   const monRows = closureData.filter((d) => d.moneda === mon);
                   if (monRows.length === 0) return null;
 
@@ -2398,7 +2401,7 @@ export const WeeklyClosureTab: React.FC = () => {
                   Liquidación y Nuevos Arrastres (Casas Operadoras):
                 </span>
                 <div className="grid grid-cols-1 gap-2">
-                  {['BS', 'USD', 'COP'].map((mon) => {
+                  {activeCurrencyCodes.map((mon) => {
                     const opT = operatorTotalsByCurrency[mon];
                     if (!opT || (opT.count === 0 && opT.venta === 0 && Math.abs(opT.balanceFinal) < 0.01)) return null;
                     return (

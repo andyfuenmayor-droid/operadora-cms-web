@@ -4,6 +4,7 @@ import { supabase } from '../../lib/supabase';
 import { useAuth } from '../../context/AuthContext';
 import { formatCurrency, formatDate, cleanAgencyName, normalizarMoneda } from '../../utils/formatters';
 import type { DailySaleItem, Agency, BetSystem, Currency } from '../../types';
+import { loadCurrencies } from '../../utils/currencies';
 import {
   TrendingUp,
   FileSpreadsheet,
@@ -142,27 +143,15 @@ export const SalesEntryTab: React.FC = () => {
     return list;
   }, [systems, systemKeywords]);
 
-  // Available currencies list merging standard currencies and database currencies
+  // Available currencies list from active subscriber currencies
   const availableCurrenciesList = useMemo(() => {
-    const defaultList = ['COP', 'USD', 'BS'];
-    const result: { code: string; label: string }[] = [];
-    defaultList.forEach((code) => {
-      const found = currencies.find((c) => (c.nombre_moneda || '').trim().toUpperCase() === code);
-      result.push({
+    return currencies.map((c) => {
+      const code = (c.nombre_moneda || (c as any).codigo || '').trim().toUpperCase();
+      return {
         code,
-        label: found?.simbolo ? `🪙 ${code} (${found.simbolo})` : `🪙 ${code}`,
-      });
+        label: c.simbolo ? `🪙 ${code} (${c.simbolo})` : `🪙 ${code}`,
+      };
     });
-    currencies.forEach((c) => {
-      const code = (c.nombre_moneda || '').trim().toUpperCase();
-      if (code && !result.some((r) => r.code === code)) {
-        result.push({
-          code,
-          label: c.simbolo ? `🪙 ${code} (${c.simbolo})` : `🪙 ${code}`,
-        });
-      }
-    });
-    return result;
   }, [currencies]);
 
   const [message, setMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
@@ -173,11 +162,11 @@ export const SalesEntryTab: React.FC = () => {
     setMessage(null);
 
     try {
-      const [salesRes, agRes, sisRes, monRes, loadedKw] = await Promise.all([
+      const [salesRes, agRes, sisRes, dynamicCurrs, loadedKw] = await Promise.all([
         supabase.from('carga_actual').select('*').eq('user_id', effectiveUserId).order('id', { ascending: false }),
         supabase.from('agencias').select('*').eq('user_id', effectiveUserId).order('id', { ascending: true }),
         supabase.from('sistemas').select('*').eq('user_id', effectiveUserId).order('nombre_sistema', { ascending: true }),
-        supabase.from('monedas').select('*').eq('user_id', effectiveUserId).order('id', { ascending: true }),
+        loadCurrencies(effectiveUserId),
         loadSystemKeywords(effectiveUserId),
       ]);
 
@@ -196,7 +185,11 @@ export const SalesEntryTab: React.FC = () => {
       }
       const loadedAgencies = agRes.data || [];
       const loadedSystems = sisRes.data || [];
-      const loadedCurrencies = monRes.data || [];
+      const loadedCurrencies: Currency[] = (dynamicCurrs || []).map((c) => ({
+        id: c.id || 0,
+        nombre_moneda: c.codigo,
+        simbolo: c.simbolo,
+      }));
 
       setSales(loadedSales);
       setAgencies(loadedAgencies);

@@ -133,7 +133,7 @@ export const GroupsTab: React.FC = () => {
     setTelefono('');
     setEmailAcceso('');
     setPasswordAcceso('1234');
-    setSelectedMonedas(['BS', 'USD', 'COP']);
+    setSelectedMonedas(currencies.length > 0 ? currencies.map((c) => c.codigo) : ['BS', 'USD', 'COP']);
     setComisionDefault('15');
     setParticipacionDefault('30');
     setCondicionesSistemas({});
@@ -153,7 +153,9 @@ export const GroupsTab: React.FC = () => {
     setTelefono(grp.telefono || '');
     setEmailAcceso(grp.email_acceso || '');
     setPasswordAcceso(grp.password_acceso || '1234');
-    setSelectedMonedas(grp.monedas ? grp.monedas.split(',').map((m) => m.trim().toUpperCase()).filter(Boolean) : ['BS', 'USD', 'COP']);
+    const activeCodes = currencies.length > 0 ? currencies.map((c) => c.codigo) : ['BS', 'USD', 'COP'];
+    const assigned = grp.monedas ? grp.monedas.split(',').map((m) => m.trim().toUpperCase()).filter(Boolean) : activeCodes;
+    setSelectedMonedas(assigned.filter((m) => activeCodes.includes(m)));
     setComisionDefault(String(grp.comision_pct_default ?? 15));
     setParticipacionDefault(String(grp.participacion_pct_default ?? 30));
 

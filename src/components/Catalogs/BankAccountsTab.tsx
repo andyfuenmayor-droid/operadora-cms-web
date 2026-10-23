@@ -14,6 +14,7 @@ import {
   X,
 } from 'lucide-react';
 import { formatCurrency, normalizarMoneda } from '../../utils/formatters';
+import { loadCurrencies, type CurrencyConfig } from '../../utils/currencies';
 
 export const BankAccountsTab: React.FC = () => {
   const { effectiveUserId } = useAuth();
@@ -23,6 +24,7 @@ export const BankAccountsTab: React.FC = () => {
   const [accounts, setAccounts] = useState<BankAccount[]>([]);
   const [devices, setDevices] = useState<PaymentDevice[]>([]);
   const [agencies, setAgencies] = useState<Agency[]>([]);
+  const [availableCurrencies, setAvailableCurrencies] = useState<CurrencyConfig[]>([]);
   const [loading, setLoading] = useState(false);
 
   // Form Account State
@@ -121,6 +123,14 @@ export const BankAccountsTab: React.FC = () => {
         .order('id', { ascending: true });
 
       setAgencies((agData || []) as Agency[]);
+
+      // 4. Cargar divisas activas del suscriptor
+      const currs = await loadCurrencies(effectiveUserId);
+      setAvailableCurrencies(currs);
+      if (currs.length > 0) {
+        setMoneda((prev) => (currs.some((c) => c.codigo === prev) ? prev : currs[0].codigo));
+        setDeviceMoneda((prev) => (currs.some((c) => c.codigo === prev) ? prev : currs[0].codigo));
+      }
     } catch (err: any) {
       console.error('Error loading bank data:', err);
     } finally {
@@ -215,7 +225,7 @@ export const BankAccountsTab: React.FC = () => {
     setBanco('');
     setTitular('');
     setNumeroCuenta('');
-    setMoneda('BS');
+    setMoneda(availableCurrencies[0]?.codigo || 'BS');
     setTipoCuenta('CORRIENTE');
     setAgenciaAsignada('TODAS');
     setSaldoInicial(0);
@@ -305,7 +315,7 @@ export const BankAccountsTab: React.FC = () => {
     setSerialTid('');
     setCuentaAsociada('PRINCIPAL');
     setDeviceAgencia('TODAS');
-    setDeviceMoneda('BS');
+    setDeviceMoneda(availableCurrencies[0]?.codigo || 'BS');
     setDeviceNotas('');
   };
 
@@ -613,11 +623,17 @@ export const BankAccountsTab: React.FC = () => {
                   <select
                     value={moneda}
                     onChange={(e) => setMoneda(e.target.value)}
-                    className="w-full bg-[#071217] border border-slate-700 rounded-xl px-3 py-2 text-white focus:outline-none focus:border-emerald-500"
+                    className="w-full bg-[#071217] border border-slate-700 rounded-xl px-3 py-2 text-white focus:outline-none focus:border-emerald-500 font-bold"
                   >
-                    <option value="BS">Bolívares (BS)</option>
-                    <option value="USD">Dólares (USD)</option>
-                    <option value="COP">Pesos (COP)</option>
+                    {(availableCurrencies.length > 0 ? availableCurrencies : [
+                      { codigo: 'BS', nombre: 'Bolívares' },
+                      { codigo: 'USD', nombre: 'Dólares' },
+                      { codigo: 'COP', nombre: 'Pesos' },
+                    ]).map((c) => (
+                      <option key={c.codigo} value={c.codigo}>
+                        {c.nombre || c.codigo} ({c.codigo})
+                      </option>
+                    ))}
                   </select>
                 </div>
               </div>
@@ -768,11 +784,17 @@ export const BankAccountsTab: React.FC = () => {
                   <select
                     value={deviceMoneda}
                     onChange={(e) => setDeviceMoneda(e.target.value)}
-                    className="w-full bg-[#071217] border border-slate-700 rounded-xl px-3 py-2 text-white focus:outline-none focus:border-emerald-500"
+                    className="w-full bg-[#071217] border border-slate-700 rounded-xl px-3 py-2 text-white focus:outline-none focus:border-emerald-500 font-bold"
                   >
-                    <option value="BS">Bolívares (BS)</option>
-                    <option value="USD">Dólares (USD)</option>
-                    <option value="COP">Pesos (COP)</option>
+                    {(availableCurrencies.length > 0 ? availableCurrencies : [
+                      { codigo: 'BS', nombre: 'Bolívares' },
+                      { codigo: 'USD', nombre: 'Dólares' },
+                      { codigo: 'COP', nombre: 'Pesos' },
+                    ]).map((c) => (
+                      <option key={c.codigo} value={c.codigo}>
+                        {c.nombre || c.codigo} ({c.codigo})
+                      </option>
+                    ))}
                   </select>
                 </div>
               </div>

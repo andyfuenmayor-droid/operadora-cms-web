@@ -8,12 +8,17 @@ import {
   RefreshCw,
   CheckCircle2,
   AlertCircle,
-  ShieldCheck,
   Globe,
   Sparkles,
+  Pencil,
+  RotateCcw,
+  X,
+  Save,
 } from 'lucide-react';
 import {
   loadCurrencies,
+  saveCurrencies,
+  resetToDefaultCurrencies,
   normalizeCurrency,
   getCurrencyFlag,
   getCurrencyBadgeClasses,
@@ -25,11 +30,18 @@ export const CurrenciesTab: React.FC = () => {
   const [currencies, setCurrencies] = useState<CurrencyConfig[]>([]);
   const [loading, setLoading] = useState(false);
 
-  // Form states
+  // Form states (Añadir)
   const [codigo, setCodigo] = useState('');
   const [nombre, setNombre] = useState('');
   const [simbolo, setSimbolo] = useState('');
   const [decimales, setDecimales] = useState('2');
+
+  // Edit Modal state
+  const [editingCurrency, setEditingCurrency] = useState<CurrencyConfig | null>(null);
+  const [editCodigo, setEditCodigo] = useState('');
+  const [editNombre, setEditNombre] = useState('');
+  const [editSimbolo, setEditSimbolo] = useState('');
+  const [editDecimales, setEditDecimales] = useState('2');
 
   const [saving, setSaving] = useState(false);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
@@ -73,24 +85,33 @@ export const CurrenciesTab: React.FC = () => {
     setSuccessMsg(null);
 
     try {
-      if (effectiveUserId) {
-        const { error } = await supabase.from('monedas').insert({
-          Nombre_Moneda: cleanCodigo,
-          Simbolo: cleanSimbolo,
-          user_id: effectiveUserId,
-        });
+      const newEntry: CurrencyConfig = {
+        codigo: cleanCodigo,
+        nombre: cleanNombre,
+        simbolo: cleanSimbolo,
+        decimales: numDecimales,
+        es_default: false,
+      };
 
-        if (error) {
-          console.warn('Monedas table insert warning (will use memory/local):', error);
-        }
+      const updatedList = [...currencies, newEntry];
+      await saveCurrencies(updatedList, effectiveUserId);
+
+      if (effectiveUserId) {
+        try {
+          await supabase.from('monedas').insert({
+            Nombre_Moneda: cleanCodigo,
+            Simbolo: cleanSimbolo,
+            user_id: effectiveUserId,
+          });
+        } catch (_) {}
       }
 
-      setSuccessMsg(`✅ Moneda '${cleanCodigo}' (${cleanNombre}) registrada exitosamente. Ahora está disponible en Agencias, Operadoras y Cierres.`);
+      setCurrencies(updatedList);
+      setSuccessMsg(`✅ Moneda '${cleanCodigo}' (${cleanNombre}) registrada exitosamente. Ahora está disponible en todo el sistema.`);
       setCodigo('');
       setNombre('');
       setSimbolo('');
       setDecimales('2');
-      await fetchCurrencies();
     } catch (err: any) {
       setErrorMsg(err?.message || 'Error al guardar la moneda.');
     } finally {
@@ -98,29 +119,153 @@ export const CurrenciesTab: React.FC = () => {
     }
   };
 
-  const handleDeleteCurrency = async (curr: CurrencyConfig) => {
-    if (curr.es_default) {
-      alert(`La moneda base '${curr.codigo}' es fundamental para los cierres históricos y no puede eliminarse.`);
+  const handleStartEdit = (curr: CurrencyConfig) => {
+    setEditingCurrency(curr);
+    setEditCodigo(curr.codigo);
+    setEditNombre(curr.nombre || curr.codigo);
+    setEditSimbolo(curr.simbolo || curr.codigo);
+    setEditDecimales(String(curr.decimales ?? 2));
+    setErrorMsg(null);
+    setSuccessMsg(null);
+  };
+
+  const handleSaveEdit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!editingCurrency) return;
+
+    const cleanCodigo = normalizeCurrency(editCodigo.trim().toUpperCase());
+    const cleanNombre = editNombre.trim() || cleanCodigo;
+    const cleanSimbolo = editSimbolo.trim() || cleanCodigo;
+    const numDecimales = parseInt(editDecimales, 10);
+
+    if (!cleanCodigo) {
+      setErrorMsg('El código de la moneda no puede estar vacío.');
       return;
     }
 
-    if (!window.confirm(`¿Está seguro de eliminar la moneda '${curr.codigo}'?`)) return;
+    if (
+      cleanCodigo !== editingCurrency.codigo &&
+      currencies.some((c) => c.codigo === cleanCodigo)
+    ) {
+      setErrorMsg(`Ya existe otra moneda registrada con el código '${cleanCodigo}'.`);
+      return;
+    }
+
+    setSaving(true);
+    setErrorMsg(null);
+    setSuccessMsg(null);
 
     try {
-      if (curr.id && effectiveUserId) {
-        const { error } = await supabase
-          .from('monedas')
-          .delete()
-          .eq('id', curr.id)
-          .eq('user_id', effectiveUserId);
+      const oldCode = editingCurrency.codigo;
+      const updatedList = currencies.map((c) => {
+        if (c.codigo === oldCode) {
+          return {
+            ...c,
+            codigo: cleanCodigo,
+            nombre: cleanNombre,
+            simbolo: cleanSimbolo,
+            decimales: isNaN(numDecimales) ? 2 : numDecimales,
+          };
+        }
+        return c;
+      });
 
-        if (error) throw error;
+      await saveCurrencies(updatedList, effectiveUserId);
+
+      if (effectiveUserId) {
+        try {
+          if (editingCurrency.id) {
+            await supabase
+              .from('monedas')
+              .update({
+                Nombre_Moneda: cleanCodigo,
+                Simbolo: cleanSimbolo,
+              })
+              .eq('id', editingCurrency.id)
+              .eq('user_id', effectiveUserId);
+          } else {
+            await supabase.from('monedas').upsert({
+              Nombre_Moneda: cleanCodigo,
+              Simbolo: cleanSimbolo,
+              user_id: effectiveUserId,
+            });
+          }
+        } catch (_) {}
       }
 
-      setCurrencies((prev) => prev.filter((c) => c.codigo !== curr.codigo));
-      setSuccessMsg(`Moneda '${curr.codigo}' eliminada.`);
+      setCurrencies(updatedList);
+      setSuccessMsg(`✅ Moneda '${cleanCodigo}' (${cleanNombre}) actualizada correctamente.`);
+      setEditingCurrency(null);
+    } catch (err: any) {
+      setErrorMsg(err?.message || 'Error al actualizar la moneda.');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const handleDeleteCurrency = async (curr: CurrencyConfig) => {
+    if (currencies.length <= 1) {
+      alert('No es posible eliminar la única moneda activa. El ecosistema requiere al menos una (1) moneda configurada para operar.');
+      return;
+    }
+
+    if (!window.confirm(`¿Está seguro de eliminar la divisa '${curr.codigo}' (${curr.nombre || curr.codigo}) del ecosistema? Se removerá de los selectores activos.`)) {
+      return;
+    }
+
+    setSaving(true);
+    setErrorMsg(null);
+    setSuccessMsg(null);
+
+    try {
+      const updatedList = currencies.filter((c) => c.codigo !== curr.codigo);
+      await saveCurrencies(updatedList, effectiveUserId);
+
+      if (effectiveUserId) {
+        try {
+          await supabase
+            .from('monedas')
+            .delete()
+            .eq('user_id', effectiveUserId)
+            .eq('Nombre_Moneda', curr.codigo);
+
+          if (curr.id) {
+            await supabase
+              .from('monedas')
+              .delete()
+              .eq('user_id', effectiveUserId)
+              .eq('id', curr.id);
+          }
+        } catch (_) {}
+      }
+
+      setCurrencies(updatedList);
+      setSuccessMsg(`🗑️ Moneda '${curr.codigo}' eliminada exitosamente del ecosistema.`);
     } catch (err: any) {
       alert(`Error al eliminar: ${err?.message}`);
+      setErrorMsg(err?.message || 'Error al eliminar la moneda.');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const handleResetDefaults = async () => {
+    if (!window.confirm('¿Desea restaurar las monedas base (BS, USD, COP)? Esto reincorporará las 3 divisas predeterminadas al catálogo del suscriptor.')) {
+      return;
+    }
+
+    setLoading(true);
+    setErrorMsg(null);
+    setSuccessMsg(null);
+
+    try {
+      const resetList = await resetToDefaultCurrencies(effectiveUserId);
+      setCurrencies(resetList);
+      setSuccessMsg('✅ Monedas base (BS, USD, COP) restauradas con éxito en el ecosistema.');
+    } catch (err: any) {
+      setErrorMsg(err?.message || 'Error al restaurar monedas base.');
+    } finally {
+      setLoading(false);
     }
   };
 
@@ -134,26 +279,37 @@ export const CurrenciesTab: React.FC = () => {
             <span>Gestión Dinámica de Monedas y Divisas</span>
           </h2>
           <p className="text-xs text-slate-400 mt-1">
-            Administra las monedas operativas del sistema (fiat y cripto). Cualquier divisa registrada se integra automáticamente al motor contable, agencias y cierres.
+            Administra las monedas operativas de la comercializadora (fiat y cripto). Cada suscriptor tiene control 100% independiente sobre qué monedas operar, editar o eliminar.
           </p>
         </div>
-        <button
-          onClick={fetchCurrencies}
-          disabled={loading}
-          className="p-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 transition-colors self-start sm:self-auto cursor-pointer flex items-center gap-2 text-xs font-bold"
-        >
-          <RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin text-emerald-400' : ''}`} />
-          <span>Actualizar</span>
-        </button>
+        <div className="flex items-center gap-2 self-start sm:self-auto">
+          <button
+            onClick={handleResetDefaults}
+            disabled={loading || saving}
+            className="p-2.5 rounded-xl bg-amber-500/10 hover:bg-amber-500/20 border border-amber-500/30 text-amber-300 transition-colors cursor-pointer flex items-center gap-2 text-xs font-bold disabled:opacity-50"
+            title="Restaurar monedas base estándar (BS, USD, COP)"
+          >
+            <RotateCcw className="w-4 h-4 text-amber-400" />
+            <span>Restaurar Base (BS/USD/COP)</span>
+          </button>
+          <button
+            onClick={fetchCurrencies}
+            disabled={loading}
+            className="p-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 transition-colors cursor-pointer flex items-center gap-2 text-xs font-bold"
+          >
+            <RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin text-emerald-400' : ''}`} />
+            <span>Actualizar</span>
+          </button>
+        </div>
       </div>
 
       {/* Explanatory banner */}
       <div className="bg-gradient-to-r from-emerald-950/40 via-slate-900 to-cyan-950/40 border border-emerald-500/30 rounded-2xl p-4 text-xs text-slate-300 flex items-start gap-3 shadow-md">
         <Sparkles className="w-5 h-5 text-emerald-400 shrink-0 mt-0.5" />
         <div>
-          <p className="font-bold text-emerald-300 mb-1">Arquitectura 100% Multi-Divisa Dinámica</p>
+          <p className="font-bold text-emerald-300 mb-1">Arquitectura Multi-Empresa SaaS 100% Dinámica</p>
           <p className="text-slate-400 leading-relaxed">
-            Puedes incorporar divisas internacionales o criptoactivos (ej. <strong>USDT, EUR, BRL</strong>). Al registrar una divisa, podrás seleccionarla en la configuración de Agencias, asociarla a Sistemas/Operadoras, cargar ventas y liquidar cierres con su propia matriz contable de forma automática.
+            Todas las divisas (incluidas <strong>BS, USD y COP</strong>) son totalmente editables y eliminables según las operaciones de su empresa. Las monedas activas se sincronizan automáticamente con los selectores de Agencias, Grupos, Sistemas/Operadoras, Cuentas Bancarias, Pagos, Gastos y Centro de Cierre.
           </p>
         </div>
       </div>
@@ -271,12 +427,12 @@ export const CurrenciesTab: React.FC = () => {
           <table className="w-full text-left border-collapse text-xs">
             <thead>
               <tr className="border-b border-slate-800 bg-[#071217] text-slate-400 font-bold uppercase text-[11px]">
-                <th className="py-3.5 px-4 w-28">Divisa</th>
+                <th className="py-3.5 px-4 w-32">Divisa</th>
                 <th className="py-3.5 px-4">Nombre Oficial</th>
                 <th className="py-3.5 px-4 w-28">Símbolo</th>
                 <th className="py-3.5 px-4 w-28">Decimales</th>
-                <th className="py-3.5 px-4 w-36">Tipo</th>
-                <th className="py-3.5 px-4 text-right w-24">Acciones</th>
+                <th className="py-3.5 px-4 w-36">Estado</th>
+                <th className="py-3.5 px-4 text-right w-28">Acciones</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-800/60 font-sans">
@@ -309,27 +465,37 @@ export const CurrenciesTab: React.FC = () => {
                         {c.decimales ?? 2}
                       </td>
                       <td className="py-3 px-4">
-                        {c.es_default ? (
-                          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-bold bg-slate-800 text-slate-300 border border-slate-700">
-                            <ShieldCheck className="w-3 h-3 text-emerald-400" />
-                            <span>Predeterminada</span>
-                          </span>
-                        ) : (
-                          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-bold bg-cyan-950/60 text-cyan-300 border border-cyan-800/40">
-                            <span>Personalizada</span>
-                          </span>
-                        )}
+                        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-bold bg-emerald-950/60 text-emerald-300 border border-emerald-800/40">
+                          <CheckCircle2 className="w-3 h-3 text-emerald-400" />
+                          <span>Habilitada</span>
+                        </span>
                       </td>
                       <td className="py-3 px-4 text-right">
-                        {!c.es_default && (
+                        <div className="flex items-center justify-end gap-1.5">
+                          <button
+                            onClick={() => handleStartEdit(c)}
+                            className="p-1.5 rounded-lg hover:bg-slate-700 text-slate-300 hover:text-cyan-400 transition-colors cursor-pointer"
+                            title={`Editar ${c.codigo}`}
+                          >
+                            <Pencil className="w-4 h-4" />
+                          </button>
                           <button
                             onClick={() => handleDeleteCurrency(c)}
-                            className="p-1.5 rounded-lg hover:bg-rose-500/20 text-slate-400 hover:text-rose-400 transition-colors cursor-pointer"
-                            title={`Eliminar ${c.codigo}`}
+                            disabled={currencies.length <= 1}
+                            className={`p-1.5 rounded-lg transition-colors cursor-pointer ${
+                              currencies.length <= 1
+                                ? 'opacity-30 cursor-not-allowed text-slate-600'
+                                : 'hover:bg-rose-500/20 text-slate-400 hover:text-rose-400'
+                            }`}
+                            title={
+                              currencies.length <= 1
+                                ? 'Mínimo 1 moneda requerida para operar'
+                                : `Eliminar ${c.codigo}`
+                            }
                           >
                             <Trash2 className="w-4 h-4" />
                           </button>
-                        )}
+                        </div>
                       </td>
                     </tr>
                   );
@@ -339,6 +505,110 @@ export const CurrenciesTab: React.FC = () => {
           </table>
         </div>
       </div>
+
+      {/* Edit Currency Modal */}
+      {editingCurrency && (
+        <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className="bg-[#0D1B22] border border-cyan-500/30 rounded-3xl p-6 max-w-lg w-full space-y-4 shadow-2xl animate-fade-in">
+            <div className="flex items-center justify-between pb-3 border-b border-slate-800">
+              <h3 className="text-sm font-bold text-white flex items-center gap-2">
+                <Pencil className="w-4 h-4 text-cyan-400" />
+                <span>
+                  Editar Moneda: <span className="text-emerald-400 font-black">{editingCurrency.codigo}</span>
+                </span>
+              </h3>
+              <button
+                onClick={() => setEditingCurrency(null)}
+                className="text-slate-400 hover:text-white p-1 rounded-lg hover:bg-slate-800 transition-colors cursor-pointer"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            <p className="text-xs text-slate-300">
+              Modifica la nomenclatura oficial, símbolo representativo o precisión decimal de esta moneda para su comercializadora.
+            </p>
+
+            <form onSubmit={handleSaveEdit} className="space-y-4">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-[11px] font-bold uppercase text-slate-400 mb-1">
+                    Código ISO / Siglas *
+                  </label>
+                  <input
+                    type="text"
+                    value={editCodigo}
+                    onChange={(e) => setEditCodigo(e.target.value)}
+                    placeholder="Ej: USDT"
+                    className="w-full bg-[#071217] border border-slate-700 rounded-xl px-3 py-2 text-sm text-white uppercase focus:outline-none focus:border-cyan-500 font-black tracking-wider"
+                    required
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-[11px] font-bold uppercase text-slate-400 mb-1">
+                    Nombre Oficial
+                  </label>
+                  <input
+                    type="text"
+                    value={editNombre}
+                    onChange={(e) => setEditNombre(e.target.value)}
+                    placeholder="Ej: Tether USD"
+                    className="w-full bg-[#071217] border border-slate-700 rounded-xl px-3 py-2 text-sm text-white focus:outline-none focus:border-cyan-500 font-semibold"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-[11px] font-bold uppercase text-slate-400 mb-1">
+                    Símbolo / Prefijo
+                  </label>
+                  <input
+                    type="text"
+                    value={editSimbolo}
+                    onChange={(e) => setEditSimbolo(e.target.value)}
+                    placeholder="Ej: ₮, $, Bs."
+                    className="w-full bg-[#071217] border border-slate-700 rounded-xl px-3 py-2 text-sm text-white focus:outline-none focus:border-cyan-500 font-bold"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-[11px] font-bold uppercase text-slate-400 mb-1">
+                    Decimales
+                  </label>
+                  <select
+                    value={editDecimales}
+                    onChange={(e) => setEditDecimales(e.target.value)}
+                    className="w-full bg-[#071217] border border-slate-700 rounded-xl px-3 py-2 text-sm text-white focus:outline-none focus:border-cyan-500 font-bold"
+                  >
+                    <option value="2">2 decimales (Estándar)</option>
+                    <option value="0">0 decimales (Sin centavos)</option>
+                    <option value="4">4 decimales (Precisión extendida)</option>
+                  </select>
+                </div>
+              </div>
+
+              <div className="flex justify-end gap-2 pt-3 border-t border-slate-800">
+                <button
+                  type="button"
+                  onClick={() => setEditingCurrency(null)}
+                  className="px-4 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 font-bold text-xs cursor-pointer transition-colors"
+                >
+                  Cancelar
+                </button>
+                <button
+                  type="submit"
+                  disabled={saving}
+                  className="px-5 py-2 rounded-xl bg-emerald-500 hover:bg-emerald-400 text-black font-black text-xs flex items-center gap-1.5 cursor-pointer transition-all shadow-md disabled:opacity-50"
+                >
+                  <Save className="w-3.5 h-3.5" />
+                  <span>{saving ? 'Guardando...' : 'GUARDAR CAMBIOS'}</span>
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
     </div>
   );
 };
+

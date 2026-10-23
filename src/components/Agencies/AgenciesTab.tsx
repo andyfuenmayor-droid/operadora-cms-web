@@ -508,7 +508,7 @@ export const AgenciesTab: React.FC = () => {
         if (key.includes('_')) {
           const parts = key.split('_');
           const potentialMon = parts[parts.length - 1].toUpperCase();
-          if (currencies.some((c) => c.nombre_moneda === potentialMon) || ['COP', 'USD', 'BS'].includes(potentialMon)) {
+          if (currencies.some((c) => c.nombre_moneda === potentialMon)) {
             sysPart = parts.slice(0, -1).join('_');
             monPart = potentialMon;
           }
