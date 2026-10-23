@@ -6,7 +6,7 @@ import { Printer, X, ShieldCheck } from 'lucide-react';
 export interface PreClosureAgencyRow {
   ag_id: number;
   entidad: string;
-  moneda: 'BS' | 'USD' | 'COP';
+  moneda: 'BS' | 'USD' | 'COP' | string;
   saldo_anterior: number;
   venta_bruta: number;
   comision: number;
