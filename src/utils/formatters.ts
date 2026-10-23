@@ -101,21 +101,26 @@ export function normalizarMoneda(mVal?: string | null): string {
   const s = String(mVal).trim().toUpperCase();
   if (s.includes('BS') || s.includes('VES') || s.includes('BOLIVAR') || s.includes('BOL')) return 'BS';
   if (s.includes('COP') || s.includes('PESO') || s.includes('PES')) return 'COP';
-  return 'USD';
+  if (s.includes('USD') || s.includes('DOLAR') || s.includes('DÓLAR') || s === '$') return 'USD';
+  return s;
 }
 
 export function formatCurrency(amount: number | string, currency = 'USD'): string {
   const rawNum = typeof amount === 'number' ? amount : parseFloat(amount) || 0;
   const num = Math.abs(rawNum) < 0.0001 ? 0 : rawNum;
   const cleanCurr = normalizarMoneda(currency);
+  const isCop = cleanCurr === 'COP';
   const formatted = num.toLocaleString('en-US', {
-    minimumFractionDigits: 2,
-    maximumFractionDigits: 2,
+    minimumFractionDigits: isCop ? 0 : 2,
+    maximumFractionDigits: isCop ? 0 : 2,
   });
 
   if (cleanCurr === 'BS') return `${formatted} Bs.`;
   if (cleanCurr === 'COP') return `${formatted} COP`;
-  return `$${formatted}`;
+  if (cleanCurr === 'USD') return `$${formatted}`;
+  if (cleanCurr === 'EUR') return `€${formatted}`;
+  if (cleanCurr === 'USDT') return `${formatted} ₮`;
+  return `${formatted} ${cleanCurr}`;
 }
 
 export function getTodayDateString(): string {

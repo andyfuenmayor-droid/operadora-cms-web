@@ -71,6 +71,7 @@ import {
   computeCertifiedAgencyMatrix,
   computeCertifiedTotals,
 } from '../../lib/closureEngineLock';
+import { getCurrencyFlag, getCurrencyBadgeClasses } from '../../utils/currencies';
 
 interface CierreAgencyData {
   ag_id: number;
@@ -1045,7 +1046,13 @@ export const WeeklyClosureTab: React.FC = () => {
         fecha_cierre: nowIso,
       }));
 
-      const comercializadorSnapshot = (['BS', 'USD', 'COP'] as const).map((cur) => {
+      const allClosingCurrencies = Array.from(new Set([
+        'BS', 'USD', 'COP',
+        ...closureData.map((d) => d.moneda),
+        ...operatorClosureRows.map((op) => op.moneda),
+      ])).filter(Boolean);
+
+      const comercializadorSnapshot = allClosingCurrencies.map((cur) => {
         const opTot = operatorTotalsByCurrency[cur];
         const admGasto = adminExpenses.filter((g) => g.moneda === cur).reduce((acc, g) => acc + g.monto, 0);
         const gananciaBruta = opTot?.totalComercializador || 0;
@@ -1170,6 +1177,10 @@ export const WeeklyClosureTab: React.FC = () => {
         if (op.moneda === 'BS') updatedKeywords[sysUpper].saldo_inicial_bs = op.balanceFinal;
         else if (op.moneda === 'USD') updatedKeywords[sysUpper].saldo_inicial_usd = op.balanceFinal;
         else if (op.moneda === 'COP') updatedKeywords[sysUpper].saldo_inicial_cop = op.balanceFinal;
+        else {
+          if (!updatedKeywords[sysUpper].saldos_iniciales) updatedKeywords[sysUpper].saldos_iniciales = {};
+          updatedKeywords[sysUpper].saldos_iniciales[op.moneda] = op.balanceFinal;
+        }
       }
       await saveSystemKeywords(effectiveUserId, updatedKeywords);
 
@@ -1887,10 +1898,10 @@ export const WeeklyClosureTab: React.FC = () => {
                   </div>
 
                   <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                    {['BS', 'USD', 'COP'].map((mon) => {
+                    {(operatorActiveCurrencies.length > 0 ? operatorActiveCurrencies : ['BS', 'USD', 'COP']).map((mon) => {
                       const tot = operatorTotalsByCurrency[mon];
                       if (!tot) return null;
-                      const flag = mon === 'BS' ? '🇻🇪' : mon === 'USD' ? '🇺🇸' : '🇨🇴';
+                      const flag = getCurrencyFlag(mon);
                       const isDeuda = tot.balanceFinal > 0.01;
                       const isFavor = tot.balanceFinal < -0.01;
 
@@ -1970,20 +1981,15 @@ export const WeeklyClosureTab: React.FC = () => {
                             </thead>
                             <tbody className="divide-y divide-slate-100 dark:divide-slate-800/80 font-mono text-slate-700 dark:text-slate-300">
                               {group.rows.map((row) => {
-                                const flag = row.moneda === 'BS' ? '🇻🇪' : row.moneda === 'USD' ? '🇺🇸' : '🇨🇴';
+                                const flag = getCurrencyFlag(row.moneda);
+                                const badgeClasses = getCurrencyBadgeClasses(row.moneda);
                                 const isDeuda = row.balanceFinal > 0.01;
                                 const isFavor = row.balanceFinal < -0.01;
 
                                 return (
                                   <tr key={`${group.sistema}_${row.moneda}`} className="hover:bg-slate-50 dark:hover:bg-slate-800/30 transition-colors">
                                     <td className="py-3 px-4 font-sans font-bold text-slate-900 dark:text-white flex items-center gap-2">
-                                      <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-bold ${
-                                        row.moneda === 'BS'
-                                          ? 'bg-amber-50 dark:bg-amber-500/10 text-amber-700 dark:text-amber-400 border border-amber-200 dark:border-amber-500/20'
-                                          : row.moneda === 'USD'
-                                          ? 'bg-emerald-50 dark:bg-emerald-500/10 text-emerald-700 dark:text-emerald-400 border border-emerald-200 dark:border-emerald-500/20'
-                                          : 'bg-sky-50 dark:bg-sky-500/10 text-sky-700 dark:text-sky-400 border border-sky-200 dark:border-sky-500/20'
-                                      }`}>
+                                      <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-bold ${badgeClasses}`}>
                                         <span className="font-sans">{flag}</span>
                                         <span>{row.moneda}</span>
                                       </span>

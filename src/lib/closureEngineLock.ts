@@ -12,7 +12,7 @@
  * ==============================================================================
  */
 
-export type ClosureCurrency = 'BS' | 'USD' | 'COP';
+export type ClosureCurrency = 'BS' | 'USD' | 'COP' | string;
 
 export interface RawSaleEntry {
   agencia: string;
@@ -100,13 +100,13 @@ export interface ConsolidatedTotals {
   count: number;
 }
 
-// @CRITICAL-LOCK: Normalización estricta de divisa
+// @CRITICAL-LOCK: Normalización estricta de divisa con soporte dinámico
 export function normalizarMonedaPura(m?: string | null): ClosureCurrency {
   const clean = String(m || '').trim().toUpperCase();
   if (['BS', 'VES', 'BOLIVARES', 'BOLÍVARES', 'BS.'].includes(clean)) return 'BS';
   if (['USD', 'DOLARES', 'DÓLARES', 'US$', '$'].includes(clean)) return 'USD';
   if (['COP', 'PESOS', 'COL'].includes(clean)) return 'COP';
-  return 'BS';
+  return clean || 'BS';
 }
 
 // @CRITICAL-LOCK: Limpieza de nombre de agencia
@@ -154,7 +154,7 @@ export function isPremioPayment(p: RawMovementEntry): boolean {
   );
 }
 
-// @CRITICAL-LOCK: Cálculo puro y determinista de la Matriz de Arqueo de Agencias
+// @CRITICAL-LOCK: Cálculo puro y determinista de la Matriz de Arqueo de Agencias (Soporte Multi-Divisa Dinámico)
 export function computeCertifiedAgencyMatrix(params: {
   agencies: Array<{ id: number; nombre_agencia: string; monedas?: string; [key: string]: any }>;
   sales: RawSaleEntry[];
@@ -163,19 +163,32 @@ export function computeCertifiedAgencyMatrix(params: {
   rawDailyPayments: RawMovementEntry[];
   systemCycle?: { desde?: string; hasta?: string };
   participationCalculator?: (ag: any, sistema: string, mon: string) => { partPct: number };
+  customCurrencies?: string[];
 }): AgencyClosureRow[] {
-  const { agencies, sales, payments, expenses, rawDailyPayments, systemCycle, participationCalculator } = params;
+  const { agencies, sales, payments, expenses, rawDailyPayments, systemCycle, participationCalculator, customCurrencies } = params;
   const list: AgencyClosureRow[] = [];
-  const currencies: ClosureCurrency[] = ['BS', 'USD', 'COP'];
 
-  currencies.forEach((mon) => {
-    const colIni = mon === 'BS' ? 'saldo_inicial_bs' : mon === 'USD' ? 'saldo_inicial_usd' : 'saldo_inicial_cop';
+  const baseCurrencies = customCurrencies && customCurrencies.length > 0 ? customCurrencies : ['BS', 'USD', 'COP'];
+  const dynamicCurrencies = Array.from(
+    new Set([
+      ...baseCurrencies,
+      ...sales.map((s) => normalizarMonedaPura(s.moneda)),
+      ...payments.map((p) => normalizarMonedaPura(p.moneda)),
+      ...expenses.map((e) => normalizarMonedaPura(e.moneda)),
+    ])
+  ).filter(Boolean);
+
+  dynamicCurrencies.forEach((mon) => {
+    const colIni = mon === 'BS' ? 'saldo_inicial_bs' : mon === 'USD' ? 'saldo_inicial_usd' : mon === 'COP' ? 'saldo_inicial_cop' : `saldo_inicial_${mon.toLowerCase()}`;
 
     agencies.forEach((ag) => {
       const nom = String(ag.nombre_agencia || '').trim().toUpperCase();
       const cleanNom = cleanAgencyNamePura(nom);
       const confMon = String(ag.monedas || '').toUpperCase();
-      const sAnt = Number(ag[colIni] || 0);
+      let sAnt = Number(ag[colIni] || 0);
+      if (!sAnt && ag.saldos_iniciales && typeof ag.saldos_iniciales === 'object') {
+        sAnt = Number(ag.saldos_iniciales[mon] || 0);
+      }
 
       // 1. Filtrar ventas correspondientes a esta agencia y moneda
       const agSales = sales.filter((s) => {

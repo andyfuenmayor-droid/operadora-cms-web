@@ -57,6 +57,7 @@ export interface Agency {
   saldo_inicial_bs?: number;
   saldo_inicial_usd?: number;
   saldo_inicial_cop?: number;
+  saldos_iniciales?: Record<string, number> | string;
   user_id?: string;
   created_at?: string;
 }
@@ -81,6 +82,7 @@ export interface BetSystem {
   saldo_inicial_bs?: number;
   saldo_inicial_usd?: number;
   saldo_inicial_cop?: number;
+  saldos_iniciales?: Record<string, number> | string;
   user_id?: string;
   created_at?: string;
 }

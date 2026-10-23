@@ -77,10 +77,18 @@ export function calculateOperatorSettlements(
   systemConfigs: SystemKeywordsMap,
   sales: any[],
   operatorPayments: OperatorPayment[],
-  reportCurrencyFilter: 'ALL' | 'BS' | 'USD' | 'COP' = 'ALL'
+  reportCurrencyFilter: 'ALL' | 'BS' | 'USD' | 'COP' | string = 'ALL',
+  customCurrencies?: string[]
 ) {
   const rows: OperatorSettlementRow[] = [];
-  const allCurrencies = ['BS', 'USD', 'COP'];
+  const baseCurrencies = customCurrencies && customCurrencies.length > 0 ? customCurrencies : ['BS', 'USD', 'COP'];
+  const allCurrencies = Array.from(
+    new Set([
+      ...baseCurrencies,
+      ...sales.map((s) => normalizarMoneda(s.moneda)),
+      ...operatorPayments.map((p) => normalizarMoneda(p.moneda)),
+    ])
+  ).filter(Boolean);
 
   availableSystems.forEach((sys) => {
     const sysUpper = String(sys || '').trim().toUpperCase();
@@ -105,6 +113,9 @@ export function calculateOperatorSettlements(
       if (curr === 'BS') saldoInit = Number(conf.saldo_inicial_bs || 0);
       else if (curr === 'USD') saldoInit = Number(conf.saldo_inicial_usd || 0);
       else if (curr === 'COP') saldoInit = Number(conf.saldo_inicial_cop || 0);
+      else if (conf.saldos_iniciales && typeof conf.saldos_iniciales === 'object') {
+        saldoInit = Number(conf.saldos_iniciales[curr] || 0);
+      }
 
       const sysPayments = operatorPayments.filter(
         (p) => String(p.sistema || '').toUpperCase() === sysUpper && normalizarMoneda(p.moneda) === curr
@@ -186,7 +197,7 @@ export function calculateOperatorSettlements(
     };
   });
 
-  const activeCurrenciesWithData = (allCurrencies as ('BS' | 'USD' | 'COP')[]).filter((c) => {
+  const activeCurrenciesWithData = allCurrencies.filter((c) => {
     if (reportCurrencyFilter !== 'ALL' && reportCurrencyFilter !== c) return false;
     const t = totalsByCurrency[c];
     return t && (t.count > 0 || t.venta > 0 || t.premios > 0 || Math.abs(t.balanceFinal) > 0.001);

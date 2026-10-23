@@ -30,6 +30,7 @@ import {
 import confetti from 'canvas-confetti';
 import { recalculateAgencySales } from '../../utils/salesRecalculation';
 import { logAuditEvent } from '../../utils/auditLogger';
+import { loadCurrencies } from '../../utils/currencies';
 
 /**
  * Parsea y formatea las cuentas y dispositivos bancarios al modo Ultra Compacto:
@@ -287,22 +288,12 @@ export const AgenciesTab: React.FC = () => {
         supabase.from('taquilla_usuarios').select('*').eq('user_id', effectiveUserId).order('id', { ascending: true }),
       ]);
 
-      const rawMonedas = monRes.data || [];
-      const normalizedMonedas: Currency[] = rawMonedas.map((m: any) => ({
-        id: m.id,
-        nombre_moneda: String(m.Nombre_Moneda || m.nombre_moneda || m.moneda || '').trim().toUpperCase(),
-        simbolo: String(m.Simbolo || m.simbolo || '').trim(),
-        user_id: m.user_id,
-        created_at: m.created_at,
+      const dynamicConfigs = await loadCurrencies(effectiveUserId);
+      const finalMonedas: Currency[] = dynamicConfigs.map((c) => ({
+        id: c.id || 0,
+        nombre_moneda: c.codigo,
+        simbolo: c.simbolo,
       }));
-
-      const finalMonedas: Currency[] = normalizedMonedas.some((m) => m.nombre_moneda)
-        ? normalizedMonedas.filter((m) => m.nombre_moneda)
-        : [
-            { id: 1, nombre_moneda: 'BS', simbolo: 'Bs.' },
-            { id: 2, nombre_moneda: 'USD', simbolo: '$' },
-            { id: 3, nombre_moneda: 'COP', simbolo: 'COP' },
-          ];
 
       setAgencies(agRes.data || []);
       setSystems(sisRes.data || []);
