@@ -77,16 +77,15 @@ export async function saveCurrencies(
     throw new Error('El sistema debe contar con al menos una moneda activa para operar.');
   }
 
-  // 1. Guardar en localStorage
+  // 1. Guardar en localStorage aislado por suscriptor (userId)
   try {
-    const key = `operadora_catalogo_monedas_${userId || 'default'}`;
+    const key = userId ? `operadora_catalogo_monedas_${userId}` : 'operadora_catalogo_monedas_default';
     localStorage.setItem(key, JSON.stringify(currencies));
-    localStorage.setItem('operadora_catalogo_monedas', JSON.stringify(currencies));
   } catch (e) {
     console.warn('Error saving currencies to localStorage:', e);
   }
 
-  // 2. Persistir en config_sistema (Supabase + PostgreSQL)
+  // 2. Persistir en config_sistema (Supabase + PostgreSQL) con aislamiento estricto por user_id
   if (userId) {
     try {
       const { error } = await supabase.from('config_sistema').upsert(
@@ -108,12 +107,12 @@ export async function saveCurrencies(
 
 /**
  * Carga la lista completa de monedas activas desde config_sistema y localStorage
- * Si es la primera vez que ingresa el suscriptor, inicializa con BS, USD y COP
+ * Garantiza aislamiento 100% por suscriptor (user_id / effectiveUserId)
  */
 export async function loadCurrencies(userId?: string): Promise<CurrencyConfig[]> {
-  const localKey = `operadora_catalogo_monedas_${userId || 'default'}`;
+  const localKey = userId ? `operadora_catalogo_monedas_${userId}` : 'operadora_catalogo_monedas_default';
 
-  // 1. Si hay userId, consultar config_sistema
+  // 1. Si hay userId, consultar config_sistema de forma estricta para ese suscriptor
   if (userId) {
     try {
       const { data: cfgRow, error: cfgErr } = await supabase
@@ -129,7 +128,6 @@ export async function loadCurrencies(userId?: string): Promise<CurrencyConfig[]>
           if (Array.isArray(parsed) && parsed.length > 0) {
             try {
               localStorage.setItem(localKey, JSON.stringify(parsed));
-              localStorage.setItem('operadora_catalogo_monedas', JSON.stringify(parsed));
             } catch (_) {}
             return parsed;
           }
@@ -140,9 +138,9 @@ export async function loadCurrencies(userId?: string): Promise<CurrencyConfig[]>
     }
   }
 
-  // 2. Intentar desde localStorage
+  // 2. Intentar desde localStorage aislado para este usuario
   try {
-    const rawLocal = localStorage.getItem(localKey) || localStorage.getItem('operadora_catalogo_monedas');
+    const rawLocal = localStorage.getItem(localKey);
     if (rawLocal) {
       const parsedLocal = JSON.parse(rawLocal);
       if (Array.isArray(parsedLocal) && parsedLocal.length > 0) {
