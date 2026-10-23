@@ -2,7 +2,7 @@ import React, { useState, useEffect, useMemo } from 'react';
 import { supabase } from '../../lib/supabase';
 import { useAuth } from '../../context/AuthContext';
 import { formatCurrency, formatDate, cleanAgencyName } from '../../utils/formatters';
-import type { Agency, BetSystem, Currency, BankAccount, PaymentDevice, TaquillaUser } from '../../types';
+import type { Agency, BetSystem, Currency, BankAccount, PaymentDevice, TaquillaUser, Grupo } from '../../types';
 import {
   Building2,
   Plus,
@@ -222,6 +222,7 @@ export const AgenciesTab: React.FC = () => {
   const [currencies, setCurrencies] = useState<Currency[]>([]);
   const [bankAccounts, setBankAccounts] = useState<BankAccount[]>([]);
   const [devices, setDevices] = useState<PaymentDevice[]>([]);
+  const [groups, setGroups] = useState<Grupo[]>([]);
 
   // View Mode: 'linear' (Table, default) vs 'cards' (Grid)
   const [viewMode, setViewMode] = useState<'linear' | 'cards'>(() => {
@@ -255,6 +256,8 @@ export const AgenciesTab: React.FC = () => {
   const [formCuentasAsignadas, setFormCuentasAsignadas] = useState<string[]>([]);
   const [formUsuarioTaquilla, setFormUsuarioTaquilla] = useState('');
   const [formClaveTaquilla, setFormClaveTaquilla] = useState('1234');
+  const [formGrupoId, setFormGrupoId] = useState<number | null>(null);
+  const [formGrupoNombre, setFormGrupoNombre] = useState<string>('');
 
   // Terminal users state (Cajeros y Supervisores POS)
   const [taquillaUsers, setTaquillaUsers] = useState<TaquillaUser[]>([]);
@@ -287,6 +290,25 @@ export const AgenciesTab: React.FC = () => {
         supabase.from('dispositivos_pago').select('*').eq('user_id', effectiveUserId).order('id', { ascending: true }),
         supabase.from('taquilla_usuarios').select('*').eq('user_id', effectiveUserId).order('id', { ascending: true }),
       ]);
+
+      let loadedGrupos: Grupo[] = [];
+      try {
+        const { data: grData, error: grErr } = await supabase
+          .from('grupos')
+          .select('*')
+          .eq('user_id', effectiveUserId)
+          .order('nombre_grupo', { ascending: true });
+        if (!grErr && grData) {
+          loadedGrupos = grData;
+        } else {
+          const fallback = localStorage.getItem(`cms_grupos_${effectiveUserId}`);
+          if (fallback) loadedGrupos = JSON.parse(fallback);
+        }
+      } catch (_) {
+        const fallback = localStorage.getItem(`cms_grupos_${effectiveUserId}`);
+        if (fallback) loadedGrupos = JSON.parse(fallback);
+      }
+      setGroups(loadedGrupos);
 
       const dynamicConfigs = await loadCurrencies(effectiveUserId);
       const finalMonedas: Currency[] = dynamicConfigs.map((c) => ({
@@ -424,6 +446,8 @@ export const AgenciesTab: React.FC = () => {
     setFormCuentasAsignadas([]);
     setFormUsuarioTaquilla('');
     setFormClaveTaquilla('1234');
+    setFormGrupoId(null);
+    setFormGrupoNombre('');
 
     setIsNewModalOpen(true);
   };
@@ -515,6 +539,8 @@ export const AgenciesTab: React.FC = () => {
     );
     setFormUsuarioTaquilla(ag.usuario_taquilla || '');
     setFormClaveTaquilla(ag.clave_taquilla || '1234');
+    setFormGrupoId(ag.grupo_id ?? null);
+    setFormGrupoNombre(ag.grupo_nombre || '');
   };
 
   // Auto-fill taquilla username when agency name changes in New Modal
@@ -677,6 +703,8 @@ export const AgenciesTab: React.FC = () => {
         cuentas_asignadas: formCuentasAsignadas.length > 0 ? formCuentasAsignadas.join(', ') : 'NINGUNA',
         usuario_taquilla: formUsuarioTaquilla.trim().toLowerCase(),
         clave_taquilla: formClaveTaquilla.trim(),
+        grupo_id: formGrupoId,
+        grupo_nombre: formGrupoNombre || null,
       };
 
       if (!editModalAgency) {
@@ -688,12 +716,23 @@ export const AgenciesTab: React.FC = () => {
       let targetAgId: number;
 
       if (editModalAgency) {
-        // Update existing agency
-        const { error: upErr } = await supabase
+        // Update existing agency with fallback if grupo columns not present yet
+        let upErr: any;
+        const res = await supabase
           .from('agencias')
           .update(payload)
           .eq('id', editModalAgency.id)
           .eq('user_id', effectiveUserId);
+        upErr = res.error;
+        if (upErr && (upErr.message?.includes('grupo_id') || upErr.code === '42703')) {
+          const { grupo_id, grupo_nombre, ...safePayload } = payload;
+          const retryRes = await supabase
+            .from('agencias')
+            .update(safePayload)
+            .eq('id', editModalAgency.id)
+            .eq('user_id', effectiveUserId);
+          upErr = retryRes.error;
+        }
 
         if (upErr) throw upErr;
         targetAgId = editModalAgency.id;
@@ -741,12 +780,26 @@ export const AgenciesTab: React.FC = () => {
         });
         setEditModalAgency(null);
       } else {
-        // Insert new agency
-        const { data: insData, error: insErr } = await supabase
+        // Insert new agency with fallback if grupo columns not present yet
+        let insData: any;
+        let insErr: any;
+        const res = await supabase
           .from('agencias')
           .insert(payload)
           .select()
           .single();
+        insData = res.data;
+        insErr = res.error;
+        if (insErr && (insErr.message?.includes('grupo_id') || insErr.code === '42703')) {
+          const { grupo_id, grupo_nombre, ...safePayload } = payload;
+          const retryRes = await supabase
+            .from('agencias')
+            .insert(safePayload)
+            .select()
+            .single();
+          insData = retryRes.data;
+          insErr = retryRes.error;
+        }
 
         if (insErr) throw insErr;
         targetAgId = insData.id;
@@ -1095,9 +1148,16 @@ export const AgenciesTab: React.FC = () => {
 
                       {/* Agency Name */}
                       <td className="py-3 px-4 font-sans">
-                        <span className="font-extrabold text-white text-xs whitespace-nowrap">
-                          {ag.nombre_agencia}
-                        </span>
+                        <div className="flex items-center gap-2 flex-wrap">
+                          <span className="font-extrabold text-white text-xs whitespace-nowrap">
+                            {ag.nombre_agencia}
+                          </span>
+                          {ag.grupo_nombre && (
+                            <span className="px-1.5 py-0.5 rounded text-[10px] bg-purple-500/20 text-purple-300 border border-purple-500/30 flex items-center gap-1 font-mono font-medium" title={`Pertenece al Grupo ${ag.grupo_nombre}`}>
+                              🤝 {ag.grupo_nombre}
+                            </span>
+                          )}
+                        </div>
                       </td>
 
                       {/* Comision / Participacion */}
@@ -1324,12 +1384,17 @@ export const AgenciesTab: React.FC = () => {
                 {/* Header Card */}
                 <div className="flex items-start justify-between gap-3">
                   <div>
-                    <div className="flex items-center gap-2">
-                      <span className="px-2 py-0.5 rounded-md bg-slate-800 text-slate-400 text-[10px] font-mono font-bold">
-                        #{ag.id}
-                      </span>
-                      <h3 className="text-base font-black text-white">{ag.nombre_agencia}</h3>
-                    </div>
+                      <div className="flex items-center gap-2">
+                        <span className="px-2 py-0.5 rounded-md bg-slate-800 text-slate-400 text-[10px] font-mono font-bold">
+                          #{ag.id}
+                        </span>
+                        <h3 className="text-base font-black text-white">{ag.nombre_agencia}</h3>
+                        {ag.grupo_nombre && (
+                          <span className="px-2 py-0.5 rounded-md text-[10px] bg-purple-500/20 text-purple-300 border border-purple-500/30 font-mono font-medium">
+                            🤝 {ag.grupo_nombre}
+                          </span>
+                        )}
+                      </div>
 
                     <div className="text-xs text-slate-400 mt-1 flex flex-wrap items-center gap-2 font-mono">
                       {(() => {
@@ -1529,6 +1594,43 @@ export const AgenciesTab: React.FC = () => {
                     onChange={(e) => handleNameChange(e.target.value)}
                     className="w-full bg-[#071217] border border-slate-700 rounded-xl px-4 py-2.5 text-xs text-white focus:outline-none focus:border-emerald-500 font-semibold"
                   />
+                </div>
+
+                {/* Grupo / Intermediario Asignado */}
+                <div className="space-y-1.5">
+                  <label className="text-xs font-semibold text-slate-300 flex items-center justify-between">
+                    <span className="flex items-center gap-1.5">
+                      <span className="text-purple-400 font-bold">🤝</span>
+                      <span className="text-white font-bold">Grupo / Intermediario Asignado:</span>
+                    </span>
+                    <span className="text-[10px] text-slate-400">
+                      (Sub-Comercializador de red)
+                    </span>
+                  </label>
+                  <select
+                    value={formGrupoId ? String(formGrupoId) : ''}
+                    onChange={(e) => {
+                      const val = e.target.value;
+                      if (!val) {
+                        setFormGrupoId(null);
+                        setFormGrupoNombre('');
+                      } else {
+                        const selG = groups.find((g) => String(g.id) === val);
+                        setFormGrupoId(selG ? selG.id : null);
+                        setFormGrupoNombre(selG ? selG.nombre_grupo : '');
+                      }
+                    }}
+                    className="w-full bg-[#071217] border border-purple-500/30 rounded-xl px-4 py-2.5 text-xs text-purple-200 focus:outline-none focus:border-purple-400 font-medium cursor-pointer"
+                  >
+                    <option value="" className="bg-[#0D1B22] text-slate-300">
+                      🏢 Ninguno (Agencia Directa de la Comercializadora)
+                    </option>
+                    {groups.map((g) => (
+                      <option key={g.id} value={g.id} className="bg-[#0D1B22] text-white">
+                        🤝 {g.nombre_grupo} {g.responsable ? `— (${g.responsable})` : ''}
+                      </option>
+                    ))}
+                  </select>
                 </div>
 
                 {/* Sistemas & Monedas Matrix Selector */}

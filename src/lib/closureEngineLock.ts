@@ -360,19 +360,314 @@ export function computeCertifiedTotals(
 
   (['BS', 'USD', 'COP'] as ClosureCurrency[]).forEach((cur) => {
     const t = result[cur];
-    t.saldoAnterior = Math.round(t.saldoAnterior * 100) / 100;
-    t.ventaNeta = Math.round(t.ventaNeta * 100) / 100;
-    t.gastos = Math.round(t.gastos * 100) / 100;
-    t.gastosAgencias = Math.round(t.gastosAgencias * 100) / 100;
-    t.gastosComercializadora = Math.round(t.gastosComercializadora * 100) / 100;
-    t.cobradorRuta = Math.round(t.cobradorRuta * 100) / 100;
-    t.cobradorLiquidado = Math.round(t.cobradorLiquidado * 100) / 100;
-    t.cobradorEnRuta = Math.round(t.cobradorEnRuta * 100) / 100;
-    t.efectivoTaquilla = Math.round(t.efectivoTaquilla * 100) / 100;
-    t.bancos = Math.round(t.bancos * 100) / 100;
-    t.reposicionPremios = Math.round(t.reposicionPremios * 100) / 100;
-    t.saldoFinal = Math.round(t.saldoFinal * 100) / 100;
+    if (t) {
+      t.saldoAnterior = Math.round(t.saldoAnterior * 100) / 100;
+      t.ventaNeta = Math.round(t.ventaNeta * 100) / 100;
+      t.gastos = Math.round(t.gastos * 100) / 100;
+      t.gastosAgencias = Math.round(t.gastosAgencias * 100) / 100;
+      t.gastosComercializadora = Math.round(t.gastosComercializadora * 100) / 100;
+      t.cobradorRuta = Math.round(t.cobradorRuta * 100) / 100;
+      t.cobradorLiquidado = Math.round(t.cobradorLiquidado * 100) / 100;
+      t.cobradorEnRuta = Math.round(t.cobradorEnRuta * 100) / 100;
+      t.efectivoTaquilla = Math.round(t.efectivoTaquilla * 100) / 100;
+      t.bancos = Math.round(t.bancos * 100) / 100;
+      t.reposicionPremios = Math.round(t.reposicionPremios * 100) / 100;
+      t.saldoFinal = Math.round(t.saldoFinal * 100) / 100;
+    }
   });
 
   return result;
+}
+
+// ==============================================================================
+// 5. MOTOR CONTABLE PURO PARA GRUPOS (INTERMEDIARIOS / SUB-COMERCIALIZADORES)
+// ==============================================================================
+
+export interface GroupClosureRow {
+  grupo_id: number;
+  nombre_grupo: string;
+  moneda: ClosureCurrency;
+  agencias_count: number;
+  agencias_hijas?: string[];
+  venta_bruta_arbol: number;
+  premios_arbol: number;
+  ggr: number;
+  comision_agencias: number;
+  comision_grupo_total: number;
+  dif_com_grupo: number;
+  dif_part_grupo: number;
+  utilidad_grupo: number;
+  saldo_anterior: number;
+  pagos_netos: number;
+  saldo_final: number;
+  status: 'pagado' | 'pendiente' | 'favor';
+
+  // CamelCase aliases para interoperabilidad total
+  grupoId: number;
+  grupoNombre: string;
+  agenciasHijas: string[];
+  ventaBrutaArbol: number;
+  premiosArbol: number;
+  utilidadBrutaArbol: number;
+  comisionAgenciasHijas: number;
+  comisionGrupoTotal: number;
+  diferencialComisionGrupo: number;
+  diferencialParticipacionGrupo: number;
+  gananciaTotalGrupo: number;
+  saldoInicial: number;
+  pagosLiquidados: number;
+  saldoFinal: number;
+}
+
+export interface RawGroupPaymentEntry {
+  id?: number | string;
+  grupo_id?: number;
+  grupo_nombre?: string;
+  moneda?: string;
+  monto?: number;
+  tipo_pago?: string;
+  fecha?: string;
+}
+
+/**
+ * @CRITICAL-LOCK: Cálculo puro y determinista de la Matriz de Liquidación de Grupos (Intermediarios).
+ * Regla Suprema: Cero impacto sobre la deuda o caja de las agencias hijas.
+ */
+export function computeCertifiedGroupMatrix(params: {
+  groups: Array<{
+    id: number;
+    nombre_grupo: string;
+    monedas?: string;
+    comision_pct_default?: number;
+    participacion_pct_default?: number;
+    condiciones_sistemas?: Record<string, any> | string;
+    saldo_inicial_bs?: number;
+    saldo_inicial_usd?: number;
+    saldo_inicial_cop?: number;
+    saldos_iniciales_json?: Record<string, number> | string;
+    activo?: boolean;
+    [key: string]: any;
+  }>;
+  agencies: Array<{
+    id: number;
+    nombre_agencia: string;
+    grupo_id?: number | null;
+    grupo_nombre?: string | null;
+    monedas?: string;
+    comision?: number;
+    participacion_ag?: number;
+    condiciones_sistemas?: Record<string, any> | string;
+    [key: string]: any;
+  }>;
+  sales: RawSaleEntry[];
+  groupPayments?: RawGroupPaymentEntry[];
+  systemCycle?: { desde?: string; hasta?: string };
+  participationCalculator?: (ag: any, sistema: string, mon: string) => { partPct: number };
+  customCurrencies?: string[];
+}): GroupClosureRow[] {
+  const { groups, agencies, sales, groupPayments, participationCalculator, customCurrencies } = params;
+  const list: GroupClosureRow[] = [];
+
+  const baseCurrencies = customCurrencies && customCurrencies.length > 0 ? customCurrencies : ['BS', 'USD', 'COP'];
+  const dynamicCurrencies = Array.from(
+    new Set([
+      ...baseCurrencies,
+      ...sales.map((s) => normalizarMonedaPura(s.moneda)),
+      ...(groupPayments || []).map((p) => normalizarMonedaPura(p.moneda)),
+    ])
+  ).filter(Boolean);
+
+  groups.forEach((grp) => {
+    if (grp.activo === false) return;
+
+    // Parsear condiciones del grupo
+    let grpConds: Record<string, any> = {};
+    try {
+      grpConds = typeof grp.condiciones_sistemas === 'string'
+        ? JSON.parse(grp.condiciones_sistemas)
+        : (grp.condiciones_sistemas || {});
+    } catch (_) {
+      grpConds = {};
+    }
+
+    const getGroupPct = (sistema: string, mon: string) => {
+      const sysUpper = String(sistema || '').trim().toUpperCase();
+      const comboKey = `${sysUpper}_${mon}`;
+      const c = grpConds[comboKey] || grpConds[sysUpper] || {};
+      const comPct = c.comision !== undefined && c.comision !== null && c.comision !== ''
+        ? Number(c.comision)
+        : Number(grp.comision_pct_default || 0);
+      const partPct = c.participacion !== undefined && c.participacion !== null && c.participacion !== ''
+        ? Number(c.participacion)
+        : Number(grp.participacion_pct_default || 0);
+      return { comPct, partPct };
+    };
+
+    // Identificar agencias del árbol
+    const gId = Number(grp.id);
+    const gNom = String(grp.nombre_grupo || '').trim().toUpperCase();
+    const daughterAgencies = agencies.filter((ag) => {
+      const agGId = ag.grupo_id !== undefined && ag.grupo_id !== null ? Number(ag.grupo_id) : null;
+      const agGNom = String(ag.grupo_nombre || '').trim().toUpperCase();
+      return (agGId !== null && agGId === gId) || (Boolean(agGNom) && agGNom === gNom);
+    });
+
+    dynamicCurrencies.forEach((mon) => {
+      let ventaBrutaArbol = 0;
+      let premiosArbol = 0;
+      let comisionAgenciasTotal = 0;
+      let comisionGrupoTotal = 0;
+      let difComGrupoTotal = 0;
+      let difPartGrupoTotal = 0;
+
+      daughterAgencies.forEach((ag) => {
+        const agNom = String(ag.nombre_agencia || '').trim().toUpperCase();
+        const cleanAgNom = cleanAgencyNamePura(agNom);
+
+        const agSales = sales.filter((s) => {
+          if (normalizarMonedaPura(s.moneda) !== mon) return false;
+          const sNom = String(s.agencia || '').trim().toUpperCase();
+          return sNom === agNom || cleanAgencyNamePura(sNom) === cleanAgNom;
+        });
+
+        agSales.forEach((s) => {
+          const v = Number(s.venta ?? s.monto_venta ?? s.monto_ventas ?? 0);
+          const p = Number(s.premios ?? s.monto_premios ?? 0);
+          const sys = String(s.sistema || '').toUpperCase();
+
+          const grpRules = getGroupPct(sys, mon);
+
+          let agPartPct = 0;
+          let agComPct = Number(ag.comision || 0);
+
+          if (participationCalculator) {
+            agPartPct = participationCalculator(ag, sys, mon).partPct;
+          } else {
+            let agConds: any = {};
+            try {
+              agConds = typeof ag.condiciones_sistemas === 'string'
+                ? JSON.parse(ag.condiciones_sistemas)
+                : (ag.condiciones_sistemas || {});
+            } catch (_) {
+              agConds = {};
+            }
+            const combo = agConds[`${sys}_${mon}`] || agConds[sys] || {};
+            agComPct = combo.comision !== undefined ? Number(combo.comision) : agComPct;
+            agPartPct = combo.participacion !== undefined ? Number(combo.participacion) : Number(ag.participacion_ag || 0);
+          }
+
+          const comAg = s.comision !== undefined && s.comision !== null && Number(s.comision) > 0
+            ? Number(s.comision)
+            : Math.round((v * (agComPct / 100)) * 100) / 100;
+
+          const comGrp = Math.round((v * (grpRules.comPct / 100)) * 100) / 100;
+          const difCom = Math.max(0, Math.round((comGrp - comAg) * 100) / 100);
+
+          const baseNeta = v - comGrp - p;
+          let difPart = 0;
+          if (baseNeta > 0 && grpRules.partPct > agPartPct) {
+            difPart = Math.round((baseNeta * ((grpRules.partPct - agPartPct) / 100)) * 100) / 100;
+          }
+
+          ventaBrutaArbol += v;
+          premiosArbol += p;
+          comisionAgenciasTotal += comAg;
+          comisionGrupoTotal += comGrp;
+          difComGrupoTotal += difCom;
+          difPartGrupoTotal += difPart;
+        });
+      });
+
+      // Saldo anterior
+      let sAnt = 0;
+      if (mon === 'BS') sAnt = Number(grp.saldo_inicial_bs || 0);
+      else if (mon === 'USD') sAnt = Number(grp.saldo_inicial_usd || 0);
+      else if (mon === 'COP') sAnt = Number(grp.saldo_inicial_cop || 0);
+
+      if (!sAnt) {
+        let saldosJson: any = grp.saldos_iniciales_json || grp.saldos_iniciales;
+        if (typeof saldosJson === 'string') {
+          try {
+            saldosJson = JSON.parse(saldosJson);
+          } catch (_) {
+            saldosJson = {};
+          }
+        }
+        if (saldosJson && typeof saldosJson === 'object' && saldosJson[mon] !== undefined) {
+          sAnt = Number(saldosJson[mon] || 0);
+        }
+      }
+
+      // Pagos al grupo
+      const gPayments = (groupPayments || []).filter((p) => {
+        const matchId = p.grupo_id !== undefined && p.grupo_id !== null && Number(p.grupo_id) === gId;
+        const pNom = String(p.grupo_nombre || '').trim().toUpperCase();
+        const matchNom = Boolean(pNom) && pNom === gNom;
+        return (matchId || matchNom) && normalizarMonedaPura(p.moneda) === mon;
+      });
+      const pagosNetos = gPayments.reduce((sum, curr) => sum + Number(curr.monto || 0), 0);
+
+      const confMon = String(grp.monedas || 'BS,USD,COP').toUpperCase();
+      const hasSales = ventaBrutaArbol > 0 || premiosArbol > 0;
+      const hasBalance = Math.abs(sAnt) > 0.01;
+      const hasPayments = pagosNetos > 0;
+      const hasDaughters = daughterAgencies.length > 0 && confMon.includes(mon);
+
+      if (hasSales || hasBalance || hasPayments || hasDaughters) {
+        const ggr = Math.round((ventaBrutaArbol - premiosArbol) * 100) / 100;
+        const difCom = Math.round(difComGrupoTotal * 100) / 100;
+        const difPart = Math.round(difPartGrupoTotal * 100) / 100;
+        const utilidadGrupo = Math.round((difCom + difPart) * 100) / 100;
+        const saldoFinal = Math.round((sAnt + utilidadGrupo - pagosNetos) * 100) / 100;
+        const status: 'pagado' | 'pendiente' | 'favor' =
+          saldoFinal > 0.01 ? 'pendiente' : saldoFinal < -0.01 ? 'favor' : 'pagado';
+
+        const vb = Math.round(ventaBrutaArbol * 100) / 100;
+        const pr = Math.round(premiosArbol * 100) / 100;
+        const ca = Math.round(comisionAgenciasTotal * 100) / 100;
+        const cg = Math.round(comisionGrupoTotal * 100) / 100;
+        const sa = Math.round(sAnt * 100) / 100;
+        const pn = Math.round(pagosNetos * 100) / 100;
+        const daughterNames = daughterAgencies.map((a) => a.nombre_agencia);
+
+        list.push({
+          grupo_id: grp.id,
+          nombre_grupo: grp.nombre_grupo,
+          moneda: mon,
+          agencias_count: daughterAgencies.length,
+          agencias_hijas: daughterNames,
+          venta_bruta_arbol: vb,
+          premios_arbol: pr,
+          ggr,
+          comision_agencias: ca,
+          comision_grupo_total: cg,
+          dif_com_grupo: difCom,
+          dif_part_grupo: difPart,
+          utilidad_grupo: utilidadGrupo,
+          saldo_anterior: sa,
+          pagos_netos: pn,
+          saldo_final: saldoFinal,
+          status,
+
+          // CamelCase aliases
+          grupoId: grp.id,
+          grupoNombre: grp.nombre_grupo,
+          agenciasHijas: daughterNames,
+          ventaBrutaArbol: vb,
+          premiosArbol: pr,
+          utilidadBrutaArbol: ggr,
+          comisionAgenciasHijas: ca,
+          comisionGrupoTotal: cg,
+          diferencialComisionGrupo: difCom,
+          diferencialParticipacionGrupo: difPart,
+          gananciaTotalGrupo: utilidadGrupo,
+          saldoInicial: sa,
+          pagosLiquidados: pn,
+          saldoFinal,
+        });
+      }
+    });
+  });
+
+  return list;
 }

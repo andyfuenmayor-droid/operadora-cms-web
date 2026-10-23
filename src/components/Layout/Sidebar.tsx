@@ -59,6 +59,7 @@ const moduleIconMap: Record<ModuleId, React.ComponentType<{ className?: string }
   Monedas: Coins,
   'Cuentas Bancarias': Landmark,
   Agencias: Store,
+  Grupos: Handshake,
   Cobradores: Bike,
   'Cargar Ventas': CloudUpload,
   'Pagos Agencias': CircleDollarSign,

@@ -9,6 +9,8 @@ export interface CurrencyConfig {
   es_default?: boolean;
 }
 
+export type DynamicCurrencyConfig = CurrencyConfig;
+
 export const DEFAULT_CURRENCIES: CurrencyConfig[] = [
   { id: 1, codigo: 'BS', nombre: 'Bolívares', simbolo: 'Bs.', decimales: 2, es_default: true },
   { id: 2, codigo: 'USD', nombre: 'Dólares', simbolo: '$', decimales: 2, es_default: true },

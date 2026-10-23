@@ -58,7 +58,48 @@ export interface Agency {
   saldo_inicial_usd?: number;
   saldo_inicial_cop?: number;
   saldos_iniciales?: Record<string, number> | string;
+  saldos_iniciales_json?: Record<string, number> | string;
+  grupo_id?: number | null;
+  grupo_nombre?: string | null;
   user_id?: string;
+  created_at?: string;
+}
+
+export interface Grupo {
+  id: number;
+  user_id?: string;
+  nombre_grupo: string;
+  codigo?: string;
+  responsable?: string;
+  telefono?: string;
+  email_acceso?: string;
+  password_acceso?: string;
+  monedas?: string;
+  comision_pct_default?: number;
+  participacion_pct_default?: number;
+  condiciones_sistemas?: Record<string, any> | string;
+  saldo_inicial_bs?: number;
+  saldo_inicial_usd?: number;
+  saldo_inicial_cop?: number;
+  saldos_iniciales_json?: Record<string, number> | string;
+  activo?: boolean;
+  created_at?: string;
+  updated_at?: string;
+}
+
+export interface PagoGrupo {
+  id?: number;
+  user_id?: string;
+  grupo_id?: number;
+  grupo_nombre: string;
+  fecha: string;
+  moneda: string;
+  monto: number;
+  tipo_pago: 'LIQUIDACION_GRUPO' | 'ABONO_GRUPO' | 'ADELANTO_GRUPO' | string;
+  metodo?: string;
+  banco?: string;
+  referencia?: string;
+  observaciones?: string;
   created_at?: string;
 }
 
@@ -211,6 +252,7 @@ export type ModuleId =
   | 'Rep. Confirmaciones'
   | 'Pizarra Confirmaciones'
   | 'Agencias'
+  | 'Grupos'
   | 'Cobradores'
   | 'Sistemas'
   | 'Monedas'

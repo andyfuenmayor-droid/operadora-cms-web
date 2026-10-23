@@ -44,8 +44,11 @@ import {
   Copy,
   Sparkles,
   Printer,
-  X
+  X,
+  Handshake,
 } from 'lucide-react';
+import type { Grupo } from '../../types';
+import { loadCurrencies, type DynamicCurrencyConfig } from '../../utils/currencies';
 import { DeliveryReportModal, type PreClosureAgencyRow } from './DeliveryReportModal';
 import { UnifiedAuditDossierModal } from './UnifiedAuditDossierModal';
 import { OperatorDeliveryReportModal } from './OperatorDeliveryReportModal';
@@ -76,7 +79,11 @@ import {
 import {
   computeCertifiedAgencyMatrix,
   computeCertifiedTotals,
+  computeCertifiedGroupMatrix,
+  type GroupClosureRow,
+  type RawGroupPaymentEntry,
 } from '../../lib/closureEngineLock';
+import { GroupSettlementActaModal } from './GroupSettlementActaModal';
 
 export const PreClosureAuditTab: React.FC = () => {
   const { effectiveUserId, systemCycle, user, refreshSystemCycle } = useAuth();
@@ -84,7 +91,13 @@ export const PreClosureAuditTab: React.FC = () => {
   const [isLoading, setIsLoading] = useState(true);
   const [isProcessing, setIsProcessing] = useState(false);
   const [snapshotSuccess, setSnapshotSuccess] = useState<{ hash: string; semana: string } | null>(null);
-  const [auditMode, setAuditMode] = useState<'agencias' | 'operadoras' | 'consolidado'>('agencias');
+  const [auditMode, setAuditMode] = useState<'agencias' | 'operadoras' | 'grupos' | 'consolidado'>('agencias');
+  const [groups, setGroups] = useState<Grupo[]>([]);
+  const [groupPayments, setGroupPayments] = useState<RawGroupPaymentEntry[]>([]);
+  const [dynamicCurrencies, setDynamicCurrencies] = useState<DynamicCurrencyConfig[]>([]);
+  const [selectedGroupActa, setSelectedGroupActa] = useState<GroupClosureRow | null>(null);
+  const [groupSearchQuery, setGroupSearchQuery] = useState('');
+  const [groupStatusFilter, setGroupStatusFilter] = useState<'all' | 'pagar' | 'cobrar' | 'solvente'>('all');
   const [agencies, setAgencies] = useState<Agency[]>([]);
   const [sales, setSales] = useState<any[]>([]);
   const [payments, setPayments] = useState<ConsolidatedPaymentItem[]>([]);
@@ -212,6 +225,65 @@ export const PreClosureAuditTab: React.FC = () => {
       setRegisteredSystems(sysList);
       setSystemConfigs(confs);
       setOperatorPayments(rawOperatorPayments);
+
+      // Grupos y Pagos de Grupos con dualidad Supabase + LocalStorage
+      let loadedGrupos: Grupo[] = [];
+      try {
+        const { data: grData, error: grErr } = await supabase
+          .from('grupos')
+          .select('*')
+          .eq('user_id', effectiveUserId)
+          .order('nombre_grupo', { ascending: true });
+        if (!grErr && grData) {
+          loadedGrupos = grData;
+        } else {
+          const fallback = localStorage.getItem(`cms_grupos_${effectiveUserId}`);
+          if (fallback) loadedGrupos = JSON.parse(fallback);
+        }
+      } catch (_) {
+        const fallback = localStorage.getItem(`cms_grupos_${effectiveUserId}`);
+        if (fallback) loadedGrupos = JSON.parse(fallback);
+      }
+      setGroups(loadedGrupos);
+
+      let loadedGroupPayments: RawGroupPaymentEntry[] = [];
+      try {
+        const { data: gpData, error: gpErr } = await supabase
+          .from('pagos_grupos')
+          .select('*')
+          .eq('user_id', effectiveUserId);
+        if (!gpErr && gpData) {
+          loadedGroupPayments = gpData.map((p: any) => ({
+            id: p.id,
+            grupo_id: p.grupo_id,
+            grupo_nombre: p.grupo_nombre,
+            moneda: p.moneda,
+            monto: Number(p.monto) || 0,
+            tipo: p.tipo,
+            fecha: p.fecha,
+          }));
+        } else {
+          const { data: psGroupData } = await supabase
+            .from('pagos_semana')
+            .select('*')
+            .eq('user_id', effectiveUserId)
+            .or('tipo_pago.ilike.%GRUPO%,agencia.ilike.GRUPO:%');
+          if (psGroupData) {
+            loadedGroupPayments = psGroupData.map((p: any) => ({
+              id: p.id,
+              grupo_nombre: p.agencia?.replace(/^GRUPO:\s*/i, '').trim(),
+              moneda: p.moneda,
+              monto: Number(p.monto) || 0,
+              tipo: p.tipo_pago,
+              fecha: p.fecha,
+            }));
+          }
+        }
+      } catch (_) {}
+      setGroupPayments(loadedGroupPayments);
+
+      const dCurrs = await loadCurrencies(effectiveUserId);
+      setDynamicCurrencies(dCurrs);
     } catch (err) {
       console.error('Error loading pre-closure audit data:', err);
     } finally {
@@ -302,6 +374,12 @@ export const PreClosureAuditTab: React.FC = () => {
           moneda: r.moneda,
           saldo_final: r.balanceFinal,
         })),
+        ...groupRows.map((g) => ({
+          entidad: g.grupoNombre,
+          tipo_entidad: 'GRUPO' as const,
+          moneda: g.moneda,
+          saldo_final: g.saldoFinal,
+        })),
       ];
 
       // 2. Construir objeto de Snapshot Total Inmutable
@@ -314,6 +392,7 @@ export const PreClosureAuditTab: React.FC = () => {
         consolidated_totals: totalsByCurrency,
         agency_matrix: auditRows,
         operator_matrix: operatorRows,
+        group_matrix: groupRows,
         all_movements: {
           bankPayments: bankTransactionItems,
           cashDeliveries: cashDeliveryItems,
@@ -649,6 +728,85 @@ export const PreClosureAuditTab: React.FC = () => {
       };
     });
   }, [filteredOperatorRows]);
+
+  // Group Settlements Matrix (computeCertifiedGroupMatrix)
+  const groupRows = useMemo<GroupClosureRow[]>(() => {
+    return computeCertifiedGroupMatrix({
+      groups,
+      agencies,
+      sales,
+      groupPayments,
+      participationCalculator: (ag, sistema, mon) => getAgencyCommissionAndParticipation(ag, sistema, mon),
+      customCurrencies: dynamicCurrencies.map((c) => c.codigo),
+    });
+  }, [groups, agencies, sales, groupPayments, dynamicCurrencies]);
+
+  // Filtered Group Rows
+  const filteredGroupRows = useMemo(() => {
+    return groupRows.filter((r) => {
+      if (selectedCurrency !== 'ALL' && r.moneda !== selectedCurrency) return false;
+      if (groupSearchQuery.trim()) {
+        const q = groupSearchQuery.toLowerCase();
+        if (
+          !r.grupoNombre.toLowerCase().includes(q) &&
+          !r.agenciasHijas.some((a) => a.toLowerCase().includes(q))
+        ) {
+          return false;
+        }
+      }
+      if (groupStatusFilter === 'pagar' && r.saldoFinal <= 0.01) return false;
+      if (groupStatusFilter === 'cobrar' && r.saldoFinal >= -0.01) return false;
+      if (groupStatusFilter === 'solvente' && Math.abs(r.saldoFinal) > 0.01) return false;
+      return true;
+    });
+  }, [groupRows, selectedCurrency, groupSearchQuery, groupStatusFilter]);
+
+  // Group Totals by Currency
+  const groupTotalsByCurrency = useMemo(() => {
+    const map: Record<string, { venta: number; premios: number; ggr: number; comAgencias: number; difCom: number; difPart: number; ganancia: number; saldoInicial: number; pagos: number; saldoFinal: number; count: number }> = {};
+    groupRows.forEach((r) => {
+      if (!map[r.moneda]) {
+        map[r.moneda] = { venta: 0, premios: 0, ggr: 0, comAgencias: 0, difCom: 0, difPart: 0, ganancia: 0, saldoInicial: 0, pagos: 0, saldoFinal: 0, count: 0 };
+      }
+      map[r.moneda].venta += r.ventaBrutaArbol;
+      map[r.moneda].premios += r.premiosArbol;
+      map[r.moneda].ggr += r.utilidadBrutaArbol;
+      map[r.moneda].comAgencias += r.comisionAgenciasHijas;
+      map[r.moneda].difCom += r.diferencialComisionGrupo;
+      map[r.moneda].difPart += r.diferencialParticipacionGrupo;
+      map[r.moneda].ganancia += r.gananciaTotalGrupo;
+      map[r.moneda].saldoInicial += r.saldoInicial;
+      map[r.moneda].pagos += r.pagosLiquidados;
+      map[r.moneda].saldoFinal += r.saldoFinal;
+      map[r.moneda].count += 1;
+    });
+    return map;
+  }, [groupRows]);
+
+  // Group by Grupo with currencies stacked
+  const groupGroups = useMemo(() => {
+    const map = new Map<string, GroupClosureRow[]>();
+    filteredGroupRows.forEach((r) => {
+      if (!map.has(r.grupoNombre)) {
+        map.set(r.grupoNombre, []);
+      }
+      map.get(r.grupoNombre)!.push(r);
+    });
+
+    const currOrder: Record<string, number> = { BS: 1, USD: 2, COP: 3 };
+
+    return Array.from(map.entries()).map(([grupoNombre, rows]) => {
+      const sortedRows = [...rows].sort((a, b) => (currOrder[a.moneda] || 99) - (currOrder[b.moneda] || 99));
+      return {
+        grupoNombre,
+        grupoId: sortedRows[0]?.grupoId,
+        agenciasHijas: sortedRows[0]?.agenciasHijas || [],
+        rows: sortedRows,
+        hasDeuda: sortedRows.some((r) => r.saldoFinal > 0.01),
+        hasFavor: sortedRows.some((r) => r.saldoFinal < -0.01),
+      };
+    });
+  }, [filteredGroupRows]);
 
   // Handler: Copy WhatsApp Operator Acta (Grouped by Operadora with currencies stacked)
   const handleCopyOperatorActaWhatsApp = () => {
@@ -1361,6 +1519,21 @@ export const PreClosureAuditTab: React.FC = () => {
           <span>🌐 Arqueo Casas Operadoras</span>
           <span className="text-[10px] px-2 py-0.5 rounded-full bg-amber-500/15 dark:bg-amber-500/20 text-amber-800 dark:text-amber-300 font-mono">
             {operatorRows.length}
+          </span>
+        </button>
+
+        <button
+          onClick={() => setAuditMode('grupos')}
+          className={`px-4 py-2.5 rounded-2xl text-xs sm:text-sm font-bold flex items-center gap-2 transition-all cursor-pointer ${
+            auditMode === 'grupos'
+              ? 'bg-purple-500/15 dark:bg-purple-500/20 text-purple-800 dark:text-purple-400 border border-purple-500/30 dark:border-purple-500/40 shadow-sm dark:shadow-lg dark:shadow-purple-500/10'
+              : 'text-slate-600 hover:text-slate-900 hover:bg-slate-100 dark:text-slate-400 dark:hover:text-white dark:hover:bg-slate-800/60'
+          }`}
+        >
+          <Handshake className="w-4 h-4" />
+          <span>🤝 Arqueo Grupos</span>
+          <span className="text-[10px] px-2 py-0.5 rounded-full bg-purple-500/15 dark:bg-purple-500/20 text-purple-800 dark:text-purple-300 font-mono font-bold">
+            {groupRows.length}
           </span>
         </button>
 
@@ -2807,6 +2980,261 @@ export const PreClosureAuditTab: React.FC = () => {
     </div>
   )}
 
+  {/* TAB 3: ARQUEO DE GRUPOS (SUB-COMERCIALIZADORES) */}
+  {auditMode === 'grupos' && (
+    <div className="space-y-6">
+      {/* 1. Macro Resumen de Grupos por Moneda */}
+      <div className="bg-white dark:bg-[#0D1B22] border border-slate-200 dark:border-slate-800 rounded-3xl p-5 shadow-sm dark:shadow-xl">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between pb-3.5 border-b border-slate-100 dark:border-slate-800 gap-2 mb-4">
+          <div>
+            <span className="text-[10px] font-black uppercase tracking-wider text-purple-600 dark:text-purple-400 font-mono">
+              Intermediarios y Sub-Comercializadores
+            </span>
+            <h3 className="text-base font-black text-slate-900 dark:text-white flex items-center gap-2">
+              <Handshake className="w-4 h-4 text-purple-500 dark:text-purple-400" />
+              Resumen Global de Liquidación a Grupos
+            </h3>
+          </div>
+          <span className="text-xs text-slate-500 dark:text-slate-400 font-mono">
+            {groupGroups.length} grupos registrados • {groupRows.length} cuentas por divisa
+          </span>
+        </div>
+
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+          {Object.entries(groupTotalsByCurrency).map(([mon, t]) => {
+            const flag = mon === 'BS' ? '🇻🇪' : mon === 'USD' ? '🇺🇸' : mon === 'COP' ? '🇨🇴' : '🌐';
+            return (
+              <div
+                key={mon}
+                className="bg-slate-50 dark:bg-[#071217] border border-slate-200 dark:border-slate-800/80 rounded-2xl p-4 space-y-2.5"
+              >
+                <div className="flex items-center justify-between">
+                  <span className="text-xs font-black text-slate-800 dark:text-white flex items-center gap-1.5 font-mono">
+                    <span>{flag}</span>
+                    <span>{mon}</span>
+                  </span>
+                  <span className="text-[10px] px-2 py-0.5 rounded-full bg-purple-500/10 text-purple-600 dark:text-purple-300 font-bold border border-purple-500/20 font-mono">
+                    {t.count} grupos activos
+                  </span>
+                </div>
+
+                <div className="space-y-1 text-xs font-mono pt-1">
+                  <div className="flex justify-between text-slate-500 dark:text-slate-400">
+                    <span>Venta Red:</span>
+                    <span className="text-slate-900 dark:text-white font-bold">{formatCurrency(t.venta, mon)}</span>
+                  </div>
+                  <div className="flex justify-between text-slate-500 dark:text-slate-400">
+                    <span>Com. Agencias Hijas:</span>
+                    <span className="text-rose-600 dark:text-rose-400">-{formatCurrency(t.comAgencias, mon)}</span>
+                  </div>
+                  <div className="flex justify-between text-purple-600 dark:text-purple-300 font-bold border-t border-slate-200 dark:border-slate-800 pt-1">
+                    <span>Ganancia Grupos:</span>
+                    <span>+{formatCurrency(t.ganancia, mon)}</span>
+                  </div>
+                  <div className="flex justify-between items-center text-sm font-black pt-1 border-t border-slate-300 dark:border-slate-700">
+                    <span className="text-slate-800 dark:text-slate-200">Saldo a Liquidar:</span>
+                    <span className={t.saldoFinal > 0 ? 'text-rose-500' : t.saldoFinal < 0 ? 'text-emerald-500' : 'text-slate-400'}>
+                      {formatCurrency(t.saldoFinal, mon)}
+                    </span>
+                  </div>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      </div>
+
+      {/* 2. Filtros y Búsqueda */}
+      <div className="bg-white dark:bg-[#0D1B22] border border-slate-200 dark:border-slate-800 rounded-3xl p-4 sm:p-5 shadow-sm dark:shadow-xl flex flex-col md:flex-row md:items-center justify-between gap-3">
+        <div className="relative flex-1">
+          <Search className="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2" />
+          <input
+            type="text"
+            placeholder="Buscar por grupo o agencia hija..."
+            value={groupSearchQuery}
+            onChange={(e) => setGroupSearchQuery(e.target.value)}
+            className="w-full pl-9 pr-4 py-2 rounded-xl bg-slate-50 dark:bg-[#071217] border border-slate-200 dark:border-slate-700 text-xs text-slate-800 dark:text-white focus:outline-none focus:border-purple-500"
+          />
+        </div>
+
+        <div className="flex items-center gap-2">
+          <select
+            value={groupStatusFilter}
+            onChange={(e) => setGroupStatusFilter(e.target.value as any)}
+            className="px-3 py-2 rounded-xl bg-slate-50 dark:bg-[#071217] border border-slate-200 dark:border-slate-700 text-xs text-slate-800 dark:text-white focus:outline-none focus:border-purple-500 font-medium cursor-pointer"
+          >
+            <option value="all">Todos los Estados</option>
+            <option value="pagar">🔴 Saldo a Pagar al Grupo</option>
+            <option value="cobrar">🟢 Saldo a Favor Comercializadora</option>
+            <option value="solvente">⚪ Solventes / Al Día (0.00)</option>
+          </select>
+        </div>
+      </div>
+
+      {/* 3. Tabla Detallada de Grupos con Divisas Apiladas */}
+      <div className="bg-white dark:bg-[#0D1B22] border border-slate-200 dark:border-slate-800 rounded-3xl overflow-hidden shadow-sm dark:shadow-xl">
+        <div className="p-4 sm:p-5 border-b border-slate-200 dark:border-slate-800 flex items-center justify-between">
+          <div>
+            <h4 className="text-sm font-black text-slate-900 dark:text-white flex items-center gap-2">
+              <span>Matriz de Arqueo Detallada por Grupo</span>
+              <span className="text-xs px-2.5 py-0.5 rounded-full bg-purple-500/20 text-purple-300 font-mono font-normal">
+                {filteredGroupRows.length} registros en {groupGroups.length} grupos
+              </span>
+            </h4>
+          </div>
+        </div>
+
+        <div className="overflow-x-auto custom-scrollbar">
+          <table className="w-full text-xs font-mono">
+            <thead>
+              <tr className="bg-slate-50 dark:bg-[#071217] text-slate-500 dark:text-slate-400 border-b border-slate-200 dark:border-slate-800 text-[11px] uppercase tracking-wider">
+                <th className="py-3 px-4 text-left font-sans">Grupo / Intermediario</th>
+                <th className="py-3 px-3 text-center font-sans">Divisa</th>
+                <th className="py-3 px-3 text-right">Venta Red</th>
+                <th className="py-3 px-3 text-right">Premios</th>
+                <th className="py-3 px-3 text-right">Com. Hijas</th>
+                <th className="py-3 px-3 text-right text-purple-600 dark:text-purple-400">Dif. Com.</th>
+                <th className="py-3 px-3 text-right text-purple-600 dark:text-purple-400">Dif. Part.</th>
+                <th className="py-3 px-3 text-right text-emerald-600 dark:text-emerald-400 font-bold">Ganancia Total</th>
+                <th className="py-3 px-3 text-right">Saldo Ant.</th>
+                <th className="py-3 px-3 text-right">Pagos (-)</th>
+                <th className="py-3 px-3 text-right font-black">Saldo Final</th>
+                <th className="py-3 px-4 text-center font-sans">Acciones</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
+              {groupGroups.length === 0 ? (
+                <tr>
+                  <td colSpan={12} className="py-12 text-center text-slate-400 font-sans">
+                    No hay registros de grupos o agencias asignadas a grupos en este ciclo.
+                  </td>
+                </tr>
+              ) : (
+                groupGroups.map((gGroup) => {
+                  return (
+                    <React.Fragment key={gGroup.grupoNombre}>
+                      {gGroup.rows.map((row, idx) => {
+                        const isFirst = idx === 0;
+                        const rowCount = gGroup.rows.length;
+
+                        return (
+                          <tr
+                            key={`${row.grupoNombre}_${row.moneda}`}
+                            className="hover:bg-slate-50 dark:hover:bg-slate-800/40 transition-colors"
+                          >
+                            {isFirst && (
+                              <td
+                                rowSpan={rowCount}
+                                className="py-3 px-4 align-top border-r border-slate-100 dark:border-slate-800/60 bg-white dark:bg-[#0D1B22]"
+                              >
+                                <div className="space-y-1 font-sans">
+                                  <div className="font-extrabold text-slate-900 dark:text-white text-xs flex items-center gap-1.5">
+                                    <span className="text-purple-500">🤝</span>
+                                    <span>{row.grupoNombre}</span>
+                                  </div>
+                                  <div className="text-[10px] text-slate-500 dark:text-slate-400">
+                                    Red: {(row.agenciasHijas || []).length} agencias
+                                  </div>
+                                  <div className="flex flex-wrap gap-1 max-w-[200px] pt-0.5">
+                                    {(row.agenciasHijas || []).slice(0, 3).map((ag: string) => (
+                                      <span
+                                        key={ag}
+                                        className="px-1.5 py-0.2 rounded bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 text-[9px]"
+                                      >
+                                        {ag}
+                                      </span>
+                                    ))}
+                                    {(row.agenciasHijas || []).length > 3 && (
+                                      <span className="text-[9px] text-slate-400">
+                                        +{(row.agenciasHijas || []).length - 3} más
+                                      </span>
+                                    )}
+                                  </div>
+                                </div>
+                              </td>
+                            )}
+
+                            <td className="py-3 px-3 text-center">
+                              <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 border border-slate-200 dark:border-slate-700">
+                                {row.moneda}
+                              </span>
+                            </td>
+
+                            <td className="py-3 px-3 text-right text-slate-700 dark:text-slate-200">
+                              {formatCurrency(row.ventaBrutaArbol, row.moneda)}
+                            </td>
+
+                            <td className="py-3 px-3 text-right text-rose-600 dark:text-rose-400">
+                              -{formatCurrency(row.premiosArbol, row.moneda)}
+                            </td>
+
+                            <td className="py-3 px-3 text-right text-slate-500 dark:text-slate-400">
+                              -{formatCurrency(row.comisionAgenciasHijas, row.moneda)}
+                            </td>
+
+                            <td className="py-3 px-3 text-right text-purple-600 dark:text-purple-400 font-bold">
+                              +{formatCurrency(row.diferencialComisionGrupo, row.moneda)}
+                            </td>
+
+                            <td className="py-3 px-3 text-right text-purple-600 dark:text-purple-400">
+                              {row.diferencialParticipacionGrupo > 0
+                                ? `+${formatCurrency(row.diferencialParticipacionGrupo, row.moneda)}`
+                                : '-'}
+                            </td>
+
+                            <td className="py-3 px-3 text-right text-emerald-600 dark:text-emerald-400 font-black">
+                              +{formatCurrency(row.gananciaTotalGrupo, row.moneda)}
+                            </td>
+
+                            <td className="py-3 px-3 text-right text-slate-500 dark:text-slate-400">
+                              {formatCurrency(row.saldoInicial, row.moneda)}
+                            </td>
+
+                            <td className="py-3 px-3 text-right text-sky-600 dark:text-sky-400">
+                              {row.pagosLiquidados > 0 ? `-${formatCurrency(row.pagosLiquidados, row.moneda)}` : '-'}
+                            </td>
+
+                            <td className="py-3 px-3 text-right font-black">
+                              <span
+                                className={
+                                  row.saldoFinal > 0
+                                    ? 'text-rose-600 dark:text-rose-400'
+                                    : row.saldoFinal < 0
+                                    ? 'text-emerald-600 dark:text-emerald-400'
+                                    : 'text-slate-400'
+                                }
+                              >
+                                {formatCurrency(row.saldoFinal, row.moneda)}
+                              </span>
+                            </td>
+
+                            <td className="py-3 px-4 text-center">
+                              <div className="flex items-center justify-center gap-1.5 font-sans">
+                                <button
+                                  type="button"
+                                  onClick={() => setSelectedGroupActa(row)}
+                                  className="px-2.5 py-1 rounded-lg bg-purple-500/10 hover:bg-purple-500/20 text-purple-600 dark:text-purple-300 font-bold text-[10px] border border-purple-500/30 transition-all flex items-center gap-1 cursor-pointer"
+                                  title="Ver e Imprimir Acta Oficial de Liquidación"
+                                >
+                                  <FileText className="w-3.5 h-3.5" />
+                                  <span>Acta</span>
+                                </button>
+                              </div>
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    </React.Fragment>
+                  );
+                })
+              )}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  )}
+
   {auditMode === 'consolidado' && (
     <div className="space-y-6">
       <div className="bg-white dark:bg-[#0D1B22] border border-slate-200 dark:border-slate-800 rounded-3xl p-5 sm:p-6 shadow-sm dark:shadow-xl">
@@ -3096,6 +3524,18 @@ export const PreClosureAuditTab: React.FC = () => {
           userName={user?.nombre || user?.email?.split('@')[0] || 'Administración'}
           companyName="CORPORACION CALENDARIO, CA"
           items={adminExpenses}
+        />
+      )}
+
+      {/* Modal: Acta Oficial de Liquidación de Grupo */}
+      {selectedGroupActa && (
+        <GroupSettlementActaModal
+          isOpen={Boolean(selectedGroupActa)}
+          onClose={() => setSelectedGroupActa(null)}
+          row={selectedGroupActa}
+          semana={systemCycle.semana}
+          periodo={`${systemCycle.desde} al ${systemCycle.hasta}`}
+          companyName="CORPORACION CALENDARIO, CA"
         />
       )}
     </div>

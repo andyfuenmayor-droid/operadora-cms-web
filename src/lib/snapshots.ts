@@ -29,6 +29,9 @@ export interface WeeklyClosureSnapshot {
   
   // 4. Las filas de liquidación de Casas Operadoras
   operator_matrix: any[];
+
+  // 4b. Las filas de liquidación de Grupos / Sub-Comercializadores
+  group_matrix?: any[];
   
   // 5. Detalle exhaustivo de todos los movimientos de arqueo
   all_movements: {
@@ -44,7 +47,7 @@ export interface WeeklyClosureSnapshot {
   // 6. Saldos finales auditados que pasan como Arrastre Inicial a la siguiente semana
   carry_over_balances: Array<{
     entidad: string;
-    tipo_entidad: 'AGENCIA' | 'OPERADORA';
+    tipo_entidad: 'AGENCIA' | 'OPERADORA' | 'GRUPO';
     moneda: string;
     saldo_final: number;
   }>;
@@ -68,6 +71,7 @@ export async function computeSnapshotHash(data: Omit<WeeklyClosureSnapshot, 'int
       consolidated_totals: data.consolidated_totals,
       agency_matrix: data.agency_matrix,
       operator_matrix: data.operator_matrix,
+      group_matrix: data.group_matrix || [],
       carry_over_balances: data.carry_over_balances,
     });
 
@@ -112,27 +116,38 @@ export async function saveWeeklySnapshot(
     // 1. Persistencia primaria en Supabase (tabla weekly_closure_snapshots)
     let savedInSb = false;
     try {
+      const upsertPayload: any = {
+        user_id: uid,
+        semana_no: sNo,
+        periodo: fullSnapshot.periodo,
+        fecha_cierre: fullSnapshot.fecha_cierre,
+        raw_sales_loads: fullSnapshot.raw_sales_loads,
+        consolidated_totals: fullSnapshot.consolidated_totals,
+        agency_matrix: fullSnapshot.agency_matrix,
+        operator_matrix: fullSnapshot.operator_matrix,
+        group_matrix: fullSnapshot.group_matrix || [],
+        all_movements: fullSnapshot.all_movements,
+        carry_over_balances: fullSnapshot.carry_over_balances,
+        integrity_hash: fullSnapshot.integrity_hash,
+        is_locked: Boolean(fullSnapshot.is_locked ?? false),
+        updated_at: new Date().toISOString(),
+      };
+
       const { error: sbErr } = await supabase.from('weekly_closure_snapshots').upsert(
-        {
-          user_id: uid,
-          semana_no: sNo,
-          periodo: fullSnapshot.periodo,
-          fecha_cierre: fullSnapshot.fecha_cierre,
-          raw_sales_loads: fullSnapshot.raw_sales_loads,
-          consolidated_totals: fullSnapshot.consolidated_totals,
-          agency_matrix: fullSnapshot.agency_matrix,
-          operator_matrix: fullSnapshot.operator_matrix,
-          all_movements: fullSnapshot.all_movements,
-          carry_over_balances: fullSnapshot.carry_over_balances,
-          integrity_hash: fullSnapshot.integrity_hash,
-          is_locked: Boolean(fullSnapshot.is_locked ?? false),
-          updated_at: new Date().toISOString(),
-        },
+        upsertPayload,
         { onConflict: 'user_id,semana_no' }
       );
 
       if (!sbErr) {
         savedInSb = true;
+      } else if (sbErr.message?.includes('group_matrix') || (sbErr as any).code === '42703') {
+        // Fallback si la columna group_matrix aún no está en la base de datos de producción
+        const { group_matrix, ...safePayload } = upsertPayload;
+        const { error: retryErr } = await supabase.from('weekly_closure_snapshots').upsert(
+          safePayload,
+          { onConflict: 'user_id,semana_no' }
+        );
+        if (!retryErr) savedInSb = true;
       } else {
         console.warn('Notice: weekly_closure_snapshots en Supabase no disponible o pendiente de migración:', sbErr.message);
       }

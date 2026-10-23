@@ -15,6 +15,7 @@ import { createHash } from 'node:crypto';
 import {
   computeCertifiedAgencyMatrix,
   computeCertifiedTotals,
+  computeCertifiedGroupMatrix,
 } from '../src/lib/closureEngineLock.ts';
 import { calculateOperatorSettlements } from '../src/utils/operatorSettlement.ts';
 import { SEMANA_41_SALES_RECORDS } from '../src/utils/semana41SalesData.ts';
@@ -233,6 +234,85 @@ if (!hash || hash.length !== 64) {
 } else {
   console.log(`  ✓ Hash SHA-256 Determinístico Certificado: ${hash.slice(0, 32)}... (64 bytes OK)`);
 }
+
+// ------------------------------------------------------------------------------
+// 5. INVARIANTE 5: TEST MATEMÁTICO DE GRUPOS MULTI-DIVISA (OVERRIDING COMMISSIONS)
+// ------------------------------------------------------------------------------
+console.log('\n--- 4. INVARIANTE 5: LIQUIDACIÓN DE GRUPOS (INTERMEDIARIOS / MULTI-DIVISA) ---');
+
+const testGroups = [
+  {
+    id: 101,
+    nombre_grupo: 'GRUPO OCCIDENTE',
+    monedas: 'BS,USDT',
+    comision_pct_default: 15,
+    participacion_pct_default: 30,
+    saldo_inicial_bs: 0,
+    saldos_iniciales_json: { USDT: 0 },
+    activo: true,
+  },
+];
+
+const testGroupAgencies = [
+  {
+    id: 201,
+    nombre_agencia: 'AGENCIA HIJA 1',
+    grupo_id: 101,
+    grupo_nombre: 'GRUPO OCCIDENTE',
+    monedas: 'BS',
+    comision: 10,
+    participacion_ag: 20,
+  },
+  {
+    id: 202,
+    nombre_agencia: 'AGENCIA HIJA 2',
+    grupo_id: 101,
+    grupo_nombre: 'GRUPO OCCIDENTE',
+    monedas: 'USDT',
+    comision: 10,
+    participacion_ag: 20,
+  },
+];
+
+const testGroupSales = [
+  // Venta en BS: 10,000 Bs., 0 premios.
+  { agencia: 'AGENCIA HIJA 1', sistema: 'BETM3', moneda: 'BS', venta: 10000, premios: 0 },
+  // Venta en USDT: 1,000 USDT, 200 premios.
+  { agencia: 'AGENCIA HIJA 2', sistema: 'BETM3', moneda: 'USDT', venta: 1000, premios: 200 },
+];
+
+const groupMatrix = computeCertifiedGroupMatrix({
+  groups: testGroups,
+  agencies: testGroupAgencies,
+  sales: testGroupSales,
+  customCurrencies: ['BS', 'USDT'],
+});
+
+const grpBs = groupMatrix.find((g) => g.nombre_grupo === 'GRUPO OCCIDENTE' && g.moneda === 'BS');
+const grpUsdt = groupMatrix.find((g) => g.nombre_grupo === 'GRUPO OCCIDENTE' && g.moneda === 'USDT');
+
+// 1. Verificación en BS:
+// Comisiones: Agencia (10% = 1,000) + Dif. Grupo (5% = 500) + Dif. Comercializador (5% = 500) === Total Proveedor (20% = 2,000)
+assertExact(grpBs ? grpBs.venta_bruta_arbol : 0, 10000, 'Venta Árbol Grupo BS', 'Bs.');
+assertExact(grpBs ? grpBs.comision_agencias : 0, 1000, 'Comisión Agencias Hijas BS (10%)', 'Bs.');
+assertExact(grpBs ? grpBs.dif_com_grupo : 0, 500, 'Diferencial Comisión Grupo BS (15% - 10%)', 'Bs.');
+// Participación: Base Neta (10,000 - 1,500 = 8,500) * (30% - 20% = 10%) = 850 Bs.
+assertExact(grpBs ? grpBs.dif_part_grupo : 0, 850, 'Diferencial Participación Grupo BS (30% - 20%)', 'Bs.');
+assertExact(grpBs ? grpBs.utilidad_grupo : 0, 1350, 'Ganancia Total Grupo BS (500 + 850)', 'Bs.');
+
+// Suma de comisiones: 1000 + 500 + 500 = 2000 (20% de 10,000)
+const totalComisionProveedorBs = 10000 * 0.20;
+const difComercializadorBs = totalComisionProveedorBs - (grpBs ? grpBs.comision_grupo_total : 0);
+assertExact((grpBs ? grpBs.comision_agencias : 0) + (grpBs ? grpBs.dif_com_grupo : 0) + difComercializadorBs, totalComisionProveedorBs, 'Consistencia Tripartita Comisión Proveedor (Agencia + Grupo + Comercializador = 20% Proveedor)', 'Bs.');
+
+// 2. Verificación en USDT:
+// Venta 1,000, Premios 200
+assertExact(grpUsdt ? grpUsdt.venta_bruta_arbol : 0, 1000, 'Venta Árbol Grupo USDT', 'USDT');
+assertExact(grpUsdt ? grpUsdt.comision_agencias : 0, 100, 'Comisión Agencia USDT (10%)', 'USDT');
+assertExact(grpUsdt ? grpUsdt.dif_com_grupo : 0, 50, 'Diferencial Comisión Grupo USDT (15% - 10%)', 'USDT');
+// Base neta: 1000 - 150 - 200 = 650 USDT. Dif part: 650 * 10% = 65 USDT.
+assertExact(grpUsdt ? grpUsdt.dif_part_grupo : 0, 65, 'Diferencial Participación Grupo USDT (30% - 20%)', 'USDT');
+assertExact(grpUsdt ? grpUsdt.utilidad_grupo : 0, 115, 'Ganancia Total Grupo USDT (50 + 65)', 'USDT');
 
 // ------------------------------------------------------------------------------
 // RESULTADO FINAL

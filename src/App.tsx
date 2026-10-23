@@ -13,6 +13,7 @@ import { SystemsTab } from './components/Catalogs/SystemsTab';
 import { CurrenciesTab } from './components/Catalogs/CurrenciesTab';
 import { BankAccountsTab } from './components/Catalogs/BankAccountsTab';
 import { AgenciesTab } from './components/Agencies/AgenciesTab';
+import { GroupsTab } from './components/Groups/GroupsTab';
 import { CollectorsTab } from './components/Collectors/CollectorsTab';
 import { SalesEntryTab } from './components/Finance/SalesEntryTab';
 import { RealSalesTab } from './components/Finance/RealSalesTab';
@@ -78,6 +79,9 @@ const AppContent: React.FC = () => {
 
       case 'Agencias':
         return <AgenciesTab />;
+
+      case 'Grupos':
+        return <GroupsTab />;
 
       case 'Cobradores':
         return <CollectorsTab />;

@@ -11,7 +11,8 @@ import {
   type ConsolidatedExpenseItem,
   type AdministrativeExpenseItem,
 } from '../../utils/consolidations';
-import type { Agency } from '../../types';
+import type { Agency, Grupo } from '../../types';
+import { loadCurrencies, type DynamicCurrencyConfig } from '../../utils/currencies';
 import { PreClosureAuditTab } from './PreClosureAuditTab';
 import {
   Lock,
@@ -36,6 +37,7 @@ import {
   ChevronRight,
   Eye,
   Store,
+  Handshake,
 } from 'lucide-react';
 import confetti from 'canvas-confetti';
 import {
@@ -70,6 +72,9 @@ import {
 import {
   computeCertifiedAgencyMatrix,
   computeCertifiedTotals,
+  computeCertifiedGroupMatrix,
+  type GroupClosureRow,
+  type RawGroupPaymentEntry,
 } from '../../lib/closureEngineLock';
 import { getCurrencyFlag, getCurrencyBadgeClasses } from '../../utils/currencies';
 
@@ -102,7 +107,10 @@ export const WeeklyClosureTab: React.FC = () => {
   const [registeredSystems, setRegisteredSystems] = useState<string[]>([]);
   const [systemConfigs, setSystemConfigs] = useState<SystemKeywordsMap>({});
   const [operatorPayments, setOperatorPayments] = useState<OperatorPayment[]>([]);
-  const [closureViewMode, setClosureViewMode] = useState<'todos' | 'agencias' | 'operadoras'>('todos');
+  const [closureViewMode, setClosureViewMode] = useState<'todos' | 'agencias' | 'operadoras' | 'grupos'>('todos');
+  const [groups, setGroups] = useState<Grupo[]>([]);
+  const [groupPayments, setGroupPayments] = useState<RawGroupPaymentEntry[]>([]);
+  const [dynamicCurrencies, setDynamicCurrencies] = useState<DynamicCurrencyConfig[]>([]);
 
   const [verifiedCheckMaster, setVerifiedCheckMaster] = useState(false);
   const [message, setMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
@@ -245,6 +253,49 @@ export const WeeklyClosureTab: React.FC = () => {
       setRegisteredSystems(sysList);
       setSystemConfigs(confs);
       setOperatorPayments(rawOperatorPayments);
+
+      // Cargar Grupos y Pagos de Grupos con soporte fallback dual
+      let loadedGrupos: Grupo[] = [];
+      try {
+        const { data: grData, error: grErr } = await supabase
+          .from('grupos')
+          .select('*')
+          .eq('user_id', effectiveUserId)
+          .order('nombre_grupo', { ascending: true });
+        if (!grErr && grData) {
+          loadedGrupos = grData;
+        } else {
+          const fallback = localStorage.getItem(`cms_grupos_${effectiveUserId}`);
+          if (fallback) loadedGrupos = JSON.parse(fallback);
+        }
+      } catch (_) {
+        const fallback = localStorage.getItem(`cms_grupos_${effectiveUserId}`);
+        if (fallback) loadedGrupos = JSON.parse(fallback);
+      }
+      setGroups(loadedGrupos);
+
+      let loadedGroupPayments: RawGroupPaymentEntry[] = [];
+      try {
+        const { data: gpData, error: gpErr } = await supabase
+          .from('pagos_grupos')
+          .select('*')
+          .eq('user_id', effectiveUserId);
+        if (!gpErr && gpData) {
+          loadedGroupPayments = gpData.map((p: any) => ({
+            id: p.id,
+            grupo_id: p.grupo_id,
+            grupo_nombre: p.grupo_nombre,
+            moneda: p.moneda,
+            monto: Number(p.monto) || 0,
+            tipo: p.tipo,
+            fecha: p.fecha,
+          }));
+        }
+      } catch (_) {}
+      setGroupPayments(loadedGroupPayments);
+
+      const dCurrs = await loadCurrencies(effectiveUserId);
+      setDynamicCurrencies(dCurrs);
 
       // Check for rollback availability
       const hasLocalBackup = Boolean(localStorage.getItem('cms_last_closure_backup'));
@@ -473,6 +524,18 @@ export const WeeklyClosureTab: React.FC = () => {
       };
     });
   }, [operatorClosureRows]);
+
+  // Compute Group Closure Data
+  const groupClosureRows = useMemo<GroupClosureRow[]>(() => {
+    return computeCertifiedGroupMatrix({
+      groups,
+      agencies,
+      sales,
+      groupPayments,
+      participationCalculator: (ag, sistema, mon) => getAgencyCommissionAndParticipation(ag, sistema, mon),
+      customCurrencies: dynamicCurrencies.map((c) => c.codigo),
+    });
+  }, [groups, agencies, sales, groupPayments, dynamicCurrencies]);
 
   // CSV Export Handlers
   const handleDownloadOperatorCSV = () => {
@@ -707,6 +770,12 @@ export const WeeklyClosureTab: React.FC = () => {
           moneda: op.moneda,
           saldo_final: op.balanceFinal,
         })),
+        ...groupClosureRows.map((g) => ({
+          entidad: g.grupoNombre,
+          tipo_entidad: 'GRUPO' as const,
+          moneda: g.moneda,
+          saldo_final: g.saldoFinal,
+        })),
       ];
 
       const snapshotPayload = {
@@ -718,6 +787,7 @@ export const WeeklyClosureTab: React.FC = () => {
         consolidated_totals: totalsByCurrency,
         agency_matrix: closureData,
         operator_matrix: operatorClosureRows,
+        group_matrix: groupClosureRows,
         all_movements: {
           payments,
           expenses,
@@ -870,6 +940,40 @@ export const WeeklyClosureTab: React.FC = () => {
         }
       }
       await saveSystemKeywords(effectiveUserId, updatedKeywords);
+
+      // 3b. Actualizar saldos iniciales de Grupos
+      for (const gr of groupClosureRows) {
+        const col = gr.moneda === 'BS' ? 'saldo_inicial_bs' : gr.moneda === 'USD' ? 'saldo_inicial_usd' : 'saldo_inicial_cop';
+        const targetG = (groups || []).find((g) => g.id === gr.grupoId || g.nombre_grupo === gr.grupoNombre);
+        if (targetG) {
+          const existingJson: Record<string, any> = typeof targetG.saldos_iniciales_json === 'string'
+            ? (() => { try { return JSON.parse(targetG.saldos_iniciales_json); } catch { return {}; } })()
+            : (targetG.saldos_iniciales_json && typeof targetG.saldos_iniciales_json === 'object' ? (targetG.saldos_iniciales_json as any) : {});
+          const nextJson = { ...existingJson, [gr.moneda]: gr.saldo_final };
+          try {
+            await supabase
+              .from('grupos')
+              .update({
+                [col]: gr.saldo_final,
+                saldos_iniciales_json: nextJson,
+              })
+              .eq('id', targetG.id)
+              .eq('user_id', effectiveUserId);
+          } catch (_) {
+            const fallbackKey = `cms_grupos_${effectiveUserId}`;
+            const stored = localStorage.getItem(fallbackKey);
+            if (stored) {
+              const parsed = JSON.parse(stored);
+              const updated = parsed.map((item: any) =>
+                item.id === targetG.id
+                  ? { ...item, [col]: gr.saldo_final, saldos_iniciales_json: nextJson }
+                  : item
+              );
+              localStorage.setItem(fallbackKey, JSON.stringify(updated));
+            }
+          }
+        }
+      }
 
       // 4. Fijar configuración oficial del ciclo en SEMANA 42
       const cycleUpdates = [
@@ -1103,6 +1207,12 @@ export const WeeklyClosureTab: React.FC = () => {
             moneda: op.moneda,
             saldo_final: op.balanceFinal,
           })),
+          ...groupClosureRows.map((g) => ({
+            entidad: g.grupoNombre,
+            tipo_entidad: 'GRUPO' as const,
+            moneda: g.moneda,
+            saldo_final: g.saldoFinal,
+          })),
         ];
 
         await saveWeeklySnapshot({
@@ -1114,6 +1224,7 @@ export const WeeklyClosureTab: React.FC = () => {
           consolidated_totals: totalsByCurrency,
           agency_matrix: closureData,
           operator_matrix: operatorClosureRows,
+          group_matrix: groupClosureRows,
           all_movements: {
             payments,
             expenses,
@@ -1183,6 +1294,40 @@ export const WeeklyClosureTab: React.FC = () => {
         }
       }
       await saveSystemKeywords(effectiveUserId, updatedKeywords);
+
+      // 2c. Traspaso automático de saldos de arrastre de Grupos (Intermediarios)
+      for (const gr of groupClosureRows) {
+        const col = gr.moneda === 'BS' ? 'saldo_inicial_bs' : gr.moneda === 'USD' ? 'saldo_inicial_usd' : 'saldo_inicial_cop';
+        const targetG = (groups || []).find((g) => g.id === gr.grupoId || g.nombre_grupo === gr.grupoNombre);
+        if (targetG) {
+          const existingJson: Record<string, any> = typeof targetG.saldos_iniciales_json === 'string'
+            ? (() => { try { return JSON.parse(targetG.saldos_iniciales_json); } catch { return {}; } })()
+            : (targetG.saldos_iniciales_json && typeof targetG.saldos_iniciales_json === 'object' ? (targetG.saldos_iniciales_json as any) : {});
+          const nextJson = { ...existingJson, [gr.moneda]: gr.saldo_final };
+          try {
+            await supabase
+              .from('grupos')
+              .update({
+                [col]: gr.saldo_final,
+                saldos_iniciales_json: nextJson,
+              })
+              .eq('id', targetG.id)
+              .eq('user_id', effectiveUserId);
+          } catch (_) {
+            const fallbackKey = `cms_grupos_${effectiveUserId}`;
+            const stored = localStorage.getItem(fallbackKey);
+            if (stored) {
+              const parsed = JSON.parse(stored);
+              const updated = parsed.map((item: any) =>
+                item.id === targetG.id
+                  ? { ...item, [col]: gr.saldo_final, saldos_iniciales_json: nextJson }
+                  : item
+              );
+              localStorage.setItem(fallbackKey, JSON.stringify(updated));
+            }
+          }
+        }
+      }
 
       // 3. Clean active tables
       await Promise.all([
@@ -1745,6 +1890,18 @@ export const WeeklyClosureTab: React.FC = () => {
                 <Globe className="w-4 h-4" />
                 <span>🌐 Solo Operadoras ({operatorClosureRows.length})</span>
               </button>
+
+              <button
+                onClick={() => setClosureViewMode('grupos')}
+                className={`px-4 py-2.5 rounded-2xl text-xs sm:text-sm font-bold flex items-center gap-2 transition-all cursor-pointer ${
+                  closureViewMode === 'grupos'
+                    ? 'bg-purple-500/20 text-purple-400 border border-purple-500/40 shadow-lg shadow-purple-500/10'
+                    : 'text-slate-400 hover:text-white hover:bg-slate-800/60'
+                }`}
+              >
+                <Handshake className="w-4 h-4" />
+                <span>🤝 Solo Grupos ({groupClosureRows.length})</span>
+              </button>
             </div>
 
             {closureViewMode === 'todos' && (
@@ -2095,6 +2252,9 @@ export const WeeklyClosureTab: React.FC = () => {
             </span>
             <span className="text-xs text-slate-700 dark:text-slate-300 bg-slate-50 dark:bg-slate-900/80 px-3 py-1.5 rounded-xl border border-slate-200 dark:border-slate-800 font-mono">
               🌐 {operatorClosureRows.length} Operadoras
+            </span>
+            <span className="text-xs text-slate-700 dark:text-slate-300 bg-slate-50 dark:bg-slate-900/80 px-3 py-1.5 rounded-xl border border-slate-200 dark:border-slate-800 font-mono">
+              🤝 {groupClosureRows.length} Grupos
             </span>
           </div>
         </div>
