@@ -5,6 +5,7 @@ import { useAuth } from '../../context/AuthContext';
 import { formatCurrency, formatDate, cleanAgencyName, normalizarMoneda } from '../../utils/formatters';
 import type { DailySaleItem, Agency, BetSystem, Currency } from '../../types';
 import { loadCurrencies } from '../../utils/currencies';
+import { loadSaaSActiveSystems } from '../../utils/sistemas';
 import { UI_LOCK } from '../../styles/uiDesignLock';
 import {
   TrendingUp,
@@ -163,10 +164,10 @@ export const SalesEntryTab: React.FC = () => {
     setMessage(null);
 
     try {
-      const [salesRes, agRes, sisRes, dynamicCurrs, loadedKw] = await Promise.all([
+      const [salesRes, agRes, sisList, dynamicCurrs, loadedKw] = await Promise.all([
         supabase.from('carga_actual').select('*').eq('user_id', effectiveUserId).order('id', { ascending: false }),
         supabase.from('agencias').select('*').eq('user_id', effectiveUserId).order('id', { ascending: true }),
-        supabase.from('sistemas').select('*').eq('user_id', effectiveUserId).order('nombre_sistema', { ascending: true }),
+        loadSaaSActiveSystems(effectiveUserId),
         loadCurrencies(effectiveUserId),
         loadSystemKeywords(effectiveUserId),
       ]);
@@ -185,7 +186,7 @@ export const SalesEntryTab: React.FC = () => {
         }
       }
       const loadedAgencies = agRes.data || [];
-      const loadedSystems = sisRes.data || [];
+      const loadedSystems = sisList || [];
       const loadedCurrencies: Currency[] = (dynamicCurrs || []).map((c) => ({
         id: c.id || 0,
         nombre_moneda: c.codigo,

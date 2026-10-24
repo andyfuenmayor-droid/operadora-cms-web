@@ -3,6 +3,8 @@ import { supabase } from '../../lib/supabase';
 import { useAuth } from '../../context/AuthContext';
 import { formatCurrency } from '../../utils/formatters';
 import { loadCurrencies, getCurrencyBadgeClasses, getCurrencyFlag, type CurrencyConfig } from '../../utils/currencies';
+import { loadSaaSActiveSystems } from '../../utils/sistemas';
+import { loadSaaSGroups, saveSaaSGroups } from '../../utils/grupos';
 import { UI_LOCK } from '../../styles/uiDesignLock';
 import type { Agency, BetSystem, Grupo } from '../../types';
 import {
@@ -70,144 +72,12 @@ export const GroupsTab: React.FC = () => {
 
   // Helper: Persist groups to both localStorage and Supabase config_sistema
   const saveGroupsPersistently = async (updatedList: Grupo[], userId: string) => {
-    // 1. Inmediata persistencia en LocalStorage
-    const localKey = userId ? `operadora_catalogo_grupos_${userId}` : 'operadora_catalogo_grupos_default';
-    try {
-      localStorage.setItem(localKey, JSON.stringify(updatedList));
-      localStorage.setItem('operadora_catalogo_grupos_backup', JSON.stringify(updatedList));
-    } catch (e) {
-      console.warn('Error guardando grupos en localStorage:', e);
-    }
-
-    // 2. Persistencia en Supabase config_sistema
-    if (userId) {
-      try {
-        const { error: upErr } = await supabase.from('config_sistema').upsert(
-          {
-            user_id: userId,
-            parametro: 'catalogo_grupos',
-            valor: JSON.stringify(updatedList),
-          },
-          { onConflict: 'user_id,parametro' }
-        );
-
-        if (upErr) {
-          console.warn('Upsert en config_sistema falló, intentando actualización/inserción directa:', upErr);
-          const { data: existing } = await supabase
-            .from('config_sistema')
-            .select('parametro')
-            .eq('user_id', userId)
-            .eq('parametro', 'catalogo_grupos')
-            .maybeSingle();
-
-          if (existing) {
-            await supabase
-              .from('config_sistema')
-              .update({ valor: JSON.stringify(updatedList) })
-              .eq('user_id', userId)
-              .eq('parametro', 'catalogo_grupos');
-          } else {
-            await supabase
-              .from('config_sistema')
-              .insert({
-                user_id: userId,
-                parametro: 'catalogo_grupos',
-                valor: JSON.stringify(updatedList),
-              });
-          }
-        }
-      } catch (dbErr) {
-        console.warn('Excepción guardando catalogo_grupos en config_sistema:', dbErr);
-      }
-    }
+    await saveSaaSGroups(userId, updatedList);
   };
 
-  // Helper: Load groups from all storage tiers
-  const loadGroupsPersistently = async (userId: string): Promise<Grupo[]> => {
-    const localKey = userId ? `operadora_catalogo_grupos_${userId}` : 'operadora_catalogo_grupos_default';
-    let loaded: Grupo[] = [];
-
-    // 1. Intentar cargar desde config_sistema
-    if (userId) {
-      try {
-        const { data: cfgRow, error: cfgErr } = await supabase
-          .from('config_sistema')
-          .select('valor')
-          .eq('user_id', userId)
-          .eq('parametro', 'catalogo_grupos')
-          .maybeSingle();
-
-        if (!cfgErr && cfgRow?.valor) {
-          const parsed = JSON.parse(cfgRow.valor);
-          if (Array.isArray(parsed) && parsed.length > 0) {
-            loaded = parsed;
-            localStorage.setItem(localKey, JSON.stringify(parsed));
-          }
-        }
-      } catch (e) {
-        console.warn('Error leyendo catalogo_grupos de config_sistema:', e);
-      }
-    }
-
-    // 2. Si la nube no devolvió datos, recuperar de localStorage
-    if (loaded.length === 0) {
-      try {
-        const cached = localStorage.getItem(localKey) || localStorage.getItem('operadora_catalogo_grupos_backup');
-        if (cached) {
-          const parsed = JSON.parse(cached);
-          if (Array.isArray(parsed) && parsed.length > 0) {
-            loaded = parsed;
-            // Auto-sincronizar hacia config_sistema si no estaba
-            if (userId) {
-              saveGroupsPersistently(parsed, userId).catch(() => {});
-            }
-          }
-        }
-      } catch (e) {
-        console.warn('Error leyendo catalogo_grupos de localStorage:', e);
-      }
-    }
-
-    // 3. Fallback adicional si tabla física grupos existe
-    if (loaded.length === 0 && userId) {
-      try {
-        const { data: tblData, error: tblErr } = await supabase
-          .from('grupos')
-          .select('*')
-          .eq('user_id', userId)
-          .order('nombre_grupo', { ascending: true });
-        if (!tblErr && Array.isArray(tblData) && tblData.length > 0) {
-          loaded = tblData;
-          localStorage.setItem(localKey, JSON.stringify(tblData));
-        }
-      } catch (_) {}
-    }
-
-    // 4. Si el catálogo está vacío, recuperar de forma automática el Grupo BONANZA creado por el usuario
-    if (loaded.length === 0 && userId) {
-      const recoveredBonanza: Grupo = {
-        id: Date.now(),
-        user_id: userId,
-        nombre_grupo: 'BONANZA',
-        codigo: 'BNZ',
-        responsable: 'Administrador',
-        telefono: '',
-        monedas: currencies.length > 0 ? currencies.map((c) => c.codigo).join(',') : 'BS,USD,COP',
-        comision_pct_default: 15,
-        participacion_pct_default: 30,
-        condiciones_sistemas: '{}',
-        saldo_inicial_bs: 0,
-        saldo_inicial_usd: 0,
-        saldo_inicial_cop: 0,
-        saldos_iniciales_json: '{"BS":0,"USD":0,"COP":0}',
-        activo: true,
-        agencias_ids: [],
-      };
-      loaded = [recoveredBonanza];
-      saveGroupsPersistently(loaded, userId).catch(() => {});
-    }
-
-    return loaded;
+  // Helper: Load groups from all storage tiers with currency sanitization
+  const loadGroupsPersistently = async (userId: string, activeCurrs?: CurrencyConfig[]): Promise<Grupo[]> => {
+    return await loadSaaSGroups(userId, activeCurrs);
   };
 
   // Load all data
@@ -217,17 +87,19 @@ export const GroupsTab: React.FC = () => {
     setMessage(null);
 
     try {
-      const [currList, sysRes, agRes] = await Promise.all([
-        loadCurrencies(effectiveUserId),
-        supabase.from('sistemas').select('*').eq('user_id', effectiveUserId).order('nombre_sistema', { ascending: true }),
+      // 1. Cargar divisas habilitadas del suscriptor SaaS
+      const currList = await loadCurrencies(effectiveUserId);
+      setCurrencies(currList);
+
+      // 2. Cargar sistemas habilitados, agencias y catálogo de grupos
+      const [sysList, agRes, loadedGroups] = await Promise.all([
+        loadSaaSActiveSystems(effectiveUserId),
         supabase.from('agencias').select('*').eq('user_id', effectiveUserId).order('nombre_agencia', { ascending: true }),
+        loadSaaSGroups(effectiveUserId, currList),
       ]);
 
-      setCurrencies(currList);
-      setSystems(sysRes.data || []);
+      setSystems(sysList);
       setAgencies(agRes.data || []);
-
-      const loadedGroups = await loadGroupsPersistently(effectiveUserId);
       setGroups(loadedGroups);
     } catch (err: any) {
       console.error('Error loading groups data:', err);
@@ -276,7 +148,12 @@ export const GroupsTab: React.FC = () => {
     setEmailAcceso(grp.email_acceso || '');
     setPasswordAcceso(grp.password_acceso || '1234');
     const activeCodes = currencies.map((c) => c.codigo);
-    const assigned = grp.monedas ? grp.monedas.split(',').map((m) => m.trim().toUpperCase()).filter(Boolean) : activeCodes;
+    const assigned = grp.monedas
+      ? grp.monedas
+          .split(',')
+          .map((m) => m.trim().toUpperCase())
+          .filter((m) => activeCodes.includes(m))
+      : activeCodes;
     setSelectedMonedas(assigned.length > 0 ? assigned : activeCodes);
     setComisionDefault(String(grp.comision_pct_default ?? 15));
     setParticipacionDefault(String(grp.participacion_pct_default ?? 30));
@@ -298,9 +175,11 @@ export const GroupsTab: React.FC = () => {
     const formattedDyn: Record<string, string> = {};
     if (grp.saldo_inicial_bs) formattedDyn['BS'] = String(grp.saldo_inicial_bs);
     if (grp.saldo_inicial_usd) formattedDyn['USD'] = String(grp.saldo_inicial_usd);
-    if (grp.saldo_inicial_cop) formattedDyn['COP'] = String(grp.saldo_inicial_cop);
+    if (grp.saldo_inicial_cop && activeCodes.includes('COP')) formattedDyn['COP'] = String(grp.saldo_inicial_cop);
     Object.entries(dynSaldos).forEach(([k, v]) => {
-      formattedDyn[k] = String(v);
+      if (activeCodes.includes(k)) {
+        formattedDyn[k] = String(v);
+      }
     });
     setSaldosDinamicos(formattedDyn);
 
@@ -327,8 +206,12 @@ export const GroupsTab: React.FC = () => {
     setMessage(null);
 
     try {
+      const activeCodes = currencies.map((c) => c.codigo);
+      const sanitizedMonedas = selectedMonedas.filter((m) => activeCodes.includes(m));
+      const finalMonedas = sanitizedMonedas.length > 0 ? sanitizedMonedas : activeCodes;
+
       const parsedDynSaldos: Record<string, number> = {};
-      selectedMonedas.forEach((m) => {
+      finalMonedas.forEach((m) => {
         const num = parseFloat(saldosDinamicos[m] || '0');
         parsedDynSaldos[m] = isNaN(num) ? 0 : num;
       });
@@ -341,13 +224,13 @@ export const GroupsTab: React.FC = () => {
         telefono: telefono.trim() || undefined,
         email_acceso: emailAcceso.trim().toLowerCase() || undefined,
         password_acceso: passwordAcceso.trim() || '1234',
-        monedas: selectedMonedas.join(','),
+        monedas: finalMonedas.join(','),
         comision_pct_default: parseFloat(comisionDefault) || 0,
         participacion_pct_default: parseFloat(participacionDefault) || 0,
         condiciones_sistemas: JSON.stringify(condicionesSistemas),
         saldo_inicial_bs: parsedDynSaldos['BS'] ?? 0,
         saldo_inicial_usd: parsedDynSaldos['USD'] ?? 0,
-        saldo_inicial_cop: parsedDynSaldos['COP'] ?? 0,
+        saldo_inicial_cop: activeCodes.includes('COP') ? (parsedDynSaldos['COP'] ?? 0) : 0,
         saldos_iniciales_json: JSON.stringify(parsedDynSaldos),
         activo: editingGroup?.activo ?? true,
         agencias_ids: editingGroup?.agencias_ids || [],
@@ -620,7 +503,13 @@ export const GroupsTab: React.FC = () => {
               (a) => (grp.agencias_ids && grp.agencias_ids.includes(a.id)) || a.grupo_id === grp.id || a.grupo_nombre?.toUpperCase() === grp.nombre_grupo.toUpperCase()
             ).length;
 
-            const grpMonedas = grp.monedas ? grp.monedas.split(',').map((m) => m.trim().toUpperCase()).filter(Boolean) : currencies.map(c => c.codigo);
+            const activeCodes = currencies.length > 0 ? currencies.map((c) => c.codigo) : ['BS', 'USD'];
+            const grpMonedas = grp.monedas
+              ? grp.monedas
+                  .split(',')
+                  .map((m) => m.trim().toUpperCase())
+                  .filter((m) => activeCodes.includes(m))
+              : activeCodes;
 
             return (
               <div

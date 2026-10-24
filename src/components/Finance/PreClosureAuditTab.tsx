@@ -49,6 +49,7 @@ import {
 } from 'lucide-react';
 import type { Grupo } from '../../types';
 import { loadCurrencies, getCurrencyFlag, type DynamicCurrencyConfig } from '../../utils/currencies';
+import { loadSaaSGroups } from '../../utils/grupos';
 import { DeliveryReportModal, type PreClosureAgencyRow } from './DeliveryReportModal';
 import { UnifiedAuditDossierModal } from './UnifiedAuditDossierModal';
 import { OperatorDeliveryReportModal } from './OperatorDeliveryReportModal';
@@ -230,24 +231,8 @@ export const PreClosureAuditTab: React.FC = () => {
       setSystemConfigs(confs);
       setOperatorPayments(rawOperatorPayments);
 
-      // Grupos y Pagos de Grupos con dualidad Supabase + LocalStorage
-      let loadedGrupos: Grupo[] = [];
-      try {
-        const { data: grData, error: grErr } = await supabase
-          .from('grupos')
-          .select('*')
-          .eq('user_id', effectiveUserId)
-          .order('nombre_grupo', { ascending: true });
-        if (!grErr && grData) {
-          loadedGrupos = grData;
-        } else {
-          const fallback = localStorage.getItem(`cms_grupos_${effectiveUserId}`);
-          if (fallback) loadedGrupos = JSON.parse(fallback);
-        }
-      } catch (_) {
-        const fallback = localStorage.getItem(`cms_grupos_${effectiveUserId}`);
-        if (fallback) loadedGrupos = JSON.parse(fallback);
-      }
+      // Grupos mediante motor unificado SaaS
+      const loadedGrupos = await loadSaaSGroups(effectiveUserId);
       setGroups(loadedGrupos);
 
       let loadedGroupPayments: RawGroupPaymentEntry[] = [];

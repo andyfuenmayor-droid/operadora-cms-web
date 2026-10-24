@@ -31,6 +31,8 @@ import confetti from 'canvas-confetti';
 import { recalculateAgencySales } from '../../utils/salesRecalculation';
 import { logAuditEvent } from '../../utils/auditLogger';
 import { loadCurrencies } from '../../utils/currencies';
+import { loadSaaSActiveSystems } from '../../utils/sistemas';
+import { loadSaaSGroups } from '../../utils/grupos';
 import { UI_LOCK } from '../../styles/uiDesignLock';
 
 /**
@@ -299,34 +301,6 @@ export const AgenciesTab: React.FC = () => {
     setMessage(null);
 
     try {
-      const [agRes, sisRes, monRes, cbRes, dispRes, tuRes] = await Promise.all([
-        supabase.from('agencias').select('*').eq('user_id', effectiveUserId).order('id', { ascending: true }),
-        supabase.from('sistemas').select('*').eq('user_id', effectiveUserId).order('nombre_sistema', { ascending: true }),
-        supabase.from('monedas').select('*').eq('user_id', effectiveUserId).order('id', { ascending: true }),
-        supabase.from('cuentas_bancarias').select('*').eq('user_id', effectiveUserId).order('id', { ascending: true }),
-        supabase.from('dispositivos_pago').select('*').eq('user_id', effectiveUserId).order('id', { ascending: true }),
-        supabase.from('taquilla_usuarios').select('*').eq('user_id', effectiveUserId).order('id', { ascending: true }),
-      ]);
-
-      let loadedGrupos: Grupo[] = [];
-      try {
-        const { data: grData, error: grErr } = await supabase
-          .from('grupos')
-          .select('*')
-          .eq('user_id', effectiveUserId)
-          .order('nombre_grupo', { ascending: true });
-        if (!grErr && grData) {
-          loadedGrupos = grData;
-        } else {
-          const fallback = localStorage.getItem(`cms_grupos_${effectiveUserId}`);
-          if (fallback) loadedGrupos = JSON.parse(fallback);
-        }
-      } catch (_) {
-        const fallback = localStorage.getItem(`cms_grupos_${effectiveUserId}`);
-        if (fallback) loadedGrupos = JSON.parse(fallback);
-      }
-      setGroups(loadedGrupos);
-
       const dynamicConfigs = await loadCurrencies(effectiveUserId);
       const finalMonedas: Currency[] = dynamicConfigs.map((c) => ({
         id: c.id || 0,
@@ -334,8 +308,18 @@ export const AgenciesTab: React.FC = () => {
         simbolo: c.simbolo,
       }));
 
+      const [agRes, sisList, cbRes, dispRes, tuRes, loadedGrupos] = await Promise.all([
+        supabase.from('agencias').select('*').eq('user_id', effectiveUserId).order('id', { ascending: true }),
+        loadSaaSActiveSystems(effectiveUserId),
+        supabase.from('cuentas_bancarias').select('*').eq('user_id', effectiveUserId).order('id', { ascending: true }),
+        supabase.from('dispositivos_pago').select('*').eq('user_id', effectiveUserId).order('id', { ascending: true }),
+        supabase.from('taquilla_usuarios').select('*').eq('user_id', effectiveUserId).order('id', { ascending: true }),
+        loadSaaSGroups(effectiveUserId, dynamicConfigs),
+      ]);
+
+      setGroups(loadedGrupos);
       setAgencies(agRes.data || []);
-      setSystems(sisRes.data || []);
+      setSystems(sisList);
       setCurrencies(finalMonedas);
       setBankAccounts(cbRes.data || []);
       setDevices(dispRes.data || []);
@@ -450,7 +434,7 @@ export const AgenciesTab: React.FC = () => {
     }
 
     const availableMonedas = currencies.map((m) => m.nombre_moneda).filter(Boolean);
-    const primaryMon = availableMonedas.includes('COP') ? 'COP' : (availableMonedas[0] || 'USD');
+    const primaryMon = availableMonedas[0] || 'USD';
 
     const initMap: Record<string, string[]> = {};
     systems.forEach((s) => {
@@ -1730,7 +1714,9 @@ export const AgenciesTab: React.FC = () => {
                               checked={isSystemActive}
                               onChange={(e) => {
                                 if (e.target.checked) {
-                                  const defaultMons = formMonedas.length > 0 ? [...formMonedas] : ['COP'];
+                                  const defaultMons = formMonedas.length > 0
+                                    ? [...formMonedas]
+                                    : (currencies.length > 0 ? [currencies[0].nombre_moneda] : ['USD']);
                                   setFormSistemaMonedas((prev) => {
                                     const next = { ...prev, [sysName]: defaultMons };
                                     const nextActiveSystems = Object.keys(next).filter((k) => next[k]?.length > 0);

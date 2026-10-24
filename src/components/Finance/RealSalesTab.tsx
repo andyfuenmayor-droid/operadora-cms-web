@@ -37,6 +37,7 @@ import {
   getCurrencyFlag,
   type CurrencyConfig,
 } from '../../utils/currencies';
+import { loadSaaSActiveSystems } from '../../utils/sistemas';
 
 interface SystemSaleDetail {
   sistema: string;
@@ -123,10 +124,10 @@ export const RealSalesTab: React.FC = () => {
         salesQuery = salesQuery.lte('fecha', fechaHasta);
       }
 
-      const [salesRes, agRes, sisRes, monRes, userCurrencies] = await Promise.all([
+      const [salesRes, agRes, sisList, monRes, userCurrencies] = await Promise.all([
         salesQuery,
         supabase.from('agencias').select('*').eq('user_id', effectiveUserId).order('id', { ascending: true }),
-        supabase.from('sistemas').select('*').eq('user_id', effectiveUserId).order('nombre_sistema', { ascending: true }),
+        loadSaaSActiveSystems(effectiveUserId),
         supabase.from('monedas').select('*').eq('user_id', effectiveUserId).order('id', { ascending: true }),
         loadCurrencies(effectiveUserId),
       ]);
@@ -140,7 +141,7 @@ export const RealSalesTab: React.FC = () => {
 
       setSales(salesRes.data || []);
       setAgencies(agRes.data || []);
-      setSystems(sisRes.data || []);
+      setSystems(sisList || []);
       setCurrencies(monRes.data || []);
     } catch (err) {
       console.error('Error loading real sales data:', err);
