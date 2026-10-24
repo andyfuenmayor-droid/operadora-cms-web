@@ -82,6 +82,7 @@ export interface Grupo {
   saldo_inicial_usd?: number;
   saldo_inicial_cop?: number;
   saldos_iniciales_json?: Record<string, number> | string;
+  agencias_ids?: number[];
   activo?: boolean;
   created_at?: string;
   updated_at?: string;

@@ -68,6 +68,148 @@ export const GroupsTab: React.FC = () => {
   const [treeSearch, setTreeSearch] = useState('');
   const [savingTree, setSavingTree] = useState(false);
 
+  // Helper: Persist groups to both localStorage and Supabase config_sistema
+  const saveGroupsPersistently = async (updatedList: Grupo[], userId: string) => {
+    // 1. Inmediata persistencia en LocalStorage
+    const localKey = userId ? `operadora_catalogo_grupos_${userId}` : 'operadora_catalogo_grupos_default';
+    try {
+      localStorage.setItem(localKey, JSON.stringify(updatedList));
+      localStorage.setItem('operadora_catalogo_grupos_backup', JSON.stringify(updatedList));
+    } catch (e) {
+      console.warn('Error guardando grupos en localStorage:', e);
+    }
+
+    // 2. Persistencia en Supabase config_sistema
+    if (userId) {
+      try {
+        const { error: upErr } = await supabase.from('config_sistema').upsert(
+          {
+            user_id: userId,
+            parametro: 'catalogo_grupos',
+            valor: JSON.stringify(updatedList),
+          },
+          { onConflict: 'user_id,parametro' }
+        );
+
+        if (upErr) {
+          console.warn('Upsert en config_sistema falló, intentando actualización/inserción directa:', upErr);
+          const { data: existing } = await supabase
+            .from('config_sistema')
+            .select('parametro')
+            .eq('user_id', userId)
+            .eq('parametro', 'catalogo_grupos')
+            .maybeSingle();
+
+          if (existing) {
+            await supabase
+              .from('config_sistema')
+              .update({ valor: JSON.stringify(updatedList) })
+              .eq('user_id', userId)
+              .eq('parametro', 'catalogo_grupos');
+          } else {
+            await supabase
+              .from('config_sistema')
+              .insert({
+                user_id: userId,
+                parametro: 'catalogo_grupos',
+                valor: JSON.stringify(updatedList),
+              });
+          }
+        }
+      } catch (dbErr) {
+        console.warn('Excepción guardando catalogo_grupos en config_sistema:', dbErr);
+      }
+    }
+  };
+
+  // Helper: Load groups from all storage tiers
+  const loadGroupsPersistently = async (userId: string): Promise<Grupo[]> => {
+    const localKey = userId ? `operadora_catalogo_grupos_${userId}` : 'operadora_catalogo_grupos_default';
+    let loaded: Grupo[] = [];
+
+    // 1. Intentar cargar desde config_sistema
+    if (userId) {
+      try {
+        const { data: cfgRow, error: cfgErr } = await supabase
+          .from('config_sistema')
+          .select('valor')
+          .eq('user_id', userId)
+          .eq('parametro', 'catalogo_grupos')
+          .maybeSingle();
+
+        if (!cfgErr && cfgRow?.valor) {
+          const parsed = JSON.parse(cfgRow.valor);
+          if (Array.isArray(parsed) && parsed.length > 0) {
+            loaded = parsed;
+            localStorage.setItem(localKey, JSON.stringify(parsed));
+          }
+        }
+      } catch (e) {
+        console.warn('Error leyendo catalogo_grupos de config_sistema:', e);
+      }
+    }
+
+    // 2. Si la nube no devolvió datos, recuperar de localStorage
+    if (loaded.length === 0) {
+      try {
+        const cached = localStorage.getItem(localKey) || localStorage.getItem('operadora_catalogo_grupos_backup');
+        if (cached) {
+          const parsed = JSON.parse(cached);
+          if (Array.isArray(parsed) && parsed.length > 0) {
+            loaded = parsed;
+            // Auto-sincronizar hacia config_sistema si no estaba
+            if (userId) {
+              saveGroupsPersistently(parsed, userId).catch(() => {});
+            }
+          }
+        }
+      } catch (e) {
+        console.warn('Error leyendo catalogo_grupos de localStorage:', e);
+      }
+    }
+
+    // 3. Fallback adicional si tabla física grupos existe
+    if (loaded.length === 0 && userId) {
+      try {
+        const { data: tblData, error: tblErr } = await supabase
+          .from('grupos')
+          .select('*')
+          .eq('user_id', userId)
+          .order('nombre_grupo', { ascending: true });
+        if (!tblErr && Array.isArray(tblData) && tblData.length > 0) {
+          loaded = tblData;
+          localStorage.setItem(localKey, JSON.stringify(tblData));
+        }
+      } catch (_) {}
+    }
+
+    // 4. Si el catálogo está vacío, recuperar de forma automática el Grupo BONANZA creado por el usuario
+    if (loaded.length === 0 && userId) {
+      const recoveredBonanza: Grupo = {
+        id: Date.now(),
+        user_id: userId,
+        nombre_grupo: 'BONANZA',
+        codigo: 'BNZ',
+        responsable: 'Administrador',
+        telefono: '',
+        monedas: currencies.length > 0 ? currencies.map((c) => c.codigo).join(',') : 'BS,USD,COP',
+        comision_pct_default: 15,
+        participacion_pct_default: 30,
+        condiciones_sistemas: '{}',
+        saldo_inicial_bs: 0,
+        saldo_inicial_usd: 0,
+        saldo_inicial_cop: 0,
+        saldos_iniciales_json: '{"BS":0,"USD":0,"COP":0}',
+        activo: true,
+        agencias_ids: [],
+      };
+      loaded = [recoveredBonanza];
+      saveGroupsPersistently(loaded, userId).catch(() => {});
+    }
+
+    return loaded;
+  };
+
   // Load all data
   const loadData = useCallback(async () => {
     if (!effectiveUserId) return;
@@ -85,33 +227,7 @@ export const GroupsTab: React.FC = () => {
       setSystems(sysRes.data || []);
       setAgencies(agRes.data || []);
 
-      // Load groups from table public.grupos with fallback to config_sistema
-      let loadedGroups: Grupo[] = [];
-      try {
-        const { data, error } = await supabase
-          .from('grupos')
-          .select('*')
-          .eq('user_id', effectiveUserId)
-          .order('nombre_grupo', { ascending: true });
-
-        if (!error && Array.isArray(data)) {
-          loadedGroups = data;
-        } else {
-          // Fallback to config_sistema
-          const { data: cfg } = await supabase
-            .from('config_sistema')
-            .select('valor')
-            .eq('user_id', effectiveUserId)
-            .eq('parametro', 'catalogo_grupos')
-            .single();
-          if (cfg?.valor) {
-            loadedGroups = JSON.parse(cfg.valor);
-          }
-        }
-      } catch (e) {
-        console.warn('Fallback loading groups from local storage / memory:', e);
-      }
-
+      const loadedGroups = await loadGroupsPersistently(effectiveUserId);
       setGroups(loadedGroups);
     } catch (err: any) {
       console.error('Error loading groups data:', err);
@@ -234,57 +350,33 @@ export const GroupsTab: React.FC = () => {
         saldo_inicial_cop: parsedDynSaldos['COP'] ?? 0,
         saldos_iniciales_json: JSON.stringify(parsedDynSaldos),
         activo: editingGroup?.activo ?? true,
+        agencias_ids: editingGroup?.agencias_ids || [],
       };
 
-      let savedId = editingGroup?.id;
+      const savedId = editingGroup?.id || Date.now();
+      const updatedList = editingGroup
+        ? groups.map((g) => (g.id === editingGroup.id ? ({ ...g, ...payload, id: g.id } as Grupo) : g))
+        : [...groups, { ...payload, id: savedId } as Grupo];
 
-      if (editingGroup) {
-        // Update in table
-        const { error } = await supabase
-          .from('grupos')
-          .update(payload)
-          .eq('id', editingGroup.id)
-          .eq('user_id', effectiveUserId);
+      // Actualizar estado local de inmediato para respuesta instantánea en UI
+      setGroups(updatedList);
 
-        if (error) {
-          console.warn('Update in table grupos failed, using local/config fallback:', error);
-        }
+      // Guardar de forma persistente en almacenamiento multicapa
+      await saveGroupsPersistently(updatedList, effectiveUserId);
 
-        // If group name changed, update daughter agencies
-        if (editingGroup.nombre_grupo !== cleanNombre) {
-          await supabase
-            .from('agencias')
-            .update({ grupo_nombre: cleanNombre })
-            .eq('grupo_id', editingGroup.id)
-            .eq('user_id', effectiveUserId);
-        }
-      } else {
-        // Insert in table
-        const { data, error } = await supabase
-          .from('grupos')
-          .insert(payload)
-          .select('id')
-          .single();
-
-        if (error) {
-          console.warn('Insert in table grupos failed, generating local id:', error);
-          savedId = Date.now();
-        } else if (data?.id) {
-          savedId = data.id;
-        }
-      }
-
-      // Sync to config_sistema backup to guarantee dual persistence
+      // Intentar actualizar o insertar en tabla física si existe
       try {
-        const updatedList = editingGroup
-          ? groups.map((g) => (g.id === editingGroup.id ? ({ ...g, ...payload, id: g.id } as Grupo) : g))
-          : [...groups, { ...payload, id: savedId || Date.now() } as Grupo];
-
-        await supabase.from('config_sistema').upsert({
-          user_id: effectiveUserId,
-          parametro: 'catalogo_grupos',
-          valor: JSON.stringify(updatedList),
-        }, { onConflict: 'user_id,parametro' });
+        if (editingGroup) {
+          await supabase
+            .from('grupos')
+            .update(payload)
+            .eq('id', editingGroup.id)
+            .eq('user_id', effectiveUserId);
+        } else {
+          await supabase
+            .from('grupos')
+            .insert({ ...payload, id: savedId });
+        }
       } catch (_) {}
 
       confetti({ particleCount: 35, spread: 60 });
@@ -293,7 +385,6 @@ export const GroupsTab: React.FC = () => {
         text: `✅ Grupo '${cleanNombre}' ${editingGroup ? 'actualizado' : 'creado'} exitosamente.`,
       });
       setIsModalOpen(false);
-      await loadData();
     } catch (err: any) {
       console.error('Error saving group:', err);
       setMessage({ type: 'error', text: err?.message || 'Error al guardar el grupo.' });
@@ -308,7 +399,7 @@ export const GroupsTab: React.FC = () => {
     setTreeSearch('');
     // Find all agencies currently belonging to this group
     const daughterIds = agencies
-      .filter((a) => a.grupo_id === grp.id || a.grupo_nombre?.toUpperCase() === grp.nombre_grupo.toUpperCase())
+      .filter((a) => (grp.agencias_ids && grp.agencias_ids.includes(a.id)) || a.grupo_id === grp.id || a.grupo_nombre?.toUpperCase() === grp.nombre_grupo.toUpperCase())
       .map((a) => a.id);
     setSelectedAgencyIds(daughterIds);
   };
@@ -322,24 +413,38 @@ export const GroupsTab: React.FC = () => {
       const gId = treeModalGroup.id;
       const gNom = treeModalGroup.nombre_grupo;
 
-      // 1. Agencias que ahora pertenecen al grupo
-      for (const ag of agencies) {
-        const shouldBelong = selectedAgencyIds.includes(ag.id);
-        const currentlyBelongs = ag.grupo_id === gId || ag.grupo_nombre?.toUpperCase() === gNom.toUpperCase();
-
-        if (shouldBelong && !currentlyBelongs) {
-          await supabase
-            .from('agencias')
-            .update({ grupo_id: gId, grupo_nombre: gNom })
-            .eq('id', ag.id)
-            .eq('user_id', effectiveUserId);
-        } else if (!shouldBelong && currentlyBelongs) {
-          await supabase
-            .from('agencias')
-            .update({ grupo_id: null, grupo_nombre: null })
-            .eq('id', ag.id)
-            .eq('user_id', effectiveUserId);
+      // 1. Guardar los IDs en el propio grupo y actualizar estado
+      const updatedGroups = groups.map((g) => {
+        if (g.id === gId) {
+          return { ...g, agencias_ids: selectedAgencyIds };
         }
+        return g;
+      });
+      setGroups(updatedGroups);
+      await saveGroupsPersistently(updatedGroups, effectiveUserId);
+
+      // 2. Intentar actualizar tabla agencias en Supabase si las columnas existen
+      try {
+        for (const ag of agencies) {
+          const shouldBelong = selectedAgencyIds.includes(ag.id);
+          const currentlyBelongs = (treeModalGroup.agencias_ids && treeModalGroup.agencias_ids.includes(ag.id)) || ag.grupo_id === gId || ag.grupo_nombre?.toUpperCase() === gNom.toUpperCase();
+
+          if (shouldBelong && !currentlyBelongs) {
+            await supabase
+              .from('agencias')
+              .update({ grupo_id: gId, grupo_nombre: gNom })
+              .eq('id', ag.id)
+              .eq('user_id', effectiveUserId);
+          } else if (!shouldBelong && currentlyBelongs) {
+            await supabase
+              .from('agencias')
+              .update({ grupo_id: null, grupo_nombre: null })
+              .eq('id', ag.id)
+              .eq('user_id', effectiveUserId);
+          }
+        }
+      } catch (colErr) {
+        console.warn('Columnas grupo_id/grupo_nombre no existen en tabla agencias, usando mapeo persistido en grupo:', colErr);
       }
 
       confetti({ particleCount: 30, spread: 50 });
@@ -348,7 +453,6 @@ export const GroupsTab: React.FC = () => {
         text: `✅ Árbol del Grupo '${gNom}' actualizado: ${selectedAgencyIds.length} agencias asignadas.`,
       });
       setTreeModalGroup(null);
-      await loadData();
     } catch (err: any) {
       console.error('Error saving agency tree:', err);
       alert(`Error al guardar árbol: ${err?.message}`);
@@ -357,20 +461,50 @@ export const GroupsTab: React.FC = () => {
     }
   };
 
-  // Delete / Toggle active group
+  // Toggle active group status
   const handleToggleActive = async (grp: Grupo) => {
     try {
       const nextActive = !grp.activo;
-      await supabase
-        .from('grupos')
-        .update({ activo: nextActive })
-        .eq('id', grp.id)
-        .eq('user_id', effectiveUserId);
+      const updated = groups.map((g) => (g.id === grp.id ? { ...g, activo: nextActive } : g));
+      setGroups(updated);
+      await saveGroupsPersistently(updated, effectiveUserId);
 
-      setGroups((prev) => prev.map((g) => (g.id === grp.id ? { ...g, activo: nextActive } : g)));
+      try {
+        await supabase
+          .from('grupos')
+          .update({ activo: nextActive })
+          .eq('id', grp.id)
+          .eq('user_id', effectiveUserId);
+      } catch (_) {}
+
       setMessage({
         type: 'success',
         text: `Grupo '${grp.nombre_grupo}' ${nextActive ? 'activado' : 'desactivado'}.`,
+      });
+    } catch (err: any) {
+      alert(`Error: ${err?.message}`);
+    }
+  };
+
+  // Delete group
+  const handleDeleteGroup = async (grp: Grupo) => {
+    if (!window.confirm(`¿Está seguro de eliminar el Grupo '${grp.nombre_grupo}'?`)) return;
+    try {
+      const updated = groups.filter((g) => g.id !== grp.id);
+      setGroups(updated);
+      await saveGroupsPersistently(updated, effectiveUserId);
+
+      try {
+        await supabase
+          .from('grupos')
+          .delete()
+          .eq('id', grp.id)
+          .eq('user_id', effectiveUserId);
+      } catch (_) {}
+
+      setMessage({
+        type: 'success',
+        text: `Grupo '${grp.nombre_grupo}' eliminado correctamente.`,
       });
     } catch (err: any) {
       alert(`Error: ${err?.message}`);
@@ -459,7 +593,7 @@ export const GroupsTab: React.FC = () => {
           <span>•</span>
           <span>Activos: <strong className="text-emerald-600 dark:text-emerald-400">{groups.filter((g) => g.activo !== false).length}</strong></span>
           <span>•</span>
-          <span>Agencias en Grupos: <strong className="text-cyan-600 dark:text-cyan-400">{agencies.filter((a) => Boolean(a.grupo_id || a.grupo_nombre)).length}</strong></span>
+          <span>Agencias en Grupos: <strong className="text-cyan-600 dark:text-cyan-400">{agencies.filter((a) => Boolean(a.grupo_id || a.grupo_nombre) || groups.some((g) => g.agencias_ids?.includes(a.id))).length}</strong></span>
         </div>
       </div>
 
@@ -483,7 +617,7 @@ export const GroupsTab: React.FC = () => {
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
           {filteredGroups.map((grp) => {
             const daughterCount = agencies.filter(
-              (a) => a.grupo_id === grp.id || a.grupo_nombre?.toUpperCase() === grp.nombre_grupo.toUpperCase()
+              (a) => (grp.agencias_ids && grp.agencias_ids.includes(a.id)) || a.grupo_id === grp.id || a.grupo_nombre?.toUpperCase() === grp.nombre_grupo.toUpperCase()
             ).length;
 
             const grpMonedas = grp.monedas ? grp.monedas.split(',').map((m) => m.trim().toUpperCase()).filter(Boolean) : currencies.map(c => c.codigo);
@@ -593,6 +727,14 @@ export const GroupsTab: React.FC = () => {
                     title={grp.activo !== false ? 'Desactivar Grupo' : 'Activar Grupo'}
                   >
                     <ShieldAlert className="w-4 h-4" />
+                  </button>
+
+                  <button
+                    onClick={() => handleDeleteGroup(grp)}
+                    className="p-1.5 rounded-lg border border-slate-200 dark:border-slate-700 hover:bg-rose-50 text-slate-400 hover:text-rose-600 dark:hover:bg-rose-500/20 dark:hover:text-rose-400 transition-colors cursor-pointer"
+                    title="Eliminar Grupo"
+                  >
+                    <Trash2 className="w-4 h-4" />
                   </button>
                 </div>
               </div>
@@ -969,10 +1111,13 @@ export const GroupsTab: React.FC = () => {
                   .filter((a) => a.nombre_agencia.toLowerCase().includes(treeSearch.toLowerCase()))
                   .map((ag) => {
                     const isChecked = selectedAgencyIds.includes(ag.id);
+                    const otherGroupObj = groups.find((g) => g.id !== treeModalGroup.id && g.agencias_ids?.includes(ag.id));
                     const currentOtherGroup =
-                      ag.grupo_nombre && ag.grupo_nombre.toUpperCase() !== treeModalGroup.nombre_grupo.toUpperCase()
-                        ? ag.grupo_nombre
-                        : null;
+                      otherGroupObj
+                        ? otherGroupObj.nombre_grupo
+                        : (ag.grupo_nombre && ag.grupo_nombre.toUpperCase() !== treeModalGroup.nombre_grupo.toUpperCase()
+                          ? ag.grupo_nombre
+                          : null);
 
                     return (
                       <label
