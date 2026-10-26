@@ -1,5 +1,7 @@
 import { supabase } from '../lib/supabase';
 
+import type { MasterCurrency } from '../types';
+
 export interface CurrencyConfig {
   id?: number;
   codigo: string;
@@ -8,14 +10,24 @@ export interface CurrencyConfig {
   decimales: number;
   es_default?: boolean;
   icono?: string;
+  activo?: boolean;
 }
 
 export type DynamicCurrencyConfig = CurrencyConfig;
 
+export const DEFAULT_MASTER_CURRENCIES: MasterCurrency[] = [
+  { codigo: 'BS', nombre: 'Bolívares', simbolo: 'Bs.', decimales: 2, es_base: true },
+  { codigo: 'USD', nombre: 'Dólares Americanos', simbolo: '$', decimales: 2, es_base: true },
+  { codigo: 'COP', nombre: 'Pesos Colombianos', simbolo: 'COP$', decimales: 0, es_base: true },
+  { codigo: 'EUR', nombre: 'Euros', simbolo: '€', decimales: 2, es_base: false },
+  { codigo: 'USDT', nombre: 'Tether USD', simbolo: '₮', decimales: 2, es_base: false },
+  { codigo: 'BRL', nombre: 'Reales Brasileños', simbolo: 'R$', decimales: 2, es_base: false },
+];
+
 export const DEFAULT_CURRENCIES: CurrencyConfig[] = [
-  { id: 1, codigo: 'BS', nombre: 'Bolívares', simbolo: 'Bs.', decimales: 2, es_default: true },
-  { id: 2, codigo: 'USD', nombre: 'Dólares', simbolo: '$', decimales: 2, es_default: true },
-  { id: 3, codigo: 'COP', nombre: 'Pesos Colombianos', simbolo: 'COP$', decimales: 0, es_default: true },
+  { id: 1, codigo: 'BS', nombre: 'Bolívares', simbolo: 'Bs.', decimales: 2, es_default: true, activo: true },
+  { id: 2, codigo: 'USD', nombre: 'Dólares', simbolo: '$', decimales: 2, es_default: true, activo: true },
+  { id: 3, codigo: 'COP', nombre: 'Pesos Colombianos', simbolo: 'COP$', decimales: 0, es_default: true, activo: true },
 ];
 
 /**
@@ -107,11 +119,66 @@ export async function saveCurrencies(
 }
 
 /**
- * Carga la lista completa de monedas activas desde config_sistema y localStorage
- * Garantiza aislamiento 100% por suscriptor (user_id / effectiveUserId)
+ * Consulta el Catálogo Maestro Global de Monedas (Tabla Padre en Supabase / Postgres)
+ * con fallback instantáneo a DEFAULT_MASTER_CURRENCIES en caso de desconexión o tabla no migrada
  */
-export async function loadCurrencies(userId?: string): Promise<CurrencyConfig[]> {
+export async function loadMasterCurrencies(): Promise<MasterCurrency[]> {
+  try {
+    const { data, error } = await supabase
+      .from('catalogo_monedas_maestro')
+      .select('*')
+      .order('id', { ascending: true });
+
+    if (!error && Array.isArray(data) && data.length > 0) {
+      return data;
+    }
+  } catch (err) {
+    console.warn('catalogo_monedas_maestro query notice:', err);
+  }
+  return DEFAULT_MASTER_CURRENCIES;
+}
+
+/**
+ * Retroalimenta la Tabla Padre Global de Monedas cuando un SaaS registra una divisa no existente
+ */
+export async function contributeMasterCurrency(
+  curr: { codigo: string; nombre: string; simbolo: string; decimales: number },
+  userId?: string
+): Promise<void> {
+  const cleanCode = normalizeCurrency(curr.codigo);
+  if (!cleanCode) return;
+
+  try {
+    await supabase.from('catalogo_monedas_maestro').upsert(
+      {
+        codigo: cleanCode,
+        nombre: curr.nombre || cleanCode,
+        simbolo: curr.simbolo || cleanCode,
+        decimales: typeof curr.decimales === 'number' ? curr.decimales : 2,
+        es_base: false,
+        creado_por_user_id: userId || null,
+        updated_at: new Date().toISOString(),
+      },
+      { onConflict: 'codigo' }
+    );
+  } catch (err) {
+    console.warn('Could not contribute to catalogo_monedas_maestro (non-fatal):', err);
+  }
+}
+
+/**
+ * Carga la lista de monedas del suscriptor desde config_sistema y localStorage
+ * Por defecto filtra y devuelve ÚNICAMENTE las monedas activas (activo !== false),
+ * garantizando que las monedas ocultadas por el suscriptor NO aparezcan en ningún módulo operativo.
+ *
+ * Para el panel de configuración (CurrenciesTab), se usa { includeInactive: true } o loadAllCurrencies.
+ */
+export async function loadCurrencies(
+  userId?: string,
+  options?: { includeInactive?: boolean }
+): Promise<CurrencyConfig[]> {
   const localKey = userId ? `operadora_catalogo_monedas_${userId}` : 'operadora_catalogo_monedas_default';
+  let allCurrencies: CurrencyConfig[] = [];
 
   // 1. Si hay userId, consultar config_sistema de forma estricta para ese suscriptor
   if (userId) {
@@ -127,10 +194,13 @@ export async function loadCurrencies(userId?: string): Promise<CurrencyConfig[]>
         try {
           const parsed = JSON.parse(cfgRow.valor);
           if (Array.isArray(parsed) && parsed.length > 0) {
+            allCurrencies = parsed.map((c: any) => ({
+              ...c,
+              activo: c.activo !== false, // Garantizar activo=true por defecto en datos existentes
+            }));
             try {
-              localStorage.setItem(localKey, JSON.stringify(parsed));
+              localStorage.setItem(localKey, JSON.stringify(allCurrencies));
             } catch (_) {}
-            return parsed;
           }
         } catch (_) {}
       }
@@ -139,65 +209,87 @@ export async function loadCurrencies(userId?: string): Promise<CurrencyConfig[]>
     }
   }
 
-  // 2. Intentar desde localStorage aislado para este usuario
-  try {
-    const rawLocal = localStorage.getItem(localKey);
-    if (rawLocal) {
-      const parsedLocal = JSON.parse(rawLocal);
-      if (Array.isArray(parsedLocal) && parsedLocal.length > 0) {
-        return parsedLocal;
+  // 2. Si no vino de la nube, intentar desde localStorage aislado para este usuario
+  if (allCurrencies.length === 0) {
+    try {
+      const rawLocal = localStorage.getItem(localKey);
+      if (rawLocal) {
+        const parsedLocal = JSON.parse(rawLocal);
+        if (Array.isArray(parsedLocal) && parsedLocal.length > 0) {
+          allCurrencies = parsedLocal.map((c: any) => ({
+            ...c,
+            activo: c.activo !== false,
+          }));
+        }
       }
+    } catch (e) {
+      console.warn('Error reading currencies from localStorage:', e);
     }
-  } catch (e) {
-    console.warn('Error reading currencies from localStorage:', e);
   }
 
   // 3. Fallback inicial (primera vez):
-  // Si existen monedas previas en la tabla legado 'monedas', migrarlas/incorporarlas
-  const initialList: CurrencyConfig[] = DEFAULT_CURRENCIES.map((c) => ({ ...c }));
+  if (allCurrencies.length === 0) {
+    allCurrencies = DEFAULT_CURRENCIES.map((c) => ({ ...c, activo: true }));
 
-  if (userId) {
-    try {
-      const { data: legacyData } = await supabase
-        .from('monedas')
-        .select('*')
-        .eq('user_id', userId)
-        .order('id', { ascending: true });
+    if (userId) {
+      try {
+        const { data: legacyData } = await supabase
+          .from('monedas')
+          .select('*')
+          .eq('user_id', userId)
+          .order('id', { ascending: true });
 
-      if (Array.isArray(legacyData) && legacyData.length > 0) {
-        legacyData.forEach((row: any) => {
-          const rawCode = String(row.Nombre_Moneda || row.nombre_moneda || row.moneda || '').trim().toUpperCase();
-          if (!rawCode) return;
-          const normCode = normalizeCurrency(rawCode);
-          const existing = initialList.find((c) => c.codigo === normCode);
-          if (!existing) {
-            initialList.push({
-              id: row.id,
-              codigo: normCode,
-              nombre: rawCode,
-              simbolo: String(row.Simbolo || row.simbolo || normCode).trim(),
-              decimales: normCode === 'COP' ? 0 : 2,
-              es_default: false,
-            });
-          }
-        });
-      }
-    } catch (_) {}
+        if (Array.isArray(legacyData) && legacyData.length > 0) {
+          legacyData.forEach((row: any) => {
+            const rawCode = String(row.Nombre_Moneda || row.nombre_moneda || row.moneda || '').trim().toUpperCase();
+            if (!rawCode) return;
+            const normCode = normalizeCurrency(rawCode);
+            const existing = allCurrencies.find((c) => c.codigo === normCode);
+            if (!existing) {
+              allCurrencies.push({
+                id: row.id,
+                codigo: normCode,
+                nombre: rawCode,
+                simbolo: String(row.Simbolo || row.simbolo || normCode).trim(),
+                decimales: normCode === 'COP' ? 0 : 2,
+                es_default: false,
+                activo: row.activo !== false,
+              });
+            }
+          });
+        }
+      } catch (_) {}
 
-    // Persistir esta configuración inicial para que futuras eliminaciones sean duraderas
-    try {
-      await saveCurrencies(initialList, userId);
-    } catch (_) {}
+      // Persistir esta configuración inicial para que futuras operaciones sean duraderas
+      try {
+        await saveCurrencies(allCurrencies, userId);
+      } catch (_) {}
+    }
   }
 
-  return initialList;
+  // Si se solicita includeInactive, devolver todas (activas e inactivas)
+  if (options?.includeInactive) {
+    return allCurrencies;
+  }
+
+  // Por defecto, devolver ÚNICAMENTE las divisas activas para todo el sistema
+  const activeList = allCurrencies.filter((c) => c.activo !== false);
+  return activeList.length > 0 ? activeList : allCurrencies;
+}
+
+/**
+ * Carga TODAS las monedas del suscriptor (activas e inactivas)
+ * Diseñado específicamente para el panel de configuración de Monedas (CurrenciesTab)
+ */
+export async function loadAllCurrencies(userId?: string): Promise<CurrencyConfig[]> {
+  return loadCurrencies(userId, { includeInactive: true });
 }
 
 /**
  * Restablece las monedas base (BS, USD, COP) para el suscriptor
  */
 export async function resetToDefaultCurrencies(userId?: string): Promise<CurrencyConfig[]> {
-  const initial = DEFAULT_CURRENCIES.map((c) => ({ ...c }));
+  const initial = DEFAULT_CURRENCIES.map((c) => ({ ...c, activo: true }));
   await saveCurrencies(initial, userId);
   return initial;
 }

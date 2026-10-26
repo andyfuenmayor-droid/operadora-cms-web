@@ -127,6 +127,7 @@ export interface BetSystem {
   saldos_iniciales?: Record<string, number> | string;
   user_id?: string;
   created_at?: string;
+  activo?: boolean;
 }
 
 export interface Currency {
@@ -137,6 +138,29 @@ export interface Currency {
   Simbolo?: string;
   user_id?: string;
   created_at?: string;
+  activo?: boolean;
+}
+
+export interface MasterSystem {
+  id?: number;
+  nombre_sistema: string;
+  col_agencia: string;
+  col_venta: string;
+  col_premio: string;
+  descripcion?: string;
+  icono?: string;
+  creado_por_user_id?: string;
+}
+
+export interface MasterCurrency {
+  id?: number;
+  codigo: string;
+  nombre: string;
+  simbolo: string;
+  decimales: number;
+  es_base?: boolean;
+  icono?: string;
+  creado_por_user_id?: string;
 }
 
 export interface BankAccount {

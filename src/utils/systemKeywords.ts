@@ -10,6 +10,7 @@ export interface SystemKeywordConfig {
   saldo_inicial_usd?: number;
   saldo_inicial_cop?: number;
   saldos_iniciales?: Record<string, number>;
+  activo?: boolean;
 }
 
 export type SystemKeywordsMap = Record<string, SystemKeywordConfig>;

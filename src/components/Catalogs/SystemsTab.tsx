@@ -1,12 +1,11 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { useAuth } from '../../context/AuthContext';
 import { supabase } from '../../lib/supabase';
-import type { BetSystem } from '../../types';
+import type { BetSystem, MasterSystem } from '../../types';
 import { formatCurrency } from '../../utils/formatters';
 import {
   Layers,
   Plus,
-  Trash2,
   RefreshCw,
   CheckCircle2,
   AlertCircle,
@@ -15,7 +14,12 @@ import {
   FileSpreadsheet,
   Percent,
   TrendingUp,
-  Wallet
+  Wallet,
+  Eye,
+  EyeOff,
+  Sparkles,
+  Globe,
+  RotateCcw
 } from 'lucide-react';
 import {
   loadSystemKeywords,
@@ -25,13 +29,21 @@ import {
   type SystemKeywordConfig
 } from '../../utils/systemKeywords';
 import { loadCurrencies, type CurrencyConfig } from '../../utils/currencies';
+import {
+  loadMasterSystems,
+  contributeMasterSystem,
+  loadAllSaaSSystems,
+  toggleSystemActiveStatus
+} from '../../utils/sistemas';
 import { UI_LOCK } from '../../styles/uiDesignLock';
 
 export const SystemsTab: React.FC = () => {
   const { effectiveUserId } = useAuth();
   const [systems, setSystems] = useState<BetSystem[]>([]);
+  const [masterSystems, setMasterSystems] = useState<MasterSystem[]>([]);
   const [activeCurrencies, setActiveCurrencies] = useState<CurrencyConfig[]>([]);
   const [loading, setLoading] = useState(false);
+  const [systemFilter, setSystemFilter] = useState<'TODOS' | 'ACTIVOS' | 'OCULTOS'>('TODOS');
 
   // New System Form States
   const [nombre, setNombre] = useState('');
@@ -43,6 +55,7 @@ export const SystemsTab: React.FC = () => {
   const [saldoInicialBs, setSaldoInicialBs] = useState('0');
   const [saldoInicialUsd, setSaldoInicialUsd] = useState('0');
   const [saldoInicialCop, setSaldoInicialCop] = useState('0');
+  const [showSuggestions, setShowSuggestions] = useState(false);
 
   // Keywords & Edit States
   const [systemKeywords, setSystemKeywords] = useState<SystemKeywordsMap>(DEFAULT_SYSTEM_KEYWORDS);
@@ -64,70 +77,17 @@ export const SystemsTab: React.FC = () => {
     if (!effectiveUserId) return;
     setLoading(true);
     try {
-      const [sysRes, keywordsMap, salesRes, currs] = await Promise.all([
-        supabase
-          .from('sistemas')
-          .select('*')
-          .eq('user_id', effectiveUserId)
-          .order('id', { ascending: true }),
+      const [loadedSystems, keywordsMap, currs, masters] = await Promise.all([
+        loadAllSaaSSystems(effectiveUserId),
         loadSystemKeywords(effectiveUserId),
-        supabase
-          .from('carga_actual')
-          .select('sistema')
-          .eq('user_id', effectiveUserId),
         loadCurrencies(effectiveUserId),
+        loadMasterSystems(),
       ]);
 
       setActiveCurrencies(currs);
-
-      let loadedSystems: BetSystem[] = sysRes.data || [];
-
-      // Identificar todos los sistemas activos conocidos (desde configuración guardada en perfil y ventas)
-      const allKnownNames = Array.from(new Set([
-        ...loadedSystems.map((s) => s.nombre_sistema?.toUpperCase()),
-        ...Object.keys(keywordsMap || {}).map((k) => k.toUpperCase()),
-        ...(salesRes.data || []).map((s: any) => String(s.sistema || '').toUpperCase()).filter(Boolean),
-      ])).filter(Boolean);
-
-      // Si faltan sistemas conocidos en la tabla 'sistemas', auto-sincronizarlos
-      const missingSystems = allKnownNames.filter(
-        (name) => !loadedSystems.some((s) => s.nombre_sistema?.toUpperCase() === name)
-      );
-
-      if (missingSystems.length > 0) {
-        try {
-          const toInsert = missingSystems.map((nombre_sistema) => ({
-            nombre_sistema,
-            user_id: effectiveUserId,
-          }));
-          const { data: inserted, error: insertErr } = await supabase
-            .from('sistemas')
-            .insert(toInsert)
-            .select();
-
-          if (!insertErr && inserted && inserted.length > 0) {
-            loadedSystems = [...loadedSystems, ...inserted];
-          } else {
-            // Si la tabla SQL no devuelve o falla RLS, armar objetos con IDs virtuales
-            const synthetic: BetSystem[] = missingSystems.map((name, idx) => ({
-              id: loadedSystems.length + idx + 1,
-              nombre_sistema: name,
-              user_id: effectiveUserId,
-            }));
-            loadedSystems = [...loadedSystems, ...synthetic];
-          }
-        } catch {
-          const synthetic: BetSystem[] = missingSystems.map((name, idx) => ({
-            id: loadedSystems.length + idx + 1,
-            nombre_sistema: name,
-            user_id: effectiveUserId,
-          }));
-          loadedSystems = [...loadedSystems, ...synthetic];
-        }
-      }
-
       setSystems(loadedSystems);
       setSystemKeywords(keywordsMap);
+      setMasterSystems(masters);
     } catch (err: any) {
       console.error('Error fetching systems:', err);
     } finally {
@@ -139,10 +99,21 @@ export const SystemsTab: React.FC = () => {
     fetchSystems();
   }, [fetchSystems]);
 
-  // Auto-fill suggested column names when typing system name in Add form
+  // Auto-fill suggested column names when typing or selecting system name
   const handleNombreChange = (val: string) => {
     setNombre(val);
+    setShowSuggestions(true);
     const upper = val.trim().toUpperCase();
+
+    // Check if matches master system
+    const matchedMaster = masterSystems.find(m => m.nombre_sistema.toUpperCase() === upper);
+    if (matchedMaster) {
+      if (!colVenta) setColVenta(matchedMaster.col_venta);
+      if (!colPremio) setColPremio(matchedMaster.col_premio);
+      if (!colAgencia) setColAgencia(matchedMaster.col_agencia);
+      return;
+    }
+
     if (upper.includes('KENO')) {
       if (!colVenta) setColVenta('Total accepted');
       if (!colPremio) setColPremio('Total paid');
@@ -158,6 +129,14 @@ export const SystemsTab: React.FC = () => {
     }
   };
 
+  const handleSelectMasterSuggestion = (m: MasterSystem) => {
+    setNombre(m.nombre_sistema);
+    setColAgencia(m.col_agencia);
+    setColVenta(m.col_venta);
+    setColPremio(m.col_premio);
+    setShowSuggestions(false);
+  };
+
   const handleAddSystem = async (e: React.FormEvent) => {
     e.preventDefault();
     const cleanNombre = nombre.trim().toUpperCase();
@@ -166,8 +145,9 @@ export const SystemsTab: React.FC = () => {
       return;
     }
 
-    if (systems.some((s) => s.nombre_sistema.toUpperCase() === cleanNombre)) {
-      setErrorMsg(`El sistema '${cleanNombre}' ya está registrado.`);
+    const existingSys = systems.find((s) => s.nombre_sistema.toUpperCase() === cleanNombre);
+    if (existingSys && existingSys.activo !== false) {
+      setErrorMsg(`El sistema '${cleanNombre}' ya está registrado y activo.`);
       return;
     }
 
@@ -176,12 +156,18 @@ export const SystemsTab: React.FC = () => {
     setSuccessMsg(null);
 
     try {
-      const { error } = await supabase.from('sistemas').insert({
-        nombre_sistema: cleanNombre,
-        user_id: effectiveUserId,
-      });
-
-      if (error) throw error;
+      if (existingSys && existingSys.activo === false) {
+        // Reactivar el sistema oculto
+        await toggleSystemActiveStatus(effectiveUserId!, cleanNombre, true);
+      } else {
+        // Insertar nuevo sistema
+        const { error } = await supabase.from('sistemas').insert({
+          nombre_sistema: cleanNombre,
+          user_id: effectiveUserId,
+          activo: true,
+        });
+        if (error) throw error;
+      }
 
       // Save custom keywords and commercializer configurations
       const updatedKeywords: SystemKeywordsMap = {
@@ -195,15 +181,23 @@ export const SystemsTab: React.FC = () => {
           saldo_inicial_bs: Number(saldoInicialBs) || 0,
           saldo_inicial_usd: Number(saldoInicialUsd) || 0,
           saldo_inicial_cop: Number(saldoInicialCop) || 0,
+          activo: true,
         },
       };
 
       if (effectiveUserId) {
         await saveSystemKeywords(effectiveUserId, updatedKeywords);
+        // Retroalimentar la Tabla Padre Global en segundo plano
+        contributeMasterSystem({
+          nombre_sistema: cleanNombre,
+          col_agencia: colAgencia.trim() || 'Agencia',
+          col_venta: colVenta.trim() || 'Venta',
+          col_premio: colPremio.trim() || 'Premio',
+        }, effectiveUserId);
       }
       setSystemKeywords(updatedKeywords);
 
-      setSuccessMsg(`✅ Proveedor '${cleanNombre}' guardado exitosamente con sus comisiones, participaciones y saldos iniciales.`);
+      setSuccessMsg(`✅ Proveedor '${cleanNombre}' guardado y activado exitosamente en el ecosistema.`);
       setNombre('');
       setColVenta('');
       setColPremio('');
@@ -213,9 +207,44 @@ export const SystemsTab: React.FC = () => {
       setSaldoInicialBs('0');
       setSaldoInicialUsd('0');
       setSaldoInicialCop('0');
+      setShowSuggestions(false);
       await fetchSystems();
     } catch (err: any) {
       setErrorMsg(err?.message || 'Error al guardar el sistema.');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const handleToggleActive = async (s: BetSystem) => {
+    if (!effectiveUserId) return;
+    const isCurrentlyActive = s.activo !== false;
+    const actionLabel = isCurrentlyActive ? 'ocultar' : 'reactivar';
+
+    if (isCurrentlyActive) {
+      if (!window.confirm(`¿Está seguro de ocultar/desactivar el proveedor '${s.nombre_sistema}'? Dejará de aparecer en ventas, agencias y taquillas para este usuario, pero conservará su historial intacto.`)) {
+        return;
+      }
+    }
+
+    setSaving(true);
+    try {
+      await toggleSystemActiveStatus(effectiveUserId, s.nombre_sistema, !isCurrentlyActive);
+      setSystems((prev) =>
+        prev.map((item) =>
+          item.nombre_sistema.toUpperCase() === s.nombre_sistema.toUpperCase()
+            ? { ...item, activo: !isCurrentlyActive }
+            : item
+        )
+      );
+      setSuccessMsg(
+        isCurrentlyActive
+          ? `👁️‍🗨️ Sistema '${s.nombre_sistema}' ocultado correctamente. Ya no aparecerá en ventas, agencias ni taquillas.`
+          : `✅ Sistema '${s.nombre_sistema}' reactivado exitosamente.`
+      );
+    } catch (err: any) {
+      alert(`Error al ${actionLabel}: ${err?.message || 'Error desconocido'}`);
+      setErrorMsg(`Error al ${actionLabel}: ${err?.message || 'Error desconocido'}`);
     } finally {
       setSaving(false);
     }
@@ -260,6 +289,7 @@ export const SystemsTab: React.FC = () => {
           saldo_inicial_bs: Number(editSaldoInicialBs) || 0,
           saldo_inicial_usd: Number(editSaldoInicialUsd) || 0,
           saldo_inicial_cop: Number(editSaldoInicialCop) || 0,
+          activo: editingSystem.activo !== false,
         },
       };
 
@@ -274,30 +304,11 @@ export const SystemsTab: React.FC = () => {
     }
   };
 
-  const handleDeleteSystem = async (id: number, sysName: string) => {
-    if (!window.confirm(`¿Está seguro de eliminar el proveedor / sistema '${sysName}'?`)) return;
-
-    try {
-      if (id && id > 0) {
-        await supabase
-          .from('sistemas')
-          .delete()
-          .eq('id', id)
-          .eq('user_id', effectiveUserId);
-      }
-
-      // Eliminar también de las palabras clave / configuración en nube
-      const { [sysName]: _, ...remainingKeywords } = systemKeywords;
-      if (effectiveUserId) {
-        await saveSystemKeywords(effectiveUserId, remainingKeywords);
-      }
-      setSystemKeywords(remainingKeywords);
-      setSystems((prev) => prev.filter((s) => s.nombre_sistema.toUpperCase() !== sysName.toUpperCase()));
-      setSuccessMsg(`Sistema '${sysName}' eliminado.`);
-    } catch (err: any) {
-      alert(`Error al eliminar: ${err?.message}`);
-    }
-  };
+  const filteredSystems = useMemo(() => {
+    if (systemFilter === 'ACTIVOS') return systems.filter((s) => s.activo !== false);
+    if (systemFilter === 'OCULTOS') return systems.filter((s) => s.activo === false);
+    return systems;
+  }, [systems, systemFilter]);
 
   return (
     <div className="space-y-6">
@@ -333,15 +344,47 @@ export const SystemsTab: React.FC = () => {
           <div id="tour-sistemas-form-inputs" className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
             <div className="space-y-1">
               <label className="text-xs font-bold text-slate-800 dark:text-white flex items-center gap-1">
+                <Sparkles className="w-3.5 h-3.5 text-amber-500" />
                 <span>Nombre del Sistema *</span>
               </label>
               <input
                 type="text"
                 value={nombre}
                 onChange={(e) => handleNombreChange(e.target.value)}
+                onFocus={() => setShowSuggestions(true)}
                 placeholder="EJ: KENO, BETM3, HIPISMO"
                 className="w-full bg-white dark:bg-[#071217] border border-slate-300 dark:border-slate-700 rounded-xl px-3 py-2 text-xs text-slate-900 dark:text-white placeholder-slate-400 dark:placeholder-slate-500 uppercase focus:outline-hidden focus:border-emerald-500 font-bold"
               />
+              {/* Sugerencias desde la Tabla Padre Global */}
+              {masterSystems.length > 0 && (
+                <div className="mt-1.5 flex flex-wrap items-center gap-1">
+                  <span className="text-[10px] text-slate-400 font-sans flex items-center gap-0.5">
+                    <Globe className="w-2.5 h-2.5 text-slate-400" /> Catálogo Padre:
+                  </span>
+                  {masterSystems.slice(0, 8).map((m) => {
+                    const isRegistered = systems.some(
+                      (s) => s.nombre_sistema.toUpperCase() === m.nombre_sistema.toUpperCase()
+                    );
+                    return (
+                      <button
+                        key={m.nombre_sistema}
+                        type="button"
+                        onClick={() => handleSelectMasterSuggestion(m)}
+                        className={`text-[10px] px-2 py-0.5 rounded-md font-mono font-bold transition-all cursor-pointer ${
+                          nombre.toUpperCase() === m.nombre_sistema.toUpperCase()
+                            ? 'bg-emerald-500 text-white shadow-xs'
+                            : isRegistered
+                            ? 'bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-400 hover:bg-slate-200'
+                            : 'bg-emerald-50 text-emerald-700 border border-emerald-200 dark:bg-emerald-500/10 dark:text-emerald-400 hover:bg-emerald-100'
+                        }`}
+                        title={`Sugerido de la Tabla Padre: Agencia: ${m.col_agencia} | Venta: ${m.col_venta} | Premio: ${m.col_premio}`}
+                      >
+                        +{m.nombre_sistema}
+                      </button>
+                    );
+                  })}
+                </div>
+              )}
             </div>
 
             <div className="space-y-1">
@@ -478,7 +521,7 @@ export const SystemsTab: React.FC = () => {
 
           <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 pt-1">
             <p className="text-[11px] text-slate-500 dark:text-slate-400">
-              💡 La comisión y participación se aplicarán automáticamente en el módulo de <strong className="text-slate-800 dark:text-slate-200">Reporte Proveedores</strong>.
+              💡 Los sistemas nuevos se agregan a tu cuenta y retroalimentan la Tabla Padre Global para nuevos usuarios.
             </p>
             <button
               type="submit"
@@ -514,10 +557,49 @@ export const SystemsTab: React.FC = () => {
 
       {/* Systems Table */}
       <div id="tour-sistemas-table" className="bg-white dark:bg-[#0D1B22] border border-slate-200/80 dark:border-slate-800 rounded-2xl overflow-hidden shadow-sm">
-        <div className="p-4 border-b border-slate-200 dark:border-slate-800 flex items-center justify-between">
-          <h4 className="text-xs font-extrabold uppercase tracking-wider text-slate-800 dark:text-slate-300">
-            Sistemas Registrados y Proveedores ({systems.length})
-          </h4>
+        <div className="p-4 border-b border-slate-200 dark:border-slate-800 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+          <div>
+            <h4 className="text-xs font-extrabold uppercase tracking-wider text-slate-800 dark:text-slate-300">
+              Sistemas Registrados y Proveedores ({filteredSystems.length})
+            </h4>
+            <p className="text-[11px] text-slate-500 dark:text-slate-400">
+              Los sistemas ocultos no aparecen en ventas, agencias ni taquillas, pero conservan sus datos históricos.
+            </p>
+          </div>
+
+          {/* Filtros: Todos / Activos / Ocultos */}
+          <div className="flex items-center gap-1.5 p-1 bg-slate-100 dark:bg-[#071217] rounded-xl border border-slate-200 dark:border-slate-800">
+            <button
+              onClick={() => setSystemFilter('TODOS')}
+              className={`px-3 py-1 rounded-lg text-xs font-bold transition-all cursor-pointer ${
+                systemFilter === 'TODOS'
+                  ? 'bg-white dark:bg-slate-800 text-slate-900 dark:text-white shadow-xs'
+                  : 'text-slate-500 hover:text-slate-900 dark:hover:text-white'
+              }`}
+            >
+              Todos ({systems.length})
+            </button>
+            <button
+              onClick={() => setSystemFilter('ACTIVOS')}
+              className={`px-3 py-1 rounded-lg text-xs font-bold transition-all cursor-pointer ${
+                systemFilter === 'ACTIVOS'
+                  ? 'bg-emerald-500 text-white shadow-xs'
+                  : 'text-slate-500 hover:text-emerald-600 dark:hover:text-emerald-400'
+              }`}
+            >
+              Activos ({systems.filter((s) => s.activo !== false).length})
+            </button>
+            <button
+              onClick={() => setSystemFilter('OCULTOS')}
+              className={`px-3 py-1 rounded-lg text-xs font-bold transition-all cursor-pointer ${
+                systemFilter === 'OCULTOS'
+                  ? 'bg-amber-500 text-white shadow-xs'
+                  : 'text-slate-500 hover:text-amber-600 dark:hover:text-amber-400'
+              }`}
+            >
+              Ocultos ({systems.filter((s) => s.activo === false).length})
+            </button>
+          </div>
         </div>
 
         <div className="overflow-x-auto">
@@ -525,23 +607,27 @@ export const SystemsTab: React.FC = () => {
             <thead>
               <tr className="border-b border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-[#071217] text-slate-600 dark:text-slate-400 font-bold uppercase text-[11px]">
                 <th className="py-3 px-3.5 w-14">ID</th>
-                <th className="py-3 px-3.5 min-w-[130px]">Sistema / Proveedor</th>
-                <th className="py-3 px-3.5 min-w-[160px]">Comisión Comercializador</th>
-                <th className="py-3 px-3.5 min-w-[170px]">Participación Comercializador</th>
-                <th className="py-3 px-3.5 min-w-[190px]">Saldos Iniciales (Arrastre)</th>
-                <th className="py-3 px-3.5 min-w-[190px]">Palabras Clave Archivos</th>
-                <th className="py-3 px-3.5 text-right w-24">Acciones</th>
+                <th className="py-3 px-3.5 min-w-[150px]">Sistema / Proveedor</th>
+                <th className="py-3 px-3.5 min-w-[150px]">Comisión Comercializador</th>
+                <th className="py-3 px-3.5 min-w-[160px]">Participación Comercializador</th>
+                <th className="py-3 px-3.5 min-w-[180px]">Saldos Iniciales (Arrastre)</th>
+                <th className="py-3 px-3.5 min-w-[180px]">Palabras Clave Archivos</th>
+                <th className="py-3 px-3.5 text-right w-28">Acciones</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-200/80 dark:divide-slate-800/60 font-mono">
-              {systems.length === 0 ? (
+              {filteredSystems.length === 0 ? (
                 <tr>
                   <td colSpan={7} className="py-8 text-center text-slate-500 font-sans">
-                    No hay sistemas registrados aún.
+                    {systemFilter === 'OCULTOS'
+                      ? 'No hay sistemas ocultos actualmente.'
+                      : systemFilter === 'ACTIVOS'
+                      ? 'No hay sistemas activos registrados.'
+                      : 'No hay sistemas registrados aún.'}
                   </td>
                 </tr>
               ) : (
-                systems.map((s) => {
+                filteredSystems.map((s) => {
                   const conf = systemKeywords[s.nombre_sistema] || DEFAULT_SYSTEM_KEYWORDS[s.nombre_sistema] || {
                     venta: 'Venta',
                     premio: 'Premio',
@@ -558,12 +644,31 @@ export const SystemsTab: React.FC = () => {
                   const bsInit = Number(conf.saldo_inicial_bs || 0);
                   const usdInit = Number(conf.saldo_inicial_usd || 0);
                   const copInit = Number(conf.saldo_inicial_cop || 0);
+                  const isActive = s.activo !== false;
 
                   return (
-                    <tr key={s.id} className="hover:bg-slate-50/80 dark:hover:bg-slate-800/30 transition-colors">
+                    <tr
+                      key={s.id}
+                      className={`hover:bg-slate-50/80 dark:hover:bg-slate-800/30 transition-colors ${
+                        !isActive ? 'opacity-60 bg-slate-50/50 dark:bg-slate-900/30' : ''
+                      }`}
+                    >
                       <td className="py-3 px-3.5 font-mono font-bold text-slate-500 dark:text-slate-400">#{s.id}</td>
-                      <td className="py-3 px-3.5 font-sans font-black text-slate-900 dark:text-white text-sm tracking-wide">
-                        🎰 {s.nombre_sistema}
+                      <td className="py-3 px-3.5 font-sans">
+                        <div className="flex items-center gap-2">
+                          <span className="font-black text-slate-900 dark:text-white text-sm tracking-wide">
+                            🎰 {s.nombre_sistema}
+                          </span>
+                          {isActive ? (
+                            <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-50 text-emerald-700 border border-emerald-200 dark:bg-emerald-500/10 dark:border-emerald-500/30 dark:text-emerald-400">
+                              Activo
+                            </span>
+                          ) : (
+                            <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-bold bg-slate-100 text-slate-600 border border-slate-300 dark:bg-slate-800 dark:border-slate-700 dark:text-slate-400">
+                              Oculto
+                            </span>
+                          )}
+                        </div>
                       </td>
 
                       {/* Comisión Comercializador */}
@@ -614,7 +719,7 @@ export const SystemsTab: React.FC = () => {
 
                       {/* Acciones */}
                       <td className="py-3 px-3.5 text-right">
-                        <div className="flex items-center justify-end gap-1">
+                        <div className="flex items-center justify-end gap-1.5">
                           <button
                             onClick={() => handleOpenEdit(s)}
                             className="p-1.5 rounded-lg hover:bg-slate-100 dark:hover:bg-cyan-500/20 text-slate-500 dark:text-slate-400 hover:text-cyan-600 dark:hover:text-cyan-400 transition-colors cursor-pointer"
@@ -622,13 +727,25 @@ export const SystemsTab: React.FC = () => {
                           >
                             <Edit2 className="w-3.5 h-3.5" />
                           </button>
-                          <button
-                            onClick={() => handleDeleteSystem(s.id, s.nombre_sistema)}
-                            className="p-1.5 rounded-lg hover:bg-rose-50 dark:hover:bg-rose-500/20 text-slate-500 dark:text-slate-400 hover:text-rose-600 dark:hover:text-rose-400 transition-colors cursor-pointer"
-                            title="Eliminar sistema"
-                          >
-                            <Trash2 className="w-3.5 h-3.5" />
-                          </button>
+
+                          {/* Botón Activar / Ocultar (En lugar de eliminar) */}
+                          {isActive ? (
+                            <button
+                              onClick={() => handleToggleActive(s)}
+                              className="p-1.5 rounded-lg bg-amber-50 hover:bg-amber-100 dark:bg-amber-500/10 dark:hover:bg-amber-500/20 text-amber-700 dark:text-amber-300 border border-amber-200 dark:border-amber-500/30 transition-colors cursor-pointer"
+                              title="Ocultar sistema (no se elimina, pero deja de aparecer en ventas, agencias y taquillas)"
+                            >
+                              <EyeOff className="w-3.5 h-3.5" />
+                            </button>
+                          ) : (
+                            <button
+                              onClick={() => handleToggleActive(s)}
+                              className="p-1.5 rounded-lg bg-emerald-50 hover:bg-emerald-100 dark:bg-emerald-500/10 dark:hover:bg-emerald-500/20 text-emerald-700 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-500/30 transition-colors cursor-pointer"
+                              title="Reactivar sistema y hacerlo visible"
+                            >
+                              <Eye className="w-3.5 h-3.5" />
+                            </button>
+                          )}
                         </div>
                       </td>
                     </tr>

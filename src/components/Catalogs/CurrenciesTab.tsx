@@ -1,10 +1,10 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { useAuth } from '../../context/AuthContext';
 import { supabase } from '../../lib/supabase';
+import type { MasterCurrency } from '../../types';
 import {
   Coins,
   Plus,
-  Trash2,
   RefreshCw,
   CheckCircle2,
   AlertCircle,
@@ -14,14 +14,19 @@ import {
   RotateCcw,
   X,
   Save,
+  Eye,
+  EyeOff,
 } from 'lucide-react';
 import {
   loadCurrencies,
+  loadAllCurrencies,
   saveCurrencies,
   resetToDefaultCurrencies,
   normalizeCurrency,
   getCurrencyFlag,
   getCurrencyBadgeClasses,
+  loadMasterCurrencies,
+  contributeMasterCurrency,
   type CurrencyConfig,
 } from '../../utils/currencies';
 import { UI_LOCK } from '../../styles/uiDesignLock';
@@ -29,7 +34,9 @@ import { UI_LOCK } from '../../styles/uiDesignLock';
 export const CurrenciesTab: React.FC = () => {
   const { effectiveUserId } = useAuth();
   const [currencies, setCurrencies] = useState<CurrencyConfig[]>([]);
+  const [masterCurrencies, setMasterCurrencies] = useState<MasterCurrency[]>([]);
   const [loading, setLoading] = useState(false);
+  const [currencyFilter, setCurrencyFilter] = useState<'TODAS' | 'ACTIVAS' | 'OCULTAS'>('TODAS');
 
   // Form states (Añadir)
   const [codigo, setCodigo] = useState('');
@@ -51,8 +58,12 @@ export const CurrenciesTab: React.FC = () => {
   const fetchCurrencies = useCallback(async () => {
     setLoading(true);
     try {
-      const list = await loadCurrencies(effectiveUserId);
+      const [list, masters] = await Promise.all([
+        loadAllCurrencies(effectiveUserId),
+        loadMasterCurrencies(),
+      ]);
       setCurrencies(list);
+      setMasterCurrencies(masters);
     } catch (err: any) {
       console.error('Error fetching currencies:', err);
     } finally {
@@ -63,6 +74,13 @@ export const CurrenciesTab: React.FC = () => {
   useEffect(() => {
     fetchCurrencies();
   }, [fetchCurrencies]);
+
+  const handleSelectMasterCurrency = (m: MasterCurrency) => {
+    setCodigo(m.codigo);
+    setNombre(m.nombre);
+    setSimbolo(m.simbolo);
+    setDecimales(String(m.decimales ?? 2));
+  };
 
   const handleAddCurrency = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -76,7 +94,8 @@ export const CurrenciesTab: React.FC = () => {
       return;
     }
 
-    if (currencies.some((c) => c.codigo === cleanCodigo)) {
+    const existing = currencies.find((c) => c.codigo === cleanCodigo);
+    if (existing && existing.activo !== false) {
       setErrorMsg(`La moneda '${cleanCodigo}' ya está registrada y activa en el sistema.`);
       return;
     }
@@ -86,29 +105,54 @@ export const CurrenciesTab: React.FC = () => {
     setSuccessMsg(null);
 
     try {
-      const newEntry: CurrencyConfig = {
-        codigo: cleanCodigo,
-        nombre: cleanNombre,
-        simbolo: cleanSimbolo,
-        decimales: numDecimales,
-        es_default: false,
-      };
+      let updatedList: CurrencyConfig[];
 
-      const updatedList = [...currencies, newEntry];
+      if (existing && existing.activo === false) {
+        // Reactivar divisa oculta
+        updatedList = currencies.map((c) =>
+          c.codigo === cleanCodigo
+            ? { ...c, nombre: cleanNombre, simbolo: cleanSimbolo, decimales: numDecimales, activo: true }
+            : c
+        );
+      } else {
+        // Nueva divisa
+        const newEntry: CurrencyConfig = {
+          codigo: cleanCodigo,
+          nombre: cleanNombre,
+          simbolo: cleanSimbolo,
+          decimales: numDecimales,
+          es_default: false,
+          activo: true,
+        };
+        updatedList = [...currencies, newEntry];
+      }
+
       await saveCurrencies(updatedList, effectiveUserId);
 
+      // Retroalimentar la Tabla Padre Global
       if (effectiveUserId) {
+        contributeMasterCurrency(
+          {
+            codigo: cleanCodigo,
+            nombre: cleanNombre,
+            simbolo: cleanSimbolo,
+            decimales: numDecimales,
+          },
+          effectiveUserId
+        );
+
         try {
-          await supabase.from('monedas').insert({
+          await supabase.from('monedas').upsert({
             Nombre_Moneda: cleanCodigo,
             Simbolo: cleanSimbolo,
             user_id: effectiveUserId,
+            activo: true,
           });
         } catch (_) {}
       }
 
       setCurrencies(updatedList);
-      setSuccessMsg(`✅ Moneda '${cleanCodigo}' (${cleanNombre}) registrada exitosamente. Ahora está disponible en todo el sistema.`);
+      setSuccessMsg(`✅ Moneda '${cleanCodigo}' (${cleanNombre}) guardada y habilitada exitosamente en el ecosistema.`);
       setCodigo('');
       setNombre('');
       setSimbolo('');
@@ -204,14 +248,19 @@ export const CurrenciesTab: React.FC = () => {
     }
   };
 
-  const handleDeleteCurrency = async (curr: CurrencyConfig) => {
-    if (currencies.length <= 1) {
-      alert('No es posible eliminar la única moneda activa. El ecosistema requiere al menos una (1) moneda configurada para operar.');
-      return;
-    }
+  const handleToggleActiveCurrency = async (curr: CurrencyConfig) => {
+    const isCurrentlyActive = curr.activo !== false;
 
-    if (!window.confirm(`¿Está seguro de eliminar la divisa '${curr.codigo}' (${curr.nombre || curr.codigo}) del ecosistema? Se removerá de los selectores activos.`)) {
-      return;
+    if (isCurrentlyActive) {
+      const activeCount = currencies.filter((c) => c.activo !== false).length;
+      if (activeCount <= 1) {
+        alert('No es posible ocultar la única moneda activa. El ecosistema requiere al menos una (1) divisa habilitada para operar.');
+        return;
+      }
+
+      if (!window.confirm(`¿Está seguro de ocultar la divisa '${curr.codigo}' (${curr.nombre || curr.codigo})? Dejará de aparecer en ventas, agencias y cierres para este usuario, pero conservará su historial intacto.`)) {
+        return;
+      }
     }
 
     setSaving(true);
@@ -219,36 +268,40 @@ export const CurrenciesTab: React.FC = () => {
     setSuccessMsg(null);
 
     try {
-      const updatedList = currencies.filter((c) => c.codigo !== curr.codigo);
+      const updatedList = currencies.map((c) =>
+        c.codigo === curr.codigo ? { ...c, activo: !isCurrentlyActive } : c
+      );
       await saveCurrencies(updatedList, effectiveUserId);
 
       if (effectiveUserId) {
         try {
           await supabase
             .from('monedas')
-            .delete()
+            .update({ activo: !isCurrentlyActive } as any)
             .eq('user_id', effectiveUserId)
             .eq('Nombre_Moneda', curr.codigo);
-
-          if (curr.id) {
-            await supabase
-              .from('monedas')
-              .delete()
-              .eq('user_id', effectiveUserId)
-              .eq('id', curr.id);
-          }
         } catch (_) {}
       }
 
       setCurrencies(updatedList);
-      setSuccessMsg(`🗑️ Moneda '${curr.codigo}' eliminada exitosamente del ecosistema.`);
+      setSuccessMsg(
+        isCurrentlyActive
+          ? `👁️‍🗨️ Moneda '${curr.codigo}' ocultada exitosamente. Ya no aparecerá en selectores de ventas ni agencias.`
+          : `✅ Moneda '${curr.codigo}' reactivada exitosamente.`
+      );
     } catch (err: any) {
-      alert(`Error al eliminar: ${err?.message}`);
-      setErrorMsg(err?.message || 'Error al eliminar la moneda.');
+      alert(`Error al cambiar estado: ${err?.message}`);
+      setErrorMsg(err?.message || 'Error al cambiar estado de la moneda.');
     } finally {
       setSaving(false);
     }
   };
+
+  const filteredCurrencies = useMemo(() => {
+    if (currencyFilter === 'ACTIVAS') return currencies.filter((c) => c.activo !== false);
+    if (currencyFilter === 'OCULTAS') return currencies.filter((c) => c.activo === false);
+    return currencies;
+  }, [currencies, currencyFilter]);
 
   const handleResetDefaults = async () => {
     if (!window.confirm('¿Desea restaurar las monedas base (BS, USD, COP)? Esto reincorporará las 3 divisas predeterminadas al catálogo del suscriptor.')) {
@@ -336,6 +389,34 @@ export const CurrenciesTab: React.FC = () => {
                 className="w-full bg-white dark:bg-[#071217] border border-slate-300 dark:border-slate-700 rounded-xl px-3.5 py-2.5 text-sm text-slate-900 dark:text-white placeholder-slate-400 dark:placeholder-slate-500 uppercase focus:outline-hidden focus:border-emerald-500 font-black tracking-wider"
                 required
               />
+              {/* Sugerencias desde la Tabla Padre Global */}
+              {masterCurrencies.length > 0 && (
+                <div className="mt-1.5 flex flex-wrap items-center gap-1">
+                  <span className="text-[10px] text-slate-400 font-sans flex items-center gap-0.5">
+                    <Globe className="w-2.5 h-2.5 text-slate-400" /> Catálogo Padre:
+                  </span>
+                  {masterCurrencies.slice(0, 8).map((m) => {
+                    const isRegistered = currencies.some((c) => c.codigo === m.codigo);
+                    return (
+                      <button
+                        key={m.codigo}
+                        type="button"
+                        onClick={() => handleSelectMasterCurrency(m)}
+                        className={`text-[10px] px-2 py-0.5 rounded-md font-mono font-bold transition-all cursor-pointer ${
+                          codigo.toUpperCase() === m.codigo.toUpperCase()
+                            ? 'bg-emerald-500 text-white shadow-xs'
+                            : isRegistered
+                            ? 'bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-400 hover:bg-slate-200'
+                            : 'bg-emerald-50 text-emerald-700 border border-emerald-200 dark:bg-emerald-500/10 dark:text-emerald-400 hover:bg-emerald-100'
+                        }`}
+                        title={`Sugerida de la Tabla Padre: ${m.nombre} (${m.simbolo})`}
+                      >
+                        +{m.codigo}
+                      </button>
+                    );
+                  })}
+                </div>
+              )}
             </div>
 
             <div>
@@ -415,12 +496,46 @@ export const CurrenciesTab: React.FC = () => {
 
       {/* Currencies Grid / Table */}
       <div id="tour-monedas-table" className="bg-white dark:bg-[#0D1B22] border border-slate-200/80 dark:border-slate-800 rounded-2xl overflow-hidden shadow-sm">
-        <div className="p-4 border-b border-slate-200 dark:border-slate-800 flex items-center justify-between">
+        <div className="p-4 border-b border-slate-200 dark:border-slate-800 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
           <div className="flex items-center gap-2">
             <Globe className="w-4 h-4 text-emerald-600 dark:text-cyan-400" />
             <h4 className="text-xs font-extrabold uppercase tracking-wider text-slate-800 dark:text-slate-300">
-              Monedas Habilitadas en el Ecosistema ({currencies.length})
+              Monedas Registradas ({filteredCurrencies.length})
             </h4>
+          </div>
+
+          {/* Filtros: Todas / Activas / Ocultas */}
+          <div className="flex items-center gap-1.5 p-1 bg-slate-100 dark:bg-[#071217] rounded-xl border border-slate-200 dark:border-slate-800">
+            <button
+              onClick={() => setCurrencyFilter('TODAS')}
+              className={`px-3 py-1 rounded-lg text-xs font-bold transition-all cursor-pointer ${
+                currencyFilter === 'TODAS'
+                  ? 'bg-white dark:bg-slate-800 text-slate-900 dark:text-white shadow-xs'
+                  : 'text-slate-500 hover:text-slate-900 dark:hover:text-white'
+              }`}
+            >
+              Todas ({currencies.length})
+            </button>
+            <button
+              onClick={() => setCurrencyFilter('ACTIVAS')}
+              className={`px-3 py-1 rounded-lg text-xs font-bold transition-all cursor-pointer ${
+                currencyFilter === 'ACTIVAS'
+                  ? 'bg-emerald-500 text-white shadow-xs'
+                  : 'text-slate-500 hover:text-emerald-600 dark:hover:text-emerald-400'
+              }`}
+            >
+              Activas ({currencies.filter((c) => c.activo !== false).length})
+            </button>
+            <button
+              onClick={() => setCurrencyFilter('OCULTAS')}
+              className={`px-3 py-1 rounded-lg text-xs font-bold transition-all cursor-pointer ${
+                currencyFilter === 'OCULTAS'
+                  ? 'bg-amber-500 text-white shadow-xs'
+                  : 'text-slate-500 hover:text-amber-600 dark:hover:text-amber-400'
+              }`}
+            >
+              Ocultas ({currencies.filter((c) => c.activo === false).length})
+            </button>
           </div>
         </div>
 
@@ -437,19 +552,29 @@ export const CurrenciesTab: React.FC = () => {
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-200/80 dark:divide-slate-800/60 font-sans">
-              {currencies.length === 0 ? (
+              {filteredCurrencies.length === 0 ? (
                 <tr>
                   <td colSpan={6} className="py-8 text-center text-slate-500">
-                    Cargando monedas...
+                    {currencyFilter === 'OCULTAS'
+                      ? 'No hay monedas ocultas actualmente.'
+                      : currencyFilter === 'ACTIVAS'
+                      ? 'No hay monedas activas registradas.'
+                      : 'No hay monedas registradas.'}
                   </td>
                 </tr>
               ) : (
-                currencies.map((c) => {
+                filteredCurrencies.map((c) => {
                   const flag = getCurrencyFlag(c.codigo);
                   const badgeClasses = getCurrencyBadgeClasses(c.codigo);
+                  const isActive = c.activo !== false;
 
                   return (
-                    <tr key={c.codigo} className="hover:bg-slate-50/80 dark:hover:bg-slate-800/30 transition-colors">
+                    <tr
+                      key={c.codigo}
+                      className={`hover:bg-slate-50/80 dark:hover:bg-slate-800/30 transition-colors ${
+                        !isActive ? 'opacity-60 bg-slate-50/50 dark:bg-slate-900/30' : ''
+                      }`}
+                    >
                       <td className="py-3 px-4 font-black text-sm tracking-wide">
                         <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-black ${badgeClasses}`}>
                           <span>{flag}</span>
@@ -466,10 +591,17 @@ export const CurrenciesTab: React.FC = () => {
                         {c.decimales ?? 2}
                       </td>
                       <td className="py-3 px-4">
-                        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-bold bg-emerald-50 text-emerald-700 border border-emerald-200 dark:bg-emerald-950/60 dark:text-emerald-300 dark:border-emerald-800/40">
-                          <CheckCircle2 className="w-3 h-3 text-emerald-500 dark:text-emerald-400" />
-                          <span>Habilitada</span>
-                        </span>
+                        {isActive ? (
+                          <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[10px] font-bold bg-emerald-50 text-emerald-700 border border-emerald-200 dark:bg-emerald-950/60 dark:text-emerald-300 dark:border-emerald-800/40">
+                            <CheckCircle2 className="w-3 h-3 text-emerald-500 dark:text-emerald-400" />
+                            <span>Activa</span>
+                          </span>
+                        ) : (
+                          <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[10px] font-bold bg-slate-100 text-slate-600 border border-slate-300 dark:bg-slate-800 dark:border-slate-700 dark:text-slate-400">
+                            <EyeOff className="w-3 h-3 text-slate-400" />
+                            <span>Oculta</span>
+                          </span>
+                        )}
                       </td>
                       <td className="py-3 px-4 text-right">
                         <div className="flex items-center justify-end gap-1.5">
@@ -480,22 +612,25 @@ export const CurrenciesTab: React.FC = () => {
                           >
                             <Pencil className="w-4 h-4" />
                           </button>
-                          <button
-                            onClick={() => handleDeleteCurrency(c)}
-                            disabled={currencies.length <= 1}
-                            className={`p-1.5 rounded-lg transition-colors cursor-pointer ${
-                              currencies.length <= 1
-                                ? 'opacity-30 cursor-not-allowed text-slate-400 dark:text-slate-600'
-                                : 'hover:bg-rose-50 dark:hover:bg-rose-500/20 text-slate-400 hover:text-rose-600 dark:hover:text-rose-400'
-                            }`}
-                            title={
-                              currencies.length <= 1
-                                ? 'Mínimo 1 moneda requerida para operar'
-                                : `Eliminar ${c.codigo}`
-                            }
-                          >
-                            <Trash2 className="w-4 h-4" />
-                          </button>
+
+                          {/* Botón Activar / Ocultar (En lugar de eliminar) */}
+                          {isActive ? (
+                            <button
+                              onClick={() => handleToggleActiveCurrency(c)}
+                              className="p-1.5 rounded-lg bg-amber-50 hover:bg-amber-100 dark:bg-amber-500/10 dark:hover:bg-amber-500/20 text-amber-700 dark:text-amber-300 border border-amber-200 dark:border-amber-500/30 transition-colors cursor-pointer"
+                              title="Ocultar divisa (no se elimina, pero deja de aparecer en los selectores de ventas y agencias)"
+                            >
+                              <EyeOff className="w-4 h-4" />
+                            </button>
+                          ) : (
+                            <button
+                              onClick={() => handleToggleActiveCurrency(c)}
+                              className="p-1.5 rounded-lg bg-emerald-50 hover:bg-emerald-100 dark:bg-emerald-500/10 dark:hover:bg-emerald-500/20 text-emerald-700 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-500/30 transition-colors cursor-pointer"
+                              title="Reactivar divisa y hacerla visible"
+                            >
+                              <Eye className="w-4 h-4" />
+                            </button>
+                          )}
                         </div>
                       </td>
                     </tr>
