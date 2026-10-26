@@ -4,6 +4,7 @@ import { supabase } from '../../lib/supabase';
 import { UI_LOCK } from '../../styles/uiDesignLock';
 import { cleanAgencyName, normalizarMoneda } from '../../utils/formatters';
 import { logAuditEvent } from '../../utils/auditLogger';
+import { loadSystemKeywords, saveSystemKeywords } from '../../utils/systemKeywords';
 import type { Agency, BetSystem, Currency, Grupo, SystemCycle } from '../../types';
 import {
   Upload,
@@ -20,16 +21,38 @@ import {
   Sparkles,
   ArrowLeft,
   Search,
-  Filter,
-  CheckCheck,
   ChevronLeft,
   ChevronRight,
-  Coins,
   Sliders,
-  RefreshCw,
-  Eye,
+  Tag,
 } from 'lucide-react';
 import confetti from 'canvas-confetti';
+
+/**
+ * Parsea números en formato español/latino o estándar inglés
+ * Ejemplo: "68.800,00" -> 68800 | "479,6" -> 479.6 | "10.5" -> 10.5
+ */
+function parseSpanishNumber(raw: any): number {
+  if (raw === undefined || raw === null || raw === '') return 0;
+  if (typeof raw === 'number') return isNaN(raw) ? 0 : raw;
+  let str = String(raw).trim().replace(/[^\d.,-]/g, '');
+  if (!str) return 0;
+
+  if (str.includes('.') && str.includes(',')) {
+    str = str.replace(/\./g, '').replace(',', '.');
+  } else if (str.includes(',')) {
+    str = str.replace(',', '.');
+  } else if (str.includes('.')) {
+    const parts = str.split('.');
+    if (parts.length > 2) {
+      str = str.replace(/\./g, '');
+    } else if (parts.length === 2 && parts[1].length === 3 && parseInt(parts[0], 10) > 0) {
+      str = str.replace('.', '');
+    }
+  }
+  const val = parseFloat(str);
+  return isNaN(val) ? 0 : val;
+}
 
 export interface RawParsedItem {
   rawNombre: string;
@@ -38,7 +61,7 @@ export interface RawParsedItem {
   comision: number;
   participacion: number;
   sistemas: string[];
-  palabrasClaves: string;
+  codigoReporte: string;
   grupoId: number | null;
   grupoNombre: string;
 }
@@ -49,7 +72,7 @@ export interface BulkAgencyRow {
   nombre: string;
   comision: number;
   sistemas: string[];
-  palabrasClaves: string;
+  codigoReporte: string;
   monedas: string[];
   participacion: number;
   grupoId: number | null;
@@ -98,6 +121,11 @@ export const BulkAgencyModal: React.FC<BulkAgencyModalProps> = ({
   const [defaultParticipacion, setDefaultParticipacion] = useState('0');
   const [defaultSystemMode, setDefaultSystemMode] = useState<string>('ALL');
   const [defaultClaveTaquilla, setDefaultClaveTaquilla] = useState('1234');
+
+  // Palabras Claves del Proveedor / Sistema (Columna Agencia, Columna Ventas, Columna Premios)
+  const [keywordAgencia, setKeywordAgencia] = useState('Agentes');
+  const [keywordVenta, setKeywordVenta] = useState('Ventas');
+  const [keywordPremio, setKeywordPremio] = useState('Premios');
 
   // Multi-Currency Consolidation Toggle
   // e.g. "15LETRAS1 Bs" + "15LETRAS1 Usd" -> 1 single agency "15LETRAS1" with currencies [BS, USD]
@@ -187,7 +215,7 @@ export const BulkAgencyModal: React.FC<BulkAgencyModalProps> = ({
       });
 
       let idx = 0;
-      map.forEach((groupedItems, baseKey) => {
+      map.forEach((groupedItems) => {
         idx++;
         const primary = groupedItems[0];
         const allMons = Array.from(
@@ -199,16 +227,16 @@ export const BulkAgencyModal: React.FC<BulkAgencyModalProps> = ({
         );
         const finalMons = allMons.length > 0 ? allMons : activeCurrencyCodes.slice(0, 3);
 
-        // Auto-keywords: unique union of baseNombre + all raw provider names (e.g. "15LETRAS1, 15LETRAS1 BS, 15LETRAS1 USD")
-        const keywordSet = new Set<string>();
-        keywordSet.add(primary.baseNombre);
+        // Auto-codes/IDs: unique union of baseNombre + all raw provider names (e.g. "15LETRAS1, 15LETRAS1 Bs, 15LETRAS1 Usd")
+        const codeSet = new Set<string>();
+        codeSet.add(primary.baseNombre);
         groupedItems.forEach((it) => {
-          if (it.rawNombre) keywordSet.add(it.rawNombre);
-          if (it.palabrasClaves) {
-            it.palabrasClaves.split(',').forEach((k) => keywordSet.add(k.trim()));
+          if (it.rawNombre) codeSet.add(it.rawNombre);
+          if (it.codigoReporte) {
+            it.codigoReporte.split(',').forEach((k) => codeSet.add(k.trim()));
           }
         });
-        const combinedKeywords = Array.from(keywordSet).filter(Boolean).join(', ');
+        const combinedCodes = Array.from(codeSet).filter(Boolean).join(', ');
 
         const clean = cleanAgencyName(primary.baseNombre);
         let status: 'valid' | 'duplicate' | 'error' = 'valid';
@@ -228,7 +256,7 @@ export const BulkAgencyModal: React.FC<BulkAgencyModalProps> = ({
           nombre: primary.baseNombre.toUpperCase(),
           comision: primary.comision,
           sistemas: primary.sistemas,
-          palabrasClaves: combinedKeywords,
+          codigoReporte: combinedCodes,
           monedas: finalMons,
           participacion: primary.participacion,
           grupoId: primary.grupoId,
@@ -252,9 +280,9 @@ export const BulkAgencyModal: React.FC<BulkAgencyModalProps> = ({
           errorMessage = 'La agencia ya existe en el catálogo';
         }
 
-        // Keywords: raw name + base name
-        const keywords = Array.from(
-          new Set([item.rawNombre, item.baseNombre, item.palabrasClaves].filter(Boolean))
+        // Code in report: raw name + base name
+        const codes = Array.from(
+          new Set([item.rawNombre, item.baseNombre, item.codigoReporte].filter(Boolean))
         ).join(', ');
 
         result.push({
@@ -263,7 +291,7 @@ export const BulkAgencyModal: React.FC<BulkAgencyModalProps> = ({
           nombre: item.rawNombre.toUpperCase(),
           comision: item.comision,
           sistemas: item.sistemas,
-          palabrasClaves: keywords,
+          codigoReporte: codes,
           monedas: item.detectedMoneda ? [item.detectedMoneda] : activeCurrencyCodes.slice(0, 3),
           participacion: item.participacion,
           grupoId: item.grupoId,
@@ -296,7 +324,7 @@ export const BulkAgencyModal: React.FC<BulkAgencyModalProps> = ({
       'Nombre Agencia',
       'Comision %',
       'Sistema',
-      'Palabras Claves / ID Reporte',
+      'Codigo / ID Reporte',
       'Moneda',
       'Participacion %',
       'Grupo',
@@ -333,11 +361,11 @@ export const BulkAgencyModal: React.FC<BulkAgencyModalProps> = ({
     }
 
     const NAME_SYNONYMS = ['AGENCIA', 'NOMBRE', 'NOMBRE AGENCIA', 'PUNTO', 'LOCAL', 'AGENTES', 'AGENTE'];
+    const VENTA_SYNONYMS = ['VENTA', 'VENTAS', 'TOTAL ACCEPTED', 'ACCEPTED', 'JUGADO', 'BRUTO'];
+    const PREMIO_SYNONYMS = ['PREMIO', 'PREMIOS', 'TOTAL PAID', 'PAID OUT', 'PAGADO'];
     const COM_SYNONYMS = ['COMISION', 'COMISIÓN', 'COMISION %', 'COM %', '% COMISION', '% VENTA TAQ', '% VENTA'];
     const SYS_SYNONYMS = ['SISTEMA', 'SISTEMAS', 'PROVEEDOR', 'PLATAFORMA'];
-    const KEYWORD_SYNONYMS = [
-      'PALABRA CLAVE',
-      'PALABRAS CLAVES',
+    const CODE_SYNONYMS = [
       'CODIGO',
       'CÓDIGO',
       'ID REPORTE',
@@ -360,15 +388,27 @@ export const BulkAgencyModal: React.FC<BulkAgencyModalProps> = ({
 
     if (headerRowIdx === -1) headerRowIdx = 0;
 
-    const headers = rawRows[headerRowIdx].map((c) => String(c ?? '').trim().toUpperCase());
+    const rawHeaderCells = rawRows[headerRowIdx];
+    const headers = rawHeaderCells.map((c) => String(c ?? '').trim().toUpperCase());
 
     const colNombre = headers.findIndex((h) => NAME_SYNONYMS.some((syn) => h === syn || h.includes(syn)));
+    const colVenta = headers.findIndex((h) => VENTA_SYNONYMS.some((syn) => h === syn || h.includes(syn)));
+    const colPremio = headers.findIndex((h) => PREMIO_SYNONYMS.some((syn) => h === syn || h.includes(syn)));
     const colCom = headers.findIndex((h) => COM_SYNONYMS.some((syn) => h === syn || h.includes(syn)));
     const colSys = headers.findIndex((h) => SYS_SYNONYMS.some((syn) => h === syn || h.includes(syn)));
-    const colKey = headers.findIndex((h) => KEYWORD_SYNONYMS.some((syn) => h === syn || h.includes(syn)));
+    const colCode = headers.findIndex((h) => CODE_SYNONYMS.some((syn) => h === syn || h.includes(syn)));
     const colMon = headers.findIndex((h) => MON_SYNONYMS.some((syn) => h === syn || h.includes(syn)));
     const colPart = headers.findIndex((h) => PART_SYNONYMS.some((syn) => h === syn || h.includes(syn)));
     const colGrp = headers.findIndex((h) => GRP_SYNONYMS.some((syn) => h === syn || h.includes(syn)));
+
+    // Extraer y detectar las Palabras Claves del Proveedor / Sistema
+    const detectedKwAgencia = colNombre !== -1 && rawHeaderCells[colNombre] ? String(rawHeaderCells[colNombre]).trim() : 'Agentes';
+    const detectedKwVenta = colVenta !== -1 && rawHeaderCells[colVenta] ? String(rawHeaderCells[colVenta]).trim() : 'Ventas';
+    const detectedKwPremio = colPremio !== -1 && rawHeaderCells[colPremio] ? String(rawHeaderCells[colPremio]).trim() : 'Premios';
+
+    setKeywordAgencia(detectedKwAgencia);
+    setKeywordVenta(detectedKwVenta);
+    setKeywordPremio(detectedKwPremio);
 
     // System detection from file name or defaults
     let detectedFileSys = defaultSystemMode;
@@ -407,20 +447,36 @@ export const BulkAgencyModal: React.FC<BulkAgencyModalProps> = ({
         detectedMoneda = activeCurrencyCodes[0] || 'BS';
       }
 
-      // Comisión
+      // Comisión % Matemática Inteligente:
+      // Si la columna es monto en dinero (ej. 6.880,00 sobre venta de 68.800,00),
+      // calcular (Comisión Monto / Venta Monto) * 100 = 10%
       let comVal = Number(defaultComision) || 10;
-      if (colCom !== -1 && row[colCom] !== undefined && String(row[colCom]).trim() !== '') {
-        const parsedCom = parseFloat(String(row[colCom]).replace('%', '').replace(',', '.').trim());
-        if (!isNaN(parsedCom) && parsedCom > 0 && parsedCom <= 100) {
-          comVal = parsedCom;
+      const montoVenta = colVenta !== -1 ? parseSpanishNumber(row[colVenta]) : 0;
+      const rawComCell = colCom !== -1 ? row[colCom] : undefined;
+
+      if (rawComCell !== undefined && String(rawComCell).trim() !== '') {
+        const rawComStr = String(rawComCell).trim();
+        const parsedComNum = parseSpanishNumber(rawComStr);
+
+        if (rawComStr.includes('%') && parsedComNum > 0 && parsedComNum <= 100) {
+          comVal = parsedComNum;
+        } else if (montoVenta > 0 && parsedComNum > 0) {
+          const ratio = (parsedComNum / montoVenta) * 100;
+          if (ratio > 0 && ratio <= 100) {
+            comVal = Math.round(ratio * 10) / 10;
+          } else if (parsedComNum > 0 && parsedComNum <= 50) {
+            comVal = parsedComNum;
+          }
+        } else if (parsedComNum > 0 && parsedComNum <= 50) {
+          comVal = parsedComNum;
         }
       }
 
-      // Participación
+      // Participación %
       let partVal = Number(defaultParticipacion) || 0;
       if (colPart !== -1 && row[colPart] !== undefined && String(row[colPart]).trim() !== '') {
-        const parsedPart = parseFloat(String(row[colPart]).replace('%', '').replace(',', '.').trim());
-        if (!isNaN(parsedPart) && parsedPart >= 0 && parsedPart <= 100) {
+        const parsedPart = parseSpanishNumber(row[colPart]);
+        if (parsedPart >= 0 && parsedPart <= 100) {
           partVal = parsedPart;
         }
       }
@@ -449,10 +505,10 @@ export const BulkAgencyModal: React.FC<BulkAgencyModalProps> = ({
         }
       }
 
-      // Palabras Claves
-      let palabrasClaves = '';
-      if (colKey !== -1 && row[colKey] !== undefined) {
-        palabrasClaves = String(row[colKey]).trim();
+      // Código / ID en Reporte
+      let codigoReporte = '';
+      if (colCode !== -1 && row[colCode] !== undefined) {
+        codigoReporte = String(row[colCode]).trim();
       }
 
       // Grupo
@@ -474,7 +530,7 @@ export const BulkAgencyModal: React.FC<BulkAgencyModalProps> = ({
         comision: comVal,
         participacion: partVal,
         sistemas: Array.from(new Set(assignedSystems)),
-        palabrasClaves,
+        codigoReporte,
         grupoId,
         grupoNombre,
       });
@@ -551,7 +607,7 @@ export const BulkAgencyModal: React.FC<BulkAgencyModalProps> = ({
 
     let finalRows = rawRows;
     if (!hasHeaderSignature) {
-      const synthHeaders = ['Nombre Agencia', 'Comision %', 'Sistema', 'Palabras Claves'];
+      const synthHeaders = ['Nombre Agencia', 'Comision %', 'Sistema', 'Codigo / ID Reporte'];
       finalRows = [synthHeaders, ...rawRows];
     }
 
@@ -626,19 +682,15 @@ export const BulkAgencyModal: React.FC<BulkAgencyModalProps> = ({
   // Filtered rows for analysis
   const filteredRows = useMemo(() => {
     return rows.filter((r) => {
-      // Status filter
       if (statusFilter !== 'all' && r.status !== statusFilter) return false;
-
-      // Currency filter
       if (currencyFilter !== 'all' && !r.monedas.includes(currencyFilter)) return false;
 
-      // Text search
       if (searchFilter.trim()) {
         const q = searchFilter.toLowerCase();
         const matchName = r.nombre.toLowerCase().includes(q);
-        const matchKey = r.palabrasClaves.toLowerCase().includes(q);
+        const matchCode = r.codigoReporte.toLowerCase().includes(q);
         const matchSys = r.sistemas.some((s) => s.toLowerCase().includes(q));
-        if (!matchName && !matchKey && !matchSys) return false;
+        if (!matchName && !matchCode && !matchSys) return false;
       }
 
       return true;
@@ -672,6 +724,27 @@ export const BulkAgencyModal: React.FC<BulkAgencyModalProps> = ({
     setProgress({ current: 0, total: toSave.length });
 
     try {
+      // 1. Guardar las Palabras Claves del Proveedor / Sistema en systemKeywords
+      try {
+        const currentKeywords = await loadSystemKeywords(effectiveUserId);
+        const targetSystem =
+          defaultSystemMode === 'ALL'
+            ? systems[0]?.nombre_sistema || 'PARLEY INH'
+            : defaultSystemMode;
+        const targetUpper = targetSystem.trim().toUpperCase();
+
+        currentKeywords[targetUpper] = {
+          ...(currentKeywords[targetUpper] || {}),
+          agencia: keywordAgencia.trim() || 'Agentes',
+          venta: keywordVenta.trim() || 'Ventas',
+          premio: keywordPremio.trim() || 'Premios',
+        };
+        await saveSystemKeywords(effectiveUserId, currentKeywords);
+      } catch (kwErr) {
+        console.warn('Error guardando palabras claves del sistema:', kwErr);
+      }
+
+      // 2. Registrar agencias en la base de datos
       let insertedCount = 0;
 
       for (let i = 0; i < toSave.length; i++) {
@@ -692,8 +765,8 @@ export const BulkAgencyModal: React.FC<BulkAgencyModalProps> = ({
               comision: Number(row.comision),
               participacion: Number(row.participacion),
             };
-            if (row.palabrasClaves.trim()) {
-              entry.codigo = row.palabrasClaves.trim();
+            if (row.codigoReporte.trim()) {
+              entry.codigo = row.codigoReporte.trim();
             }
             condicionesObj[comboKey] = entry;
             if (!condicionesObj[sys]) {
@@ -774,7 +847,7 @@ export const BulkAgencyModal: React.FC<BulkAgencyModalProps> = ({
         modulo: 'AGENCIAS',
         tipo_accion: 'CREAR_AGENCIA',
         entidad_afectada: `${insertedCount} Agencias`,
-        descripcion: `Carga masiva completada: ${insertedCount} nuevas agencias registradas con comisiones, sistemas y palabras claves.`,
+        descripcion: `Carga masiva completada: ${insertedCount} nuevas agencias registradas con comisiones, sistemas y palabras claves guardadas en el proveedor.`,
         impacto_financiero: 'MEDIO',
         semana_ciclo: String(systemCycle?.semana || ''),
         ciclo_periodo:
@@ -832,8 +905,8 @@ export const BulkAgencyModal: React.FC<BulkAgencyModalProps> = ({
               </div>
               <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
                 {step === 'upload'
-                  ? 'Arrastra un archivo o pega filas con Nombre, Comisión %, Sistema y Palabras Claves'
-                  : `Analiza, filtra y ajusta las agencias antes de registrarlas en tu catálogo oficial`}
+                  ? 'Arrastra un archivo o pega filas con Nombre, Comisión %, Sistema y Código en Reporte'
+                  : `Analiza, filtra y ajusta las agencias y palabras claves antes de registrarlas`}
               </p>
             </div>
           </div>
@@ -1001,7 +1074,7 @@ export const BulkAgencyModal: React.FC<BulkAgencyModalProps> = ({
                     Haz clic o arrastra aquí tu archivo Excel (.xlsx, .xls) o CSV (.csv)
                   </div>
                   <p className="text-xs text-slate-500 dark:text-slate-400 mt-1 max-w-md mx-auto">
-                    Columnas detectadas automáticamente: <strong>Agencia / Nombre</strong>, <strong>Comisión %</strong>, <strong>Sistema</strong> y <strong>Palabras Claves / ID Reporte</strong>.
+                    Columnas detectadas automáticamente: <strong>Agencia / Nombre</strong>, <strong>Comisión %</strong>, <strong>Sistema</strong> y <strong>Código / ID en Reporte</strong>.
                   </p>
                 </div>
               </div>
@@ -1050,8 +1123,8 @@ export const BulkAgencyModal: React.FC<BulkAgencyModalProps> = ({
           <div className="flex-1 flex flex-col min-h-0 overflow-hidden bg-slate-50/30 dark:bg-slate-900/40">
             {/* Top Analysis Bar & Quick KPIs */}
             <div className="px-6 py-3 border-b border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 shrink-0 space-y-3">
+              {/* File info badge & Actions */}
               <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-3">
-                {/* File info badge & Actions */}
                 <div className="flex items-center gap-3 flex-wrap">
                   <div className="flex items-center gap-2 px-3 py-1.5 rounded-xl bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-xs">
                     <FileSpreadsheet className="w-4 h-4 text-emerald-600 dark:text-emerald-400" />
@@ -1091,8 +1164,68 @@ export const BulkAgencyModal: React.FC<BulkAgencyModalProps> = ({
                 )}
               </div>
 
+              {/* PALABRAS CLAVES DEL SISTEMA / PROVEEDOR (SECCIÓN DEDICADA) */}
+              <div className="p-3 sm:p-3.5 rounded-2xl bg-emerald-50/70 dark:bg-emerald-950/20 border border-emerald-200 dark:border-emerald-500/30 space-y-2">
+                <div className="flex items-center justify-between flex-wrap gap-2">
+                  <div className="flex items-center gap-2">
+                    <Tag className="w-4 h-4 text-emerald-600 dark:text-emerald-400" />
+                    <span className="text-xs font-bold text-emerald-900 dark:text-emerald-300">
+                      Palabras Claves del Proveedor / Sistema (
+                      {defaultSystemMode === 'ALL' ? 'PARLEY INH' : defaultSystemMode})
+                    </span>
+                    <span className="text-[10px] px-2 py-0.5 rounded-full bg-emerald-500/10 text-emerald-700 dark:text-emerald-400 font-bold border border-emerald-500/20">
+                      Detectadas del Encabezado
+                    </span>
+                  </div>
+                  <span className="text-[11px] text-slate-500 dark:text-slate-400">
+                    Se guardarán para que el módulo <strong>Cargar Ventas</strong> identifique estas columnas automáticamente
+                  </span>
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                  <div>
+                    <label className="text-[10px] font-bold text-slate-600 dark:text-slate-400 block mb-1 uppercase tracking-wider">
+                      Palabra Clave Agencia:
+                    </label>
+                    <input
+                      type="text"
+                      value={keywordAgencia}
+                      onChange={(e) => setKeywordAgencia(e.target.value)}
+                      className="w-full bg-white dark:bg-slate-800 border border-emerald-300 dark:border-emerald-600/50 rounded-xl px-3 py-1.5 text-xs font-mono font-bold text-emerald-800 dark:text-emerald-300 focus:outline-none focus:ring-2 focus:ring-emerald-500/20"
+                      placeholder="Ej: Agentes"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="text-[10px] font-bold text-slate-600 dark:text-slate-400 block mb-1 uppercase tracking-wider">
+                      Palabra Clave Ventas:
+                    </label>
+                    <input
+                      type="text"
+                      value={keywordVenta}
+                      onChange={(e) => setKeywordVenta(e.target.value)}
+                      className="w-full bg-white dark:bg-slate-800 border border-emerald-300 dark:border-emerald-600/50 rounded-xl px-3 py-1.5 text-xs font-mono font-bold text-emerald-800 dark:text-emerald-300 focus:outline-none focus:ring-2 focus:ring-emerald-500/20"
+                      placeholder="Ej: Ventas"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="text-[10px] font-bold text-slate-600 dark:text-slate-400 block mb-1 uppercase tracking-wider">
+                      Palabra Clave Premios:
+                    </label>
+                    <input
+                      type="text"
+                      value={keywordPremio}
+                      onChange={(e) => setKeywordPremio(e.target.value)}
+                      className="w-full bg-white dark:bg-slate-800 border border-emerald-300 dark:border-emerald-600/50 rounded-xl px-3 py-1.5 text-xs font-mono font-bold text-emerald-800 dark:text-emerald-300 focus:outline-none focus:ring-2 focus:ring-emerald-500/20"
+                      placeholder="Ej: Premios"
+                    />
+                  </div>
+                </div>
+              </div>
+
               {/* Quick KPI Strip */}
-              <div className="grid grid-cols-2 sm:grid-cols-5 gap-2.5">
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5">
                 <div className="p-2.5 rounded-xl bg-slate-50 dark:bg-slate-800/60 border border-slate-200/80 dark:border-slate-800">
                   <div className="text-[10px] font-bold text-slate-500 uppercase">Agencias Totales</div>
                   <div className="text-base font-black text-slate-900 dark:text-white font-mono mt-0.5">
@@ -1118,13 +1251,6 @@ export const BulkAgencyModal: React.FC<BulkAgencyModalProps> = ({
                         {mon}: {count}
                       </span>
                     ))}
-                  </div>
-                </div>
-
-                <div className="p-2.5 rounded-xl bg-amber-50/50 dark:bg-amber-500/5 border border-amber-200/80 dark:border-amber-500/20">
-                  <div className="text-[10px] font-bold text-amber-600 uppercase">Palabras Claves</div>
-                  <div className="text-base font-black text-amber-700 dark:text-amber-400 font-mono mt-0.5">
-                    100% Asignadas
                   </div>
                 </div>
 
@@ -1245,7 +1371,7 @@ export const BulkAgencyModal: React.FC<BulkAgencyModalProps> = ({
                       type="text"
                       value={searchFilter}
                       onChange={(e) => { setSearchFilter(e.target.value); setCurrentPage(1); }}
-                      placeholder="Buscar agencia o clave..."
+                      placeholder="Buscar agencia o código..."
                       className="w-56 bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-700 text-xs rounded-xl pl-8 pr-3 py-1.5 focus:outline-none focus:border-emerald-500"
                     />
                   </div>
@@ -1287,7 +1413,7 @@ export const BulkAgencyModal: React.FC<BulkAgencyModalProps> = ({
                       <th className={UI_LOCK.tableTheadTh}>Nombre de la Agencia *</th>
                       <th className={UI_LOCK.tableTheadTh}>Comisión %</th>
                       <th className={UI_LOCK.tableTheadTh}>Sistema(s)</th>
-                      <th className={UI_LOCK.tableTheadTh}>Palabras Claves / ID en Reporte</th>
+                      <th className={UI_LOCK.tableTheadTh}>Código / ID en Reporte</th>
                       <th className={UI_LOCK.tableTheadTh}>Moneda(s)</th>
                       <th className={UI_LOCK.tableTheadTh}>Estado</th>
                       <th className="px-3 py-3.5 w-12 text-center">Acción</th>
@@ -1375,13 +1501,13 @@ export const BulkAgencyModal: React.FC<BulkAgencyModalProps> = ({
                               </div>
                             </td>
 
-                            {/* Palabras Claves / ID en Reporte */}
+                            {/* Código / ID en Reporte */}
                             <td className="px-3 py-2">
                               <input
                                 type="text"
-                                value={row.palabrasClaves}
-                                onChange={(e) => handleUpdateRow(row.id, 'palabrasClaves', e.target.value)}
-                                placeholder="Ej: MAXIMA CUA 02, 502"
+                                value={row.codigoReporte}
+                                onChange={(e) => handleUpdateRow(row.id, 'codigoReporte', e.target.value)}
+                                placeholder="Ej: ID o Código en Reporte"
                                 className="w-full bg-transparent border border-transparent hover:border-slate-300 dark:hover:border-slate-700 focus:border-emerald-500 focus:bg-white dark:focus:bg-slate-800 rounded-lg px-2 py-1 text-xs font-mono text-cyan-600 dark:text-cyan-400 transition-all"
                               />
                             </td>
@@ -1543,7 +1669,7 @@ export const BulkAgencyModal: React.FC<BulkAgencyModalProps> = ({
           <div className="text-xs text-slate-500 dark:text-slate-400">
             {step === 'preview' ? (
               <span>
-                Se registrarán <strong>{stats.selected}</strong> agencias nuevas en tu operadora con sus palabras claves y terminales POS.
+                Se registrarán <strong>{stats.selected}</strong> agencias con comisión y códigos de reporte, guardando las palabras claves del proveedor.
               </span>
             ) : (
               <span>Sube un archivo Excel/CSV o pega texto para generar la previsualización.</span>
