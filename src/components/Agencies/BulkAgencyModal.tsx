@@ -2,7 +2,7 @@ import React, { useState, useRef, useMemo } from 'react';
 import * as XLSX from 'xlsx';
 import { supabase } from '../../lib/supabase';
 import { UI_LOCK } from '../../styles/uiDesignLock';
-import { cleanAgencyName } from '../../utils/formatters';
+import { cleanAgencyName, normalizarMoneda } from '../../utils/formatters';
 import { logAuditEvent } from '../../utils/auditLogger';
 import type { Agency, BetSystem, Currency, Grupo, SystemCycle } from '../../types';
 import {
@@ -18,8 +18,30 @@ import {
   Layers,
   ClipboardList,
   Sparkles,
+  ArrowLeft,
+  Search,
+  Filter,
+  CheckCheck,
+  ChevronLeft,
+  ChevronRight,
+  Coins,
+  Sliders,
+  RefreshCw,
+  Eye,
 } from 'lucide-react';
 import confetti from 'canvas-confetti';
+
+export interface RawParsedItem {
+  rawNombre: string;
+  baseNombre: string;
+  detectedMoneda: string;
+  comision: number;
+  participacion: number;
+  sistemas: string[];
+  palabrasClaves: string;
+  grupoId: number | null;
+  grupoNombre: string;
+}
 
 export interface BulkAgencyRow {
   id: string;
@@ -65,23 +87,40 @@ export const BulkAgencyModal: React.FC<BulkAgencyModalProps> = ({
 }) => {
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  // Mode: 'file' (upload excel/csv) or 'paste' (direct text paste)
+  // Workflow Step: 'upload' (upload file / paste text) vs 'preview' (full analysis & table)
+  const [step, setStep] = useState<'upload' | 'preview'>('upload');
   const [activeTab, setActiveTab] = useState<'file' | 'paste'>('file');
   const [pasteText, setPasteText] = useState('');
+  const [fileName, setFileName] = useState('');
 
   // Fallback / Defaults
   const [defaultComision, setDefaultComision] = useState('10');
-  const [defaultParticipacion, setDefaultParticipacion] = useState('50');
-  const [defaultSystemMode, setDefaultSystemMode] = useState<string>('ALL'); // 'ALL' or specific system name
+  const [defaultParticipacion, setDefaultParticipacion] = useState('0');
+  const [defaultSystemMode, setDefaultSystemMode] = useState<string>('ALL');
   const [defaultClaveTaquilla, setDefaultClaveTaquilla] = useState('1234');
 
-  // Rows and processing
+  // Multi-Currency Consolidation Toggle
+  // e.g. "15LETRAS1 Bs" + "15LETRAS1 Usd" -> 1 single agency "15LETRAS1" with currencies [BS, USD]
+  const [consolidateMultiCurrency, setConsolidateMultiCurrency] = useState(true);
+
+  // Raw Parsed Items (preserved to recompute when toggling consolidation)
+  const [rawItems, setRawItems] = useState<RawParsedItem[]>([]);
+
+  // Generated Rows for preview table
   const [rows, setRows] = useState<BulkAgencyRow[]>([]);
-  const [fileName, setFileName] = useState('');
+
+  // Filter & Pagination State
+  const [searchFilter, setSearchFilter] = useState('');
+  const [statusFilter, setStatusFilter] = useState<'all' | 'valid' | 'duplicate' | 'error'>('all');
+  const [currencyFilter, setCurrencyFilter] = useState<string>('all');
+  const [pageSize, setPageSize] = useState<number>(50);
+  const [currentPage, setCurrentPage] = useState<number>(1);
+
+  // Processing state
   const [isProcessing, setIsProcessing] = useState(false);
   const [progress, setProgress] = useState<{ current: number; total: number } | null>(null);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
-  const [searchFilter, setSearchFilter] = useState('');
+  const [showConfigDrawer, setShowConfigDrawer] = useState(false);
 
   // Active systems and currencies lists
   const activeSystemNames = useMemo(() => systems.map((s) => s.nombre_sistema.trim()), [systems]);
@@ -108,6 +147,17 @@ export const BulkAgencyModal: React.FC<BulkAgencyModalProps> = ({
   );
   const isOverQuota = selectedValidRows.length > availableSlots;
 
+  // Analysis Breakdown by Currency
+  const currencyBreakdown = useMemo(() => {
+    const counts: Record<string, number> = {};
+    rows.forEach((r) => {
+      r.monedas.forEach((m) => {
+        counts[m] = (counts[m] || 0) + 1;
+      });
+    });
+    return counts;
+  }, [rows]);
+
   // Statistics
   const stats = useMemo(() => {
     const total = rows.length;
@@ -118,19 +168,121 @@ export const BulkAgencyModal: React.FC<BulkAgencyModalProps> = ({
     return { total, valid, duplicate, errors, selected };
   }, [rows]);
 
-  // Filtered rows for UI preview
-  const displayedRows = useMemo(() => {
-    if (!searchFilter.trim()) return rows;
-    const q = searchFilter.toLowerCase();
-    return rows.filter(
-      (r) =>
-        r.nombre.toLowerCase().includes(q) ||
-        r.palabrasClaves.toLowerCase().includes(q) ||
-        r.sistemas.some((s) => s.toLowerCase().includes(q))
-    );
-  }, [rows, searchFilter]);
+  // Transform raw parsed items into rows based on consolidation toggle
+  const buildRowsFromRawItems = (items: RawParsedItem[], consolidate: boolean) => {
+    if (!items || items.length === 0) {
+      setRows([]);
+      return;
+    }
 
-  if (!isOpen) return null;
+    const result: BulkAgencyRow[] = [];
+
+    if (consolidate) {
+      // Group by base name
+      const map = new Map<string, RawParsedItem[]>();
+      items.forEach((item) => {
+        const key = item.baseNombre.toUpperCase();
+        if (!map.has(key)) map.set(key, []);
+        map.get(key)!.push(item);
+      });
+
+      let idx = 0;
+      map.forEach((groupedItems, baseKey) => {
+        idx++;
+        const primary = groupedItems[0];
+        const allMons = Array.from(
+          new Set(
+            groupedItems
+              .map((it) => it.detectedMoneda)
+              .filter(Boolean)
+          )
+        );
+        const finalMons = allMons.length > 0 ? allMons : activeCurrencyCodes.slice(0, 3);
+
+        // Auto-keywords: unique union of baseNombre + all raw provider names (e.g. "15LETRAS1, 15LETRAS1 BS, 15LETRAS1 USD")
+        const keywordSet = new Set<string>();
+        keywordSet.add(primary.baseNombre);
+        groupedItems.forEach((it) => {
+          if (it.rawNombre) keywordSet.add(it.rawNombre);
+          if (it.palabrasClaves) {
+            it.palabrasClaves.split(',').forEach((k) => keywordSet.add(k.trim()));
+          }
+        });
+        const combinedKeywords = Array.from(keywordSet).filter(Boolean).join(', ');
+
+        const clean = cleanAgencyName(primary.baseNombre);
+        let status: 'valid' | 'duplicate' | 'error' = 'valid';
+        let errorMessage: string | undefined = undefined;
+
+        if (!clean) {
+          status = 'error';
+          errorMessage = 'Nombre vacío';
+        } else if (existingAgenciesSet.has(clean)) {
+          status = 'duplicate';
+          errorMessage = 'La agencia ya existe en el catálogo';
+        }
+
+        result.push({
+          id: `ag_cons_${idx}_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`,
+          selected: status === 'valid',
+          nombre: primary.baseNombre.toUpperCase(),
+          comision: primary.comision,
+          sistemas: primary.sistemas,
+          palabrasClaves: combinedKeywords,
+          monedas: finalMons,
+          participacion: primary.participacion,
+          grupoId: primary.grupoId,
+          grupoNombre: primary.grupoNombre,
+          status,
+          errorMessage,
+        });
+      });
+    } else {
+      // Individual rows (1 agency per row)
+      items.forEach((item, idx) => {
+        const clean = cleanAgencyName(item.rawNombre);
+        let status: 'valid' | 'duplicate' | 'error' = 'valid';
+        let errorMessage: string | undefined = undefined;
+
+        if (!clean) {
+          status = 'error';
+          errorMessage = 'Nombre vacío';
+        } else if (existingAgenciesSet.has(clean)) {
+          status = 'duplicate';
+          errorMessage = 'La agencia ya existe en el catálogo';
+        }
+
+        // Keywords: raw name + base name
+        const keywords = Array.from(
+          new Set([item.rawNombre, item.baseNombre, item.palabrasClaves].filter(Boolean))
+        ).join(', ');
+
+        result.push({
+          id: `ag_ind_${idx}_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`,
+          selected: status === 'valid',
+          nombre: item.rawNombre.toUpperCase(),
+          comision: item.comision,
+          sistemas: item.sistemas,
+          palabrasClaves: keywords,
+          monedas: item.detectedMoneda ? [item.detectedMoneda] : activeCurrencyCodes.slice(0, 3),
+          participacion: item.participacion,
+          grupoId: item.grupoId,
+          grupoNombre: item.grupoNombre,
+          status,
+          errorMessage,
+        });
+      });
+    }
+
+    setRows(result);
+    setCurrentPage(1);
+  };
+
+  // Re-build rows whenever consolidation toggle changes
+  const handleToggleConsolidation = (newVal: boolean) => {
+    setConsolidateMultiCurrency(newVal);
+    buildRowsFromRawItems(rawItems, newVal);
+  };
 
   // Download official template XLSX
   const handleDownloadTemplate = () => {
@@ -158,51 +310,44 @@ export const BulkAgencyModal: React.FC<BulkAgencyModalProps> = ({
     ];
 
     const ws = XLSX.utils.aoa_to_sheet(data);
-
-    // Column widths
     ws['!cols'] = [
-      { wch: 26 }, // Nombre
-      { wch: 14 }, // Comision
-      { wch: 22 }, // Sistema
-      { wch: 32 }, // Palabras Claves
-      { wch: 12 }, // Moneda
-      { wch: 16 }, // Participacion
-      { wch: 20 }, // Grupo
+      { wch: 26 },
+      { wch: 14 },
+      { wch: 22 },
+      { wch: 34 },
+      { wch: 12 },
+      { wch: 16 },
+      { wch: 20 },
     ];
 
     XLSX.utils.book_append_sheet(wb, ws, 'Plantilla Agencias');
     XLSX.writeFile(wb, 'plantilla_agencias_nuevas.xlsx');
   };
 
-  // Process raw tabular 2D array into validated rows
-  const processRawData = (rawRows: any[][], sourceName = '') => {
+  // Parse raw 2D tabular array into raw items
+  const parseTabularData = (rawRows: any[][], sourceName = '') => {
     setErrorMsg(null);
     if (!rawRows || rawRows.length < 2) {
       setErrorMsg('El archivo o texto no contiene suficientes filas para procesar.');
       return;
     }
 
-    // Synonyms for header detection
-    const NAME_SYNONYMS = ['AGENCIA', 'NOMBRE', 'NOMBRE AGENCIA', 'PUNTO', 'LOCAL', 'NOMBRE_AGENCIA'];
-    const COM_SYNONYMS = ['COMISION', 'COMISIÓN', 'COMISION %', 'COM %', '% COMISION', 'PORCENTAJE', 'COM'];
+    const NAME_SYNONYMS = ['AGENCIA', 'NOMBRE', 'NOMBRE AGENCIA', 'PUNTO', 'LOCAL', 'AGENTES', 'AGENTE'];
+    const COM_SYNONYMS = ['COMISION', 'COMISIÓN', 'COMISION %', 'COM %', '% COMISION', '% VENTA TAQ', '% VENTA'];
     const SYS_SYNONYMS = ['SISTEMA', 'SISTEMAS', 'PROVEEDOR', 'PLATAFORMA'];
     const KEYWORD_SYNONYMS = [
       'PALABRA CLAVE',
       'PALABRAS CLAVES',
-      'PALABRAS_CLAVES',
       'CODIGO',
       'CÓDIGO',
       'ID REPORTE',
       'USUARIO REPORTE',
       'EQUIVALENCIA',
-      'EQUIVALENCIAS',
       'ALIAS',
-      'ID',
-      'KEYWORDS',
     ];
-    const MON_SYNONYMS = ['MONEDA', 'MONEDAS', 'DIVISA', 'DIVISAS'];
-    const PART_SYNONYMS = ['PARTICIPACION', 'PARTICIPACIÓN', 'PART %', 'PARTICIPACION %'];
-    const GRP_SYNONYMS = ['GRUPO', 'INTERMEDIARIO', 'SUBCOMERCIALIZADOR', 'RED'];
+    const MON_SYNONYMS = ['MONEDA', 'MONEDAS', 'DIVISA'];
+    const PART_SYNONYMS = ['PARTICIPACION', 'PARTICIPACIÓN', 'PART %', '% PAR REC', '%P BANCA'];
+    const GRP_SYNONYMS = ['GRUPO', 'INTERMEDIARIO', 'RED'];
 
     let headerRowIdx = -1;
     for (let i = 0; i < Math.min(10, rawRows.length); i++) {
@@ -225,34 +370,57 @@ export const BulkAgencyModal: React.FC<BulkAgencyModalProps> = ({
     const colPart = headers.findIndex((h) => PART_SYNONYMS.some((syn) => h === syn || h.includes(syn)));
     const colGrp = headers.findIndex((h) => GRP_SYNONYMS.some((syn) => h === syn || h.includes(syn)));
 
-    const parsed: BulkAgencyRow[] = [];
+    // System detection from file name or defaults
+    let detectedFileSys = defaultSystemMode;
+    if (sourceName) {
+      const upperName = sourceName.toUpperCase();
+      const matchedSys = systems.find((s) => upperName.includes(s.nombre_sistema.toUpperCase()));
+      if (matchedSys) {
+        detectedFileSys = matchedSys.nombre_sistema;
+        setDefaultSystemMode(matchedSys.nombre_sistema);
+      }
+    }
+
+    const items: RawParsedItem[] = [];
 
     for (let i = headerRowIdx + 1; i < rawRows.length; i++) {
       const row = rawRows[i];
       if (!row || row.length === 0) continue;
 
-      const rawNombre = String(row[colNombre !== -1 ? colNombre : 0] ?? '').trim();
-      if (!rawNombre || rawNombre.toUpperCase().startsWith('TOTAL') || rawNombre.toUpperCase() === 'NAN') {
+      const rawCell = String(row[colNombre !== -1 ? colNombre : 0] ?? '').trim();
+      if (!rawCell || rawCell.toUpperCase().startsWith('TOTAL') || rawCell.toUpperCase() === 'NAN') {
         continue;
       }
 
-      const cleanNameUpper = rawNombre.toUpperCase();
-      const cleanNormalized = cleanAgencyName(cleanNameUpper);
+      // Check currency suffix in agent name (e.g. "15LETRAS1 Bs" -> base: "15LETRAS1", mon: "BS")
+      const currMatch = rawCell.match(/^(.*?)\s+(BS|USD|COP|VES|EUR|USDT)$/i);
+      const baseNombre = currMatch ? currMatch[1].trim() : rawCell;
+      let detectedMoneda = currMatch ? normalizarMoneda(currMatch[2]) : '';
+
+      // If currency column exists
+      if (!detectedMoneda && colMon !== -1 && row[colMon] !== undefined) {
+        detectedMoneda = normalizarMoneda(String(row[colMon]));
+      }
+
+      // Fallback currency
+      if (!detectedMoneda) {
+        detectedMoneda = activeCurrencyCodes[0] || 'BS';
+      }
 
       // Comisión
       let comVal = Number(defaultComision) || 10;
       if (colCom !== -1 && row[colCom] !== undefined && String(row[colCom]).trim() !== '') {
         const parsedCom = parseFloat(String(row[colCom]).replace('%', '').replace(',', '.').trim());
-        if (!isNaN(parsedCom) && parsedCom >= 0) {
+        if (!isNaN(parsedCom) && parsedCom > 0 && parsedCom <= 100) {
           comVal = parsedCom;
         }
       }
 
       // Participación
-      let partVal = Number(defaultParticipacion) || 50;
+      let partVal = Number(defaultParticipacion) || 0;
       if (colPart !== -1 && row[colPart] !== undefined && String(row[colPart]).trim() !== '') {
         const parsedPart = parseFloat(String(row[colPart]).replace('%', '').replace(',', '.').trim());
-        if (!isNaN(parsedPart) && parsedPart >= 0) {
+        if (!isNaN(parsedPart) && parsedPart >= 0 && parsedPart <= 100) {
           partVal = parsedPart;
         }
       }
@@ -260,57 +428,31 @@ export const BulkAgencyModal: React.FC<BulkAgencyModalProps> = ({
       // Sistemas
       let assignedSystems: string[] = [];
       if (colSys !== -1 && row[colSys] !== undefined && String(row[colSys]).trim() !== '') {
-        const rawSysCell = String(row[colSys]);
-        const splitted = rawSysCell
+        const splitted = String(row[colSys])
           .split(/[,;\/|]/)
           .map((s) => s.trim())
           .filter(Boolean);
 
-        // Match against active systems loosely
         splitted.forEach((item) => {
           const match = systems.find(
             (sys) => sys.nombre_sistema.trim().toUpperCase() === item.toUpperCase()
           );
-          if (match) {
-            assignedSystems.push(match.nombre_sistema.trim());
-          } else {
-            assignedSystems.push(item.toUpperCase());
-          }
+          assignedSystems.push(match ? match.nombre_sistema.trim() : item.toUpperCase());
         });
       }
 
       if (assignedSystems.length === 0) {
-        if (defaultSystemMode === 'ALL') {
+        if (detectedFileSys === 'ALL') {
           assignedSystems = activeSystemNames.length > 0 ? [...activeSystemNames] : ['GENERAL'];
         } else {
-          assignedSystems = [defaultSystemMode];
+          assignedSystems = [detectedFileSys];
         }
       }
 
-      // Palabras Claves / Códigos de Reporte
+      // Palabras Claves
       let palabrasClaves = '';
       if (colKey !== -1 && row[colKey] !== undefined) {
         palabrasClaves = String(row[colKey]).trim();
-      }
-
-      // Monedas
-      let assignedCurrencies: string[] = [];
-      if (colMon !== -1 && row[colMon] !== undefined && String(row[colMon]).trim() !== '') {
-        const rawMonCell = String(row[colMon]);
-        const splitted = rawMonCell
-          .split(/[,;\/|]/)
-          .map((m) => m.trim().toUpperCase())
-          .filter(Boolean);
-
-        splitted.forEach((m) => {
-          if (activeCurrencyCodes.includes(m)) {
-            assignedCurrencies.push(m);
-          }
-        });
-      }
-
-      if (assignedCurrencies.length === 0) {
-        assignedCurrencies = activeCurrencyCodes.length > 0 ? [...activeCurrencyCodes] : ['USD'];
       }
 
       // Grupo
@@ -318,53 +460,38 @@ export const BulkAgencyModal: React.FC<BulkAgencyModalProps> = ({
       let grupoNombre = '';
       if (colGrp !== -1 && row[colGrp] !== undefined && String(row[colGrp]).trim() !== '') {
         const rawGrp = String(row[colGrp]).trim().toUpperCase();
-        const matchedGrp = groups.find(
-          (g) => g.nombre_grupo.trim().toUpperCase() === rawGrp
-        );
+        const matchedGrp = groups.find((g) => g.nombre_grupo.trim().toUpperCase() === rawGrp);
         if (matchedGrp) {
           grupoId = matchedGrp.id;
           grupoNombre = matchedGrp.nombre_grupo;
         }
       }
 
-      // Duplicate Check
-      let status: 'valid' | 'duplicate' | 'error' = 'valid';
-      let errorMessage: string | undefined = undefined;
-
-      if (!cleanNormalized) {
-        status = 'error';
-        errorMessage = 'Nombre de agencia inválido';
-      } else if (existingAgenciesSet.has(cleanNormalized)) {
-        status = 'duplicate';
-        errorMessage = 'La agencia ya existe en tu catálogo';
-      }
-
-      parsed.push({
-        id: `row_${i}_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`,
-        selected: status === 'valid',
-        nombre: cleanNameUpper,
+      items.push({
+        rawNombre: rawCell,
+        baseNombre: baseNombre || rawCell,
+        detectedMoneda,
         comision: comVal,
+        participacion: partVal,
         sistemas: Array.from(new Set(assignedSystems)),
         palabrasClaves,
-        monedas: Array.from(new Set(assignedCurrencies)),
-        participacion: partVal,
         grupoId,
         grupoNombre,
-        status,
-        errorMessage,
       });
     }
 
-    if (parsed.length === 0) {
-      setErrorMsg('No se detectaron registros válidos en las filas procesadas.');
+    if (items.length === 0) {
+      setErrorMsg('No se detectaron registros válidos en las filas analizadas.');
       return;
     }
 
-    setRows(parsed);
+    setRawItems(items);
     setFileName(sourceName);
+    buildRowsFromRawItems(items, consolidateMultiCurrency);
+    setStep('preview');
   };
 
-  // File Upload Handler (Excel/CSV)
+  // File Upload Handler
   const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
@@ -381,7 +508,7 @@ export const BulkAgencyModal: React.FC<BulkAgencyModalProps> = ({
         }
         const worksheet = workbook.Sheets[firstSheetName];
         const rawRows: any[][] = XLSX.utils.sheet_to_json(worksheet, { header: 1, defval: '' });
-        processRawData(rawRows, file.name);
+        parseTabularData(rawRows, file.name);
       } catch (err: any) {
         console.error('Error parsing excel:', err);
         setErrorMsg('Error al interpretar el archivo: ' + (err?.message || 'Formato desconocido'));
@@ -408,14 +535,12 @@ export const BulkAgencyModal: React.FC<BulkAgencyModalProps> = ({
       return;
     }
 
-    // Split each line by tab or comma or semicolon
     const rawRows = lines.map((line) => {
       if (line.includes('\t')) return line.split('\t');
       if (line.includes(';')) return line.split(';');
       return line.split(',');
     });
 
-    // If first row doesn't look like headers, synthesize header row using defaults
     const firstLineUpper = lines[0].toUpperCase();
     const hasHeaderSignature =
       firstLineUpper.includes('AGENCIA') ||
@@ -426,65 +551,108 @@ export const BulkAgencyModal: React.FC<BulkAgencyModalProps> = ({
 
     let finalRows = rawRows;
     if (!hasHeaderSignature) {
-      const synthHeaders = [
-        'Nombre Agencia',
-        'Comision %',
-        'Sistema',
-        'Palabras Claves / ID Reporte',
-      ];
+      const synthHeaders = ['Nombre Agencia', 'Comision %', 'Sistema', 'Palabras Claves'];
       finalRows = [synthHeaders, ...rawRows];
     }
 
-    processRawData(finalRows, 'Texto Copiado');
+    parseTabularData(finalRows, 'Texto Copiado');
   };
 
-  // Update a single field in parsed rows
-  const handleUpdateRow = (index: number, field: keyof BulkAgencyRow, val: any) => {
-    setRows((prev) => {
-      const next = [...prev];
-      const r = { ...next[index], [field]: val };
+  // Update a single field in rows
+  const handleUpdateRow = (rowId: string, field: keyof BulkAgencyRow, val: any) => {
+    setRows((prev) =>
+      prev.map((r) => {
+        if (r.id !== rowId) return r;
+        const updated = { ...r, [field]: val };
 
-      if (field === 'nombre') {
-        const clean = cleanAgencyName(String(val).toUpperCase());
-        if (!clean) {
-          r.status = 'error';
-          r.errorMessage = 'Nombre vacío';
-        } else if (existingAgenciesSet.has(clean)) {
-          r.status = 'duplicate';
-          r.errorMessage = 'La agencia ya existe';
-        } else {
-          r.status = 'valid';
-          r.errorMessage = undefined;
+        if (field === 'nombre') {
+          const clean = cleanAgencyName(String(val).toUpperCase());
+          if (!clean) {
+            updated.status = 'error';
+            updated.errorMessage = 'Nombre vacío';
+          } else if (existingAgenciesSet.has(clean)) {
+            updated.status = 'duplicate';
+            updated.errorMessage = 'La agencia ya existe';
+          } else {
+            updated.status = 'valid';
+            updated.errorMessage = undefined;
+          }
         }
-      }
-
-      next[index] = r;
-      return next;
-    });
+        return updated;
+      })
+    );
   };
 
-  // Remove a row
-  const handleRemoveRow = (index: number) => {
-    setRows((prev) => prev.filter((_, idx) => idx !== index));
+  // Remove single row
+  const handleRemoveRow = (rowId: string) => {
+    setRows((prev) => prev.filter((r) => r.id !== rowId));
   };
 
-  // Toggle selection
-  const handleToggleSelect = (index: number) => {
-    setRows((prev) => {
-      const next = [...prev];
-      next[index].selected = !next[index].selected;
-      return next;
-    });
+  // Toggle single selection
+  const handleToggleSelect = (rowId: string) => {
+    setRows((prev) =>
+      prev.map((r) => (r.id === rowId ? { ...r, selected: !r.selected } : r))
+    );
   };
 
-  // Select / Deselect All Valid
+  // Select / Deselect All
   const handleToggleSelectAll = (select: boolean) => {
     setRows((prev) =>
       prev.map((r) => (r.status === 'valid' ? { ...r, selected: select } : r))
     );
   };
 
-  // Save Bulk Agencies
+  // Apply bulk commission to all selected
+  const handleApplyBulkCommission = (comVal: number) => {
+    setRows((prev) =>
+      prev.map((r) => (r.selected ? { ...r, comision: comVal } : r))
+    );
+  };
+
+  // Apply bulk system to all selected
+  const handleApplyBulkSystem = (sysName: string) => {
+    setRows((prev) =>
+      prev.map((r) =>
+        r.selected
+          ? {
+              ...r,
+              sistemas: sysName === 'ALL' ? [...activeSystemNames] : [sysName],
+            }
+          : r
+      )
+    );
+  };
+
+  // Filtered rows for analysis
+  const filteredRows = useMemo(() => {
+    return rows.filter((r) => {
+      // Status filter
+      if (statusFilter !== 'all' && r.status !== statusFilter) return false;
+
+      // Currency filter
+      if (currencyFilter !== 'all' && !r.monedas.includes(currencyFilter)) return false;
+
+      // Text search
+      if (searchFilter.trim()) {
+        const q = searchFilter.toLowerCase();
+        const matchName = r.nombre.toLowerCase().includes(q);
+        const matchKey = r.palabrasClaves.toLowerCase().includes(q);
+        const matchSys = r.sistemas.some((s) => s.toLowerCase().includes(q));
+        if (!matchName && !matchKey && !matchSys) return false;
+      }
+
+      return true;
+    });
+  }, [rows, statusFilter, currencyFilter, searchFilter]);
+
+  // Paginated Rows
+  const totalPages = Math.ceil(filteredRows.length / pageSize) || 1;
+  const paginatedRows = useMemo(() => {
+    const start = (currentPage - 1) * pageSize;
+    return filteredRows.slice(start, start + pageSize);
+  }, [filteredRows, currentPage, pageSize]);
+
+  // Save All Selected Valid Agencies
   const handleSaveAll = async () => {
     const toSave = rows.filter((r) => r.selected && r.status === 'valid');
     if (toSave.length === 0) {
@@ -561,7 +729,7 @@ export const BulkAgencyModal: React.FC<BulkAgencyModalProps> = ({
           saldo_inicial_cop: 0,
         };
 
-        // Insert agency with resilient fallback if grupo columns don't exist
+        // Insert agency with resilient fallback
         let insData: any;
         let insErr: any;
         const res = await supabase.from('agencias').insert(payload).select().single();
@@ -615,7 +783,7 @@ export const BulkAgencyModal: React.FC<BulkAgencyModalProps> = ({
             : undefined,
       });
 
-      confetti({ particleCount: 75, spread: 80 });
+      confetti({ particleCount: 80, spread: 90 });
       await onSuccess();
       onClose();
     } catch (err: any) {
@@ -627,38 +795,61 @@ export const BulkAgencyModal: React.FC<BulkAgencyModalProps> = ({
     }
   };
 
+  if (!isOpen) return null;
+
   return (
     <div className={UI_LOCK.modalBackdrop}>
-      <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-3xl shadow-2xl w-full max-w-5xl max-h-[92vh] flex flex-col overflow-hidden text-slate-900 dark:text-slate-100 animate-fade-in">
-        {/* Header */}
-        <div className="p-5 sm:p-6 border-b border-slate-200 dark:border-slate-800 flex items-center justify-between gap-4 bg-slate-50/60 dark:bg-slate-900/60">
+      <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-3xl shadow-2xl w-full max-w-7xl h-[92vh] flex flex-col overflow-hidden text-slate-900 dark:text-slate-100 animate-fade-in">
+        {/* ========================================================= */}
+        {/* MODAL HEADER                                              */}
+        {/* ========================================================= */}
+        <div className="px-6 py-4 border-b border-slate-200 dark:border-slate-800 flex items-center justify-between gap-4 bg-slate-50/70 dark:bg-slate-900/80 shrink-0">
           <div className="flex items-center gap-3">
+            {step === 'preview' && (
+              <button
+                type="button"
+                onClick={() => setStep('upload')}
+                disabled={isProcessing}
+                className="p-2 rounded-xl bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-700 transition-all cursor-pointer"
+                title="Volver a cargar otro archivo"
+              >
+                <ArrowLeft className="w-4 h-4" />
+              </button>
+            )}
+
             <div className={UI_LOCK.headerIconWrap}>
-              <Upload className="w-6 h-6 text-emerald-600 dark:text-emerald-400" />
+              <Upload className="w-5 h-5 text-emerald-600 dark:text-emerald-400" />
             </div>
+
             <div>
-              <h3 className="text-lg sm:text-xl font-bold tracking-tight text-slate-900 dark:text-white flex items-center gap-2">
-                <span>Carga Masiva de Agencias</span>
-                <span className="text-[10px] uppercase font-bold tracking-wider px-2 py-0.5 rounded-full bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20">
-                  Excel / CSV / Texto
+              <div className="flex items-center gap-2">
+                <h3 className="text-base sm:text-lg font-bold tracking-tight text-slate-900 dark:text-white">
+                  {step === 'upload' ? 'Carga Masiva de Agencias' : 'Panel de Análisis y Previsualización'}
+                </h3>
+                <span className="text-[10px] uppercase font-bold tracking-wider px-2.5 py-0.5 rounded-full bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20">
+                  {step === 'upload' ? 'Excel / CSV' : `${stats.total} Agencias`}
                 </span>
-              </h3>
+              </div>
               <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
-                Registra múltiples agencias con su comisión, sistema y palabras claves / códigos en reporte para conciliación automática.
+                {step === 'upload'
+                  ? 'Arrastra un archivo o pega filas con Nombre, Comisión %, Sistema y Palabras Claves'
+                  : `Analiza, filtra y ajusta las agencias antes de registrarlas en tu catálogo oficial`}
               </p>
             </div>
           </div>
 
           <div className="flex items-center gap-2">
-            <button
-              type="button"
-              onClick={handleDownloadTemplate}
-              className="px-3 py-1.5 rounded-xl text-xs font-semibold bg-emerald-50 dark:bg-emerald-500/10 text-emerald-700 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-500/30 hover:bg-emerald-100 dark:hover:bg-emerald-500/20 transition-all flex items-center gap-1.5 cursor-pointer shadow-xs"
-              title="Descargar plantilla oficial para rellenar en Excel"
-            >
-              <Download className="w-3.5 h-3.5" />
-              <span>Descargar Plantilla Excel</span>
-            </button>
+            {step === 'upload' && (
+              <button
+                type="button"
+                onClick={handleDownloadTemplate}
+                className="px-3 py-1.5 rounded-xl text-xs font-semibold bg-emerald-50 dark:bg-emerald-500/10 text-emerald-700 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-500/30 hover:bg-emerald-100 dark:hover:bg-emerald-500/20 transition-all flex items-center gap-1.5 cursor-pointer shadow-xs"
+                title="Descargar plantilla Excel oficial de ejemplo"
+              >
+                <Download className="w-3.5 h-3.5" />
+                <span className="hidden sm:inline">Plantilla Excel</span>
+              </button>
+            )}
 
             <button
               type="button"
@@ -671,98 +862,93 @@ export const BulkAgencyModal: React.FC<BulkAgencyModalProps> = ({
           </div>
         </div>
 
-        {/* Modal Body (Scrollable) */}
-        <div className="p-5 sm:p-6 overflow-y-auto space-y-5 flex-1">
-          {/* SaaS Quota Status Bar */}
-          <div className="bg-slate-50 dark:bg-slate-800/40 border border-slate-200 dark:border-slate-800 rounded-2xl p-4 flex flex-col sm:flex-row items-center justify-between gap-3">
-            <div className="flex items-center gap-3">
-              <div className="p-2 rounded-xl bg-cyan-50 dark:bg-cyan-500/10 text-cyan-600 dark:text-cyan-400 border border-cyan-200 dark:border-cyan-500/20">
-                <Building2 className="w-5 h-5" />
-              </div>
-              <div>
-                <div className="text-xs font-bold text-slate-800 dark:text-slate-200">
-                  Cuota Disponible en tu Plan SaaS: <span className="font-mono text-cyan-600 dark:text-cyan-400 font-black">{availableSlots}</span> de {agencyLimit} plazas disponibles
+        {/* ========================================================= */}
+        {/* STEP 1: UPLOAD & CONFIGURATION                            */}
+        {/* ========================================================= */}
+        {step === 'upload' && (
+          <div className="p-6 overflow-y-auto space-y-6 flex-1">
+            {/* SaaS Quota Status Bar */}
+            <div className="bg-slate-50 dark:bg-slate-800/40 border border-slate-200 dark:border-slate-800 rounded-2xl p-4 flex flex-col sm:flex-row items-center justify-between gap-3">
+              <div className="flex items-center gap-3">
+                <div className="p-2 rounded-xl bg-cyan-50 dark:bg-cyan-500/10 text-cyan-600 dark:text-cyan-400 border border-cyan-200 dark:border-cyan-500/20">
+                  <Building2 className="w-5 h-5" />
                 </div>
-                <div className="text-[11px] text-slate-500 dark:text-slate-400">
-                  Actualmente tienes {existingAgencies.length} agencias registradas en tu catálogo activo.
+                <div>
+                  <div className="text-xs font-bold text-slate-800 dark:text-slate-200">
+                    Cuota Disponible en tu Plan SaaS: <span className="font-mono text-cyan-600 dark:text-cyan-400 font-black">{availableSlots}</span> de {agencyLimit} plazas disponibles
+                  </div>
+                  <div className="text-[11px] text-slate-500 dark:text-slate-400">
+                    Actualmente tienes {existingAgencies.length} agencias registradas en tu catálogo activo.
+                  </div>
                 </div>
               </div>
             </div>
 
-            {isOverQuota && (
-              <div className="px-3 py-1.5 rounded-xl bg-rose-50 dark:bg-rose-500/10 border border-rose-200 dark:border-rose-500/20 text-rose-700 dark:text-rose-300 text-xs font-semibold flex items-center gap-1.5">
-                <AlertTriangle className="w-4 h-4 shrink-0" />
-                <span>Superas el cupo disponible</span>
+            {/* Config Defaults / Fallbacks Bar */}
+            <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-4 space-y-3">
+              <div className="text-xs font-bold uppercase tracking-wider text-slate-600 dark:text-slate-400 flex items-center gap-2">
+                <Layers className="w-4 h-4 text-emerald-500" />
+                <span>Valores por defecto si la fila no especifica columna:</span>
               </div>
-            )}
-          </div>
 
-          {/* Config Defaults / Fallbacks Bar */}
-          <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-4 space-y-3">
-            <div className="text-xs font-bold uppercase tracking-wider text-slate-600 dark:text-slate-400 flex items-center gap-2">
-              <Layers className="w-4 h-4 text-emerald-500" />
-              <span>Valores por defecto si la fila no especifica columna:</span>
-            </div>
-
-            <div className="grid grid-cols-1 sm:grid-cols-4 gap-3">
-              <div>
-                <label className="text-[11px] font-semibold text-slate-500 dark:text-slate-400 block mb-1">
-                  Comisión General %
-                </label>
-                <div className="relative">
-                  <input
-                    type="number"
-                    min="0"
-                    max="100"
-                    step="0.5"
-                    value={defaultComision}
-                    onChange={(e) => setDefaultComision(e.target.value)}
-                    className={UI_LOCK.input + ' pr-8'}
-                  />
-                  <span className="absolute right-3 top-2.5 text-xs text-slate-400 font-bold">%</span>
+              <div className="grid grid-cols-1 sm:grid-cols-4 gap-3">
+                <div>
+                  <label className="text-[11px] font-semibold text-slate-500 dark:text-slate-400 block mb-1">
+                    Comisión General %
+                  </label>
+                  <div className="relative">
+                    <input
+                      type="number"
+                      min="0"
+                      max="100"
+                      step="0.5"
+                      value={defaultComision}
+                      onChange={(e) => setDefaultComision(e.target.value)}
+                      className={UI_LOCK.input + ' pr-8'}
+                    />
+                    <span className="absolute right-3 top-2.5 text-xs text-slate-400 font-bold">%</span>
+                  </div>
                 </div>
-              </div>
 
-              <div>
-                <label className="text-[11px] font-semibold text-slate-500 dark:text-slate-400 block mb-1">
-                  Sistema de Respaldo
-                </label>
-                <select
-                  value={defaultSystemMode}
-                  onChange={(e) => setDefaultSystemMode(e.target.value)}
-                  className={UI_LOCK.select}
-                >
-                  <option value="ALL">✓ Todos los sistemas activos</option>
-                  {systems.map((s) => (
-                    <option key={s.id} value={s.nombre_sistema}>
-                      {s.nombre_sistema}
-                    </option>
-                  ))}
-                </select>
-              </div>
-
-              <div>
-                <label className="text-[11px] font-semibold text-slate-500 dark:text-slate-400 block mb-1">
-                  Participación Agencia %
-                </label>
-                <div className="relative">
-                  <input
-                    type="number"
-                    min="0"
-                    max="100"
-                    value={defaultParticipacion}
-                    onChange={(e) => setDefaultParticipacion(e.target.value)}
-                    className={UI_LOCK.input + ' pr-8'}
-                  />
-                  <span className="absolute right-3 top-2.5 text-xs text-slate-400 font-bold">%</span>
+                <div>
+                  <label className="text-[11px] font-semibold text-slate-500 dark:text-slate-400 block mb-1">
+                    Sistema de Respaldo
+                  </label>
+                  <select
+                    value={defaultSystemMode}
+                    onChange={(e) => setDefaultSystemMode(e.target.value)}
+                    className={UI_LOCK.select}
+                  >
+                    <option value="ALL">✓ Todos los sistemas activos</option>
+                    {systems.map((s) => (
+                      <option key={s.id} value={s.nombre_sistema}>
+                        {s.nombre_sistema}
+                      </option>
+                    ))}
+                  </select>
                 </div>
-              </div>
 
-              <div>
-                <label className="text-[11px] font-semibold text-slate-500 dark:text-slate-400 block mb-1">
-                  Clave Taquilla POS
-                </label>
-                <div className="relative">
+                <div>
+                  <label className="text-[11px] font-semibold text-slate-500 dark:text-slate-400 block mb-1">
+                    Participación Agencia %
+                  </label>
+                  <div className="relative">
+                    <input
+                      type="number"
+                      min="0"
+                      max="100"
+                      value={defaultParticipacion}
+                      onChange={(e) => setDefaultParticipacion(e.target.value)}
+                      className={UI_LOCK.input + ' pr-8'}
+                    />
+                    <span className="absolute right-3 top-2.5 text-xs text-slate-400 font-bold">%</span>
+                  </div>
+                </div>
+
+                <div>
+                  <label className="text-[11px] font-semibold text-slate-500 dark:text-slate-400 block mb-1">
+                    Clave Taquilla POS
+                  </label>
                   <input
                     type="text"
                     value={defaultClaveTaquilla}
@@ -773,136 +959,303 @@ export const BulkAgencyModal: React.FC<BulkAgencyModalProps> = ({
                 </div>
               </div>
             </div>
-          </div>
 
-          {/* Mode Tabs: File Upload vs Direct Text Paste */}
-          <div className="flex items-center gap-2 border-b border-slate-200 dark:border-slate-800 pb-3">
-            <button
-              type="button"
-              onClick={() => setActiveTab('file')}
-              className={activeTab === 'file' ? UI_LOCK.filterPillActive : UI_LOCK.filterPillInactive}
-            >
-              <FileSpreadsheet className="w-3.5 h-3.5 inline mr-1.5" />
-              Subir Archivo Excel / CSV
-            </button>
-            <button
-              type="button"
-              onClick={() => setActiveTab('paste')}
-              className={activeTab === 'paste' ? UI_LOCK.filterPillActive : UI_LOCK.filterPillInactive}
-            >
-              <ClipboardList className="w-3.5 h-3.5 inline mr-1.5" />
-              Pegar Texto desde Excel / Sheets
-            </button>
-          </div>
-
-          {/* Tab 1: File Dropzone */}
-          {activeTab === 'file' && (
-            <div>
-              <input
-                ref={fileInputRef}
-                type="file"
-                accept=".xlsx,.xls,.csv"
-                onChange={handleFileUpload}
-                className="hidden"
-              />
-              <div
-                onClick={() => fileInputRef.current?.click()}
-                className="border-2 border-dashed border-slate-300 dark:border-slate-700 hover:border-emerald-500 dark:hover:border-emerald-400 rounded-3xl p-8 sm:p-10 text-center cursor-pointer bg-slate-50/50 dark:bg-slate-800/30 hover:bg-emerald-500/5 transition-all group"
+            {/* Mode Tabs */}
+            <div className="flex items-center gap-2 border-b border-slate-200 dark:border-slate-800 pb-3">
+              <button
+                type="button"
+                onClick={() => setActiveTab('file')}
+                className={activeTab === 'file' ? UI_LOCK.filterPillActive : UI_LOCK.filterPillInactive}
               >
-                <div className="w-14 h-14 mx-auto rounded-2xl bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20 flex items-center justify-center mb-3 group-hover:scale-105 transition-transform shadow-xs">
-                  <Upload className="w-7 h-7" />
-                </div>
-                <div className="text-sm font-bold text-slate-800 dark:text-slate-200">
-                  {fileName ? (
-                    <span className="text-emerald-600 dark:text-emerald-400 font-mono">
-                      Archivo cargado: {fileName}
-                    </span>
-                  ) : (
-                    'Haz clic o arrastra aquí tu archivo Excel (.xlsx, .xls) o CSV (.csv)'
-                  )}
-                </div>
-                <p className="text-xs text-slate-500 dark:text-slate-400 mt-1 max-w-md mx-auto">
-                  Columnas admitidas: <strong>Nombre Agencia</strong>, <strong>Comisión %</strong>, <strong>Sistema</strong>, <strong>Palabras Claves / ID Reporte</strong>, Moneda, Participación %.
-                </p>
-              </div>
+                <FileSpreadsheet className="w-3.5 h-3.5 inline mr-1.5" />
+                Subir Archivo Excel / CSV
+              </button>
+              <button
+                type="button"
+                onClick={() => setActiveTab('paste')}
+                className={activeTab === 'paste' ? UI_LOCK.filterPillActive : UI_LOCK.filterPillInactive}
+              >
+                <ClipboardList className="w-3.5 h-3.5 inline mr-1.5" />
+                Pegar Texto desde Excel / Sheets
+              </button>
             </div>
-          )}
 
-          {/* Tab 2: Paste Direct Text */}
-          {activeTab === 'paste' && (
-            <div className="space-y-3">
-              <label className="text-xs font-bold text-slate-700 dark:text-slate-300 flex items-center justify-between">
-                <span>Pega las celdas copiadas directamente de Excel o Google Sheets:</span>
-                <span className="text-[11px] font-normal text-slate-400">
-                  Formato tabular separado por tabulador o coma
-                </span>
-              </label>
-              <textarea
-                rows={5}
-                value={pasteText}
-                onChange={(e) => setPasteText(e.target.value)}
-                placeholder={`AGENCIA CENTRO 01\t10\tBETM3\tMAXIMA CUA 02 T2\nAGENCIA PLAZA\t12\tCDAPUESTAS\tID_PLAZA_01, 502\nAGENCIA EL TREBOL\t15\tGATOWEB\tchucho@banklot.net`}
-                className="w-full bg-white dark:bg-slate-800/90 border border-slate-300 dark:border-slate-700 text-slate-900 dark:text-white placeholder-slate-400 dark:placeholder-slate-500 rounded-2xl p-3.5 text-xs font-mono focus:outline-none focus:border-emerald-500 transition-all"
-              />
-              <div className="flex justify-end">
-                <button
-                  type="button"
-                  onClick={handleProcessPastedText}
-                  className={UI_LOCK.buttonPrimary + ' text-xs'}
+            {/* Tab 1: Dropzone */}
+            {activeTab === 'file' && (
+              <div>
+                <input
+                  ref={fileInputRef}
+                  type="file"
+                  accept=".xlsx,.xls,.csv"
+                  onChange={handleFileUpload}
+                  className="hidden"
+                />
+                <div
+                  onClick={() => fileInputRef.current?.click()}
+                  className="border-2 border-dashed border-slate-300 dark:border-slate-700 hover:border-emerald-500 dark:hover:border-emerald-400 rounded-3xl p-10 sm:p-14 text-center cursor-pointer bg-slate-50/50 dark:bg-slate-800/30 hover:bg-emerald-500/5 transition-all group"
                 >
-                  <Sparkles className="w-4 h-4" />
-                  Interpretar Filas Pegadas
-                </button>
+                  <div className="w-16 h-16 mx-auto rounded-2xl bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20 flex items-center justify-center mb-4 group-hover:scale-105 transition-transform shadow-xs">
+                    <Upload className="w-8 h-8" />
+                  </div>
+                  <div className="text-sm font-bold text-slate-800 dark:text-slate-200">
+                    Haz clic o arrastra aquí tu archivo Excel (.xlsx, .xls) o CSV (.csv)
+                  </div>
+                  <p className="text-xs text-slate-500 dark:text-slate-400 mt-1 max-w-md mx-auto">
+                    Columnas detectadas automáticamente: <strong>Agencia / Nombre</strong>, <strong>Comisión %</strong>, <strong>Sistema</strong> y <strong>Palabras Claves / ID Reporte</strong>.
+                  </p>
+                </div>
               </div>
-            </div>
-          )}
+            )}
 
-          {/* Error Message Banner */}
-          {errorMsg && (
-            <div className={UI_LOCK.errorBanner}>
-              <XCircle className="w-5 h-5 shrink-0" />
-              <div className="text-xs font-semibold">{errorMsg}</div>
-            </div>
-          )}
+            {/* Tab 2: Textarea */}
+            {activeTab === 'paste' && (
+              <div className="space-y-3">
+                <label className="text-xs font-bold text-slate-700 dark:text-slate-300 flex items-center justify-between">
+                  <span>Pega las celdas copiadas directamente de tu archivo:</span>
+                  <span className="text-[11px] font-normal text-slate-400">Separado por tabulador o coma</span>
+                </label>
+                <textarea
+                  rows={6}
+                  value={pasteText}
+                  onChange={(e) => setPasteText(e.target.value)}
+                  placeholder={`15LETRAS1 Bs\t10\tPARLEY INH\t15LETRAS1 Bs, 15LETRAS1\n15LETRAS1 Usd\t10\tPARLEY INH\t15LETRAS1 Usd\nAGALEJO Bs\t12\tPARLEY INH\tAGALEJO Bs`}
+                  className="w-full bg-white dark:bg-slate-800/90 border border-slate-300 dark:border-slate-700 text-slate-900 dark:text-white placeholder-slate-400 dark:placeholder-slate-500 rounded-2xl p-3.5 text-xs font-mono focus:outline-none focus:border-emerald-500 transition-all"
+                />
+                <div className="flex justify-end">
+                  <button
+                    type="button"
+                    onClick={handleProcessPastedText}
+                    className={UI_LOCK.buttonPrimary + ' text-xs'}
+                  >
+                    <Sparkles className="w-4 h-4" />
+                    Analizar y Previsualizar
+                  </button>
+                </div>
+              </div>
+            )}
 
-          {/* Interactive Preview Table */}
-          {rows.length > 0 && (
-            <div className="space-y-3 pt-2">
-              {/* Table Toolbar & Stats */}
-              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-                <div className="flex items-center gap-2 flex-wrap">
-                  <span className="text-xs font-bold text-slate-900 dark:text-white">
-                    Previsualización de Agencias ({rows.length}):
-                  </span>
-                  <span className="px-2.5 py-0.5 rounded-full text-[11px] font-semibold bg-emerald-50 dark:bg-emerald-500/10 text-emerald-700 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-500/20">
-                    {stats.selected} seleccionadas
-                  </span>
-                  {stats.duplicate > 0 && (
-                    <span className="px-2.5 py-0.5 rounded-full text-[11px] font-semibold bg-amber-50 dark:bg-amber-500/10 text-amber-700 dark:text-amber-300 border border-amber-200 dark:border-amber-500/20">
-                      {stats.duplicate} ya existen
+            {errorMsg && (
+              <div className={UI_LOCK.errorBanner}>
+                <XCircle className="w-5 h-5 shrink-0" />
+                <div className="text-xs font-semibold">{errorMsg}</div>
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* ========================================================= */}
+        {/* STEP 2: DEDICATED PREVIEW & ANALYSIS VIEW (FULL HEIGHT)   */}
+        {/* ========================================================= */}
+        {step === 'preview' && (
+          <div className="flex-1 flex flex-col min-h-0 overflow-hidden bg-slate-50/30 dark:bg-slate-900/40">
+            {/* Top Analysis Bar & Quick KPIs */}
+            <div className="px-6 py-3 border-b border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 shrink-0 space-y-3">
+              <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-3">
+                {/* File info badge & Actions */}
+                <div className="flex items-center gap-3 flex-wrap">
+                  <div className="flex items-center gap-2 px-3 py-1.5 rounded-xl bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-xs">
+                    <FileSpreadsheet className="w-4 h-4 text-emerald-600 dark:text-emerald-400" />
+                    <span className="font-semibold text-slate-800 dark:text-slate-200 font-mono">
+                      {fileName || 'Archivo Analizado'}
                     </span>
+                    <span className="text-slate-400 font-normal">({rawItems.length} filas fuente)</span>
+                  </div>
+
+                  {/* Multi-Currency Consolidation Toggle */}
+                  <label className="flex items-center gap-2 px-3 py-1.5 rounded-xl bg-emerald-50 dark:bg-emerald-500/10 border border-emerald-200 dark:border-emerald-500/30 text-emerald-800 dark:text-emerald-300 text-xs font-semibold cursor-pointer select-none transition-all hover:bg-emerald-100 dark:hover:bg-emerald-500/20">
+                    <input
+                      type="checkbox"
+                      checked={consolidateMultiCurrency}
+                      onChange={(e) => handleToggleConsolidation(e.target.checked)}
+                      className="rounded text-emerald-600 focus:ring-0 cursor-pointer"
+                    />
+                    <span>Consolidar Multi-Moneda (Unir filas Bs + Usd de la misma agencia)</span>
+                  </label>
+
+                  <button
+                    type="button"
+                    onClick={() => setShowConfigDrawer(!showConfigDrawer)}
+                    className="px-2.5 py-1.5 rounded-xl text-xs font-semibold bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-700 transition-all flex items-center gap-1.5 cursor-pointer"
+                  >
+                    <Sliders className="w-3.5 h-3.5" />
+                    <span>Ajustes en Lote</span>
+                  </button>
+                </div>
+
+                {/* Quota warning if exceeded */}
+                {isOverQuota && (
+                  <div className="px-3 py-1 rounded-xl bg-rose-50 dark:bg-rose-500/10 border border-rose-200 dark:border-rose-500/20 text-rose-700 dark:text-rose-300 text-xs font-semibold flex items-center gap-1.5">
+                    <AlertTriangle className="w-4 h-4 shrink-0" />
+                    <span>Superas tu cupo disponible ({availableSlots})</span>
+                  </div>
+                )}
+              </div>
+
+              {/* Quick KPI Strip */}
+              <div className="grid grid-cols-2 sm:grid-cols-5 gap-2.5">
+                <div className="p-2.5 rounded-xl bg-slate-50 dark:bg-slate-800/60 border border-slate-200/80 dark:border-slate-800">
+                  <div className="text-[10px] font-bold text-slate-500 uppercase">Agencias Totales</div>
+                  <div className="text-base font-black text-slate-900 dark:text-white font-mono mt-0.5">
+                    {stats.total}
+                  </div>
+                </div>
+
+                <div className="p-2.5 rounded-xl bg-emerald-50/50 dark:bg-emerald-500/5 border border-emerald-200/80 dark:border-emerald-500/20">
+                  <div className="text-[10px] font-bold text-emerald-600 uppercase">Listas para Registrar</div>
+                  <div className="text-base font-black text-emerald-700 dark:text-emerald-400 font-mono mt-0.5">
+                    {stats.selected}
+                  </div>
+                </div>
+
+                <div className="p-2.5 rounded-xl bg-cyan-50/50 dark:bg-cyan-500/5 border border-cyan-200/80 dark:border-cyan-500/20">
+                  <div className="text-[10px] font-bold text-cyan-600 uppercase">Monedas Identificadas</div>
+                  <div className="flex items-center gap-1.5 mt-1 flex-wrap">
+                    {Object.entries(currencyBreakdown).map(([mon, count]) => (
+                      <span
+                        key={mon}
+                        className="px-1.5 py-0.2 rounded text-[10px] font-mono font-bold bg-cyan-100/70 dark:bg-cyan-500/20 text-cyan-800 dark:text-cyan-300"
+                      >
+                        {mon}: {count}
+                      </span>
+                    ))}
+                  </div>
+                </div>
+
+                <div className="p-2.5 rounded-xl bg-amber-50/50 dark:bg-amber-500/5 border border-amber-200/80 dark:border-amber-500/20">
+                  <div className="text-[10px] font-bold text-amber-600 uppercase">Palabras Claves</div>
+                  <div className="text-base font-black text-amber-700 dark:text-amber-400 font-mono mt-0.5">
+                    100% Asignadas
+                  </div>
+                </div>
+
+                <div className="p-2.5 rounded-xl bg-slate-50 dark:bg-slate-800/60 border border-slate-200/80 dark:border-slate-800">
+                  <div className="text-[10px] font-bold text-slate-500 uppercase">Cupo SaaS Restante</div>
+                  <div className="text-base font-black text-slate-800 dark:text-slate-200 font-mono mt-0.5">
+                    {Math.max(0, availableSlots - stats.selected)} / {agencyLimit}
+                  </div>
+                </div>
+              </div>
+
+              {/* Batch Settings Slide-down Drawer */}
+              {showConfigDrawer && (
+                <div className="p-3 rounded-xl bg-slate-100 dark:bg-slate-800/90 border border-slate-300 dark:border-slate-700 flex flex-wrap items-center justify-between gap-3 animate-fade-in">
+                  <div className="flex items-center gap-3 flex-wrap">
+                    <span className="text-xs font-bold text-slate-700 dark:text-slate-300">
+                      Aplicar a las {stats.selected} seleccionadas:
+                    </span>
+
+                    <div className="flex items-center gap-1.5">
+                      <span className="text-[11px] text-slate-500">Comisión %:</span>
+                      {[10, 12, 15, 20].map((c) => (
+                        <button
+                          key={c}
+                          type="button"
+                          onClick={() => handleApplyBulkCommission(c)}
+                          className="px-2 py-0.5 rounded-lg text-xs font-mono font-bold bg-white dark:bg-slate-700 border border-slate-300 dark:border-slate-600 hover:border-emerald-500"
+                        >
+                          {c}%
+                        </button>
+                      ))}
+                    </div>
+
+                    <div className="flex items-center gap-1.5">
+                      <span className="text-[11px] text-slate-500">Sistema:</span>
+                      <select
+                        onChange={(e) => handleApplyBulkSystem(e.target.value)}
+                        className="bg-white dark:bg-slate-700 border border-slate-300 dark:border-slate-600 text-xs rounded-lg px-2 py-1"
+                        defaultValue=""
+                      >
+                        <option value="" disabled>Seleccionar sistema...</option>
+                        <option value="ALL">Todos los sistemas</option>
+                        {systems.map((s) => (
+                          <option key={s.id} value={s.nombre_sistema}>
+                            {s.nombre_sistema}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                  </div>
+
+                  <button
+                    type="button"
+                    onClick={() => setShowConfigDrawer(false)}
+                    className="text-xs text-slate-500 hover:underline cursor-pointer"
+                  >
+                    Ocultar
+                  </button>
+                </div>
+              )}
+
+              {/* Search & Filter Toolbar */}
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pt-1">
+                <div className="flex items-center gap-2 flex-wrap">
+                  {/* Status Pills */}
+                  <button
+                    type="button"
+                    onClick={() => { setStatusFilter('all'); setCurrentPage(1); }}
+                    className={statusFilter === 'all' ? UI_LOCK.filterPillActive : UI_LOCK.filterPillInactive}
+                  >
+                    Todas ({stats.total})
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => { setStatusFilter('valid'); setCurrentPage(1); }}
+                    className={statusFilter === 'valid' ? UI_LOCK.filterPillActive : UI_LOCK.filterPillInactive}
+                  >
+                    Válidas ({stats.valid})
+                  </button>
+                  {stats.duplicate > 0 && (
+                    <button
+                      type="button"
+                      onClick={() => { setStatusFilter('duplicate'); setCurrentPage(1); }}
+                      className={statusFilter === 'duplicate' ? UI_LOCK.filterPillActive : UI_LOCK.filterPillInactive}
+                    >
+                      Duplicadas ({stats.duplicate})
+                    </button>
                   )}
                   {stats.errors > 0 && (
-                    <span className="px-2.5 py-0.5 rounded-full text-[11px] font-semibold bg-rose-50 dark:bg-rose-500/10 text-rose-700 dark:text-rose-300 border border-rose-200 dark:border-rose-500/20">
-                      {stats.errors} con error
-                    </span>
+                    <button
+                      type="button"
+                      onClick={() => { setStatusFilter('error'); setCurrentPage(1); }}
+                      className={statusFilter === 'error' ? UI_LOCK.filterPillActive : UI_LOCK.filterPillInactive}
+                    >
+                      Inválidas ({stats.errors})
+                    </button>
                   )}
+
+                  {/* Currency Filter Dropdown */}
+                  <select
+                    value={currencyFilter}
+                    onChange={(e) => { setCurrencyFilter(e.target.value); setCurrentPage(1); }}
+                    className="bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-700 text-xs rounded-xl px-2.5 py-1.5 text-slate-700 dark:text-slate-300"
+                  >
+                    <option value="all">Todas las Monedas</option>
+                    {activeCurrencyCodes.map((c) => (
+                      <option key={c} value={c}>
+                        Solo {c}
+                      </option>
+                    ))}
+                  </select>
                 </div>
 
                 <div className="flex items-center gap-2">
-                  <input
-                    type="text"
-                    value={searchFilter}
-                    onChange={(e) => setSearchFilter(e.target.value)}
-                    placeholder="Filtrar en la tabla..."
-                    className="w-44 bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-700 text-xs rounded-xl px-3 py-1.5 focus:outline-none focus:border-emerald-500"
-                  />
+                  <div className="relative">
+                    <Search className="w-3.5 h-3.5 absolute left-3 top-2.5 text-slate-400" />
+                    <input
+                      type="text"
+                      value={searchFilter}
+                      onChange={(e) => { setSearchFilter(e.target.value); setCurrentPage(1); }}
+                      placeholder="Buscar agencia o clave..."
+                      className="w-56 bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-700 text-xs rounded-xl pl-8 pr-3 py-1.5 focus:outline-none focus:border-emerald-500"
+                    />
+                  </div>
+
                   <button
                     type="button"
                     onClick={() => handleToggleSelectAll(true)}
                     className="text-[11px] font-semibold text-emerald-600 dark:text-emerald-400 hover:underline cursor-pointer"
                   >
-                    Seleccionar todas
+                    Marcar todas
                   </button>
                   <span className="text-slate-300 dark:text-slate-700">|</span>
                   <button
@@ -910,17 +1263,19 @@ export const BulkAgencyModal: React.FC<BulkAgencyModalProps> = ({
                     onClick={() => handleToggleSelectAll(false)}
                     className="text-[11px] font-semibold text-slate-500 dark:text-slate-400 hover:underline cursor-pointer"
                   >
-                    Deseleccionar
+                    Desmarcar
                   </button>
                 </div>
               </div>
+            </div>
 
-              {/* Table Container */}
-              <div className={UI_LOCK.tableContainer + ' max-h-72 overflow-y-auto'}>
+            {/* Expanded Table (Scrollable Container) */}
+            <div className="flex-1 overflow-auto p-6 pt-3">
+              <div className={UI_LOCK.tableContainer + ' shadow-md'}>
                 <table className={UI_LOCK.table}>
-                  <thead className={UI_LOCK.tableThead}>
+                  <thead className={UI_LOCK.tableThead + ' sticky top-0 z-10 shadow-xs'}>
                     <tr>
-                      <th className="px-3 py-3 w-10 text-center">
+                      <th className="px-3 py-3.5 w-10 text-center">
                         <input
                           type="checkbox"
                           checked={stats.selected > 0 && stats.selected === stats.valid}
@@ -928,189 +1283,285 @@ export const BulkAgencyModal: React.FC<BulkAgencyModalProps> = ({
                           className="rounded border-slate-300 text-emerald-600 focus:ring-emerald-500 cursor-pointer"
                         />
                       </th>
+                      <th className="px-3 py-3.5 w-12 text-center text-[10px] text-slate-400">#</th>
                       <th className={UI_LOCK.tableTheadTh}>Nombre de la Agencia *</th>
                       <th className={UI_LOCK.tableTheadTh}>Comisión %</th>
                       <th className={UI_LOCK.tableTheadTh}>Sistema(s)</th>
-                      <th className={UI_LOCK.tableTheadTh}>Palabras Claves / ID Reporte</th>
-                      <th className={UI_LOCK.tableTheadTh}>Monedas</th>
+                      <th className={UI_LOCK.tableTheadTh}>Palabras Claves / ID en Reporte</th>
+                      <th className={UI_LOCK.tableTheadTh}>Moneda(s)</th>
                       <th className={UI_LOCK.tableTheadTh}>Estado</th>
-                      <th className="px-3 py-3 w-12 text-center">Acción</th>
+                      <th className="px-3 py-3.5 w-12 text-center">Acción</th>
                     </tr>
                   </thead>
                   <tbody>
-                    {displayedRows.map((row, idx) => {
-                      const isDup = row.status === 'duplicate';
-                      const isErr = row.status === 'error';
+                    {paginatedRows.length === 0 ? (
+                      <tr>
+                        <td colSpan={9} className="text-center py-12 text-slate-400 text-xs">
+                          No se encontraron agencias con los filtros aplicados.
+                        </td>
+                      </tr>
+                    ) : (
+                      paginatedRows.map((row, idx) => {
+                        const globalIdx = (currentPage - 1) * pageSize + idx + 1;
+                        const isDup = row.status === 'duplicate';
+                        const isErr = row.status === 'error';
 
-                      return (
-                        <tr
-                          key={row.id}
-                          className={`${UI_LOCK.tableRow} ${
-                            isDup
-                              ? 'bg-amber-50/40 dark:bg-amber-950/20'
-                              : isErr
-                              ? 'bg-rose-50/40 dark:bg-rose-950/20'
-                              : ''
-                          }`}
-                        >
-                          {/* Checkbox */}
-                          <td className="px-3 py-2 text-center">
-                            <input
-                              type="checkbox"
-                              disabled={isErr}
-                              checked={row.selected}
-                              onChange={() => handleToggleSelect(idx)}
-                              className="rounded border-slate-300 text-emerald-600 focus:ring-emerald-500 cursor-pointer disabled:opacity-40"
-                            />
-                          </td>
-
-                          {/* Nombre */}
-                          <td className="px-3 py-2">
-                            <input
-                              type="text"
-                              value={row.nombre}
-                              onChange={(e) => handleUpdateRow(idx, 'nombre', e.target.value)}
-                              className="w-full bg-transparent border border-transparent hover:border-slate-300 dark:hover:border-slate-700 focus:border-emerald-500 focus:bg-white dark:focus:bg-slate-800 rounded-lg px-2 py-1 text-xs font-bold text-slate-900 dark:text-white transition-all uppercase"
-                            />
-                          </td>
-
-                          {/* Comisión % */}
-                          <td className="px-3 py-2 w-24">
-                            <div className="relative">
+                        return (
+                          <tr
+                            key={row.id}
+                            className={`${UI_LOCK.tableRow} ${
+                              isDup
+                                ? 'bg-amber-50/40 dark:bg-amber-950/20'
+                                : isErr
+                                ? 'bg-rose-50/40 dark:bg-rose-950/20'
+                                : ''
+                            }`}
+                          >
+                            {/* Checkbox */}
+                            <td className="px-3 py-2 text-center">
                               <input
-                                type="number"
-                                min="0"
-                                max="100"
-                                step="0.5"
-                                value={row.comision}
-                                onChange={(e) =>
-                                  handleUpdateRow(idx, 'comision', parseFloat(e.target.value) || 0)
-                                }
-                                className="w-full bg-transparent border border-transparent hover:border-slate-300 dark:hover:border-slate-700 focus:border-emerald-500 focus:bg-white dark:focus:bg-slate-800 rounded-lg px-2 py-1 text-xs font-mono font-bold text-amber-600 dark:text-amber-400 text-right pr-6 transition-all"
+                                type="checkbox"
+                                disabled={isErr}
+                                checked={row.selected}
+                                onChange={() => handleToggleSelect(row.id)}
+                                className="rounded border-slate-300 text-emerald-600 focus:ring-emerald-500 cursor-pointer disabled:opacity-40"
                               />
-                              <span className="absolute right-2 top-1 text-xs text-slate-400 font-bold">%</span>
-                            </div>
-                          </td>
+                            </td>
 
-                          {/* Sistemas */}
-                          <td className="px-3 py-2">
-                            <div className="flex flex-wrap gap-1">
-                              {row.sistemas.map((s) => (
-                                <span
-                                  key={s}
-                                  className="px-2 py-0.5 rounded-md text-[10px] font-bold font-mono bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 border border-slate-200 dark:border-slate-700"
-                                >
-                                  {s}
+                            {/* Row Number */}
+                            <td className="px-3 py-2 text-center font-mono text-[10px] text-slate-400">
+                              {globalIdx}
+                            </td>
+
+                            {/* Nombre Agencia */}
+                            <td className="px-3 py-2">
+                              <input
+                                type="text"
+                                value={row.nombre}
+                                onChange={(e) => handleUpdateRow(row.id, 'nombre', e.target.value)}
+                                className="w-full bg-transparent border border-transparent hover:border-slate-300 dark:hover:border-slate-700 focus:border-emerald-500 focus:bg-white dark:focus:bg-slate-800 rounded-lg px-2 py-1 text-xs font-bold text-slate-900 dark:text-white transition-all uppercase"
+                              />
+                            </td>
+
+                            {/* Comisión % */}
+                            <td className="px-3 py-2 w-24">
+                              <div className="relative">
+                                <input
+                                  type="number"
+                                  min="0"
+                                  max="100"
+                                  step="0.5"
+                                  value={row.comision}
+                                  onChange={(e) =>
+                                    handleUpdateRow(row.id, 'comision', parseFloat(e.target.value) || 0)
+                                  }
+                                  className="w-full bg-transparent border border-transparent hover:border-slate-300 dark:hover:border-slate-700 focus:border-emerald-500 focus:bg-white dark:focus:bg-slate-800 rounded-lg px-2 py-1 text-xs font-mono font-bold text-amber-600 dark:text-amber-400 text-right pr-6 transition-all"
+                                />
+                                <span className="absolute right-2 top-1 text-xs text-slate-400 font-bold">%</span>
+                              </div>
+                            </td>
+
+                            {/* Sistemas */}
+                            <td className="px-3 py-2">
+                              <div className="flex flex-wrap gap-1">
+                                {row.sistemas.map((s) => (
+                                  <span
+                                    key={s}
+                                    className="px-2 py-0.5 rounded-md text-[10px] font-bold font-mono bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 border border-slate-200 dark:border-slate-700"
+                                  >
+                                    {s}
+                                  </span>
+                                ))}
+                              </div>
+                            </td>
+
+                            {/* Palabras Claves / ID en Reporte */}
+                            <td className="px-3 py-2">
+                              <input
+                                type="text"
+                                value={row.palabrasClaves}
+                                onChange={(e) => handleUpdateRow(row.id, 'palabrasClaves', e.target.value)}
+                                placeholder="Ej: MAXIMA CUA 02, 502"
+                                className="w-full bg-transparent border border-transparent hover:border-slate-300 dark:hover:border-slate-700 focus:border-emerald-500 focus:bg-white dark:focus:bg-slate-800 rounded-lg px-2 py-1 text-xs font-mono text-cyan-600 dark:text-cyan-400 transition-all"
+                              />
+                            </td>
+
+                            {/* Monedas */}
+                            <td className="px-3 py-2">
+                              <div className="flex flex-wrap gap-1">
+                                {row.monedas.map((m) => {
+                                  const isUsd = m.includes('USD') || m.includes('$');
+                                  const isCop = m.includes('COP');
+                                  const badgeClass = isUsd
+                                    ? 'bg-emerald-50 dark:bg-emerald-500/10 text-emerald-700 dark:text-emerald-400 border-emerald-200 dark:border-emerald-500/20'
+                                    : isCop
+                                    ? 'bg-sky-50 dark:bg-sky-500/10 text-sky-700 dark:text-sky-400 border-sky-200 dark:border-sky-500/20'
+                                    : 'bg-amber-50 dark:bg-amber-500/10 text-amber-700 dark:text-amber-400 border-amber-200 dark:border-amber-500/20';
+
+                                  return (
+                                    <span
+                                      key={m}
+                                      className={`px-1.5 py-0.5 rounded text-[10px] font-mono font-bold border ${badgeClass}`}
+                                    >
+                                      {m}
+                                    </span>
+                                  );
+                                })}
+                              </div>
+                            </td>
+
+                            {/* Estado */}
+                            <td className="px-3 py-2 whitespace-nowrap">
+                              {row.status === 'valid' && (
+                                <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-emerald-50 dark:bg-emerald-500/10 text-emerald-700 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-500/20">
+                                  <CheckCircle2 className="w-3 h-3" />
+                                  Lista
                                 </span>
-                              ))}
-                            </div>
-                          </td>
-
-                          {/* Palabras Claves / ID Reporte */}
-                          <td className="px-3 py-2">
-                            <input
-                              type="text"
-                              value={row.palabrasClaves}
-                              onChange={(e) => handleUpdateRow(idx, 'palabrasClaves', e.target.value)}
-                              placeholder="Ej: MAXIMA CUA 02, 502"
-                              className="w-full bg-transparent border border-transparent hover:border-slate-300 dark:hover:border-slate-700 focus:border-emerald-500 focus:bg-white dark:focus:bg-slate-800 rounded-lg px-2 py-1 text-xs font-mono text-cyan-600 dark:text-cyan-400 transition-all"
-                            />
-                          </td>
-
-                          {/* Monedas */}
-                          <td className="px-3 py-2">
-                            <div className="flex flex-wrap gap-1">
-                              {row.monedas.map((m) => (
+                              )}
+                              {row.status === 'duplicate' && (
                                 <span
-                                  key={m}
-                                  className="px-1.5 py-0.5 rounded text-[10px] font-mono font-bold bg-emerald-50 dark:bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-200 dark:border-emerald-500/20"
+                                  className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-amber-50 dark:bg-amber-500/10 text-amber-700 dark:text-amber-300 border border-amber-200 dark:border-amber-500/20"
+                                  title={row.errorMessage}
                                 >
-                                  {m}
+                                  <AlertTriangle className="w-3 h-3" />
+                                  Existe
                                 </span>
-                              ))}
-                            </div>
-                          </td>
+                              )}
+                              {row.status === 'error' && (
+                                <span
+                                  className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-rose-50 dark:bg-rose-500/10 text-rose-700 dark:text-rose-300 border border-rose-200 dark:border-rose-500/20"
+                                  title={row.errorMessage}
+                                >
+                                  <XCircle className="w-3 h-3" />
+                                  Error
+                                </span>
+                              )}
+                            </td>
 
-                          {/* Estado */}
-                          <td className="px-3 py-2 whitespace-nowrap">
-                            {row.status === 'valid' && (
-                              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-50 dark:bg-emerald-500/10 text-emerald-700 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-500/20">
-                                <CheckCircle2 className="w-3 h-3" />
-                                Válida
-                              </span>
-                            )}
-                            {row.status === 'duplicate' && (
-                              <span
-                                className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-amber-50 dark:bg-amber-500/10 text-amber-700 dark:text-amber-300 border border-amber-200 dark:border-amber-500/20"
-                                title={row.errorMessage}
+                            {/* Eliminar fila */}
+                            <td className="px-3 py-2 text-center">
+                              <button
+                                type="button"
+                                onClick={() => handleRemoveRow(row.id)}
+                                className="p-1 rounded-lg text-slate-400 hover:text-rose-600 hover:bg-rose-50 dark:hover:bg-rose-500/10 transition-all cursor-pointer"
+                                title="Descartar esta fila"
                               >
-                                <AlertTriangle className="w-3 h-3" />
-                                Ya existe
-                              </span>
-                            )}
-                            {row.status === 'error' && (
-                              <span
-                                className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-rose-50 dark:bg-rose-500/10 text-rose-700 dark:text-rose-300 border border-rose-200 dark:border-rose-500/20"
-                                title={row.errorMessage}
-                              >
-                                <XCircle className="w-3 h-3" />
-                                Inválida
-                              </span>
-                            )}
-                          </td>
-
-                          {/* Eliminar fila */}
-                          <td className="px-3 py-2 text-center">
-                            <button
-                              type="button"
-                              onClick={() => handleRemoveRow(idx)}
-                              className="p-1 rounded-lg text-slate-400 hover:text-rose-600 hover:bg-rose-50 dark:hover:bg-rose-500/10 transition-all cursor-pointer"
-                              title="Descartar esta fila"
-                            >
-                              <Trash2 className="w-4 h-4" />
-                            </button>
-                          </td>
-                        </tr>
-                      );
-                    })}
+                                <Trash2 className="w-4 h-4" />
+                              </button>
+                            </td>
+                          </tr>
+                        );
+                      })
+                    )}
                   </tbody>
                 </table>
               </div>
-            </div>
-          )}
 
-          {/* Progress Indicator */}
-          {progress && (
-            <div className="space-y-2 p-4 rounded-2xl bg-slate-50 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-800">
-              <div className="flex items-center justify-between text-xs font-bold text-slate-700 dark:text-slate-300">
-                <span>Registrando agencias en la base de datos y creando credenciales POS...</span>
-                <span className="font-mono">
-                  {progress.current} / {progress.total}
-                </span>
-              </div>
-              <div className="w-full bg-slate-200 dark:bg-slate-700 rounded-full h-2 overflow-hidden">
-                <div
-                  className="bg-emerald-600 h-full rounded-full transition-all duration-200"
-                  style={{ width: `${(progress.current / progress.total) * 100}%` }}
-                />
-              </div>
-            </div>
-          )}
-        </div>
+              {/* Pagination Controls */}
+              {filteredRows.length > 0 && (
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pt-3">
+                  <div className="text-xs text-slate-500 dark:text-slate-400">
+                    Mostrando{' '}
+                    <strong>
+                      {(currentPage - 1) * pageSize + 1} -{' '}
+                      {Math.min(currentPage * pageSize, filteredRows.length)}
+                    </strong>{' '}
+                    de <strong>{filteredRows.length}</strong> agencias
+                  </div>
 
-        {/* Modal Footer */}
-        <div className="p-4 sm:p-5 border-t border-slate-200 dark:border-slate-800 flex items-center justify-between gap-3 bg-slate-50/60 dark:bg-slate-900/60">
+                  <div className="flex items-center gap-2">
+                    <div className="flex items-center gap-1 text-xs text-slate-500">
+                      <span>Filas:</span>
+                      <select
+                        value={pageSize}
+                        onChange={(e) => {
+                          setPageSize(Number(e.target.value));
+                          setCurrentPage(1);
+                        }}
+                        className="bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-700 text-xs rounded-lg px-2 py-1"
+                      >
+                        <option value={25}>25</option>
+                        <option value={50}>50</option>
+                        <option value={100}>100</option>
+                        <option value={500}>500</option>
+                        <option value={1000}>Todas</option>
+                      </select>
+                    </div>
+
+                    <div className="flex items-center gap-1">
+                      <button
+                        type="button"
+                        disabled={currentPage <= 1}
+                        onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
+                        className="p-1.5 rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 disabled:opacity-40 cursor-pointer"
+                      >
+                        <ChevronLeft className="w-4 h-4" />
+                      </button>
+                      <span className="text-xs font-mono font-bold px-2">
+                        {currentPage} / {totalPages}
+                      </span>
+                      <button
+                        type="button"
+                        disabled={currentPage >= totalPages}
+                        onClick={() => setCurrentPage((p) => Math.min(totalPages, p + 1))}
+                        className="p-1.5 rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 disabled:opacity-40 cursor-pointer"
+                      >
+                        <ChevronRight className="w-4 h-4" />
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              )}
+            </div>
+
+            {/* Progress Indicator */}
+            {progress && (
+              <div className="px-6 py-3 border-t border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900">
+                <div className="space-y-1.5">
+                  <div className="flex items-center justify-between text-xs font-bold text-slate-700 dark:text-slate-300">
+                    <span>Registrando agencias en la base de datos y creando credenciales POS...</span>
+                    <span className="font-mono">
+                      {progress.current} / {progress.total}
+                    </span>
+                  </div>
+                  <div className="w-full bg-slate-200 dark:bg-slate-700 rounded-full h-2 overflow-hidden">
+                    <div
+                      className="bg-emerald-600 h-full rounded-full transition-all duration-200"
+                      style={{ width: `${(progress.current / progress.total) * 100}%` }}
+                    />
+                  </div>
+                </div>
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* ========================================================= */}
+        {/* MODAL FOOTER                                              */}
+        {/* ========================================================= */}
+        <div className="px-6 py-4 border-t border-slate-200 dark:border-slate-800 flex items-center justify-between gap-3 bg-slate-50/70 dark:bg-slate-900/80 shrink-0">
           <div className="text-xs text-slate-500 dark:text-slate-400">
-            {stats.selected > 0 ? (
+            {step === 'preview' ? (
               <span>
-                Se registrarán <strong>{stats.selected}</strong> agencias nuevas en tu operadora.
+                Se registrarán <strong>{stats.selected}</strong> agencias nuevas en tu operadora con sus palabras claves y terminales POS.
               </span>
             ) : (
-              <span>Carga un archivo o pega filas para comenzar.</span>
+              <span>Sube un archivo Excel/CSV o pega texto para generar la previsualización.</span>
             )}
           </div>
 
           <div className="flex items-center gap-3">
+            {step === 'preview' && (
+              <button
+                type="button"
+                onClick={() => setStep('upload')}
+                disabled={isProcessing}
+                className={UI_LOCK.buttonSecondary}
+              >
+                Volver a Cargar
+              </button>
+            )}
+
             <button
               type="button"
               onClick={onClose}
@@ -1120,19 +1571,21 @@ export const BulkAgencyModal: React.FC<BulkAgencyModalProps> = ({
               Cancelar
             </button>
 
-            <button
-              type="button"
-              onClick={handleSaveAll}
-              disabled={isProcessing || stats.selected === 0 || isOverQuota}
-              className={UI_LOCK.buttonPrimary}
-            >
-              <Upload className="w-4 h-4" />
-              <span>
-                {isProcessing
-                  ? 'Registrando...'
-                  : `Registrar ${stats.selected} Agencias`}
-              </span>
-            </button>
+            {step === 'preview' && (
+              <button
+                type="button"
+                onClick={handleSaveAll}
+                disabled={isProcessing || stats.selected === 0 || isOverQuota}
+                className={UI_LOCK.buttonPrimary}
+              >
+                <Upload className="w-4 h-4" />
+                <span>
+                  {isProcessing
+                    ? `Registrando (${progress?.current || 0}/${progress?.total || 0})...`
+                    : `Registrar ${stats.selected} Agencias`}
+                </span>
+              </button>
+            )}
           </div>
         </div>
       </div>
