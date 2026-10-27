@@ -129,17 +129,7 @@ export const CurrenciesTab: React.FC = () => {
 
       await saveCurrencies(updatedList, effectiveUserId);
 
-      // Retroalimentar la Tabla Padre Global
       if (effectiveUserId) {
-        contributeMasterCurrency(
-          {
-            codigo: cleanCodigo,
-            nombre: cleanNombre,
-            simbolo: cleanSimbolo,
-            decimales: numDecimales,
-          },
-          effectiveUserId
-        );
 
         try {
           await supabase.from('monedas').upsert({
@@ -303,26 +293,6 @@ export const CurrenciesTab: React.FC = () => {
     return currencies;
   }, [currencies, currencyFilter]);
 
-  const handleResetDefaults = async () => {
-    if (!window.confirm('¿Desea restaurar las monedas base (BS, USD, COP)? Esto reincorporará las 3 divisas predeterminadas al catálogo del suscriptor.')) {
-      return;
-    }
-
-    setLoading(true);
-    setErrorMsg(null);
-    setSuccessMsg(null);
-
-    try {
-      const resetList = await resetToDefaultCurrencies(effectiveUserId);
-      setCurrencies(resetList);
-      setSuccessMsg('✅ Monedas base (BS, USD, COP) restauradas con éxito en el ecosistema.');
-    } catch (err: any) {
-      setErrorMsg(err?.message || 'Error al restaurar monedas base.');
-    } finally {
-      setLoading(false);
-    }
-  };
-
   return (
     <div className="space-y-6 max-w-6xl mx-auto">
       {/* Header */}
@@ -338,15 +308,6 @@ export const CurrenciesTab: React.FC = () => {
         </div>
         <div className="flex items-center gap-2 self-start sm:self-auto">
           <button
-            onClick={handleResetDefaults}
-            disabled={loading || saving}
-            className="p-2.5 rounded-xl bg-amber-50 hover:bg-amber-100 dark:bg-amber-500/10 dark:hover:bg-amber-500/20 border border-amber-200 dark:border-amber-500/30 text-amber-700 dark:text-amber-300 transition-colors cursor-pointer flex items-center gap-2 text-xs font-bold disabled:opacity-50"
-            title="Restaurar monedas base estándar (BS, USD, COP)"
-          >
-            <RotateCcw className="w-4 h-4 text-amber-500 dark:text-amber-400" />
-            <span>Restaurar Base (BS/USD/COP)</span>
-          </button>
-          <button
             onClick={fetchCurrencies}
             disabled={loading}
             className="p-2.5 rounded-xl bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-300 transition-colors cursor-pointer flex items-center gap-2 text-xs font-bold"
@@ -361,62 +322,75 @@ export const CurrenciesTab: React.FC = () => {
       <div className="bg-emerald-50 dark:bg-emerald-950/30 border border-emerald-200 dark:border-emerald-500/30 rounded-2xl p-4 text-xs text-emerald-900 dark:text-slate-300 flex items-start gap-3 shadow-xs">
         <Sparkles className="w-5 h-5 text-emerald-600 dark:text-emerald-400 shrink-0 mt-0.5" />
         <div>
-          <p className="font-bold text-emerald-800 dark:text-emerald-300 mb-1">Arquitectura Multi-Empresa SaaS 100% Dinámica</p>
+          <p className="font-bold text-emerald-800 dark:text-emerald-300 mb-1">Catálogo de Monedas Oficiales Centralizado</p>
           <p className="text-emerald-700 dark:text-slate-400 leading-relaxed">
-            Todas las divisas (incluidas <strong>BS, USD y COP</strong>) son totalmente editables y eliminables según las operaciones de su empresa. Las monedas activas se sincronizan automáticamente con los selectores de Agencias, Grupos, Sistemas/Operadoras, Cuentas Bancarias, Pagos, Gastos y Centro de Cierre.
+            Las monedas son administradas y certificadas globalmente desde SaaS Master. Cada suscriptor puede habilitar o desactivar las monedas con las que opera su comercializadora.
           </p>
         </div>
       </div>
 
-      {/* Form: Add Currency */}
-      <div id="tour-monedas-form" className="bg-white dark:bg-[#0D1B22] border border-slate-200/80 dark:border-slate-800 rounded-2xl p-5 shadow-sm">
-        <h3 className="text-xs font-extrabold uppercase tracking-wider text-slate-800 dark:text-slate-300 mb-4 flex items-center gap-2">
+      {/* Form: Add Currency from Master Catalog */}
+      <div id="tour-monedas-form" className="bg-white dark:bg-[#0D1B22] border border-slate-200/80 dark:border-slate-800 rounded-2xl p-5 shadow-sm space-y-4">
+        <h3 className="text-xs font-extrabold uppercase tracking-wider text-slate-800 dark:text-slate-300 flex items-center gap-2">
           <Plus className="w-4 h-4 text-emerald-500 dark:text-emerald-400" />
-          <span>Añadir Nueva Moneda al Sistema</span>
+          <span>Habilitar Moneda desde el Catálogo Padre</span>
         </h3>
 
         <form onSubmit={handleAddCurrency} className="space-y-4">
+          <div className="p-3.5 rounded-xl bg-slate-50 dark:bg-[#071217] border border-slate-200 dark:border-slate-800 space-y-2.5">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+              <label className="text-xs font-bold text-slate-800 dark:text-white flex items-center gap-1.5">
+                <Globe className="w-3.5 h-3.5 text-emerald-500" />
+                <span>Monedas Disponibles en el Catálogo Padre:</span>
+              </label>
+              <span className="text-[11px] text-slate-400">
+                Haz clic en una divisa para seleccionarla y habilitarla en tu banca
+              </span>
+            </div>
+
+            {masterCurrencies.length > 0 ? (
+              <div className="flex flex-wrap items-center gap-2">
+                {masterCurrencies.map((m) => {
+                  const isRegistered = currencies.some((c) => c.codigo === m.codigo && c.activo !== false);
+                  const isSelected = codigo.toUpperCase() === m.codigo.toUpperCase();
+                  return (
+                    <button
+                      key={m.codigo}
+                      type="button"
+                      onClick={() => handleSelectMasterCurrency(m)}
+                      className={`text-xs px-3 py-1.5 rounded-xl font-mono font-bold transition-all cursor-pointer flex items-center gap-1.5 ${
+                        isSelected
+                          ? 'bg-emerald-500 text-white shadow-md shadow-emerald-500/20 ring-2 ring-emerald-400'
+                          : isRegistered
+                          ? 'bg-slate-200 text-slate-700 dark:bg-slate-800 dark:text-slate-300 hover:bg-slate-300'
+                          : 'bg-emerald-50 text-emerald-700 border border-emerald-300 dark:bg-emerald-500/10 dark:text-emerald-400 dark:border-emerald-500/30 hover:bg-emerald-100'
+                      }`}
+                    >
+                      <span>+{m.codigo}</span>
+                      <span className="text-[11px] font-sans opacity-85">({m.nombre})</span>
+                      {isRegistered && <span className="text-[10px] opacity-75 font-sans">(Activa)</span>}
+                    </button>
+                  );
+                })}
+              </div>
+            ) : (
+              <p className="text-xs text-amber-500">Cargando catálogo maestro de monedas...</p>
+            )}
+          </div>
+
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
             <div>
               <label className="block text-[11px] font-bold uppercase text-slate-600 dark:text-slate-400 mb-1">
-                Código ISO / Siglas *
+                Código ISO / Siglas (Certificado)
               </label>
               <input
                 type="text"
                 value={codigo}
-                onChange={(e) => setCodigo(e.target.value)}
-                placeholder="Ej: USDT, EUR, BRL"
-                className="w-full bg-white dark:bg-[#071217] border border-slate-300 dark:border-slate-700 rounded-xl px-3.5 py-2.5 text-sm text-slate-900 dark:text-white placeholder-slate-400 dark:placeholder-slate-500 uppercase focus:outline-hidden focus:border-emerald-500 font-black tracking-wider"
+                readOnly
+                placeholder="Elige una divisa arriba"
+                className="w-full bg-slate-100 dark:bg-[#071217]/60 border border-slate-300 dark:border-slate-700 rounded-xl px-3.5 py-2.5 text-sm text-emerald-600 dark:text-emerald-400 uppercase font-black tracking-wider cursor-not-allowed focus:outline-hidden"
                 required
               />
-              {/* Sugerencias desde la Tabla Padre Global */}
-              {masterCurrencies.length > 0 && (
-                <div className="mt-1.5 flex flex-wrap items-center gap-1">
-                  <span className="text-[10px] text-slate-400 font-sans flex items-center gap-0.5">
-                    <Globe className="w-2.5 h-2.5 text-slate-400" /> Catálogo Padre:
-                  </span>
-                  {masterCurrencies.slice(0, 8).map((m) => {
-                    const isRegistered = currencies.some((c) => c.codigo === m.codigo);
-                    return (
-                      <button
-                        key={m.codigo}
-                        type="button"
-                        onClick={() => handleSelectMasterCurrency(m)}
-                        className={`text-[10px] px-2 py-0.5 rounded-md font-mono font-bold transition-all cursor-pointer ${
-                          codigo.toUpperCase() === m.codigo.toUpperCase()
-                            ? 'bg-emerald-500 text-white shadow-xs'
-                            : isRegistered
-                            ? 'bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-400 hover:bg-slate-200'
-                            : 'bg-emerald-50 text-emerald-700 border border-emerald-200 dark:bg-emerald-500/10 dark:text-emerald-400 hover:bg-emerald-100'
-                        }`}
-                        title={`Sugerida de la Tabla Padre: ${m.nombre} (${m.simbolo})`}
-                      >
-                        +{m.codigo}
-                      </button>
-                    );
-                  })}
-                </div>
-              )}
             </div>
 
             <div>
@@ -426,9 +400,9 @@ export const CurrenciesTab: React.FC = () => {
               <input
                 type="text"
                 value={nombre}
-                onChange={(e) => setNombre(e.target.value)}
-                placeholder="Ej: Tether USD, Euro"
-                className="w-full bg-white dark:bg-[#071217] border border-slate-300 dark:border-slate-700 rounded-xl px-3.5 py-2.5 text-sm text-slate-900 dark:text-white placeholder-slate-400 dark:placeholder-slate-500 focus:outline-hidden focus:border-emerald-500 font-semibold"
+                readOnly
+                placeholder="Automático"
+                className="w-full bg-slate-100 dark:bg-[#071217]/60 border border-slate-200 dark:border-slate-800 rounded-xl px-3.5 py-2.5 text-sm text-slate-600 dark:text-slate-400 cursor-not-allowed focus:outline-hidden font-semibold"
               />
             </div>
 
@@ -439,9 +413,9 @@ export const CurrenciesTab: React.FC = () => {
               <input
                 type="text"
                 value={simbolo}
-                onChange={(e) => setSimbolo(e.target.value)}
-                placeholder="Ej: ₮, €, R$"
-                className="w-full bg-white dark:bg-[#071217] border border-slate-300 dark:border-slate-700 rounded-xl px-3.5 py-2.5 text-sm text-slate-900 dark:text-white placeholder-slate-400 dark:placeholder-slate-500 focus:outline-hidden focus:border-emerald-500 font-bold"
+                readOnly
+                placeholder="Automático"
+                className="w-full bg-slate-100 dark:bg-[#071217]/60 border border-slate-200 dark:border-slate-800 rounded-xl px-3.5 py-2.5 text-sm text-slate-600 dark:text-slate-400 cursor-not-allowed focus:outline-hidden font-bold"
               />
             </div>
 
@@ -449,22 +423,19 @@ export const CurrenciesTab: React.FC = () => {
               <label className="block text-[11px] font-bold uppercase text-slate-600 dark:text-slate-400 mb-1">
                 Decimales
               </label>
-              <select
-                value={decimales}
-                onChange={(e) => setDecimales(e.target.value)}
-                className="w-full bg-white dark:bg-[#071217] border border-slate-300 dark:border-slate-700 rounded-xl px-3.5 py-2.5 text-sm text-slate-900 dark:text-white focus:outline-hidden focus:border-emerald-500 font-bold"
-              >
-                <option value="2">2 decimales (Estándar / USD / USDT / EUR)</option>
-                <option value="0">0 decimales (Sin centavos / COP / CLP)</option>
-                <option value="4">4 decimales (Precisión extendida)</option>
-              </select>
+              <input
+                type="text"
+                value={`${decimales} decimales`}
+                readOnly
+                className="w-full bg-slate-100 dark:bg-[#071217]/60 border border-slate-200 dark:border-slate-800 rounded-xl px-3.5 py-2.5 text-sm text-slate-600 dark:text-slate-400 cursor-not-allowed focus:outline-hidden font-bold"
+              />
             </div>
           </div>
 
           <div className="flex justify-end pt-2">
             <button
               type="submit"
-              disabled={saving}
+              disabled={saving || !codigo}
               className={UI_LOCK.buttonPrimary + ' text-xs'}
             >
               {saving ? (
@@ -472,7 +443,7 @@ export const CurrenciesTab: React.FC = () => {
               ) : (
                 <>
                   <Plus className="w-4 h-4" />
-                  <span>REGISTRAR Y HABILITAR MONEDA</span>
+                  <span>HABILITAR MONEDA EN MI BANCA</span>
                 </>
               )}
             </button>

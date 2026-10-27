@@ -3,9 +3,9 @@ import * as XLSX from 'xlsx';
 import { supabase } from '../../lib/supabase';
 import { useAuth } from '../../context/AuthContext';
 import { formatCurrency, formatDate, cleanAgencyName, normalizarMoneda } from '../../utils/formatters';
-import type { DailySaleItem, Agency, BetSystem, Currency } from '../../types';
+import type { DailySaleItem, Agency, BetSystem, Currency, MasterSystem } from '../../types';
 import { loadCurrencies } from '../../utils/currencies';
-import { loadSaaSActiveSystems } from '../../utils/sistemas';
+import { loadSaaSActiveSystems, loadMasterSystems } from '../../utils/sistemas';
 import { UI_LOCK } from '../../styles/uiDesignLock';
 import {
   TrendingUp,
@@ -23,7 +23,77 @@ import {
   Edit2,
   AlertCircle,
   Sparkles,
+  FileText,
+  Globe,
 } from 'lucide-react';
+
+interface SystemGuide {
+  menu: string;
+  reportName: string;
+  formats: string[];
+  currency: string;
+  flag: string;
+  tip?: string;
+}
+
+const SYSTEM_DOWNLOAD_GUIDES: Record<string, SystemGuide> = {
+  GATOWEB: {
+    menu: 'Reportes ➔ Análisis por período (Agrupado por: Usuario) O Reporte por Agencia',
+    reportName: 'Análisis por período / Reporte por Agencia',
+    formats: ['Excel (.xlsx / .xls)', 'CSV (.csv)', 'PDF (.pdf)'],
+    currency: 'Bolívares (BS)',
+    flag: '🇻🇪',
+    tip: '💡 GatoWeb opera en Bolívares (Bs). Si juegas en Pesos Colombianos, usa el sistema GATO PESOS.',
+  },
+  'GATO PESOS': {
+    menu: 'Reportes ➔ Ventas por Entidad / Concesionario',
+    reportName: 'Reporte de Ventas en Pesos',
+    formats: ['Excel (.xlsx / .xls)', 'CSV (.csv)'],
+    currency: 'Pesos Colombianos (COP)',
+    flag: '🇨🇴',
+    tip: '💡 GATO PESOS opera exclusivamente en Pesos Colombianos (COP).',
+  },
+  KENO: {
+    menu: 'Reports ➔ Virtual Games Report (o Game History)',
+    reportName: 'Virtual Games Report (LotteryAdmin)',
+    formats: ['PDF (.pdf)', 'Excel (.xlsx)', 'CSV (.csv)'],
+    currency: 'Pesos Colombianos (COP)',
+    flag: '🇨🇴',
+    tip: '💡 Reporte LotteryAdmin con columnas Total accepted y Total paid.',
+  },
+  BETM3: {
+    menu: 'Reportes ➔ Ventas por Concesionario / Taquillas',
+    reportName: 'Reporte General de Ventas BetM3',
+    formats: ['Excel (.xlsx / .xls)', 'CSV (.csv)', 'PDF (.pdf)'],
+    currency: 'Multi-Moneda (COP / BS / USD)',
+    flag: '🔀',
+    tip: '💡 El sistema detecta automáticamente la divisa desde el encabezado del archivo.',
+  },
+  CDAPUESTAS: {
+    menu: 'Reportes ➔ Jugadas y Liquidación de Terminales',
+    reportName: 'Reporte de Utilidad y Ventas CDA',
+    formats: ['Excel (.xlsx / .xls)', 'CSV (.csv)'],
+    currency: 'Dólares (USD)',
+    flag: '🇺🇸',
+    tip: '💡 CDAPuestas opera con moneda base USD.',
+  },
+  HIPISMO: {
+    menu: 'Reportes ➔ Carreras Nacionales e Internacionales / Taquillas',
+    reportName: 'Reporte de Jugada Hípica',
+    formats: ['Excel (.xlsx)', 'CSV (.csv)'],
+    currency: 'Bolívares (BS)',
+    flag: '🇻🇪',
+    tip: '💡 Carreras hípicas nacionales (La Rinconada / Valencia) e internacionales.',
+  },
+  'PARLEY INH': {
+    menu: 'Reportes ➔ Parley Deportivo y Carreras INH',
+    reportName: 'Reporte Consolidado Parley INH',
+    formats: ['Excel (.xlsx)', 'CSV (.csv)'],
+    currency: 'Bolívares (BS)',
+    flag: '🇻🇪',
+    tip: '💡 Sistema Parley tradicional INH en Bolívares.',
+  },
+};
 import confetti from 'canvas-confetti';
 import { extractTextFromPdf } from '../../utils/pdfReader';
 import { detectAndParseThermalTicket } from '../../utils/thermalTicketParser';
@@ -175,29 +245,31 @@ export const SalesEntryTab: React.FC = () => {
   const [bulkFileDate, setBulkFileDate] = useState(systemCycle?.hasta || new Date().toISOString().split('T')[0]);
   const [bulkSystem, setBulkSystem] = useState('AUTO');
   const [bulkCurrency, setBulkCurrency] = useState('AUTO');
+  const [selectedGuideSystem, setSelectedGuideSystem] = useState<string>('GATOWEB');
   const [bulkDetectedCurrencies, setBulkDetectedCurrencies] = useState<string[]>([]);
   const [bulkRows, setBulkRows] = useState<any[]>([]);
   const [editingComIndex, setEditingComIndex] = useState<number | null>(null);
   const [bulkError, setBulkError] = useState<string | null>(null);
   const [bulkUnmatched, setBulkUnmatched] = useState<string[]>([]);
   const [systemKeywords, setSystemKeywords] = useState<SystemKeywordsMap>(DEFAULT_SYSTEM_KEYWORDS);
+  const [masterSystemsList, setMasterSystemsList] = useState<MasterSystem[]>([]);
 
-  // Available systems list merging standard defaults, database systems, and configured keywords
+  // Available systems list merging master catalog, database systems, and configured keywords
   const availableSystemsList = useMemo(() => {
-    const list = ['BETM3', 'GATOWEB', 'KENO'];
+    const list: string[] = [];
+    masterSystemsList.forEach((m) => {
+      const name = (m.nombre_sistema || '').trim();
+      if (name && !list.includes(name)) list.push(name);
+    });
     systems.forEach((s) => {
       const name = (s.nombre_sistema || '').trim();
-      if (name && !list.includes(name)) {
-        list.push(name);
-      }
+      if (name && !list.includes(name)) list.push(name);
     });
     Object.keys(systemKeywords).forEach((name) => {
-      if (name && !list.includes(name)) {
-        list.push(name);
-      }
+      if (name && !list.includes(name)) list.push(name);
     });
-    return list;
-  }, [systems, systemKeywords]);
+    return list.length > 0 ? list : ['BETM3', 'GATOWEB', 'KENO', 'CDAPUESTAS', 'GATO PESOS', 'HIPISMO', 'PARLEY INH'];
+  }, [systems, systemKeywords, masterSystemsList]);
 
   // Available currencies list from active subscriber currencies
   const availableCurrenciesList = useMemo(() => {
@@ -218,12 +290,13 @@ export const SalesEntryTab: React.FC = () => {
     setMessage(null);
 
     try {
-      const [salesRes, agRes, sisList, dynamicCurrs, loadedKw] = await Promise.all([
+      const [salesRes, agRes, sisList, dynamicCurrs, loadedKw, loadedMasters] = await Promise.all([
         supabase.from('carga_actual').select('*').eq('user_id', effectiveUserId).order('id', { ascending: false }),
         supabase.from('agencias').select('*').eq('user_id', effectiveUserId).order('id', { ascending: true }),
         loadSaaSActiveSystems(effectiveUserId),
         loadCurrencies(effectiveUserId),
         loadSystemKeywords(effectiveUserId),
+        loadMasterSystems(),
       ]);
 
       const loadedSales = salesRes.data || [];
@@ -252,6 +325,7 @@ export const SalesEntryTab: React.FC = () => {
       setSystems(loadedSystems);
       setCurrencies(loadedCurrencies);
       setSystemKeywords(loadedKw);
+      setMasterSystemsList(loadedMasters || []);
 
       if (loadedAgencies.length > 0) {
         setFormAgencia((prev) => {
@@ -978,12 +1052,15 @@ export const SalesEntryTab: React.FC = () => {
           detectedMoneda = bulkCurrency;
         }
 
-        // 3. Reglas y Palabras Clave Canónicas del Sistema (salesEngineLock)
+        // 3. Reglas y Palabras Clave Canónicas del Sistema (salesEngineLock & catalogo_sistemas_maestro)
+        const matchedMaster = masterSystemsList.find(
+          (m) => m.nombre_sistema.trim().toUpperCase() === sistDet.toUpperCase()
+        );
         const canonRule = CANONICAL_SYSTEM_RULES[sistDet.toUpperCase()];
         const sysConf = systemKeywords[sistDet] || DEFAULT_SYSTEM_KEYWORDS[sistDet];
-        const configuredVenta = sysConf?.venta?.trim().toUpperCase();
-        const configuredPremio = sysConf?.premio?.trim().toUpperCase();
-        const configuredAgencia = sysConf?.agencia?.trim().toUpperCase();
+        const configuredVenta = matchedMaster?.col_venta?.trim().toUpperCase() || sysConf?.venta?.trim().toUpperCase();
+        const configuredPremio = matchedMaster?.col_premio?.trim().toUpperCase() || sysConf?.premio?.trim().toUpperCase();
+        const configuredAgencia = matchedMaster?.col_agencia?.trim().toUpperCase() || sysConf?.agencia?.trim().toUpperCase();
 
         const NAME_SYNONYMS = Array.from(new Set([
           ...(canonRule ? canonRule.colAgencia : []),
@@ -1168,13 +1245,14 @@ export const SalesEntryTab: React.FC = () => {
             if (rawCol) cellColMon = normalizarMoneda(rawCol);
           }
 
+          const defaultForSystem = canonRule?.defaultMoneda || (['GATOWEB', 'HIPISMO', 'PARLEY INH'].includes(matchedSystem.toUpperCase()) ? 'BS' : (matchedSystem.toUpperCase() === 'CDAPUESTAS' ? 'USD' : 'COP'));
           const agencyCurrencies = (matchedAg.monedas || '')
             .split(',')
             .map((m: string) => normalizarMoneda(m.trim()))
             .filter(Boolean);
-          const primaryAgencyCurr = agencyCurrencies[0] || 'COP';
+          const primaryAgencyCurr = agencyCurrencies[0] || defaultForSystem;
 
-          let rowMoneda = 'COP';
+          let rowMoneda: string = defaultForSystem;
           if (rowCellCurr) {
             rowMoneda = rowCellCurr;
           } else if (cellColMon) {
@@ -1190,11 +1268,13 @@ export const SalesEntryTab: React.FC = () => {
           } else if (agencyCurrencies.length === 1) {
             rowMoneda = agencyCurrencies[0];
           } else if (agencyCurrencies.length > 1) {
-            rowMoneda = primaryAgencyCurr;
-          } else if (matchedSystem.toUpperCase() === 'CDAPUESTAS') {
-            rowMoneda = 'USD';
+            if (agencyCurrencies.includes(defaultForSystem)) {
+              rowMoneda = defaultForSystem;
+            } else {
+              rowMoneda = primaryAgencyCurr;
+            }
           } else {
-            rowMoneda = 'COP';
+            rowMoneda = defaultForSystem;
           }
 
           distinctFileCurrencies.add(rowMoneda);
@@ -1533,7 +1613,20 @@ export const SalesEntryTab: React.FC = () => {
                   const sVal = e.target.value;
                   setBulkSystem(sVal);
                   if (sVal !== 'AUTO') {
+                    setSelectedGuideSystem(sVal);
                     setBulkRows((prev) => prev.map((r) => ({ ...r, sistema: sVal })));
+                    const sUpper = sVal.toUpperCase();
+                    if (sUpper === 'GATOWEB' || sUpper === 'HIPISMO' || sUpper === 'PARLEY INH') {
+                      setBulkCurrency('BS');
+                    } else if (sUpper === 'GATO PESOS' || sUpper === 'KENO') {
+                      setBulkCurrency('COP');
+                    } else if (sUpper === 'CDAPUESTAS') {
+                      setBulkCurrency('USD');
+                    } else {
+                      setBulkCurrency('AUTO');
+                    }
+                  } else {
+                    setBulkCurrency('AUTO');
                   }
                 }}
                 className={UI_LOCK.select}
@@ -1588,6 +1681,118 @@ export const SalesEntryTab: React.FC = () => {
               />
             </div>
           </div>
+
+          {/* Guía Visual del Reporte Certificado */}
+          {(() => {
+            const activeGuideKey = bulkSystem !== 'AUTO' ? bulkSystem.toUpperCase() : selectedGuideSystem.toUpperCase();
+            const guide = SYSTEM_DOWNLOAD_GUIDES[activeGuideKey] || SYSTEM_DOWNLOAD_GUIDES['GATOWEB'];
+            const guideMaster = masterSystemsList.find(
+              (m) => m.nombre_sistema.trim().toUpperCase() === activeGuideKey
+            );
+            const guideKeys = Object.keys(SYSTEM_DOWNLOAD_GUIDES);
+
+            return (
+              <div className="p-4 rounded-2xl bg-gradient-to-r from-slate-900/90 via-slate-800/90 to-cyan-950/40 border border-cyan-500/30 text-white shadow-lg space-y-3">
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-white/10 pb-2">
+                  <div className="flex items-center gap-2">
+                    <FileText className="w-4 h-4 text-cyan-400" />
+                    <span className="text-xs font-black tracking-wide text-cyan-300 uppercase">
+                      Guía Visual del Reporte Certificado
+                    </span>
+                    <span className="px-2 py-0.5 rounded-full text-[10px] font-mono font-bold bg-cyan-500/20 text-cyan-300 border border-cyan-400/30">
+                      {guide.flag} {activeGuideKey}
+                    </span>
+                    <span className="px-2 py-0.5 rounded-full text-[10px] font-mono font-bold bg-emerald-500/20 text-emerald-300 border border-emerald-400/30">
+                      🪙 {guide.currency}
+                    </span>
+                  </div>
+
+                  {bulkSystem === 'AUTO' && (
+                    <div className="flex items-center gap-1 overflow-x-auto py-1">
+                      <span className="text-[10px] text-slate-400 mr-1 hidden sm:inline">Ver guía de:</span>
+                      {guideKeys.map((k) => (
+                        <button
+                          key={k}
+                          type="button"
+                          onClick={() => setSelectedGuideSystem(k)}
+                          className={`px-2 py-0.5 rounded-md text-[10px] font-bold font-mono transition-all cursor-pointer ${
+                            selectedGuideSystem.toUpperCase() === k
+                              ? 'bg-cyan-500 text-slate-950 shadow-sm shadow-cyan-500/50'
+                              : 'bg-white/5 hover:bg-white/15 text-slate-300 border border-white/10'
+                          }`}
+                        >
+                          {k}
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                </div>
+
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-3 text-xs">
+                  <div className="space-y-1 bg-black/20 p-2.5 rounded-xl border border-white/5">
+                    <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">
+                      📌 Ruta en el Sistema Proveedor:
+                    </span>
+                    <div className="text-cyan-200 font-medium text-[11px] leading-relaxed">
+                      {guide.menu}
+                    </div>
+                    <div className="text-[10px] text-slate-400 mt-1">
+                      Nombre reporte: <span className="text-white font-semibold">{guide.reportName}</span>
+                    </div>
+                  </div>
+
+                  <div className="space-y-1 bg-black/20 p-2.5 rounded-xl border border-white/5">
+                    <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">
+                      💾 Formatos y Divisa Oficial:
+                    </span>
+                    <div className="flex flex-wrap gap-1 mt-1">
+                      {guide.formats.map((fmt) => (
+                        <span key={fmt} className="px-2 py-0.5 rounded-md bg-white/10 text-white text-[10px] font-mono font-bold">
+                          {fmt}
+                        </span>
+                      ))}
+                    </div>
+                    <div className="text-[10px] text-emerald-300 font-semibold mt-1.5 flex items-center gap-1">
+                      <span>Moneda base requerida:</span>
+                      <span className="underline decoration-emerald-500 underline-offset-2">{guide.currency}</span>
+                    </div>
+                  </div>
+
+                  <div className="space-y-1 bg-black/20 p-2.5 rounded-xl border border-white/5">
+                    <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">
+                      📑 Columnas Certificadas (Catálogo Maestro):
+                    </span>
+                    <div className="flex flex-col gap-1 text-[11px]">
+                      <div className="flex justify-between items-center text-slate-300">
+                        <span>Col. Agencia:</span>
+                        <span className="font-mono text-cyan-300 font-bold bg-cyan-950/60 px-1.5 py-0.2 rounded border border-cyan-800">
+                          {guideMaster?.col_agencia || 'USUARIO / AGENCIA'}
+                        </span>
+                      </div>
+                      <div className="flex justify-between items-center text-slate-300">
+                        <span>Col. Venta:</span>
+                        <span className="font-mono text-emerald-300 font-bold bg-emerald-950/60 px-1.5 py-0.2 rounded border border-emerald-800">
+                          {guideMaster?.col_venta || 'TOTAL VENTA / VENTAS'}
+                        </span>
+                      </div>
+                      <div className="flex justify-between items-center text-slate-300">
+                        <span>Col. Premio:</span>
+                        <span className="font-mono text-amber-300 font-bold bg-amber-950/60 px-1.5 py-0.2 rounded border border-amber-800">
+                          {guideMaster?.col_premio || 'TOTAL PAGADO / PREMIOS'}
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                {guide.tip && (
+                  <div className="p-2 rounded-xl bg-cyan-950/30 border border-cyan-500/20 text-[11px] text-cyan-200/90 flex items-center gap-2">
+                    <span>{guide.tip}</span>
+                  </div>
+                )}
+              </div>
+            );
+          })()}
 
           {bulkUnmatched.length > 0 && (
             <div className="p-3 bg-amber-50 dark:bg-amber-500/10 border border-amber-300 dark:border-amber-500/20 rounded-xl text-xs text-amber-800 dark:text-amber-300 flex items-start gap-2">

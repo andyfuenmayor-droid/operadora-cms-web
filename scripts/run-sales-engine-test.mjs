@@ -139,6 +139,40 @@ assert(isBetm3Dup === true, 'BETM3 en 2026-10-25 es correctamente identificado c
 const isBetm3OtherDate = isSaleDuplicate(existingSales, 'MAXIMA CDA 02 T2', 'BETM3', 'COP', '2026-10-26');
 assert(isBetm3OtherDate === false, 'BETM3 en 2026-10-26 es permitido');
 
+// -----------------------------------------------------------------------------
+// TEST 5: CASO CHUCHO Y GATOWEB EN BOLÍVARES (BS)
+// -----------------------------------------------------------------------------
+console.log('\n--- 5. TEST DE GATOWEB Y MONEDA BS (CASO CHUCHO) ---');
+assert(CANONICAL_SYSTEM_RULES.GATOWEB.defaultMoneda === 'BS', 'GATOWEB tiene por defecto la moneda BS');
+assert(CANONICAL_SYSTEM_RULES.HIPISMO.defaultMoneda === 'BS', 'HIPISMO tiene por defecto la moneda BS');
+assert(CANONICAL_SYSTEM_RULES['PARLEY INH'].defaultMoneda === 'BS', 'PARLEY INH tiene por defecto la moneda BS');
+
+const chuchoAgency = {
+  id: 20,
+  nombre_agencia: 'CHUCHO',
+  sistemas: 'GATOWEB',
+  monedas: 'BS',
+  condiciones_sistemas: JSON.stringify({
+    GATOWEB_BS: {
+      sistema: 'GATOWEB',
+      moneda: 'BS',
+      codigo: 'chucho@banklot.net',
+      comision: 22,
+      participacion: 0
+    }
+  })
+};
+
+const matchChucho = matchAgencyStrict('chucho@banklot.net', 'GATOWEB', 'AUTO', [chuchoAgency]);
+assert(matchChucho.agency?.nombre_agencia === 'CHUCHO', 'Encuentra la agencia CHUCHO mediante su correo de taquilla');
+assert(matchChucho.moneda === 'BS', 'La moneda resuelta es estrictamente BS (nunca COP)');
+assert(matchChucho.system === 'GATOWEB', 'El sistema es GATOWEB');
+
+// Test de match por nombre directo "CHUCHO" en reporte GATOWEB
+const matchChuchoByName = matchAgencyStrict('CHUCHO', 'GATOWEB', 'AUTO', [chuchoAgency]);
+assert(matchChuchoByName.agency?.nombre_agencia === 'CHUCHO', 'Encuentra la agencia CHUCHO por nombre exacto');
+assert(matchChuchoByName.moneda === 'BS', 'Por nombre también hereda la moneda BS de su configuración');
+
 console.log('\n==============================================================');
 console.log(`✅ TODOS LOS ${passedTests} TESTS DEL MOTOR DE VENTAS PASARON CON ÉXITO.`);
 console.log('🔒 salesEngineLock certificado y 100% blindado contra secuestros y corrupción.');

@@ -125,14 +125,17 @@ export const CANONICAL_SYSTEM_RULES: Readonly<Record<string, CanonicalSystemRule
 
   GATOWEB: Object.freeze({
     sistema: 'GATOWEB',
-    defaultMoneda: 'COP',
-    multiMoneda: true,
+    defaultMoneda: 'BS',
+    multiMoneda: false,
     signatures: Object.freeze([
       'BANKLOT',
       'GATOWEB',
+      'GATOBETS',
       'ANALISIS POR PERIODO',
       'ANÁLISIS POR PERÍODO',
+      'REPORTE POR AGENCIA',
       'DISTRIBUIDOR',
+      'USUARIO',
     ]),
     colAgencia: Object.freeze(['USUARIO', 'AGENCIA', 'NOMBRE', 'TAQUILLA', 'AGENT']),
     colVenta: Object.freeze(['VENTAS', 'VENTA', 'TOTAL VENTA', 'TOTAL VENTAS', 'JUGADO']),
@@ -176,6 +179,45 @@ export const CANONICAL_SYSTEM_RULES: Readonly<Record<string, CanonicalSystemRule
     colPremio: Object.freeze(['PREMIO', 'PREMIOS', 'TOTAL PREMIOS']),
     colComision: Object.freeze(['COMISION', 'COMISIÓN']),
     colNeto: Object.freeze(['UTILIDAD FINAL', 'SALDO', 'NETO']),
+    defaultComisionPct: 0,
+    defaultParticipacionPct: 0,
+  }),
+
+  HIPISMO: Object.freeze({
+    sistema: 'HIPISMO',
+    defaultMoneda: 'BS',
+    multiMoneda: false,
+    signatures: Object.freeze([
+      'HIPISMO',
+      'HIPICA',
+      'HÍPICA',
+      'CARRERAS',
+      'CABALLOS',
+      'INH',
+    ]),
+    colAgencia: Object.freeze(['AGENCIA', 'NOMBRE', 'USUARIO', 'TAQUILLA']),
+    colVenta: Object.freeze(['VENTAS', 'VENTA', 'TOTAL VENTA']),
+    colPremio: Object.freeze(['PREMIOS', 'PREMIO', 'TOTAL PREMIOS']),
+    colComision: Object.freeze(['COMISION', 'COMISIÓN', 'COM']),
+    colNeto: Object.freeze(['SALDO', 'NETO', 'BALANCE']),
+    defaultComisionPct: 0,
+    defaultParticipacionPct: 0,
+  }),
+
+  'PARLEY INH': Object.freeze({
+    sistema: 'PARLEY INH',
+    defaultMoneda: 'BS',
+    multiMoneda: false,
+    signatures: Object.freeze([
+      'PARLEY INH',
+      'PARLEY',
+      'INH',
+    ]),
+    colAgencia: Object.freeze(['AGENCIA', 'NOMBRE', 'USUARIO', 'TAQUILLA']),
+    colVenta: Object.freeze(['VENTA', 'VENTAS', 'TOTAL VENTA']),
+    colPremio: Object.freeze(['PREMIO', 'PREMIOS', 'TOTAL PREMIOS']),
+    colComision: Object.freeze(['COMISION', 'COMISIÓN', 'COM']),
+    colNeto: Object.freeze(['SALDO', 'NETO', 'BALANCE']),
     defaultComisionPct: 0,
     defaultParticipacionPct: 0,
   }),
@@ -361,6 +403,20 @@ export function matchAgencyStrict<T extends AgencyLike = AgencyLike>(
   const idMatch = cellVal.match(/\((\d+)\)/) || cellVal.match(/\b(\d{4,8})\b/);
   const numericId = idMatch ? idMatch[1] : '';
 
+  // Helper para inferir moneda de agencia cuando el reporte no trae divisa explícita
+  const getEffectiveAgencyMoneda = (agency: T, conditions: Record<string, any>): string => {
+    const agCurrs = (agency.monedas || '')
+      .split(',')
+      .map((m: string) => normalizarMoneda(m.trim()))
+      .filter(Boolean);
+    const sysCurrs = Object.keys(conditions)
+      .filter((k) => k.toUpperCase().startsWith(`${sysUpper}_`))
+      .map((k) => normalizarMoneda(k.split('_')[1]));
+    if (sysCurrs.length === 1) return sysCurrs[0];
+    if (agCurrs.length === 1) return agCurrs[0];
+    return monUpper;
+  };
+
   // PASO 1: Búsqueda de Código Exacto en el SISTEMA ACTIVO (Prioridad Máxima)
   for (const ag of agencies) {
     if (!ag.condiciones_sistemas) continue;
@@ -373,13 +429,16 @@ export function matchAgencyStrict<T extends AgencyLike = AgencyLike>(
       continue;
     }
 
-    // Probar combinaciones del sistema activo
-    const candidateKeys = [
+    // Probar combinaciones del sistema activo, incluyendo todas las divisas configuradas para este sistema
+    const sysPrefix = `${sysUpper}_`;
+    const sysSpecificKeys = Object.keys(cond).filter((k) => k.toUpperCase().startsWith(sysPrefix));
+    const candidateKeys = Array.from(new Set([
       `${sysUpper}_${monUpper}`,
-      sysUpper,
       `${targetSystem}_${monUpper}`,
+      ...sysSpecificKeys,
+      sysUpper,
       targetSystem,
-    ];
+    ]));
 
     for (const key of candidateKeys) {
       const entry = cond[key];
@@ -389,12 +448,18 @@ export function matchAgencyStrict<T extends AgencyLike = AgencyLike>(
           .map((c) => c.trim().toUpperCase())
           .filter(Boolean);
 
+        const inferredMoneda = entry.moneda
+          ? normalizarMoneda(entry.moneda)
+          : key.includes('_')
+          ? normalizarMoneda(key.split('_')[1])
+          : monUpper;
+
         // 1a. Coincidencia Exacta con la celda completa o celda limpia
         if (codigos.includes(upCell) || codigos.includes(clnCell)) {
           return {
             agency: ag,
             system: sysUpper,
-            moneda: entry.moneda ? normalizarMoneda(entry.moneda) : monUpper,
+            moneda: inferredMoneda,
             matchType: 'EXACT_CODE',
             matchedCode: entry.codigo,
           };
@@ -405,7 +470,7 @@ export function matchAgencyStrict<T extends AgencyLike = AgencyLike>(
           return {
             agency: ag,
             system: sysUpper,
-            moneda: entry.moneda ? normalizarMoneda(entry.moneda) : monUpper,
+            moneda: inferredMoneda,
             matchType: 'ID_CODE',
             matchedCode: numericId,
           };
@@ -416,7 +481,7 @@ export function matchAgencyStrict<T extends AgencyLike = AgencyLike>(
           return {
             agency: ag,
             system: sysUpper,
-            moneda: entry.moneda ? normalizarMoneda(entry.moneda) : monUpper,
+            moneda: inferredMoneda,
             matchType: 'ID_CODE',
             matchedCode: numericId,
           };
@@ -431,10 +496,18 @@ export function matchAgencyStrict<T extends AgencyLike = AgencyLike>(
     const agNomClean = cleanAgencyName(ag.nombre_agencia);
 
     if (agNomUpper === upCell || agNomClean === clnCell) {
+      let cond: Record<string, any> = {};
+      try {
+        cond = typeof ag.condiciones_sistemas === 'string'
+          ? JSON.parse(ag.condiciones_sistemas)
+          : (ag.condiciones_sistemas || {});
+      } catch (_) {}
+      const effectiveMoneda = getEffectiveAgencyMoneda(ag, cond);
+
       return {
         agency: ag,
         system: sysUpper,
-        moneda: monUpper,
+        moneda: effectiveMoneda,
         matchType: 'EXACT_NAME',
       };
     }
@@ -451,10 +524,18 @@ export function matchAgencyStrict<T extends AgencyLike = AgencyLike>(
       const agNomClean = cleanAgencyName(ag.nombre_agencia);
 
       if (agNomUpper === baseNameFromCell || agNomClean === cleanBaseFromCell) {
+        let cond: Record<string, any> = {};
+        try {
+          cond = typeof ag.condiciones_sistemas === 'string'
+            ? JSON.parse(ag.condiciones_sistemas)
+            : (ag.condiciones_sistemas || {});
+        } catch (_) {}
+        const effectiveMoneda = getEffectiveAgencyMoneda(ag, cond);
+
         return {
           agency: ag,
           system: sysUpper,
-          moneda: monUpper,
+          moneda: effectiveMoneda,
           matchType: 'CLEAN_NAME',
         };
       }
