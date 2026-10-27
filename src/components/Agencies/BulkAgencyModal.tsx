@@ -73,6 +73,7 @@ export interface BulkAgencyRow {
   comision: number;
   sistemas: string[];
   codigoReporte: string;
+  codigosPorMoneda: Record<string, string>;
   monedas: string[];
   participacion: number;
   grupoId: number | null;
@@ -227,13 +228,18 @@ export const BulkAgencyModal: React.FC<BulkAgencyModalProps> = ({
         );
         const finalMons = allMons.length > 0 ? allMons : activeCurrencyCodes.slice(0, 3);
 
-        // Auto-codes/IDs: unique union of baseNombre + all raw provider names (e.g. "15LETRAS1, 15LETRAS1 Bs, 15LETRAS1 Usd")
+        // Auto-codes/IDs: ONLY exact codes from report (no spurious baseNombre)
+        // Also map code per currency:
+        const codeMapByCurrency: Record<string, string> = {};
         const codeSet = new Set<string>();
-        codeSet.add(primary.baseNombre);
+
         groupedItems.forEach((it) => {
-          if (it.rawNombre) codeSet.add(it.rawNombre);
-          if (it.codigoReporte) {
-            it.codigoReporte.split(',').forEach((k) => codeSet.add(k.trim()));
+          const rawCode = it.codigoReporte || it.rawNombre;
+          if (rawCode) {
+            codeSet.add(rawCode);
+            if (it.detectedMoneda) {
+              codeMapByCurrency[it.detectedMoneda] = rawCode;
+            }
           }
         });
         const combinedCodes = Array.from(codeSet).filter(Boolean).join(', ');
@@ -257,6 +263,7 @@ export const BulkAgencyModal: React.FC<BulkAgencyModalProps> = ({
           comision: primary.comision,
           sistemas: primary.sistemas,
           codigoReporte: combinedCodes,
+          codigosPorMoneda: codeMapByCurrency,
           monedas: finalMons,
           participacion: primary.participacion,
           grupoId: primary.grupoId,
@@ -280,10 +287,12 @@ export const BulkAgencyModal: React.FC<BulkAgencyModalProps> = ({
           errorMessage = 'La agencia ya existe en el catálogo';
         }
 
-        // Code in report: raw name + base name
-        const codes = Array.from(
-          new Set([item.rawNombre, item.baseNombre, item.codigoReporte].filter(Boolean))
-        ).join(', ');
+        // Code in report: only exact item.codigoReporte or item.rawNombre (no baseNombre appended)
+        const exactCode = item.codigoReporte || item.rawNombre;
+        const codeMapByCurrency: Record<string, string> = {};
+        if (item.detectedMoneda && exactCode) {
+          codeMapByCurrency[item.detectedMoneda] = exactCode;
+        }
 
         result.push({
           id: `ag_ind_${idx}_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`,
@@ -291,7 +300,8 @@ export const BulkAgencyModal: React.FC<BulkAgencyModalProps> = ({
           nombre: item.rawNombre.toUpperCase(),
           comision: item.comision,
           sistemas: item.sistemas,
-          codigoReporte: codes,
+          codigoReporte: exactCode,
+          codigosPorMoneda: codeMapByCurrency,
           monedas: item.detectedMoneda ? [item.detectedMoneda] : activeCurrencyCodes.slice(0, 3),
           participacion: item.participacion,
           grupoId: item.grupoId,
@@ -634,6 +644,23 @@ export const BulkAgencyModal: React.FC<BulkAgencyModalProps> = ({
             updated.errorMessage = undefined;
           }
         }
+
+        if (field === 'codigoReporte') {
+          const parts = String(val).split(',').map((p) => p.trim()).filter(Boolean);
+          const newMap: Record<string, string> = {};
+          parts.forEach((p) => {
+            const mMatch = p.match(/\b(BS|USD|COP|VES|EUR|USDT)\b/i);
+            if (mMatch) {
+              newMap[normalizarMoneda(mMatch[1])] = p;
+            }
+          });
+          if (Object.keys(newMap).length > 0) {
+            updated.codigosPorMoneda = { ...(updated.codigosPorMoneda || {}), ...newMap };
+          } else if (updated.monedas.length === 1) {
+            updated.codigosPorMoneda = { [updated.monedas[0]]: String(val).trim() };
+          }
+        }
+
         return updated;
       })
     );
@@ -759,14 +786,15 @@ export const BulkAgencyModal: React.FC<BulkAgencyModalProps> = ({
         safeSystems.forEach((sys) => {
           safeCurrencies.forEach((mon) => {
             const comboKey = `${sys}_${mon}`;
+            const specificCode = row.codigosPorMoneda?.[mon] || row.codigoReporte;
             const entry: any = {
               sistema: sys,
               moneda: mon,
               comision: Number(row.comision),
               participacion: Number(row.participacion),
             };
-            if (row.codigoReporte.trim()) {
-              entry.codigo = row.codigoReporte.trim();
+            if (specificCode && specificCode.trim()) {
+              entry.codigo = specificCode.trim();
             }
             condicionesObj[comboKey] = entry;
             if (!condicionesObj[sys]) {
@@ -1510,6 +1538,20 @@ export const BulkAgencyModal: React.FC<BulkAgencyModalProps> = ({
                                 placeholder="Ej: ID o Código en Reporte"
                                 className="w-full bg-transparent border border-transparent hover:border-slate-300 dark:hover:border-slate-700 focus:border-emerald-500 focus:bg-white dark:focus:bg-slate-800 rounded-lg px-2 py-1 text-xs font-mono text-cyan-600 dark:text-cyan-400 transition-all"
                               />
+                              {row.codigosPorMoneda && Object.keys(row.codigosPorMoneda).length > 1 && (
+                                <div className="flex flex-wrap gap-1 mt-1">
+                                  {Object.entries(row.codigosPorMoneda).map(([mon, cod]) => (
+                                    <span
+                                      key={mon}
+                                      className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[9px] font-mono bg-cyan-50 dark:bg-cyan-950/40 text-cyan-700 dark:text-cyan-300 border border-cyan-200 dark:border-cyan-800"
+                                      title={`Código en reporte para ${mon}: ${cod}`}
+                                    >
+                                      <span className="font-bold">{mon}:</span>
+                                      <span>{cod}</span>
+                                    </span>
+                                  ))}
+                                </div>
+                              )}
                             </td>
 
                             {/* Monedas */}
