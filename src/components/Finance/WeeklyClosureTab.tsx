@@ -446,7 +446,7 @@ export const WeeklyClosureTab: React.FC = () => {
       utilidad_semana: r.venta_neta,
       gastos: r.gastos,
       premios: r.reposicion_premios,
-      cobros: r.bancos + r.efectivo_taquilla,
+      cobros: r.bancos + r.efectivo_taquilla + (r.cobrador_ruta || 0),
       saldo_final: r.saldo_final,
     }));
   }, [agencies, sales, payments, expenses, systemCycle, dynamicCurrencies]);

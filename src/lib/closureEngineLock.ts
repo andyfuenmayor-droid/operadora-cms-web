@@ -45,9 +45,12 @@ export interface RawMovementEntry {
   fecha_escaneo_cobrador?: string;
   fecha_liquidacion_admin?: string;
   liquidado_admin?: boolean;
-  rechazado?: boolean;
+  confirmado_por?: string | null;
+  estado?: string | null;
+  rechazado?: boolean | null;
   fecha?: string;
   created_at?: string;
+  [key: string]: any;
 }
 
 export interface RawExpenseEntry {
@@ -233,41 +236,72 @@ export function computeCertifiedAgencyMatrix(params: {
         });
         const gTot = agExp.reduce((sum, curr) => sum + Number(curr.monto || 0), 0);
 
-        // 3. Cobradores de Ruta QR
-        const agCobradorList = rawDailyPayments.filter((p) => {
+        // 3. Pagos diarios en físico y taquilla (desglosados por canal para evitar duplicar custodia de supervisor)
+        const agDailyFiltered = rawDailyPayments.filter((p) => {
           const pNom = String(p.agencia || p.nombre_agency || '').trim().toUpperCase();
           const matchAg = pNom === nom || cleanAgencyNamePura(pNom) === cleanNom;
           const matchMon = normalizarMonedaPura(p.moneda) === mon;
-          const isCob = Boolean(p.qr_token) || String(p.tipo_pago || '').toUpperCase().includes('COBRADOR');
+          const isRech = Boolean(p.rechazado) || String(p.estado || '').toUpperCase() === 'RECHAZADO';
           const isConf = Boolean(p.confirmado) || Boolean(p.confirmado_supervisor) || Boolean(p.fecha_escaneo_cobrador);
-          if (!matchAg || !matchMon || !isCob || !isConf || p.rechazado) return false;
+          if (!matchAg || !matchMon || !isConf || isRech) return false;
 
-          const fOperativa = String(p.fecha || '').slice(0, 10);
+          const fOperativa = String(p.fecha || p.created_at || '').slice(0, 10);
           const fEscaneo = String(p.fecha_escaneo_cobrador || '').slice(0, 10);
           const inOperativa = fOperativa && (!systemCycle?.desde || fOperativa >= systemCycle.desde) && (!systemCycle?.hasta || fOperativa <= systemCycle.hasta);
           const inEscaneo = fEscaneo && (!systemCycle?.desde || fEscaneo >= systemCycle.desde) && (!systemCycle?.hasta || fEscaneo <= systemCycle.hasta);
           return inOperativa || inEscaneo;
         });
 
-        const cobradorRutaTot = agCobradorList.reduce((sum, curr) => sum + Number(curr.monto || 0), 0);
-        const cobradorLiquidadoTot = agCobradorList.filter((p) => Boolean(p.liquidado_admin)).reduce((sum, curr) => sum + Number(curr.monto || 0), 0);
-        const cobradorEnRutaTot = agCobradorList.filter((p) => !p.liquidado_admin).reduce((sum, curr) => sum + Number(curr.monto || 0), 0);
+        // Clasificar en grupos: Admin, Cobrador, Comercializador, Supervisor
+        const pdGroup = {
+          admin: [] as RawMovementEntry[],
+          cobrador: [] as RawMovementEntry[],
+          comercializador: [] as RawMovementEntry[],
+          supervisorCustodia: [] as RawMovementEntry[],
+        };
 
-        // 4. Efectivo Taquilla directo sin QR
-        const agEfectivoList = rawDailyPayments.filter((p) => {
-          const pNom = String(p.agencia || p.nombre_agency || '').trim().toUpperCase();
-          const matchAg = pNom === nom || cleanAgencyNamePura(pNom) === cleanNom;
-          const matchMon = normalizarMonedaPura(p.moneda) === mon;
-          const isCob = Boolean(p.qr_token) || String(p.tipo_pago || '').toUpperCase().includes('COBRADOR');
-          const isConf = Boolean(p.confirmado) || Boolean(p.confirmado_supervisor);
-          const fStr = String(p.fecha || p.created_at || '').slice(0, 10);
-          const inCycle = !systemCycle?.desde || (fStr >= systemCycle.desde && fStr <= (systemCycle.hasta || fStr));
-          return matchAg && matchMon && !isCob && isConf && inCycle && !p.rechazado;
+        agDailyFiltered.forEach((p) => {
+          const tipoP = String(p.tipo_pago || 'EFECTIVO').trim().toUpperCase();
+          const isCob = Boolean(p.qr_token) || tipoP.includes('COBRADOR');
+          const isAdmin =
+            tipoP.includes('ADMIN') ||
+            tipoP.includes('ENTREGADO A ADMIN') ||
+            tipoP.includes('ENTREGA_ADMIN') ||
+            (p.confirmado_por && String(p.confirmado_por).trim().length > 0 && !tipoP.includes('SUPERVISOR'));
+          const isComercializador = tipoP.includes('COMERCIALIZADOR');
+          const isSupervisor = tipoP.includes('SUPERVISOR') || tipoP === 'ENTREGADO A SUPERVISOR';
+
+          if (isAdmin) {
+            pdGroup.admin.push(p);
+          } else if (isCob) {
+            pdGroup.cobrador.push(p);
+          } else if (isComercializador) {
+            pdGroup.comercializador.push(p);
+          } else if (isSupervisor) {
+            pdGroup.supervisorCustodia.push(p);
+          } else {
+            pdGroup.admin.push(p);
+          }
         });
-        const rawEfectivoTaquillaTot = agEfectivoList.reduce((sum, curr) => sum + Number(curr.monto || 0), 0);
-        const efectivoTaquillaTot = Math.max(0, rawEfectivoTaquillaTot - cobradorRutaTot);
 
-        // 5. Bancos ordinarios confirmados (excluyendo efectivo y reposición de premios)
+        // Métricas de Cobrador en Ruta (QR)
+        const cobradorRutaTot = pdGroup.cobrador.reduce((sum, curr) => sum + Number(curr.monto || 0), 0);
+        const cobradorLiquidadoTot = pdGroup.cobrador.filter((p) => Boolean(p.liquidado_admin)).reduce((sum, curr) => sum + Number(curr.monto || 0), 0);
+        const cobradorEnRutaTot = pdGroup.cobrador.filter((p) => !p.liquidado_admin).reduce((sum, curr) => sum + Number(curr.monto || 0), 0);
+
+        // Métricas de Efectivo Taquilla y entregas a Admin
+        const adminSum = pdGroup.admin.reduce((sum, curr) => sum + Number(curr.monto || 0), 0);
+        const comercializadorSum = pdGroup.comercializador.reduce((sum, curr) => sum + Number(curr.monto || 0), 0);
+        const supervisorSum = pdGroup.supervisorCustodia.reduce((sum, curr) => sum + Number(curr.monto || 0), 0);
+
+        // Custodia interna: si el supervisor ya entregó fondos a Admin o Cobrador, la custodia cajero->supervisor se absorbe
+        const turnedOver = adminSum + cobradorRutaTot;
+        const excessCustodia = Math.max(0, supervisorSum - turnedOver);
+        const remanenteCustodia = (turnedOver === 0 && excessCustodia > 0) ? excessCustodia : 0;
+
+        const efectivoTaquillaTot = adminSum + comercializadorSum + remanenteCustodia;
+
+        // 4. Bancos ordinarios confirmados (excluyendo efectivo y reposición de premios)
         const agBancosList = payments.filter((p) => {
           const pNom = String(p.agencia || '').trim().toUpperCase();
           const matchAg = pNom === nom || cleanAgencyNamePura(pNom) === cleanNom;
@@ -280,7 +314,7 @@ export function computeCertifiedAgencyMatrix(params: {
         });
         const bancosTot = agBancosList.reduce((sum, curr) => sum + Number(curr.monto || 0), 0);
 
-        // 6. Reposición de Premios (Abonos por pérdidas)
+        // 5. Reposición de Premios (Abonos por pérdidas)
         const agPremiosList = payments.filter((p) => {
           const pNom = String(p.agencia || '').trim().toUpperCase();
           const matchAg = pNom === nom || cleanAgencyNamePura(pNom) === cleanNom;
@@ -292,7 +326,7 @@ export function computeCertifiedAgencyMatrix(params: {
         });
         const reposicionPremiosTot = agPremiosList.reduce((sum, curr) => sum + Number(curr.monto || 0), 0);
 
-        const totalCobros = efectivoTaquillaTot + bancosTot;
+        const totalCobros = efectivoTaquillaTot + cobradorRutaTot + bancosTot;
         const pagosNetos = totalCobros - reposicionPremiosTot;
 
         // @CRITICAL-LOCK: FÓRMULA MAESTRA DE SALDO FINAL

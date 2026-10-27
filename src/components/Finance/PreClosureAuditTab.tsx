@@ -2033,7 +2033,7 @@ export const PreClosureAuditTab: React.FC = () => {
                   const agencyConfirmations = isExpanded ? getAgencyConfirmationMovements(row.entidad, row.moneda) : [];
                   const agencyExpensesList = isExpanded ? getAgencyExpenses(row.entidad, row.moneda) : [];
                   const agencyCashList = isExpanded ? getAgencyCashMovements(row.entidad, row.moneda) : [];
-                  const totalCobros = (row.efectivo_taquilla || 0) + (row.bancos || 0);
+                  const totalCobros = (row.efectivo_taquilla || 0) + (row.cobrador_ruta || 0) + (row.bancos || 0);
 
                   return (
                     <React.Fragment key={rowKey}>

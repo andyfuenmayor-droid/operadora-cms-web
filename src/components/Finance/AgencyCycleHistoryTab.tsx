@@ -179,14 +179,15 @@ export const AgencyCycleHistoryTab: React.FC<{ initialAgency?: string }> = ({ in
     const cycleDesde = systemCycle?.desde || '';
     const cycleHasta = systemCycle?.hasta || '';
 
-    const agCobradorList = rawDailyPayments.filter((p) => {
+    // Daily payments grouping to avoid duplicating supervisor custody and accounting for cobradores
+    const agDailyFiltered = rawDailyPayments.filter((p) => {
       const matchAg = (p.agencia || p.nombre_agency || '').trim().toUpperCase() === agencyNom;
       const matchMon = normalizarMoneda(p.moneda) === mon;
-      const isCob = Boolean(p.qr_token) || String(p.tipo_pago || '').toUpperCase().includes('COBRADOR');
+      const isRech = Boolean(p.rechazado) || String(p.estado || '').toUpperCase() === 'RECHAZADO';
       const isConf = Boolean(p.confirmado) || Boolean(p.confirmado_supervisor) || Boolean(p.fecha_escaneo_cobrador);
-      if (!matchAg || !matchMon || !isCob || !isConf || p.rechazado) return false;
+      if (!matchAg || !matchMon || !isConf || isRech) return false;
 
-      const fOperativa = String(p.fecha || '').slice(0, 10);
+      const fOperativa = String(p.fecha || p.created_at || '').slice(0, 10);
       const fEscaneo = String(p.fecha_escaneo_cobrador || '').slice(0, 10);
       const fLiquidacion = String(p.fecha_liquidacion_admin || '').slice(0, 10);
 
@@ -196,20 +197,50 @@ export const AgencyCycleHistoryTab: React.FC<{ initialAgency?: string }> = ({ in
 
       return inOperativa || inEscaneo || inLiquidacion;
     });
-    const cobradorTot = agCobradorList.reduce((sum, curr) => sum + Number(curr.monto || 0), 0);
 
-    const agEfectivoList = rawDailyPayments.filter((p) => {
-      const matchAg = (p.agencia || p.nombre_agency || '').trim().toUpperCase() === agencyNom;
-      const matchMon = normalizarMoneda(p.moneda) === mon;
-      const isCob = Boolean(p.qr_token) || String(p.tipo_pago || '').toUpperCase().includes('COBRADOR');
-      const isConf = Boolean(p.confirmado) || Boolean(p.confirmado_supervisor);
-      const fStr = String(p.fecha || p.created_at || '').slice(0, 10);
-      const inCycle = (!cycleDesde || fStr >= cycleDesde) && (!cycleHasta || fStr <= cycleHasta);
-      return matchAg && matchMon && !isCob && isConf && inCycle && !p.rechazado;
+    const histPdGroup = {
+      admin: [] as any[],
+      cobrador: [] as any[],
+      comercializador: [] as any[],
+      supervisorCustodia: [] as any[],
+    };
+
+    agDailyFiltered.forEach((p) => {
+      const tipoP = String(p.tipo_pago || 'EFECTIVO').trim().toUpperCase();
+      const isCob = Boolean(p.qr_token) || tipoP.includes('COBRADOR');
+      const isAdmin =
+        tipoP.includes('ADMIN') ||
+        tipoP.includes('ENTREGADO A ADMIN') ||
+        tipoP.includes('ENTREGA_ADMIN') ||
+        (p.confirmado_por && String(p.confirmado_por).trim().length > 0 && !tipoP.includes('SUPERVISOR'));
+      const isComercializador = tipoP.includes('COMERCIALIZADOR');
+      const isSupervisor = tipoP.includes('SUPERVISOR') || tipoP === 'ENTREGADO A SUPERVISOR';
+
+      if (isAdmin) {
+        histPdGroup.admin.push(p);
+      } else if (isCob) {
+        histPdGroup.cobrador.push(p);
+      } else if (isComercializador) {
+        histPdGroup.comercializador.push(p);
+      } else if (isSupervisor) {
+        histPdGroup.supervisorCustodia.push(p);
+      } else {
+        histPdGroup.admin.push(p);
+      }
     });
-    const rawEfectivoTot = agEfectivoList.reduce((sum, curr) => sum + Number(curr.monto || 0), 0);
-    // Efectivo directo de taquilla que reduce saldo (las recaudaciones de cobrador son traslados a Caja Central ya procesados en taquilla)
-    const totalEfectivoQR = rawEfectivoTot;
+
+    const agCobradorList = histPdGroup.cobrador;
+    const cobradorTot = agCobradorList.reduce((sum, curr) => sum + Number(curr.monto || 0), 0);
+    const adminSum = histPdGroup.admin.reduce((sum, curr) => sum + Number(curr.monto || 0), 0);
+    const comercializadorSum = histPdGroup.comercializador.reduce((sum, curr) => sum + Number(curr.monto || 0), 0);
+    const supervisorSum = histPdGroup.supervisorCustodia.reduce((sum, curr) => sum + Number(curr.monto || 0), 0);
+
+    const turnedOver = adminSum + cobradorTot;
+    const excessCustodia = Math.max(0, supervisorSum - turnedOver);
+    const remanenteCustodia = (turnedOver === 0 && excessCustodia > 0) ? excessCustodia : 0;
+
+    const efectivoTaquillaTot = adminSum + comercializadorSum + remanenteCustodia;
+    const totalEfectivoQR = efectivoTaquillaTot + cobradorTot;
 
     // Active bank transfers
     const agBankList = rawBankPayments.filter((p) => {
