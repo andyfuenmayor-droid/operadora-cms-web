@@ -63,6 +63,7 @@ export interface RawParsedItem {
   sistemas: string[];
   codigoReporte: string;
   usuarioTaquilla?: string;
+  claveTaquilla?: string;
   grupoId: number | null;
   grupoNombre: string;
 }
@@ -72,6 +73,7 @@ export interface BulkAgencyRow {
   selected: boolean;
   nombre: string;
   usuarioTaquilla: string;
+  claveTaquilla: string;
   comision: number;
   sistemas: string[];
   codigoReporte: string;
@@ -259,12 +261,14 @@ export const BulkAgencyModal: React.FC<BulkAgencyModalProps> = ({
         }
 
         const defaultUser = (primary.usuarioTaquilla || primary.baseNombre || '').trim().toUpperCase();
+        const defaultClave = (primary.claveTaquilla || defaultClaveTaquilla || '1234').trim();
 
         result.push({
           id: `ag_cons_${idx}_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`,
           selected: status === 'valid',
           nombre: primary.baseNombre.toUpperCase(),
           usuarioTaquilla: defaultUser,
+          claveTaquilla: defaultClave,
           comision: primary.comision,
           sistemas: primary.sistemas,
           codigoReporte: combinedCodes,
@@ -300,12 +304,14 @@ export const BulkAgencyModal: React.FC<BulkAgencyModalProps> = ({
         }
 
         const defaultUser = (item.usuarioTaquilla || item.baseNombre || item.rawNombre || '').trim().toUpperCase();
+        const defaultClave = (item.claveTaquilla || defaultClaveTaquilla || '1234').trim();
 
         result.push({
           id: `ag_ind_${idx}_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`,
           selected: status === 'valid',
           nombre: item.rawNombre.toUpperCase(),
           usuarioTaquilla: defaultUser,
+          claveTaquilla: defaultClave,
           comision: item.comision,
           sistemas: item.sistemas,
           codigoReporte: exactCode,
@@ -344,6 +350,7 @@ export const BulkAgencyModal: React.FC<BulkAgencyModalProps> = ({
       'Sistema',
       'Codigo / ID Reporte',
       'Usuario Taquilla',
+      'Clave Taquilla',
       'Moneda',
       'Participacion %',
       'Grupo',
@@ -351,9 +358,9 @@ export const BulkAgencyModal: React.FC<BulkAgencyModalProps> = ({
 
     const data = [
       headers,
-      ['AGENCIA CENTRO 01', 10, sampleSys, 'MAXIMA CUA 02 T2', 'CENTRO01', sampleMon, 50, ''],
-      ['AGENCIA PLAZA', 12, sampleSys2, 'ID_PLAZA_01, 502', 'PLAZA_POS', sampleMon, 50, ''],
-      ['AGENCIA LA COROMOTO', 15, activeSystemNames.join(', '), 'chucho@banklot.net, 504', 'COROMOTO', sampleMon, 50, ''],
+      ['AGENCIA CENTRO 01', 10, sampleSys, 'MAXIMA CUA 02 T2', 'CENTRO01', '1234', sampleMon, 50, ''],
+      ['AGENCIA PLAZA', 12, sampleSys2, 'ID_PLAZA_01, 502', 'PLAZA_POS', '1234', sampleMon, 50, ''],
+      ['AGENCIA LA COROMOTO', 15, activeSystemNames.join(', '), 'chucho@banklot.net, 504', 'COROMOTO', '1234', sampleMon, 50, ''],
     ];
 
     const ws = XLSX.utils.aoa_to_sheet(data);
@@ -363,6 +370,7 @@ export const BulkAgencyModal: React.FC<BulkAgencyModalProps> = ({
       { wch: 22 },
       { wch: 34 },
       { wch: 20 },
+      { wch: 16 },
       { wch: 12 },
       { wch: 16 },
       { wch: 20 },
@@ -419,6 +427,11 @@ export const BulkAgencyModal: React.FC<BulkAgencyModalProps> = ({
     const colCode = headers.findIndex((h) => CODE_SYNONYMS.some((syn) => h === syn || h.includes(syn)));
     const colUser = headers.findIndex((h) =>
       ['USUARIO', 'USER', 'USUARIO TAQUILLA', 'LOGIN', 'TERMINAL', 'TAQUILLA', 'CAJERO'].some(
+        (syn) => h === syn || h.includes(syn)
+      )
+    );
+    const colClave = headers.findIndex((h) =>
+      ['CLAVE', 'PASSWORD', 'PIN', 'CONTRASEÑA', 'PASS', 'CLAVE TAQUILLA', 'PIN TAQUILLA'].some(
         (syn) => h === syn || h.includes(syn)
       )
     );
@@ -542,6 +555,12 @@ export const BulkAgencyModal: React.FC<BulkAgencyModalProps> = ({
         usuarioTaquilla = String(row[colUser]).trim();
       }
 
+      // Clave Taquilla
+      let claveTaquilla = defaultClaveTaquilla.trim() || '1234';
+      if (colClave !== -1 && row[colClave] !== undefined && String(row[colClave]).trim() !== '') {
+        claveTaquilla = String(row[colClave]).trim();
+      }
+
       // Grupo
       let grupoId: number | null = null;
       let grupoNombre = '';
@@ -563,6 +582,7 @@ export const BulkAgencyModal: React.FC<BulkAgencyModalProps> = ({
         sistemas: Array.from(new Set(assignedSystems)),
         codigoReporte,
         usuarioTaquilla,
+        claveTaquilla,
         grupoId,
         grupoNombre,
       });
@@ -731,6 +751,15 @@ export const BulkAgencyModal: React.FC<BulkAgencyModalProps> = ({
     );
   };
 
+  // Apply bulk clave to all selected
+  const handleApplyBulkClave = (claveVal: string) => {
+    setRows((prev) =>
+      prev.map((r) =>
+        r.selected ? { ...r, claveTaquilla: claveVal.trim() || '1234' } : r
+      )
+    );
+  };
+
   // Filtered rows for analysis
   const filteredRows = useMemo(() => {
     return rows.filter((r) => {
@@ -829,11 +858,11 @@ export const BulkAgencyModal: React.FC<BulkAgencyModalProps> = ({
           });
         });
 
-        // Cashier POS username: use the visible, editable user or fallback to agency name
+        // Cashier POS username & password
         const taquillaUser = (row.usuarioTaquilla || row.nombre || 'agencia')
           .trim()
           .replace(/\s+/g, '_');
-        const taquillaPass = defaultClaveTaquilla.trim() || '1234';
+        const taquillaPass = (row.claveTaquilla || defaultClaveTaquilla || '1234').trim();
 
         const payload: any = {
           user_id: effectiveUserId,
@@ -1351,6 +1380,26 @@ export const BulkAgencyModal: React.FC<BulkAgencyModalProps> = ({
                         ))}
                       </select>
                     </div>
+
+                    <div className="flex items-center gap-1.5">
+                      <span className="text-[11px] text-slate-500">Clave / PIN:</span>
+                      <input
+                        type="text"
+                        placeholder="1234"
+                        defaultValue={defaultClaveTaquilla}
+                        onKeyDown={(e) => {
+                          if (e.key === 'Enter') {
+                            handleApplyBulkClave((e.target as HTMLInputElement).value);
+                          }
+                        }}
+                        onBlur={(e) => {
+                          if (e.target.value) {
+                            handleApplyBulkClave(e.target.value);
+                          }
+                        }}
+                        className="w-20 bg-white dark:bg-slate-700 border border-slate-300 dark:border-slate-600 text-xs font-mono font-bold text-center rounded-lg px-2 py-1"
+                      />
+                    </div>
                   </div>
 
                   <button
@@ -1466,6 +1515,7 @@ export const BulkAgencyModal: React.FC<BulkAgencyModalProps> = ({
                       <th className={UI_LOCK.tableTheadTh}>Sistema(s)</th>
                       <th className={UI_LOCK.tableTheadTh}>Código / ID en Reporte</th>
                       <th className={UI_LOCK.tableTheadTh}>Usuario</th>
+                      <th className={UI_LOCK.tableTheadTh}>Clave / PIN</th>
                       <th className={UI_LOCK.tableTheadTh}>Moneda(s)</th>
                       <th className={UI_LOCK.tableTheadTh}>Estado</th>
                       <th className="px-3 py-3.5 w-12 text-center">Acción</th>
@@ -1474,7 +1524,7 @@ export const BulkAgencyModal: React.FC<BulkAgencyModalProps> = ({
                   <tbody>
                     {paginatedRows.length === 0 ? (
                       <tr>
-                        <td colSpan={10} className="text-center py-12 text-slate-400 text-xs">
+                        <td colSpan={11} className="text-center py-12 text-slate-400 text-xs">
                           No se encontraron agencias con los filtros aplicados.
                         </td>
                       </tr>
@@ -1586,6 +1636,17 @@ export const BulkAgencyModal: React.FC<BulkAgencyModalProps> = ({
                                 onChange={(e) => handleUpdateRow(row.id, 'usuarioTaquilla', e.target.value)}
                                 placeholder="Usuario POS"
                                 className="w-full bg-transparent border border-transparent hover:border-slate-300 dark:hover:border-slate-700 focus:border-emerald-500 focus:bg-white dark:focus:bg-slate-800 rounded-lg px-2 py-1 text-xs font-mono font-bold text-slate-800 dark:text-slate-200 transition-all uppercase"
+                              />
+                            </td>
+
+                            {/* Clave Taquilla */}
+                            <td className="px-3 py-2 w-24">
+                              <input
+                                type="text"
+                                value={row.claveTaquilla}
+                                onChange={(e) => handleUpdateRow(row.id, 'claveTaquilla', e.target.value)}
+                                placeholder="PIN (1234)"
+                                className="w-full bg-transparent border border-transparent hover:border-slate-300 dark:hover:border-slate-700 focus:border-emerald-500 focus:bg-white dark:focus:bg-slate-800 rounded-lg px-2 py-1 text-xs font-mono font-bold text-emerald-600 dark:text-emerald-400 text-center transition-all"
                               />
                             </td>
 
