@@ -25,7 +25,6 @@ import {
   ChevronRight,
   Sliders,
   Tag,
-  Database,
 } from 'lucide-react';
 import confetti from 'canvas-confetti';
 
@@ -381,79 +380,7 @@ export const BulkAgencyModal: React.FC<BulkAgencyModalProps> = ({
     XLSX.writeFile(wb, 'plantilla_agencias_nuevas.xlsx');
   };
 
-  // Generar y descargar script SQL listo para migración a PostgreSQL nativo
-  const handleDownloadSqlMigration = () => {
-    const toExport = rows.filter((r) => r.status === 'valid');
-    if (toExport.length === 0) return;
 
-    let sql = `-- ==============================================================================\n`;
-    sql += `-- MIGRACIÓN / CARGA MASIVA DE AGENCIAS Y TAQUILLAS PARA POSTGRESQL NATIVO\n`;
-    sql += `-- Proyecto: Operadora CMS / Multibanca Express\n`;
-    sql += `-- Fecha de generación: ${new Date().toISOString()}\n`;
-    sql += `-- Total de Agencias: ${toExport.length}\n`;
-    sql += `-- ==============================================================================\n\n`;
-    sql += `BEGIN;\n\n`;
-
-    toExport.forEach((row, i) => {
-      const safeSystems = row.sistemas.length > 0 ? row.sistemas.join(', ') : 'GENERAL';
-      const safeMons = row.monedas.length > 0 ? row.monedas.join(', ') : 'USD';
-      const condJson: Record<string, any> = {};
-      (row.sistemas.length > 0 ? row.sistemas : ['GENERAL']).forEach((sys) => {
-        (row.monedas.length > 0 ? row.monedas : ['USD']).forEach((mon) => {
-          const comboKey = `${sys}_${mon}`;
-          const specificCode = row.codigosPorMoneda?.[mon] || row.codigoReporte;
-          const entry: any = {
-            sistema: sys,
-            moneda: mon,
-            comision: Number(row.comision),
-            participacion: Number(row.participacion),
-          };
-          if (specificCode && specificCode.trim()) entry.codigo = specificCode.trim();
-          condJson[comboKey] = entry;
-          if (!condJson[sys]) condJson[sys] = entry;
-        });
-      });
-
-      const nombreEsc = row.nombre.replace(/'/g, "''");
-      const userTaq = (row.usuarioTaquilla || row.nombre).trim().replace(/\s+/g, '_').replace(/'/g, "''");
-      const passTaq = (row.claveTaquilla || '1234').replace(/'/g, "''");
-      const condEsc = JSON.stringify(condJson).replace(/'/g, "''");
-
-      sql += `-- [${i + 1}] Agencia: ${row.nombre}\n`;
-      sql += `INSERT INTO public.agencias (\n`;
-      sql += `    user_id, nombre_agencia, comision, participacion_ag, sistemas, monedas,\n`;
-      sql += `    condiciones_sistemas, cuentas_asignadas, usuario_taquilla, clave_taquilla,\n`;
-      sql += `    saldo_inicial_bs, saldo_inicial_usd, saldo_inicial_cop, created_at\n`;
-      sql += `) VALUES (\n`;
-      sql += `    '${effectiveUserId}', '${nombreEsc}', ${Number(row.comision)}, ${Number(row.participacion)}, '${safeSystems}', '${safeMons}',\n`;
-      sql += `    '${condEsc}'::jsonb, 'NINGUNA', '${userTaq}', '${passTaq}',\n`;
-      sql += `    0, 0, 0, NOW()\n`;
-      sql += `) ON CONFLICT (user_id, nombre_agencia) DO UPDATE SET\n`;
-      sql += `    comision = EXCLUDED.comision,\n`;
-      sql += `    condiciones_sistemas = EXCLUDED.condiciones_sistemas,\n`;
-      sql += `    usuario_taquilla = EXCLUDED.usuario_taquilla,\n`;
-      sql += `    clave_taquilla = EXCLUDED.clave_taquilla;\n\n`;
-
-      sql += `INSERT INTO public.taquilla_usuarios (\n`;
-      sql += `    user_id, usuario, clave, agencia_id, nombre_cajero, rol, activo, created_at\n`;
-      sql += `) VALUES (\n`;
-      sql += `    '${effectiveUserId}', '${userTaq}', '${passTaq}',\n`;
-      sql += `    (SELECT id FROM public.agencias WHERE user_id = '${effectiveUserId}' AND nombre_agencia = '${nombreEsc}' LIMIT 1),\n`;
-      sql += `    '${nombreEsc}', 'agencia', true, NOW()\n`;
-      sql += `) ON CONFLICT DO NOTHING;\n\n`;
-    });
-
-    sql += `COMMIT;\n`;
-
-    const blob = new Blob([sql], { type: 'text/sql;charset=utf-8;' });
-    const url = URL.createObjectURL(blob);
-    const link = document.createElement('a');
-    link.href = url;
-    link.setAttribute('download', `migracion_agencias_postgresql_${new Date().toISOString().slice(0, 10)}.sql`);
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
-  };
 
   // Parse raw 2D tabular array into raw items
   const parseTabularData = (rawRows: any[][], sourceName = '') => {
@@ -466,7 +393,7 @@ export const BulkAgencyModal: React.FC<BulkAgencyModalProps> = ({
     const NAME_SYNONYMS = ['AGENCIA', 'NOMBRE', 'NOMBRE AGENCIA', 'PUNTO', 'LOCAL', 'AGENTES', 'AGENTE'];
     const VENTA_SYNONYMS = ['VENTA', 'VENTAS', 'TOTAL ACCEPTED', 'ACCEPTED', 'JUGADO', 'BRUTO'];
     const PREMIO_SYNONYMS = ['PREMIO', 'PREMIOS', 'TOTAL PAID', 'PAID OUT', 'PAGADO'];
-    const COM_SYNONYMS = ['COMISION', 'COMISIÓN', 'COMISION %', 'COM %', '% COMISION', '% VENTA TAQ', '% VENTA'];
+    const COM_SYNONYMS = ['COMISION %', 'COMISIÓN %', 'COM %', '% COMISION', '% COMISIÓN', 'COMISION', 'COMISIÓN', 'PORCENTAJE COMISION'];
     const SYS_SYNONYMS = ['SISTEMA', 'SISTEMAS', 'PROVEEDOR', 'PLATAFORMA'];
     const CODE_SYNONYMS = [
       'CODIGO',
@@ -477,7 +404,7 @@ export const BulkAgencyModal: React.FC<BulkAgencyModalProps> = ({
       'ALIAS',
     ];
     const MON_SYNONYMS = ['MONEDA', 'MONEDAS', 'DIVISA'];
-    const PART_SYNONYMS = ['PARTICIPACION', 'PARTICIPACIÓN', 'PART %', '% PAR REC', '%P BANCA'];
+    const PART_SYNONYMS = ['PARTICIPACION %', 'PARTICIPACIÓN %', 'PART %', '% PARTICIPACION', '% PARTICIPACIÓN', 'PARTICIPACION', 'PARTICIPACIÓN'];
     const GRP_SYNONYMS = ['GRUPO', 'INTERMEDIARIO', 'RED'];
 
     let headerRowIdx = -1;
@@ -560,28 +487,18 @@ export const BulkAgencyModal: React.FC<BulkAgencyModalProps> = ({
         detectedMoneda = activeCurrencyCodes[0] || 'BS';
       }
 
-      // Comisión % Matemática Inteligente:
-      // Si la columna es monto en dinero (ej. 6.880,00 sobre venta de 68.800,00),
-      // calcular (Comisión Monto / Venta Monto) * 100 = 10%
+      // Comisión %: Por directriz expresa, tomar la Comisión General de la configuración (ej. 10%)
+      // Si la fila o celda no trae un porcentaje explícito con '%', se toma siempre defaultComision
       let comVal = Number(defaultComision) || 10;
-      const montoVenta = colVenta !== -1 ? parseSpanishNumber(row[colVenta]) : 0;
       const rawComCell = colCom !== -1 ? row[colCom] : undefined;
 
       if (rawComCell !== undefined && String(rawComCell).trim() !== '') {
         const rawComStr = String(rawComCell).trim();
-        const parsedComNum = parseSpanishNumber(rawComStr);
-
-        if (rawComStr.includes('%') && parsedComNum > 0 && parsedComNum <= 100) {
-          comVal = parsedComNum;
-        } else if (montoVenta > 0 && parsedComNum > 0) {
-          const ratio = (parsedComNum / montoVenta) * 100;
-          if (ratio > 0 && ratio <= 100) {
-            comVal = Math.round(ratio * 10) / 10;
-          } else if (parsedComNum > 0 && parsedComNum <= 50) {
-            comVal = parsedComNum;
+        if (rawComStr.includes('%')) {
+          const parsedPct = parseSpanishNumber(rawComStr);
+          if (parsedPct > 0 && parsedPct <= 100) {
+            comVal = parsedPct;
           }
-        } else if (parsedComNum > 0 && parsedComNum <= 50) {
-          comVal = parsedComNum;
         }
       }
 
@@ -1977,32 +1894,19 @@ export const BulkAgencyModal: React.FC<BulkAgencyModalProps> = ({
             </button>
 
             {step === 'preview' && (
-              <>
-                <button
-                  type="button"
-                  onClick={handleDownloadSqlMigration}
-                  disabled={isProcessing || stats.valid === 0}
-                  className="inline-flex items-center gap-1.5 px-3 py-2 rounded-xl border border-sky-500/30 bg-sky-50 dark:bg-sky-500/10 text-sky-700 dark:text-sky-300 hover:bg-sky-100 dark:hover:bg-sky-500/20 text-xs font-bold transition-all cursor-pointer"
-                  title="Descargar script SQL nativo para ejecutar directamente en PostgreSQL / DBeaver / Docker"
-                >
-                  <Database className="w-4 h-4 text-sky-600 dark:text-sky-400" />
-                  <span>Script SQL PostgreSQL</span>
-                </button>
-
-                <button
-                  type="button"
-                  onClick={handleSaveAll}
-                  disabled={isProcessing || stats.selected === 0 || isOverQuota}
-                  className={UI_LOCK.buttonPrimary}
-                >
-                  <Upload className="w-4 h-4" />
-                  <span>
-                    {isProcessing
-                      ? `Registrando (${progress?.current || 0}/${progress?.total || 0})...`
-                      : `Registrar ${stats.selected} Agencias`}
-                  </span>
-                </button>
-              </>
+              <button
+                type="button"
+                onClick={handleSaveAll}
+                disabled={isProcessing || stats.selected === 0 || isOverQuota}
+                className={UI_LOCK.buttonPrimary}
+              >
+                <Upload className="w-4 h-4" />
+                <span>
+                  {isProcessing
+                    ? `Registrando (${progress?.current || 0}/${progress?.total || 0})...`
+                    : `Registrar ${stats.selected} Agencias`}
+                </span>
+              </button>
             )}
           </div>
         </div>
