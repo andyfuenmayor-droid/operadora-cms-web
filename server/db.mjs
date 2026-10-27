@@ -285,3 +285,141 @@ export async function findWeeklySnapshotRecord(userId, semanaNo) {
   return res.rows[0] || null;
 }
 
+/**
+ * Inserción masiva de agencias y credenciales de taquilla en PostgreSQL nativo
+ * Soporta idempotencia con ON CONFLICT (user_id, nombre_agencia)
+ */
+export async function saveBulkAgenciesAndUsers(userId, agenciesList) {
+  if (!agenciesList || agenciesList.length === 0) return { inserted: 0, updated: 0 };
+
+  const client = await pool.connect();
+  let inserted = 0;
+  let updated = 0;
+
+  try {
+    await client.query('BEGIN');
+
+    for (const item of agenciesList) {
+      const uId = item.user_id || userId;
+      const agencyName = (item.nombre_agencia || item.nombre || '').trim().toUpperCase();
+      if (!agencyName) continue;
+
+      const comision = Number(item.comision) || 0;
+      const participacion = Number(item.participacion_ag || item.participacion) || 0;
+      const sistemas = item.sistemas || 'GENERAL';
+      const monedas = item.monedas || 'USD';
+      const condiciones = typeof item.condiciones_sistemas === 'string'
+        ? item.condiciones_sistemas
+        : JSON.stringify(item.condiciones_sistemas || {});
+      const usuarioTaq = (item.usuario_taquilla || item.usuarioTaquilla || agencyName).trim().replace(/\s+/g, '_');
+      const claveTaq = (item.clave_taquilla || item.claveTaquilla || '1234').trim();
+      const grupoId = item.grupo_id || item.grupoId || null;
+      const grupoNombre = item.grupo_nombre || item.grupoNombre || null;
+
+      // 1. Insert or update agency
+      const agencySql = `
+        INSERT INTO agencias (
+          user_id, nombre_agencia, comision, participacion_ag,
+          sistemas, monedas, condiciones_sistemas, cuentas_asignadas,
+          usuario_taquilla, clave_taquilla, grupo_id, grupo_nombre,
+          saldo_inicial_bs, saldo_inicial_usd, saldo_inicial_cop, created_at
+        ) VALUES (
+          $1, $2, $3, $4, $5, $6, $7, 'NINGUNA', $8, $9, $10, $11, 0, 0, 0, NOW()
+        )
+        ON CONFLICT (user_id, nombre_agencia) DO UPDATE SET
+          comision = EXCLUDED.comision,
+          participacion_ag = EXCLUDED.participacion_ag,
+          sistemas = EXCLUDED.sistemas,
+          monedas = EXCLUDED.monedas,
+          condiciones_sistemas = EXCLUDED.condiciones_sistemas,
+          usuario_taquilla = EXCLUDED.usuario_taquilla,
+          clave_taquilla = EXCLUDED.clave_taquilla,
+          grupo_id = COALESCE(EXCLUDED.grupo_id, agencias.grupo_id),
+          grupo_nombre = COALESCE(EXCLUDED.grupo_nombre, agencias.grupo_nombre)
+        RETURNING id, (xmax = 0) AS is_inserted;
+      `;
+
+      let agencyId = null;
+      try {
+        const agRes = await client.query(agencySql, [
+          uId, agencyName, comision, participacion,
+          sistemas, monedas, condiciones,
+          usuarioTaq, claveTaq, grupoId, grupoNombre
+        ]);
+        if (agRes.rows[0]) {
+          agencyId = agRes.rows[0].id;
+          if (agRes.rows[0].is_inserted) inserted++;
+          else updated++;
+        }
+      } catch (agErr) {
+        // Fallback if grupo columns don't exist yet in target schema
+        if (agErr.message?.includes('grupo') || agErr.code === '42703') {
+          const fallbackSql = `
+            INSERT INTO agencias (
+              user_id, nombre_agencia, comision, participacion_ag,
+              sistemas, monedas, condiciones_sistemas, cuentas_asignadas,
+              usuario_taquilla, clave_taquilla,
+              saldo_inicial_bs, saldo_inicial_usd, saldo_inicial_cop, created_at
+            ) VALUES (
+              $1, $2, $3, $4, $5, $6, $7, 'NINGUNA', $8, $9, 0, 0, 0, NOW()
+            )
+            ON CONFLICT (user_id, nombre_agencia) DO UPDATE SET
+              comision = EXCLUDED.comision,
+              condiciones_sistemas = EXCLUDED.condiciones_sistemas,
+              usuario_taquilla = EXCLUDED.usuario_taquilla,
+              clave_taquilla = EXCLUDED.clave_taquilla
+            RETURNING id;
+          `;
+          const fbRes = await client.query(fallbackSql, [
+            uId, agencyName, comision, participacion,
+            sistemas, monedas, condiciones,
+            usuarioTaq, claveTaq
+          ]);
+          agencyId = fbRes.rows[0]?.id;
+          inserted++;
+        } else {
+          throw agErr;
+        }
+      }
+
+      // 2. Insert cashier credential into taquilla_usuarios
+      if (agencyId) {
+        const userSql = `
+          INSERT INTO taquilla_usuarios (
+            user_id, usuario, clave, agencia_id, nombre_cajero, rol, activo, created_at
+          ) VALUES (
+            $1, $2, $3, $4, $5, 'agencia', true, NOW()
+          )
+          ON CONFLICT (user_id, usuario) DO UPDATE SET
+            clave = EXCLUDED.clave,
+            agencia_id = EXCLUDED.agencia_id,
+            nombre_cajero = EXCLUDED.nombre_cajero;
+        `;
+        try {
+          await client.query(userSql, [uId, usuarioTaq, claveTaq, agencyId, agencyName]);
+        } catch (uErr) {
+          // If unique constraint is different or missing
+          try {
+            await client.query(
+              `INSERT INTO taquilla_usuarios (user_id, usuario, clave, agencia_id, nombre_cajero, rol, activo)
+               VALUES ($1, $2, $3, $4, $5, 'agencia', true)
+               ON CONFLICT DO NOTHING;`,
+              [uId, usuarioTaq, claveTaq, agencyId, agencyName]
+            );
+          } catch (_) {}
+        }
+      }
+    }
+
+    await client.query('COMMIT');
+    return { success: true, inserted, updated, total: agenciesList.length };
+  } catch (err) {
+    await client.query('ROLLBACK');
+    console.error('[DB] Error en saveBulkAgenciesAndUsers:', err.message);
+    throw err;
+  } finally {
+    client.release();
+  }
+}
+
+

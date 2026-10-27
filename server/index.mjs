@@ -23,6 +23,7 @@ import {
   findPaymentStatus,
   saveWeeklySnapshotRecord,
   findWeeklySnapshotRecord,
+  saveBulkAgenciesAndUsers,
 } from './db.mjs';
 
 // Configuration
@@ -634,6 +635,35 @@ async function handleGetSnapshot(req, res, auth, parsedUrl) {
   }
 }
 
+// Route Handler: Bulk Agencies & Cashiers Import
+async function handleBulkAgencies(req, res, auth, body) {
+  const userId = auth.userId || body.user_id;
+  const agenciesList = body.agencies || [];
+
+  if (!Array.isArray(agenciesList) || agenciesList.length === 0) {
+    return sendJson(res, 400, {
+      success: false,
+      error: 'PARAMETRO_REQUERIDO',
+      message: "Se requiere un array 'agencies' con las agencias a registrar.",
+    });
+  }
+
+  try {
+    const result = await saveBulkAgenciesAndUsers(userId, agenciesList);
+    return sendJson(res, 201, {
+      success: true,
+      mensaje: `Carga masiva registrada en PostgreSQL nativo: ${result.inserted} creadas, ${result.updated} actualizadas.`,
+      resultado: result,
+    });
+  } catch (err) {
+    return sendJson(res, 500, {
+      success: false,
+      error: 'ERROR_REGISTRO_POSTGRES',
+      message: err.message,
+    });
+  }
+}
+
 
 // OpenAPI Specification JSON
 function getOpenApiSpec() {
@@ -789,6 +819,12 @@ const server = http.createServer(async (req, res) => {
       // GET /api/v1/snapshots (Get Weekly Closure Snapshot)
       if (pathname === '/api/v1/snapshots' && method === 'GET') {
         return await handleGetSnapshot(req, res, auth, parsedUrl);
+      }
+
+      // POST /api/v1/agencies/bulk (Bulk Agencies and Cashiers in PostgreSQL)
+      if (pathname === '/api/v1/agencies/bulk' && method === 'POST') {
+        const body = await parseBody(req);
+        return await handleBulkAgencies(req, res, auth, body);
       }
 
     } catch (routeErr) {
