@@ -254,22 +254,17 @@ export const SalesEntryTab: React.FC = () => {
   const [systemKeywords, setSystemKeywords] = useState<SystemKeywordsMap>(DEFAULT_SYSTEM_KEYWORDS);
   const [masterSystemsList, setMasterSystemsList] = useState<MasterSystem[]>([]);
 
-  // Available systems list merging master catalog, database systems, and configured keywords
+  // Available systems list: strictly the active systems enabled for this SaaS subscriber
   const availableSystemsList = useMemo(() => {
     const list: string[] = [];
-    masterSystemsList.forEach((m) => {
-      const name = (m.nombre_sistema || '').trim();
-      if (name && !list.includes(name)) list.push(name);
-    });
     systems.forEach((s) => {
-      const name = (s.nombre_sistema || '').trim();
-      if (name && !list.includes(name)) list.push(name);
+      if (s.activo !== false && (s as any).oculto !== true) {
+        const name = (s.nombre_sistema || '').trim().toUpperCase();
+        if (name && !list.includes(name)) list.push(name);
+      }
     });
-    Object.keys(systemKeywords).forEach((name) => {
-      if (name && !list.includes(name)) list.push(name);
-    });
-    return list.length > 0 ? list : ['BETM3', 'GATOWEB', 'KENO', 'CDAPUESTAS', 'GATO PESOS', 'HIPISMO', 'PARLEY INH'];
-  }, [systems, systemKeywords, masterSystemsList]);
+    return list;
+  }, [systems]);
 
   // Available currencies list from active subscriber currencies
   const availableCurrenciesList = useMemo(() => {
@@ -327,6 +322,15 @@ export const SalesEntryTab: React.FC = () => {
       setSystemKeywords(loadedKw);
       setMasterSystemsList(loadedMasters || []);
 
+      if (loadedSystems.length > 0) {
+        setSelectedGuideSystem((prev) => {
+          const isPrevActive = loadedSystems.some(
+            (s) => (s.nombre_sistema || '').trim().toUpperCase() === prev.trim().toUpperCase()
+          );
+          return isPrevActive ? prev : (loadedSystems[0].nombre_sistema || 'BETM3');
+        });
+      }
+
       if (loadedAgencies.length > 0) {
         setFormAgencia((prev) => {
           if (prev && loadedAgencies.some((a) => String(a?.nombre_agencia || '').trim() === String(prev || '').trim())) {
@@ -352,17 +356,21 @@ export const SalesEntryTab: React.FC = () => {
     return agencies.find((a) => String(a?.nombre_agencia || '').trim() === String(formAgencia || '').trim());
   }, [agencies, formAgencia]);
 
-  // Assigned systems for current agency
+  // Assigned systems for current agency (filtered strictly to active systems)
   const agencySystemsList = useMemo(() => {
+    const activeSystems = systems.filter((s) => s.activo !== false && (s as any).oculto !== true);
+    const activeNames = activeSystems.map((s) => s.nombre_sistema?.trim().toUpperCase()).filter(Boolean);
+
     if (!currentAgency) {
-      return systems.map((s) => s.nombre_sistema).filter(Boolean);
+      return activeSystems.map((s) => s.nombre_sistema).filter(Boolean);
     }
     const assigned = parseList(currentAgency.sistemas);
     if (assigned.length === 0 || assigned.includes('TODOS')) {
-      const list = systems.map((s) => s.nombre_sistema).filter(Boolean);
-      return list.length > 0 ? list : ['BETM3', 'GATOWEB'];
+      const list = activeSystems.map((s) => s.nombre_sistema).filter(Boolean);
+      return list.length > 0 ? list : (activeNames.length > 0 ? activeNames : ['BETM3', 'GATOWEB']);
     }
-    return assigned;
+    const filteredAssigned = assigned.filter((name) => activeNames.includes(name.trim().toUpperCase()));
+    return filteredAssigned.length > 0 ? filteredAssigned : activeSystems.map((s) => s.nombre_sistema).filter(Boolean);
   }, [currentAgency, systems]);
 
   // Assigned currencies for current agency
@@ -1053,6 +1061,17 @@ export const SalesEntryTab: React.FC = () => {
           return;
         }
 
+        // Blindaje de Seguridad: Verificar que el sistema detectado o seleccionado esté ACTIVO en la comercializadora
+        if (
+          availableSystemsList.length > 0 &&
+          !availableSystemsList.map((s) => s.toUpperCase()).includes(effectiveSys.toUpperCase())
+        ) {
+          setBulkError(
+            `⚠️ El sistema "${effectiveSys}" detectado en el archivo no está habilitado o se encuentra oculto para su operadora. Por favor actívelo en el módulo de "Sistemas" antes de procesar su carga de ventas.`
+          );
+          return;
+        }
+
         const fileIntrinsicCurrency = detectFileIntrinsicCurrency(file.name, headerDna, effectiveSys, bulkCurrency);
         let detectedMoneda = fileIntrinsicCurrency;
         if (!detectedMoneda && bulkCurrency !== 'AUTO' && bulkCurrency !== 'MULTI') {
@@ -1694,12 +1713,28 @@ export const SalesEntryTab: React.FC = () => {
 
           {/* Guía Visual del Reporte Certificado */}
           {(() => {
-            const activeGuideKey = bulkSystem !== 'AUTO' ? bulkSystem.toUpperCase() : selectedGuideSystem.toUpperCase();
-            const guide = SYSTEM_DOWNLOAD_GUIDES[activeGuideKey] || SYSTEM_DOWNLOAD_GUIDES['GATOWEB'];
+            const guideKeys = availableSystemsList.length > 0
+              ? availableSystemsList
+              : Object.keys(SYSTEM_DOWNLOAD_GUIDES);
+
+            const activeGuideKey = bulkSystem !== 'AUTO'
+              ? bulkSystem.toUpperCase()
+              : (guideKeys.includes(selectedGuideSystem.toUpperCase())
+                  ? selectedGuideSystem.toUpperCase()
+                  : guideKeys[0] || 'BETM3');
+
             const guideMaster = masterSystemsList.find(
               (m) => m.nombre_sistema.trim().toUpperCase() === activeGuideKey
             );
-            const guideKeys = Object.keys(SYSTEM_DOWNLOAD_GUIDES);
+
+            const guide = SYSTEM_DOWNLOAD_GUIDES[activeGuideKey] || {
+              menu: guideMaster?.descripcion || 'Módulo de Reportes ➔ Ventas y Liquidación por Período',
+              reportName: `Reporte Oficial ${activeGuideKey}`,
+              formats: ['Excel (.xlsx / .xls)', 'CSV (.csv)'],
+              currency: 'Multi-Moneda / Moneda Base Certificada',
+              flag: '🎰',
+              tip: `💡 Sistema ${activeGuideKey} certificado en Catálogo Maestro. Columnas mapeadas: Agencia (${guideMaster?.col_agencia || 'Agencia'}), Venta (${guideMaster?.col_venta || 'Venta'}), Premio (${guideMaster?.col_premio || 'Premio'}).`,
+            };
 
             return (
               <div className="p-4 rounded-2xl bg-gradient-to-r from-slate-900/90 via-slate-800/90 to-cyan-950/40 border border-cyan-500/30 text-white shadow-lg space-y-3">
@@ -1726,7 +1761,7 @@ export const SalesEntryTab: React.FC = () => {
                           type="button"
                           onClick={() => setSelectedGuideSystem(k)}
                           className={`px-2 py-0.5 rounded-md text-[10px] font-bold font-mono transition-all cursor-pointer ${
-                            selectedGuideSystem.toUpperCase() === k
+                            activeGuideKey === k
                               ? 'bg-cyan-500 text-slate-950 shadow-sm shadow-cyan-500/50'
                               : 'bg-white/5 hover:bg-white/15 text-slate-300 border border-white/10'
                           }`}
