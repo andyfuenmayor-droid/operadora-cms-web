@@ -62,6 +62,7 @@ export interface RawParsedItem {
   participacion: number;
   sistemas: string[];
   codigoReporte: string;
+  usuarioTaquilla?: string;
   grupoId: number | null;
   grupoNombre: string;
 }
@@ -70,6 +71,7 @@ export interface BulkAgencyRow {
   id: string;
   selected: boolean;
   nombre: string;
+  usuarioTaquilla: string;
   comision: number;
   sistemas: string[];
   codigoReporte: string;
@@ -256,10 +258,13 @@ export const BulkAgencyModal: React.FC<BulkAgencyModalProps> = ({
           errorMessage = 'La agencia ya existe en el catálogo';
         }
 
+        const defaultUser = (primary.usuarioTaquilla || primary.baseNombre || '').trim().toUpperCase();
+
         result.push({
           id: `ag_cons_${idx}_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`,
           selected: status === 'valid',
           nombre: primary.baseNombre.toUpperCase(),
+          usuarioTaquilla: defaultUser,
           comision: primary.comision,
           sistemas: primary.sistemas,
           codigoReporte: combinedCodes,
@@ -294,10 +299,13 @@ export const BulkAgencyModal: React.FC<BulkAgencyModalProps> = ({
           codeMapByCurrency[item.detectedMoneda] = exactCode;
         }
 
+        const defaultUser = (item.usuarioTaquilla || item.baseNombre || item.rawNombre || '').trim().toUpperCase();
+
         result.push({
           id: `ag_ind_${idx}_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`,
           selected: status === 'valid',
           nombre: item.rawNombre.toUpperCase(),
+          usuarioTaquilla: defaultUser,
           comision: item.comision,
           sistemas: item.sistemas,
           codigoReporte: exactCode,
@@ -335,6 +343,7 @@ export const BulkAgencyModal: React.FC<BulkAgencyModalProps> = ({
       'Comision %',
       'Sistema',
       'Codigo / ID Reporte',
+      'Usuario Taquilla',
       'Moneda',
       'Participacion %',
       'Grupo',
@@ -342,9 +351,9 @@ export const BulkAgencyModal: React.FC<BulkAgencyModalProps> = ({
 
     const data = [
       headers,
-      ['AGENCIA CENTRO 01', 10, sampleSys, 'MAXIMA CUA 02 T2', sampleMon, 50, ''],
-      ['AGENCIA PLAZA', 12, sampleSys2, 'ID_PLAZA_01, 502', sampleMon, 50, ''],
-      ['AGENCIA LA COROMOTO', 15, activeSystemNames.join(', '), 'chucho@banklot.net, 504', sampleMon, 50, ''],
+      ['AGENCIA CENTRO 01', 10, sampleSys, 'MAXIMA CUA 02 T2', 'CENTRO01', sampleMon, 50, ''],
+      ['AGENCIA PLAZA', 12, sampleSys2, 'ID_PLAZA_01, 502', 'PLAZA_POS', sampleMon, 50, ''],
+      ['AGENCIA LA COROMOTO', 15, activeSystemNames.join(', '), 'chucho@banklot.net, 504', 'COROMOTO', sampleMon, 50, ''],
     ];
 
     const ws = XLSX.utils.aoa_to_sheet(data);
@@ -353,6 +362,7 @@ export const BulkAgencyModal: React.FC<BulkAgencyModalProps> = ({
       { wch: 14 },
       { wch: 22 },
       { wch: 34 },
+      { wch: 20 },
       { wch: 12 },
       { wch: 16 },
       { wch: 20 },
@@ -407,6 +417,11 @@ export const BulkAgencyModal: React.FC<BulkAgencyModalProps> = ({
     const colCom = headers.findIndex((h) => COM_SYNONYMS.some((syn) => h === syn || h.includes(syn)));
     const colSys = headers.findIndex((h) => SYS_SYNONYMS.some((syn) => h === syn || h.includes(syn)));
     const colCode = headers.findIndex((h) => CODE_SYNONYMS.some((syn) => h === syn || h.includes(syn)));
+    const colUser = headers.findIndex((h) =>
+      ['USUARIO', 'USER', 'USUARIO TAQUILLA', 'LOGIN', 'TERMINAL', 'TAQUILLA', 'CAJERO'].some(
+        (syn) => h === syn || h.includes(syn)
+      )
+    );
     const colMon = headers.findIndex((h) => MON_SYNONYMS.some((syn) => h === syn || h.includes(syn)));
     const colPart = headers.findIndex((h) => PART_SYNONYMS.some((syn) => h === syn || h.includes(syn)));
     const colGrp = headers.findIndex((h) => GRP_SYNONYMS.some((syn) => h === syn || h.includes(syn)));
@@ -521,6 +536,12 @@ export const BulkAgencyModal: React.FC<BulkAgencyModalProps> = ({
         codigoReporte = String(row[colCode]).trim();
       }
 
+      // Usuario Taquilla
+      let usuarioTaquilla = baseNombre || rawCell;
+      if (colUser !== -1 && row[colUser] !== undefined && String(row[colUser]).trim() !== '') {
+        usuarioTaquilla = String(row[colUser]).trim();
+      }
+
       // Grupo
       let grupoId: number | null = null;
       let grupoNombre = '';
@@ -541,6 +562,7 @@ export const BulkAgencyModal: React.FC<BulkAgencyModalProps> = ({
         participacion: partVal,
         sistemas: Array.from(new Set(assignedSystems)),
         codigoReporte,
+        usuarioTaquilla,
         grupoId,
         grupoNombre,
       });
@@ -643,6 +665,9 @@ export const BulkAgencyModal: React.FC<BulkAgencyModalProps> = ({
             updated.status = 'valid';
             updated.errorMessage = undefined;
           }
+          if (!updated.usuarioTaquilla || updated.usuarioTaquilla === r.nombre) {
+            updated.usuarioTaquilla = String(val).toUpperCase();
+          }
         }
 
         if (field === 'codigoReporte') {
@@ -717,7 +742,8 @@ export const BulkAgencyModal: React.FC<BulkAgencyModalProps> = ({
         const matchName = r.nombre.toLowerCase().includes(q);
         const matchCode = r.codigoReporte.toLowerCase().includes(q);
         const matchSys = r.sistemas.some((s) => s.toLowerCase().includes(q));
-        if (!matchName && !matchCode && !matchSys) return false;
+        const matchUser = (r.usuarioTaquilla || '').toLowerCase().includes(q);
+        if (!matchName && !matchCode && !matchSys && !matchUser) return false;
       }
 
       return true;
@@ -803,13 +829,10 @@ export const BulkAgencyModal: React.FC<BulkAgencyModalProps> = ({
           });
         });
 
-        // Unique username for cashier POS
-        const cleanSlug = cleanAgencyName(row.nombre)
-          .toLowerCase()
-          .replace(/[^a-z0-9]/g, '_')
-          .slice(0, 16);
-        const randomSuffix = Math.floor(100 + Math.random() * 900);
-        const taquillaUser = `${cleanSlug || 'agencia'}_${randomSuffix}_pos`;
+        // Cashier POS username: use the visible, editable user or fallback to agency name
+        const taquillaUser = (row.usuarioTaquilla || row.nombre || 'agencia')
+          .trim()
+          .replace(/\s+/g, '_');
         const taquillaPass = defaultClaveTaquilla.trim() || '1234';
 
         const payload: any = {
@@ -1442,6 +1465,7 @@ export const BulkAgencyModal: React.FC<BulkAgencyModalProps> = ({
                       <th className={UI_LOCK.tableTheadTh}>Comisión %</th>
                       <th className={UI_LOCK.tableTheadTh}>Sistema(s)</th>
                       <th className={UI_LOCK.tableTheadTh}>Código / ID en Reporte</th>
+                      <th className={UI_LOCK.tableTheadTh}>Usuario</th>
                       <th className={UI_LOCK.tableTheadTh}>Moneda(s)</th>
                       <th className={UI_LOCK.tableTheadTh}>Estado</th>
                       <th className="px-3 py-3.5 w-12 text-center">Acción</th>
@@ -1450,7 +1474,7 @@ export const BulkAgencyModal: React.FC<BulkAgencyModalProps> = ({
                   <tbody>
                     {paginatedRows.length === 0 ? (
                       <tr>
-                        <td colSpan={9} className="text-center py-12 text-slate-400 text-xs">
+                        <td colSpan={10} className="text-center py-12 text-slate-400 text-xs">
                           No se encontraron agencias con los filtros aplicados.
                         </td>
                       </tr>
@@ -1552,6 +1576,17 @@ export const BulkAgencyModal: React.FC<BulkAgencyModalProps> = ({
                                   ))}
                                 </div>
                               )}
+                            </td>
+
+                            {/* Usuario Taquilla */}
+                            <td className="px-3 py-2 w-36">
+                              <input
+                                type="text"
+                                value={row.usuarioTaquilla}
+                                onChange={(e) => handleUpdateRow(row.id, 'usuarioTaquilla', e.target.value)}
+                                placeholder="Usuario POS"
+                                className="w-full bg-transparent border border-transparent hover:border-slate-300 dark:hover:border-slate-700 focus:border-emerald-500 focus:bg-white dark:focus:bg-slate-800 rounded-lg px-2 py-1 text-xs font-mono font-bold text-slate-800 dark:text-slate-200 transition-all uppercase"
+                              />
                             </td>
 
                             {/* Monedas */}
