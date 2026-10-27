@@ -1,4 +1,5 @@
 import { supabase } from '../lib/supabase';
+import { CANONICAL_SYSTEM_RULES } from '../lib/salesEngineLock';
 
 export interface SystemKeywordConfig {
   venta: string;
@@ -111,16 +112,53 @@ export async function loadSystemKeywords(userId?: string): Promise<SystemKeyword
     } catch (_) {}
   }
 
-  return { ...DEFAULT_SYSTEM_KEYWORDS, ...parsedLocal, ...cloudMap };
+  const merged = { ...DEFAULT_SYSTEM_KEYWORDS, ...parsedLocal, ...cloudMap };
+
+  // @LOCK: Asegurar que los sistemas canónicos oficiales mantengan SIEMPRE sus palabras clave inmutables
+  for (const [canonSys, rule] of Object.entries(CANONICAL_SYSTEM_RULES)) {
+    if (merged[canonSys]) {
+      merged[canonSys].agencia = rule.colAgencia[0];
+      merged[canonSys].venta = rule.colVenta[0];
+      merged[canonSys].premio = rule.colPremio[0];
+    } else {
+      merged[canonSys] = {
+        venta: rule.colVenta[0],
+        premio: rule.colPremio[0],
+        agencia: rule.colAgencia[0],
+        comision_comercializador: rule.defaultComisionPct || 0,
+        participacion_comercializador: rule.defaultParticipacionPct || 0,
+        saldo_inicial_bs: 0,
+        saldo_inicial_usd: 0,
+        saldo_inicial_cop: 0,
+      };
+    }
+  }
+
+  return merged;
 }
 
 /**
- * Saves system keyword mapping both to localStorage, Supabase profile metadata, and proveedores table
+ * Saves system keyword mapping both to localStorage, Supabase profile metadata, and proveedores table.
+ * Preserves canonical keywords while allowing initial balances and commission/participation updates.
  */
 export async function saveSystemKeywords(userId: string, keywords: SystemKeywordsMap): Promise<void> {
+  const sanitizedKeywords = { ...keywords };
+
+  // Proteger palabras clave canónicas contra mutaciones accidentales
+  for (const [canonSys, rule] of Object.entries(CANONICAL_SYSTEM_RULES)) {
+    if (sanitizedKeywords[canonSys]) {
+      sanitizedKeywords[canonSys] = {
+        ...sanitizedKeywords[canonSys],
+        agencia: rule.colAgencia[0],
+        venta: rule.colVenta[0],
+        premio: rule.colPremio[0],
+      };
+    }
+  }
+
   if (typeof window !== 'undefined' && userId) {
     try {
-      localStorage.setItem(`cms_sys_keywords_${userId}`, JSON.stringify(keywords));
+      localStorage.setItem(`cms_sys_keywords_${userId}`, JSON.stringify(sanitizedKeywords));
     } catch (_) {}
   }
 
@@ -128,7 +166,7 @@ export async function saveSystemKeywords(userId: string, keywords: SystemKeyword
     try {
       await supabase
         .from('perfiles')
-        .update({ direccion: JSON.stringify({ system_keywords: keywords }) })
+        .update({ direccion: JSON.stringify({ system_keywords: sanitizedKeywords }) })
         .eq('id', userId);
     } catch (e) {
       console.error('Error saving system keywords to cloud:', e);

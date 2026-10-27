@@ -798,42 +798,24 @@ export const BulkAgencyModal: React.FC<BulkAgencyModalProps> = ({
     setProgress({ current: 0, total: toSave.length });
 
     try {
-      // 1. Guardar las Palabras Claves del Proveedor / Sistema en systemKeywords
-      try {
-        const currentKeywords = await loadSystemKeywords(effectiveUserId);
-        const targetSystem =
-          defaultSystemMode === 'ALL'
-            ? systems[0]?.nombre_sistema || 'PARLEY INH'
-            : defaultSystemMode;
-        const targetUpper = targetSystem.trim().toUpperCase();
-
-        currentKeywords[targetUpper] = {
-          ...(currentKeywords[targetUpper] || {}),
-          agencia: keywordAgencia.trim() || 'Agentes',
-          venta: keywordVenta.trim() || 'Ventas',
-          premio: keywordPremio.trim() || 'Premios',
-        };
-        await saveSystemKeywords(effectiveUserId, currentKeywords);
-      } catch (kwErr) {
-        console.warn('Error guardando palabras claves del sistema:', kwErr);
-      }
-
-      // 2. Registrar agencias en la base de datos
+      // 1. Procesamiento e Inserción/Fusión de Agencias en la Base de Datos
       let insertedCount = 0;
 
       for (let i = 0; i < toSave.length; i++) {
         const row = toSave[i];
         setProgress({ current: i + 1, total: toSave.length });
 
-        // Build condiciones_sistemas JSON
+        // Build condiciones_sistemas JSON segregando códigos por sistema
         const condicionesObj: Record<string, any> = {};
         const safeSystems = row.sistemas.length > 0 ? row.sistemas : ['GENERAL'];
         const safeCurrencies = row.monedas.length > 0 ? row.monedas : ['USD'];
+        const isTargetSys = defaultSystemMode !== 'ALL';
 
         safeSystems.forEach((sys) => {
+          const sysMatches = !isTargetSys || sys.toUpperCase() === defaultSystemMode.toUpperCase();
           safeCurrencies.forEach((mon) => {
             const comboKey = `${sys}_${mon}`;
-            const specificCode = row.codigosPorMoneda?.[mon] || row.codigoReporte;
+            const specificCode = sysMatches ? (row.codigosPorMoneda?.[mon] || row.codigoReporte) : '';
             const entry: any = {
               sistema: sys,
               moneda: mon,
@@ -844,7 +826,7 @@ export const BulkAgencyModal: React.FC<BulkAgencyModalProps> = ({
               entry.codigo = specificCode.trim();
             }
             condicionesObj[comboKey] = entry;
-            if (!condicionesObj[sys]) {
+            if (!condicionesObj[sys] && specificCode) {
               condicionesObj[sys] = entry;
             }
           });
@@ -855,6 +837,35 @@ export const BulkAgencyModal: React.FC<BulkAgencyModalProps> = ({
           .trim()
           .replace(/\s+/g, '_');
         const taquillaPass = (row.claveTaquilla || defaultClaveTaquilla || '1234').trim();
+
+        // Si la agencia ya existe en el catálogo, fusionar y enriquecer sus condiciones_sistemas
+        const existingAg = existingAgencies.find(
+          (a) => cleanAgencyName(a.nombre_agencia) === cleanAgencyName(row.nombre)
+        );
+        if (existingAg) {
+          let prevCond: Record<string, any> = {};
+          try {
+            prevCond = typeof existingAg.condiciones_sistemas === 'string'
+              ? JSON.parse(existingAg.condiciones_sistemas)
+              : (existingAg.condiciones_sistemas || {});
+          } catch (_) {}
+          const mergedCond = { ...prevCond, ...condicionesObj };
+          const existingSystems = (existingAg.sistemas || '').split(',').map((s: string) => s.trim()).filter(Boolean);
+          const updatedSystems = Array.from(new Set([...existingSystems, ...safeSystems])).join(', ');
+          const existingMonedas = (existingAg.monedas || '').split(',').map((m: string) => m.trim()).filter(Boolean);
+          const updatedMonedas = Array.from(new Set([...existingMonedas, ...safeCurrencies])).join(', ');
+
+          await supabase
+            .from('agencias')
+            .update({
+              sistemas: updatedSystems,
+              monedas: updatedMonedas,
+              condiciones_sistemas: JSON.stringify(mergedCond),
+            })
+            .eq('id', existingAg.id);
+          insertedCount++;
+          continue;
+        }
 
         const payload: any = {
           user_id: effectiveUserId,
@@ -918,11 +929,13 @@ export const BulkAgencyModal: React.FC<BulkAgencyModalProps> = ({
           const condicionesObj: Record<string, any> = {};
           const safeSystems = row.sistemas.length > 0 ? row.sistemas : ['GENERAL'];
           const safeCurrencies = row.monedas.length > 0 ? row.monedas : ['USD'];
+          const isTargetSys = defaultSystemMode !== 'ALL';
 
           safeSystems.forEach((sys) => {
+            const sysMatches = !isTargetSys || sys.toUpperCase() === defaultSystemMode.toUpperCase();
             safeCurrencies.forEach((mon) => {
               const comboKey = `${sys}_${mon}`;
-              const specificCode = row.codigosPorMoneda?.[mon] || row.codigoReporte;
+              const specificCode = sysMatches ? (row.codigosPorMoneda?.[mon] || row.codigoReporte) : '';
               const entry: any = {
                 sistema: sys,
                 moneda: mon,
@@ -933,7 +946,7 @@ export const BulkAgencyModal: React.FC<BulkAgencyModalProps> = ({
                 entry.codigo = specificCode.trim();
               }
               condicionesObj[comboKey] = entry;
-              if (!condicionesObj[sys]) {
+              if (!condicionesObj[sys] && specificCode) {
                 condicionesObj[sys] = entry;
               }
             });

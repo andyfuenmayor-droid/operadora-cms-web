@@ -33,6 +33,13 @@ import {
   DEFAULT_SYSTEM_KEYWORDS,
   type SystemKeywordsMap
 } from '../../utils/systemKeywords';
+import {
+  detectSystemFromDna,
+  detectFileIntrinsicCurrency,
+  matchAgencyStrict,
+  isSaleDuplicate,
+  CANONICAL_SYSTEM_RULES,
+} from '../../lib/salesEngineLock';
 import { SEMANA_41_SALES_RECORDS } from '../../utils/semana41SalesData';
 
 // Safe helper to parse numbers from numeric or formatted strings
@@ -945,7 +952,7 @@ export const SalesEntryTab: React.FC = () => {
           return;
         }
 
-        // 2. Detect System & Currency (Auto o Manual)
+        // 2. Detect System & Currency (Auto o Manual vía Motor Inmutable)
         const fileNameUpper = file.name.toUpperCase();
         const headerDna = rows
           .slice(0, 15)
@@ -953,97 +960,9 @@ export const SalesEntryTab: React.FC = () => {
           .join(' ')
           .toUpperCase();
 
-        let sistDet = bulkSystem !== 'AUTO' ? bulkSystem : '';
-        if (!sistDet) {
-          // Direct provider signature detection (Highest reliability)
-          const isGatoPesos =
-            fileNameUpper.includes('GATOPESO') ||
-            (fileNameUpper.includes('GATO') && fileNameUpper.includes('PESO')) ||
-            headerDna.includes('GATOPESO') ||
-            (headerDna.includes('GATO') && headerDna.includes('PESO'));
-
-          if (isGatoPesos) {
-            const matched = systems.find(
-              (s) => s.nombre_sistema.replace(/\s+/g, '').toUpperCase() === 'GATOPESOS'
-            );
-            sistDet = matched ? matched.nombre_sistema : 'GATO PESOS';
-          }
-
-          if (!sistDet) {
-            const isGatoweb =
-              headerDna.includes('BANKLOT') ||
-              headerDna.includes('GATOWEB') ||
-              headerDna.includes('ANALISIS POR PERIODO') ||
-              headerDna.includes('ANÁLISIS POR PERÍODO') ||
-              headerDna.includes('DISTRIBUIDOR') ||
-              fileNameUpper.includes('GATO') ||
-              fileNameUpper.includes('BANKLOT') ||
-              fileNameUpper.includes('ANALISIS') ||
-              fileNameUpper.includes('PERIODO') ||
-              (headerDna.includes('USUARIO') && headerDna.includes('VENTAS') && headerDna.includes('PREMIOS') && (headerDna.includes('SALDO') || headerDna.includes('COMISION')));
-
-            const isKeno =
-              headerDna.includes('KENO') ||
-              headerDna.includes('LOTTERY') ||
-              fileNameUpper.includes('KENO') ||
-              fileNameUpper.includes('LOTTERY') ||
-              (headerDna.includes('TOTAL ACCEPTED') && headerDna.includes('TOTAL PAID'));
-
-            const isBetm3 =
-              headerDna.includes('BETM3') ||
-              fileNameUpper.includes('BETM3') ||
-              (fileNameUpper.includes('BET') && !fileNameUpper.includes('ALPHABET') && !fileNameUpper.includes('GATO') && !fileNameUpper.includes('BANKLOT'));
-
-            const isCdapuestas =
-              headerDna.includes('CDAPUESTAS') ||
-              fileNameUpper.includes('CDAPUESTAS') ||
-              (headerDna.includes('UTILIDAD FINAL') && headerDna.includes('PARTICIPACION'));
-
-            if (isGatoweb) {
-              sistDet = 'GATOWEB';
-            } else if (isKeno) {
-              sistDet = 'KENO';
-            } else if (isBetm3) {
-              sistDet = 'BETM3';
-            } else if (isCdapuestas) {
-              sistDet = 'CDAPUESTAS';
-            }
-          }
-
-          // 2. Fallback to dynamic keyword matching with strict word boundaries
-          if (!sistDet) {
-            for (const [sysName, conf] of Object.entries(systemKeywords)) {
-              const v = conf?.venta?.trim();
-              const p = conf?.premio?.trim();
-              const a = conf?.agencia?.trim();
-              if (v && p) {
-                const regV = new RegExp(`\\b${v}\\b`, 'i');
-                const regP = new RegExp(`\\b${p}\\b`, 'i');
-                const regA = a ? new RegExp(`\\b${a}\\b`, 'i') : null;
-                if (regV.test(headerDna) && regP.test(headerDna) && (!regA || regA.test(headerDna))) {
-                  sistDet = sysName;
-                  break;
-                }
-              }
-            }
-          }
-
-          // 3. Fallback to system name matching in header or systems list (normalizing spaces)
-          if (!sistDet) {
-            for (const s of systems) {
-              const sClean = s.nombre_sistema.replace(/\s+/g, '').toUpperCase();
-              const fileClean = fileNameUpper.replace(/\s+/g, '');
-              const dnaClean = headerDna.replace(/\s+/g, '');
-              if (dnaClean.includes(sClean) || fileClean.includes(sClean)) {
-                sistDet = s.nombre_sistema;
-                break;
-              }
-            }
-          }
-
-          if (!sistDet) {
-            sistDet = systems[0]?.nombre_sistema || 'GATO PESOS';
-          }
+        const sistDet = detectSystemFromDna(file.name, headerDna, bulkSystem, systems);
+        if (sistDet && bulkSystem === 'AUTO') {
+          setBulkSystem(sistDet);
         }
 
         // Detect report date from filename if present (e.g. 2026-10-05_2026-10-11)
@@ -1053,77 +972,42 @@ export const SalesEntryTab: React.FC = () => {
           setBulkFileDate(fileReportDate);
         }
 
-        // 1. Detect intrinsic currency from file content / headers / filename
-        let fileIntrinsicCurrency = '';
-
-        // Explicit provider header signatures (e.g. BETM3: "Peso - COP", "Bolivar - VES", "Dolar - USD")
-        if (
-          headerDna.includes('PESO - COP') ||
-          headerDna.includes('PESO-COP') ||
-          headerDna.includes('PESOS - COP') ||
-          headerDna.includes('PESO COP') ||
-          /(?:^|[^A-Z0-9])COP(?:[^A-Z0-9]|$)/i.test(headerDna) ||
-          fileNameUpper.includes('COP') ||
-          (headerDna.includes('PESO') && !headerDna.includes('BOLIVAR') && !headerDna.includes('DOLAR'))
-        ) {
-          fileIntrinsicCurrency = 'COP';
-        } else if (
-          headerDna.includes('BOLIVAR - VES') ||
-          headerDna.includes('BOLIVARES - VES') ||
-          headerDna.includes('BOLIVAR - BS') ||
-          headerDna.includes('BOLIVARES - BS') ||
-          /(?:^|[^A-Z0-9])(VES|BS|BSF|BSD)(?:[^A-Z0-9]|$)/i.test(headerDna) ||
-          fileNameUpper.includes('VES') ||
-          fileNameUpper.includes('BS') ||
-          headerDna.includes('BOLIVAR') ||
-          headerDna.includes('BOLIVARES')
-        ) {
-          fileIntrinsicCurrency = 'BS';
-        } else if (
-          headerDna.includes('DOLAR - USD') ||
-          headerDna.includes('DOLARES - USD') ||
-          headerDna.includes('DOLAR-USD') ||
-          /(?:^|[^A-Z0-9])(USD|USDT|\$USD)(?:[^A-Z0-9]|$)/i.test(headerDna) ||
-          fileNameUpper.includes('USD') ||
-          headerDna.includes('DOLAR') ||
-          headerDna.includes('DOLARES')
-        ) {
-          fileIntrinsicCurrency = 'USD';
-        } else if (sistDet.toUpperCase() === 'CDAPUESTAS') {
-          fileIntrinsicCurrency = 'USD';
-        } else if (sistDet.toUpperCase() === 'KENO' || sistDet.toUpperCase() === 'GATO PESOS') {
-          fileIntrinsicCurrency = 'COP';
-        }
-
+        const fileIntrinsicCurrency = detectFileIntrinsicCurrency(file.name, headerDna, sistDet, bulkCurrency);
         let detectedMoneda = fileIntrinsicCurrency;
         if (!detectedMoneda && bulkCurrency !== 'AUTO' && bulkCurrency !== 'MULTI') {
           detectedMoneda = bulkCurrency;
         }
 
-        if (sistDet) {
-          setBulkSystem(sistDet);
-        }
-
-        // 2. Dynamic Keywords Configured for this System + Multilingual Synonyms
+        // 3. Reglas y Palabras Clave Canónicas del Sistema (salesEngineLock)
+        const canonRule = CANONICAL_SYSTEM_RULES[sistDet.toUpperCase()];
         const sysConf = systemKeywords[sistDet] || DEFAULT_SYSTEM_KEYWORDS[sistDet];
         const configuredVenta = sysConf?.venta?.trim().toUpperCase();
         const configuredPremio = sysConf?.premio?.trim().toUpperCase();
         const configuredAgencia = sysConf?.agencia?.trim().toUpperCase();
 
-        const NAME_SYNONYMS = [
+        const NAME_SYNONYMS = Array.from(new Set([
+          ...(canonRule ? canonRule.colAgencia : []),
           ...(configuredAgencia ? [configuredAgencia] : []),
           'AGENT', 'AGENCIA', 'NOMBRE', 'USUARIO', 'TAQUILLA', 'BANCA', 'SUBBANCA', 'TERMINAL', 'GRUPO', 'CLIENTE'
-        ];
-        const VENTA_SYNONYMS = [
+        ]));
+        const VENTA_SYNONYMS = Array.from(new Set([
+          ...(canonRule ? canonRule.colVenta : []),
           ...(configuredVenta ? [configuredVenta] : []),
           'TOTAL ACCEPTED', 'ACCEPTED', 'VENTA', 'VENTAS', 'TOTAL VENTA', 'JUGADO', 'TOTAL JUGADO', 'BRUTO', 'TOTAL BRUTO', 'APUESTA', 'APUESTAS'
-        ];
-        const PREMIO_SYNONYMS = [
+        ]));
+        const PREMIO_SYNONYMS = Array.from(new Set([
+          ...(canonRule ? canonRule.colPremio : []),
           ...(configuredPremio ? [configuredPremio] : []),
           'TOTAL PAID', 'PAID OUT', 'PREMIO', 'PREMIOS', 'TOTAL PREMIOS', 'PAGADO', 'PAGADOS', 'ACIERTO', 'ACIERTOS'
-        ];
-        const COMISION_SYNONYMS = ['COMISION', 'COMISIÓN', 'COMISIONES', 'COM. AGENCIA', 'GANANCIA', 'COM'];
-        const NETO_SYNONYMS = ['SALDO', 'TOTAL SALDO', 'NETO', 'TOTAL NETO', 'BALANCE', 'TOTAL BALANCE', 'TOTAL A PAGAR'];
+        ]));
+        const COMISION_SYNONYMS = Array.from(new Set([
+          ...(canonRule ? canonRule.colComision : []),
+          'COMISION', 'COMISIÓN', 'COMISIONES', 'COM. AGENCIA', 'GANANCIA', 'COM'
+        ]));
+        const NETO_SYNONYMS = Array.from(new Set([
+          ...(canonRule ? canonRule.colNeto : []),
+          'PROFIT', 'SALDO', 'TOTAL SALDO', 'NETO', 'TOTAL NETO', 'BALANCE', 'TOTAL BALANCE', 'TOTAL A PAGAR'
+        ]));
 
         let headerRowIdx = -1;
         for (let i = 0; i < Math.min(25, rows.length); i++) {
@@ -1195,121 +1079,21 @@ export const SalesEntryTab: React.FC = () => {
             continue;
           }
 
-          let matchedAg: Agency | undefined;
-          let matchedSystem = sistDet;
-
-          // Extracción inteligente de nombre base y moneda declarada en la celda
-          const { baseName: cellBaseName, detectedCurrency: cellCurrency } = extractRowCurrencyAndAgencyName(rawCell);
-
-          const checkMatch = (cellVal: string): { agency?: Agency; system?: string; moneda?: string } => {
-            const { baseName: candidateBase, detectedCurrency: candidateCurr } = extractRowCurrencyAndAgencyName(cellVal);
-            const targetCurr = candidateCurr || cellCurrency;
-            const upCell = cellVal.toUpperCase();
-            const upBase = candidateBase.toUpperCase();
-            const clnCell = cleanAgencyName(cellVal);
-            const clnBase = cleanAgencyName(candidateBase);
-            const pId = cellVal.match(/\(([^)]+)\)/)?.[1]?.trim().toUpperCase();
-
-            for (const a of agencies) {
-              const agNomClean = cleanAgencyName(a.nombre_agencia);
-              const agNomUpper = a.nombre_agencia.toUpperCase();
-
-              if (a.condiciones_sistemas) {
-                try {
-                  const cond = typeof a.condiciones_sistemas === 'string'
-                    ? JSON.parse(a.condiciones_sistemas)
-                    : a.condiciones_sistemas;
-
-                  // 1. Si la celda trae moneda explícita (ej. 'USD'), probar primero el combo exacto del sistema
-                  if (sistDet && targetCurr) {
-                    const exactCombo = cond?.[`${sistDet}_${targetCurr}`];
-                    if (exactCombo?.codigo) {
-                      const codigos = String(exactCombo.codigo)
-                        .split(',')
-                        .map((c) => c.trim().toUpperCase());
-                      if (
-                        codigos.includes(upCell) ||
-                        codigos.includes(upBase) ||
-                        codigos.includes(clnCell) ||
-                        codigos.includes(clnBase) ||
-                        codigos.some((c) => upCell === c || upBase === c || (clnBase && c === clnBase) || upCell.includes(c))
-                      ) {
-                        return { agency: a, system: sistDet, moneda: targetCurr };
-                      }
-                    }
-                  }
-
-                  // 2. Buscar en todas las combinaciones configuradas en condiciones_sistemas
-                  for (const [sysKey, conf] of Object.entries(cond) as [string, any][]) {
-                    if (conf?.codigo) {
-                      const codigos = String(conf.codigo)
-                        .split(',')
-                        .map((c) => c.trim().toUpperCase());
-                      if (
-                        codigos.includes(upCell) ||
-                        codigos.includes(upBase) ||
-                        (pId && codigos.includes(pId)) ||
-                        (clnCell && codigos.includes(clnCell)) ||
-                        (clnBase && codigos.includes(clnBase)) ||
-                        codigos.some((c) => upCell === c || upBase === c || (clnBase && c === clnBase) || upCell.includes(c))
-                      ) {
-                        const actualSys = conf?.sistema || sysKey.split('_')[0] || sysKey;
-                        const confMoneda = targetCurr || conf?.moneda || (sysKey.includes('_') ? sysKey.split('_')[1] : undefined);
-                        return { agency: a, system: actualSys, moneda: confMoneda };
-                      }
-                    }
-                  }
-
-                  // 3. Fallback a la entrada genérica del sistema
-                  if (sistDet) {
-                    const directEntry = cond?.[sistDet];
-                    if (directEntry?.codigo) {
-                      const codigos = String(directEntry.codigo)
-                        .split(',')
-                        .map((c) => c.trim().toUpperCase());
-                      if (
-                        codigos.includes(upCell) ||
-                        codigos.includes(upBase) ||
-                        (pId && codigos.includes(pId)) ||
-                        (clnCell && codigos.includes(clnCell)) ||
-                        (clnBase && codigos.includes(clnBase)) ||
-                        codigos.some((c) => upCell === c || upBase === c || (clnBase && c === clnBase) || upCell.includes(c))
-                      ) {
-                        return { agency: a, system: sistDet, moneda: targetCurr || directEntry.moneda };
-                      }
-                    }
-                  }
-                } catch (_) {}
-              }
-
-              // Coincidencia directa por nombre (nombre base limpio o nombre completo)
-              if (clnBase && agNomClean === clnBase) return { agency: a, system: sistDet, moneda: targetCurr };
-              if (clnCell && agNomClean === clnCell) return { agency: a, system: sistDet, moneda: targetCurr };
-              if (upBase && agNomUpper === upBase) return { agency: a, system: sistDet, moneda: targetCurr };
-              if (upCell && agNomUpper === upCell) return { agency: a, system: sistDet, moneda: targetCurr };
-              if (pId && (agNomClean === pId || String(a.id) === pId)) return { agency: a, system: sistDet, moneda: targetCurr };
-            }
-            return { moneda: targetCurr };
-          };
-
-          let matchResult = checkMatch(rawCell);
-          // Si no coincidió, probar columna adyacente row[colNombre + 1]
+          // Coincidencia Estricta y Anti-Secuestro vía salesEngineLock
+          const targetSystem = bulkSystem !== 'AUTO' ? bulkSystem : sistDet;
+          let matchResult = matchAgencyStrict(rawCell, targetSystem, detectedMoneda || 'COP', agencies);
           if (!matchResult.agency && colNombre + 1 < row.length) {
             const nextCell = String(row[colNombre + 1] ?? '').trim();
             if (nextCell && !nextCell.startsWith('TOTAL')) {
-              const altResult = checkMatch(nextCell);
+              const altResult = matchAgencyStrict(nextCell, targetSystem, detectedMoneda || 'COP', agencies);
               if (altResult.agency) {
                 matchResult = altResult;
               }
             }
           }
 
-          matchedAg = matchResult.agency;
-          if (bulkSystem === 'AUTO' && matchResult.system) {
-            matchedSystem = matchResult.system;
-          } else {
-            matchedSystem = bulkSystem !== 'AUTO' ? bulkSystem : sistDet;
-          }
+          const matchedAg: Agency | undefined = matchResult.agency;
+          const matchedSystem = targetSystem; // 100% Blindado: El sistema del archivo o selector jamás muta
 
           if (!matchedAg) {
             unmatchedFound.push(rawCell);
@@ -1434,17 +1218,11 @@ export const SalesEntryTab: React.FC = () => {
             } catch (_) {}
           }
 
-          // Check if already loaded in carga_actual for this day/system/currency
-          const isDup = sales.some(
-            (s) =>
-              cleanAgencyName(s.agencia) === cleanAgencyName(matchedAg.nombre_agencia) &&
-              String(s.sistema || '').toUpperCase() === matchedSystem.toUpperCase() &&
-              String(s.moneda || '').toUpperCase() === rowMoneda.toUpperCase() &&
-              s.fecha === bulkFileDate
-          );
+          // Check if already loaded in carga_actual for this day/system/currency (salesEngineLock)
+          const isDup = isSaleDuplicate(sales, matchedAg.nombre_agencia, matchedSystem, rowMoneda, bulkFileDate);
 
           if (isDup) {
-            duplicatesFound.push(matchedAg.nombre_agencia);
+            duplicatesFound.push(`${matchedAg.nombre_agencia} (${matchedSystem})`);
             continue;
           }
 

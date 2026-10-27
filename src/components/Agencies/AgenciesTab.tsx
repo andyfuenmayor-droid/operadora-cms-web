@@ -705,7 +705,13 @@ export const AgenciesTab: React.FC = () => {
               const comboKey = `${sys}_${mon}`;
               const item = formCondicionesSistemas[comboKey] || formCondicionesSistemas[sys] || {};
               const entry: any = { sistema: sys, moneda: mon };
-              if (item.codigo && String(item.codigo).trim()) entry.codigo = String(item.codigo).trim();
+              if (item.codigo && String(item.codigo).trim()) {
+                entry.codigo = String(item.codigo)
+                  .split(',')
+                  .map((c: string) => c.trim())
+                  .filter(Boolean)
+                  .join(', ');
+              }
               if (item.comision !== undefined && item.comision !== null && item.comision !== '') {
                 entry.comision = Number(item.comision);
               }
