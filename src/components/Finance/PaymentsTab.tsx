@@ -1,8 +1,9 @@
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import { supabase } from '../../lib/supabase';
 import { useAuth } from '../../context/AuthContext';
-import { formatCurrency, formatDate, normalizarMoneda, cleanReference } from '../../utils/formatters';
+import { formatCurrency, formatDate, normalizarMoneda, cleanReference, cleanAgencyName } from '../../utils/formatters';
 import { getConsolidatedExpenses, getConsolidatedPayments, type ConsolidatedPaymentItem } from '../../utils/consolidations';
+import { getAgencyCommissionAndParticipation, parseAgencyCondiciones } from '../../utils/salesRecalculation';
 import type { Agency, Currency, BankAccount } from '../../types';
 import { loadCurrencies, type CurrencyConfig } from '../../utils/currencies';
 import { UI_LOCK } from '../../styles/uiDesignLock';
@@ -345,61 +346,82 @@ export const PaymentsTab: React.FC = () => {
     }
   }, [availableAgencyCurrencies, formMoneda]);
 
-  // Live Balances per Agency for BS, USD, COP (matching PreClosureAuditTab and WeeklyClosureTab exactly)
-  const agencyBalances = useMemo(() => {
-    if (!selectedAgencyObj) return { BS: 0, USD: 0, COP: 0 };
-    const agNom = String(selectedAgencyObj.nombre_agencia || '').trim().toUpperCase();
-
-    const result = { BS: 0, USD: 0, COP: 0 };
-
-    (['BS', 'USD', 'COP'] as const).forEach((m) => {
-      const colIni = m === 'BS' ? 'saldo_inicial_bs' : m === 'USD' ? 'saldo_inicial_usd' : 'saldo_inicial_cop';
-      const sIni = Number(selectedAgencyObj[colIni] || 0);
-
-      // Ventas / Utilidad operativa neta del ciclo
-      const agSales = sales.filter((s) => String(s.agencia || '').trim().toUpperCase() === agNom && normalizarMoneda(s.moneda) === m);
-      const vNeto = agSales.reduce((acc, curr) => acc + Number(curr.neto !== undefined && curr.neto !== null ? curr.neto : curr.util_op || 0), 0);
-
-      // Gastos (solo confirmados en el ciclo)
-      const agGastos = expenses.filter((g) => String(g.agencia || '').trim().toUpperCase() === agNom && normalizarMoneda(g.moneda) === m && Boolean(g.confirmado));
-      const gTot = agGastos.reduce((acc, curr) => acc + Number(curr.monto || 0), 0);
-
-      // Pagos y Cobros confirmados en el ciclo (utilizando la consolidación unificada)
-      const agPayments = consolidatedPayments.filter((p) => String(p.agencia || '').trim().toUpperCase() === agNom && normalizarMoneda(p.moneda) === m && Boolean(p.confirmado));
-      let pPremios = 0;
-      let pCobros = 0;
-      agPayments.forEach((p) => {
-        const mto = Number(p.monto || 0);
-        const tipo = String(p.tipo_pago || '').toUpperCase();
-        if (tipo.includes('PREMIO')) pPremios += mto;
-        else pCobros += mto;
-      });
-
-      // Saldo Final = Arrastre Inicial + Venta Neta - Gastos - Cobros + Premios
-      const finalBalance = Math.round((sIni + vNeto - gTot - pCobros + pPremios) * 100) / 100;
-      result[m] = finalBalance;
-    });
-
-    return result;
-  }, [selectedAgencyObj, sales, expenses, consolidatedPayments]);
-
-  // Audit breakdown details for the selected agency (for transparent inspection)
+  // Audit breakdown details for the selected agency (matching PreClosureAuditTab, AccountBalancesTab and WeeklyClosureTab exactly)
   const agencyAuditDetails = useMemo(() => {
     if (!selectedAgencyObj) return null;
     const agNom = String(selectedAgencyObj.nombre_agencia || '').trim().toUpperCase();
-    const details: Record<string, { sIni: number; vNeto: number; gTot: number; pCobros: number; pPremios: number; finalBalance: number }> = {};
+    const cleanNom = cleanAgencyName(selectedAgencyObj.nombre_agencia);
+    const cond = parseAgencyCondiciones(selectedAgencyObj);
+    const agencyCodigos = Object.values(cond)
+      .map((c: any) => (c?.codigo ? String(c.codigo).trim().toUpperCase() : null))
+      .filter(Boolean) as string[];
+
+    const details: Record<
+      string,
+      {
+        sIni: number;
+        vNeto: number;
+        partAg: number;
+        gTot: number;
+        pCobros: number;
+        pPremios: number;
+        finalBalance: number;
+      }
+    > = {};
 
     (['BS', 'USD', 'COP'] as const).forEach((m) => {
       const colIni = m === 'BS' ? 'saldo_inicial_bs' : m === 'USD' ? 'saldo_inicial_usd' : 'saldo_inicial_cop';
-      const sIni = Number(selectedAgencyObj[colIni] || 0);
+      const sIni = Number(selectedAgencyObj[colIni] || (cond as any)?.[m]?.saldo_inicial || (selectedAgencyObj as any)?.condiciones?.[m]?.saldo_inicial || 0);
 
-      const agSales = sales.filter((s) => String(s.agencia || '').trim().toUpperCase() === agNom && normalizarMoneda(s.moneda) === m);
-      const vNeto = agSales.reduce((acc, curr) => acc + Number(curr.neto !== undefined && curr.neto !== null ? curr.neto : curr.util_op || 0), 0);
+      // Ventas pertenecientes a la agencia en esta moneda
+      const agSales = sales.filter((s) => {
+        if (normalizarMoneda(s.moneda) !== m) return false;
+        const sNom = String(s.agencia || '').trim().toUpperCase();
+        if (sNom === agNom) return true;
+        if (agencyCodigos.includes(sNom)) return true;
+        if (cleanAgencyName(s.agencia) === cleanNom) return true;
+        return false;
+      });
 
-      const agGastos = expenses.filter((g) => String(g.agencia || '').trim().toUpperCase() === agNom && normalizarMoneda(g.moneda) === m && Boolean(g.confirmado));
+      let totalVNeto = 0;
+      let totalPartAg = 0;
+
+      agSales.forEach((s) => {
+        const { partPct } = getAgencyCommissionAndParticipation(selectedAgencyObj, s.sistema, m);
+        const v = Number(s.venta ?? s.monto_venta ?? 0);
+        const c = Number(s.comision ?? 0);
+        const p = Number(s.premios ?? s.monto_premios ?? 0);
+        const neto = s.neto !== undefined && s.neto !== null ? Number(s.neto) : Math.round((v - c - p) * 100) / 100;
+
+        let utilAg = 0;
+        if (partPct > 0) {
+          utilAg = Math.round((neto * (partPct / 100)) * 100) / 100;
+        } else if (Number(s.util_ag || 0) > 0) {
+          utilAg = Number(s.util_ag);
+        }
+
+        totalVNeto += neto;
+        totalPartAg += utilAg;
+      });
+
+      totalVNeto = Math.round(totalVNeto * 100) / 100;
+      totalPartAg = Math.round(totalPartAg * 100) / 100;
+
+      // Gastos (solo confirmados en el ciclo)
+      const agGastos = expenses.filter((g) => {
+        if (normalizarMoneda(g.moneda) !== m || !Boolean(g.confirmado)) return false;
+        const gNom = String(g.agencia || '').trim().toUpperCase();
+        return gNom === agNom || cleanAgencyName(g.agencia) === cleanNom;
+      });
       const gTot = agGastos.reduce((acc, curr) => acc + Number(curr.monto || 0), 0);
 
-      const agPayments = consolidatedPayments.filter((p) => String(p.agencia || '').trim().toUpperCase() === agNom && normalizarMoneda(p.moneda) === m && Boolean(p.confirmado));
+      // Pagos y Cobros confirmados en el ciclo (utilizando la consolidación unificada)
+      const agPayments = consolidatedPayments.filter((p) => {
+        if (normalizarMoneda(p.moneda) !== m || !Boolean(p.confirmado)) return false;
+        const pNom = String(p.agencia || '').trim().toUpperCase();
+        return pNom === agNom || cleanAgencyName(p.agencia) === cleanNom;
+      });
+
       let pPremios = 0;
       let pCobros = 0;
       agPayments.forEach((p) => {
@@ -409,12 +431,23 @@ export const PaymentsTab: React.FC = () => {
         else pCobros += mto;
       });
 
-      const finalBalance = Math.round((sIni + vNeto - gTot - pCobros + pPremios) * 100) / 100;
-      details[m] = { sIni, vNeto, gTot, pCobros, pPremios, finalBalance };
+      // Saldo Final = Arrastre Inicial + Venta Neta - Participación Agencia - Gastos - Cobros + Premios
+      const finalBalance = Math.round((sIni + totalVNeto - totalPartAg - gTot - pCobros + pPremios) * 100) / 100;
+      details[m] = { sIni, vNeto: totalVNeto, partAg: totalPartAg, gTot, pCobros, pPremios, finalBalance };
     });
 
     return details;
   }, [selectedAgencyObj, sales, expenses, consolidatedPayments]);
+
+  // Live Balances per Agency for BS, USD, COP (matching PreClosureAuditTab, AccountBalancesTab and WeeklyClosureTab exactly)
+  const agencyBalances = useMemo(() => {
+    const result = { BS: 0, USD: 0, COP: 0 };
+    if (!agencyAuditDetails) return result;
+    (['BS', 'USD', 'COP'] as const).forEach((m) => {
+      result[m] = agencyAuditDetails[m]?.finalBalance || 0;
+    });
+    return result;
+  }, [agencyAuditDetails]);
 
   // Agency transit payments (payments reported in the active cycle but not yet confirmed)
   const agencyTransit = useMemo(() => {
@@ -1172,6 +1205,14 @@ export const PaymentsTab: React.FC = () => {
                             <span>Venta Neta (+):</span>
                             <span className="text-emerald-600 dark:text-emerald-400 font-semibold">+{formatCurrency(det.vNeto, m as any)}</span>
                           </div>
+                          {Math.abs(det.partAg) > 0.001 && (
+                            <div className="flex justify-between">
+                              <span>{det.partAg >= 0 ? 'Participación (-):' : 'Participación (+):'}</span>
+                              <span className={det.partAg >= 0 ? 'text-amber-600 dark:text-amber-400 font-semibold' : 'text-rose-600 dark:text-rose-400 font-semibold'}>
+                                {det.partAg >= 0 ? '-' : '+'}{formatCurrency(Math.abs(det.partAg), m as any)}
+                              </span>
+                            </div>
+                          )}
                           {det.gTot > 0 && (
                             <div className="flex justify-between">
                               <span>Gastos (-):</span>
