@@ -600,14 +600,14 @@ export const BulkAgencyModal: React.FC<BulkAgencyModalProps> = ({
     reader.onload = (event) => {
       try {
         const buffer = event.target?.result as ArrayBuffer;
-        const workbook = XLSX.read(buffer, { type: 'array' });
+        const workbook = XLSX.read(buffer, { type: 'array', raw: true, codepage: 65001 });
         const firstSheetName = workbook.SheetNames[0];
         if (!firstSheetName) {
           setErrorMsg('El archivo no contiene hojas válidas.');
           return;
         }
         const worksheet = workbook.Sheets[firstSheetName];
-        const rawRows: any[][] = XLSX.utils.sheet_to_json(worksheet, { header: 1, defval: '' });
+        const rawRows: any[][] = XLSX.utils.sheet_to_json(worksheet, { header: 1, defval: '', raw: true });
         parseTabularData(rawRows, file.name);
       } catch (err: any) {
         console.error('Error parsing excel:', err);

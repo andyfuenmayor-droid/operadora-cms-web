@@ -904,14 +904,14 @@ export const SalesEntryTab: React.FC = () => {
             return;
           }
         } else {
-          const workbook = XLSX.read(buffer, { type: 'array' });
+          const workbook = XLSX.read(buffer, { type: 'array', raw: true, codepage: 65001 });
           const firstSheetName = workbook.SheetNames[0];
           if (!firstSheetName) {
             setBulkError('El archivo no contiene hojas válidas.');
             return;
           }
           const worksheet = workbook.Sheets[firstSheetName];
-          rows = XLSX.utils.sheet_to_json(worksheet, { header: 1, defval: '' });
+          rows = XLSX.utils.sheet_to_json(worksheet, { header: 1, defval: '', raw: true });
         }
 
         if (!rows || rows.length < 1) {
