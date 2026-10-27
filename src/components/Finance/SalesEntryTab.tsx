@@ -96,6 +96,52 @@ function parseList(val: any): string[] {
   return [];
 }
 
+/**
+ * Detecta y extrae la moneda y el nombre base de la agencia a partir del texto de la celda.
+ * Ejemplos:
+ *  - "15LETRAS1 Bs"   -> { baseName: "15LETRAS1", detectedCurrency: "BS" }
+ *  - "15LETRAS1 Usd"  -> { baseName: "15LETRAS1", detectedCurrency: "USD" }
+ *  - "AGALEJO_BS"     -> { baseName: "AGALEJO", detectedCurrency: "BS" }
+ *  - "ZULAYBC (USD)"  -> { baseName: "ZULAYBC", detectedCurrency: "USD" }
+ *  - "WAIKABC"        -> { baseName: "WAIKABC", detectedCurrency: "" }
+ */
+function extractRowCurrencyAndAgencyName(rawCell: string): {
+  baseName: string;
+  detectedCurrency: string;
+} {
+  if (!rawCell) return { baseName: '', detectedCurrency: '' };
+  const str = String(rawCell).trim();
+
+  // Patrón 1: Sufijo con separador (espacio, guión, barra, guión bajo): "15LETRAS1 Bs", "AGALEJO Usd", "4ESQUINAS1-COP"
+  const suffixMatch = str.match(/^(.*?)[-_/\s]+(BS|USD|COP|VES|EUR|USDT)$/i);
+  if (suffixMatch && suffixMatch[1].trim()) {
+    return {
+      baseName: suffixMatch[1].trim(),
+      detectedCurrency: normalizarMoneda(suffixMatch[2]),
+    };
+  }
+
+  // Patrón 2: Paréntesis: "AGENCIA (USD)", "AGENCIA (Bs)"
+  const parenMatch = str.match(/^(.*?)\s*\((BS|USD|COP|VES|EUR|USDT)\)$/i);
+  if (parenMatch && parenMatch[1].trim()) {
+    return {
+      baseName: parenMatch[1].trim(),
+      detectedCurrency: normalizarMoneda(parenMatch[2]),
+    };
+  }
+
+  // Patrón 3: Prefijo: "USD AGENCIA", "BS - AGENCIA"
+  const prefixMatch = str.match(/^(BS|USD|COP|VES|EUR|USDT)[-_/\s]+(.*)$/i);
+  if (prefixMatch && prefixMatch[2].trim()) {
+    return {
+      baseName: prefixMatch[2].trim(),
+      detectedCurrency: normalizarMoneda(prefixMatch[1]),
+    };
+  }
+
+  return { baseName: str, detectedCurrency: '' };
+}
+
 export const SalesEntryTab: React.FC = () => {
   const { effectiveUserId, systemCycle, refreshSystemCycle } = useAuth();
 
@@ -122,6 +168,7 @@ export const SalesEntryTab: React.FC = () => {
   const [bulkFileDate, setBulkFileDate] = useState(systemCycle?.hasta || new Date().toISOString().split('T')[0]);
   const [bulkSystem, setBulkSystem] = useState('AUTO');
   const [bulkCurrency, setBulkCurrency] = useState('AUTO');
+  const [bulkDetectedCurrencies, setBulkDetectedCurrencies] = useState<string[]>([]);
   const [bulkRows, setBulkRows] = useState<any[]>([]);
   const [editingComIndex, setEditingComIndex] = useState<number | null>(null);
   const [bulkError, setBulkError] = useState<string | null>(null);
@@ -821,6 +868,7 @@ export const SalesEntryTab: React.FC = () => {
   const resetBulkArea = () => {
     setBulkRows([]);
     setBulkCurrency('AUTO');
+    setBulkDetectedCurrencies([]);
     setBulkSystem('AUTO');
     setBulkError(null);
     setBulkUnmatched([]);
@@ -1005,7 +1053,7 @@ export const SalesEntryTab: React.FC = () => {
           setBulkFileDate(fileReportDate);
         }
 
-        // 1. Detect intrinsic currency from file content / headers / filename (Highest Priority)
+        // 1. Detect intrinsic currency from file content / headers / filename
         let fileIntrinsicCurrency = '';
 
         // Explicit provider header signatures (e.g. BETM3: "Peso - COP", "Bolivar - VES", "Dolar - USD")
@@ -1047,18 +1095,11 @@ export const SalesEntryTab: React.FC = () => {
           fileIntrinsicCurrency = 'COP';
         }
 
-        // When a file declares its currency, that intrinsic currency overrides residual UI state
-        // and synchronizes the dropdown selector automatically.
         let detectedMoneda = fileIntrinsicCurrency;
-        if (!detectedMoneda && bulkCurrency !== 'AUTO') {
+        if (!detectedMoneda && bulkCurrency !== 'AUTO' && bulkCurrency !== 'MULTI') {
           detectedMoneda = bulkCurrency;
         }
-        if (!detectedMoneda) {
-          detectedMoneda = 'COP';
-        }
 
-        // Always synchronize UI dropdown to the detected currency
-        setBulkCurrency(detectedMoneda);
         if (sistDet) {
           setBulkSystem(sistDet);
         }
@@ -1129,6 +1170,8 @@ export const SalesEntryTab: React.FC = () => {
 
         let colComision = headerCols.findIndex((c) => COMISION_SYNONYMS.some((syn) => c.includes(syn)));
         let colNeto = headerCols.findIndex((c) => NETO_SYNONYMS.some((syn) => c === syn || c.includes(syn)));
+        const MONEDA_SYNONYMS = ['MONEDA', 'MONEDAS', 'DIVISA', 'DIVISAS', 'CURRENCY', 'DIV'];
+        let colMoneda = headerCols.findIndex((c) => MONEDA_SYNONYMS.some((syn) => c === syn || c.includes(syn)));
 
         if (colComision === -1 && colPremio === -1) {
           colComision = 2;
@@ -1138,6 +1181,7 @@ export const SalesEntryTab: React.FC = () => {
         const parsed: any[] = [];
         const duplicatesFound: string[] = [];
         const unmatchedFound: string[] = [];
+        const distinctFileCurrencies = new Set<string>();
 
         for (let i = headerRowIdx + 1; i < rows.length; i++) {
           const row = rows[i];
@@ -1154,12 +1198,17 @@ export const SalesEntryTab: React.FC = () => {
           let matchedAg: Agency | undefined;
           let matchedSystem = sistDet;
 
+          // Extracción inteligente de nombre base y moneda declarada en la celda
+          const { baseName: cellBaseName, detectedCurrency: cellCurrency } = extractRowCurrencyAndAgencyName(rawCell);
+
           const checkMatch = (cellVal: string): { agency?: Agency; system?: string; moneda?: string } => {
+            const { baseName: candidateBase, detectedCurrency: candidateCurr } = extractRowCurrencyAndAgencyName(cellVal);
+            const targetCurr = candidateCurr || cellCurrency;
             const upCell = cellVal.toUpperCase();
+            const upBase = candidateBase.toUpperCase();
             const clnCell = cleanAgencyName(cellVal);
+            const clnBase = cleanAgencyName(candidateBase);
             const pId = cellVal.match(/\(([^)]+)\)/)?.[1]?.trim().toUpperCase();
-            const baseWithoutP = cellVal.replace(/\s*\([^)]*\)\s*$/, '').trim();
-            const clnBase = cleanAgencyName(baseWithoutP);
 
             for (const a of agencies) {
               const agNomClean = cleanAgencyName(a.nombre_agencia);
@@ -1171,7 +1220,47 @@ export const SalesEntryTab: React.FC = () => {
                     ? JSON.parse(a.condiciones_sistemas)
                     : a.condiciones_sistemas;
 
-                  // 1. Check detected system first
+                  // 1. Si la celda trae moneda explícita (ej. 'USD'), probar primero el combo exacto del sistema
+                  if (sistDet && targetCurr) {
+                    const exactCombo = cond?.[`${sistDet}_${targetCurr}`];
+                    if (exactCombo?.codigo) {
+                      const codigos = String(exactCombo.codigo)
+                        .split(',')
+                        .map((c) => c.trim().toUpperCase());
+                      if (
+                        codigos.includes(upCell) ||
+                        codigos.includes(upBase) ||
+                        codigos.includes(clnCell) ||
+                        codigos.includes(clnBase) ||
+                        codigos.some((c) => upCell === c || upBase === c || (clnBase && c === clnBase) || upCell.includes(c))
+                      ) {
+                        return { agency: a, system: sistDet, moneda: targetCurr };
+                      }
+                    }
+                  }
+
+                  // 2. Buscar en todas las combinaciones configuradas en condiciones_sistemas
+                  for (const [sysKey, conf] of Object.entries(cond) as [string, any][]) {
+                    if (conf?.codigo) {
+                      const codigos = String(conf.codigo)
+                        .split(',')
+                        .map((c) => c.trim().toUpperCase());
+                      if (
+                        codigos.includes(upCell) ||
+                        codigos.includes(upBase) ||
+                        (pId && codigos.includes(pId)) ||
+                        (clnCell && codigos.includes(clnCell)) ||
+                        (clnBase && codigos.includes(clnBase)) ||
+                        codigos.some((c) => upCell === c || upBase === c || (clnBase && c === clnBase) || upCell.includes(c))
+                      ) {
+                        const actualSys = conf?.sistema || sysKey.split('_')[0] || sysKey;
+                        const confMoneda = targetCurr || conf?.moneda || (sysKey.includes('_') ? sysKey.split('_')[1] : undefined);
+                        return { agency: a, system: actualSys, moneda: confMoneda };
+                      }
+                    }
+                  }
+
+                  // 3. Fallback a la entrada genérica del sistema
                   if (sistDet) {
                     const directEntry = cond?.[sistDet];
                     if (directEntry?.codigo) {
@@ -1180,49 +1269,31 @@ export const SalesEntryTab: React.FC = () => {
                         .map((c) => c.trim().toUpperCase());
                       if (
                         codigos.includes(upCell) ||
+                        codigos.includes(upBase) ||
                         (pId && codigos.includes(pId)) ||
                         (clnCell && codigos.includes(clnCell)) ||
                         (clnBase && codigos.includes(clnBase)) ||
-                        codigos.some((c) => upCell === c || (clnBase && c === clnBase) || upCell.includes(c))
+                        codigos.some((c) => upCell === c || upBase === c || (clnBase && c === clnBase) || upCell.includes(c))
                       ) {
-                        return { agency: a, system: sistDet, moneda: directEntry.moneda };
-                      }
-                    }
-                  }
-
-                  // 2. Check across all systems in agency conditions
-                  for (const [sysKey, conf] of Object.entries(cond) as [string, any][]) {
-                    if (conf?.codigo) {
-                      const codigos = String(conf.codigo)
-                        .split(',')
-                        .map((c) => c.trim().toUpperCase());
-                      if (
-                        codigos.includes(upCell) ||
-                        (pId && codigos.includes(pId)) ||
-                        (clnCell && codigos.includes(clnCell)) ||
-                        (clnBase && codigos.includes(clnBase)) ||
-                        codigos.some((c) => upCell === c || (clnBase && c === clnBase) || upCell.includes(c))
-                      ) {
-                        const actualSys = conf?.sistema || sysKey.split('_')[0] || sysKey;
-                        const confMoneda = conf?.moneda || (sysKey.includes('_') ? sysKey.split('_')[1] : undefined);
-                        return { agency: a, system: actualSys, moneda: confMoneda };
+                        return { agency: a, system: sistDet, moneda: targetCurr || directEntry.moneda };
                       }
                     }
                   }
                 } catch (_) {}
               }
 
-              if (clnCell && agNomClean === clnCell) return { agency: a, system: sistDet };
-              if (clnBase && agNomClean === clnBase) return { agency: a, system: sistDet };
-              if (upCell && agNomUpper === upCell) return { agency: a, system: sistDet };
-              if (clnBase && agNomUpper === clnBase) return { agency: a, system: sistDet };
-              if (pId && (agNomClean === pId || String(a.id) === pId)) return { agency: a, system: sistDet };
+              // Coincidencia directa por nombre (nombre base limpio o nombre completo)
+              if (clnBase && agNomClean === clnBase) return { agency: a, system: sistDet, moneda: targetCurr };
+              if (clnCell && agNomClean === clnCell) return { agency: a, system: sistDet, moneda: targetCurr };
+              if (upBase && agNomUpper === upBase) return { agency: a, system: sistDet, moneda: targetCurr };
+              if (upCell && agNomUpper === upCell) return { agency: a, system: sistDet, moneda: targetCurr };
+              if (pId && (agNomClean === pId || String(a.id) === pId)) return { agency: a, system: sistDet, moneda: targetCurr };
             }
-            return {};
+            return { moneda: targetCurr };
           };
 
           let matchResult = checkMatch(rawCell);
-          // If rawCell is a row index like "1" or didn't match, check adjacent column row[colNombre + 1]
+          // Si no coincidió, probar columna adyacente row[colNombre + 1]
           if (!matchResult.agency && colNombre + 1 < row.length) {
             const nextCell = String(row[colNombre + 1] ?? '').trim();
             if (nextCell && !nextCell.startsWith('TOTAL')) {
@@ -1300,28 +1371,38 @@ export const SalesEntryTab: React.FC = () => {
               : 0;
           }
 
-          // Currency resolution:
-          // 1. Explicit dropdown selection (bulkCurrency !== 'AUTO')
-          // 2. Detected currency from file or filename (detectedMoneda)
-          // 3. Matched currency from specific system condition in agency
-          // 4. System-specific currency in agency condiciones_sistemas
-          // 5. Agency's configured monedas
-          // 6. Fallback based on system (CDAPUESTAS -> USD, etc.)
+          // Resolución de Moneda Inteligente por Fila:
+          // 1. Moneda explícita detectada en la celda del agente (ej: "15LETRAS1 Bs" -> BS, "15LETRAS1 Usd" -> USD)
+          // 2. Columna dedicada de Moneda en la fila (colMoneda)
+          // 3. Moneda resultante del match en condiciones_sistemas de la agencia (matchResult.moneda)
+          // 4. Selección manual específica en el selector superior (si el usuario eligió una divisa concreta)
+          // 5. Moneda del sistema configurada en la agencia o moneda intrínseca del archivo
+          const { detectedCurrency: rowCellCurr } = extractRowCurrencyAndAgencyName(rawCell);
+          let cellColMon = '';
+          if (colMoneda !== -1 && row[colMoneda] !== undefined) {
+            const rawCol = String(row[colMoneda]).trim();
+            if (rawCol) cellColMon = normalizarMoneda(rawCol);
+          }
+
           const agencyCurrencies = (matchedAg.monedas || '')
             .split(',')
             .map((m: string) => normalizarMoneda(m.trim()))
             .filter(Boolean);
           const primaryAgencyCurr = agencyCurrencies[0] || 'COP';
 
-          const fileCur = detectedMoneda || (bulkCurrency !== 'AUTO' ? bulkCurrency : 'COP');
-
           let rowMoneda = 'COP';
-          if (fileCur) {
-            rowMoneda = normalizarMoneda(fileCur);
+          if (rowCellCurr) {
+            rowMoneda = rowCellCurr;
+          } else if (cellColMon) {
+            rowMoneda = cellColMon;
           } else if (matchResult.moneda) {
             rowMoneda = normalizarMoneda(matchResult.moneda);
+          } else if (bulkCurrency !== 'AUTO' && bulkCurrency !== 'MULTI') {
+            rowMoneda = normalizarMoneda(bulkCurrency);
           } else if (sysMoneda) {
             rowMoneda = sysMoneda;
+          } else if (detectedMoneda && detectedMoneda !== 'MULTI') {
+            rowMoneda = normalizarMoneda(detectedMoneda);
           } else if (agencyCurrencies.length === 1) {
             rowMoneda = agencyCurrencies[0];
           } else if (agencyCurrencies.length > 1) {
@@ -1331,6 +1412,8 @@ export const SalesEntryTab: React.FC = () => {
           } else {
             rowMoneda = 'COP';
           }
+
+          distinctFileCurrencies.add(rowMoneda);
 
           // Exact currency condition override if available for this system & rowMoneda
           if (matchedAg.condiciones_sistemas && matchedSystem && rowMoneda) {
@@ -1419,6 +1502,18 @@ export const SalesEntryTab: React.FC = () => {
         }
 
         setBulkUnmatched(unmatchedFound);
+
+        // Actualizar el selector de moneda superior según lo detectado en las filas
+        const foundCurrs = Array.from(distinctFileCurrencies);
+        setBulkDetectedCurrencies(foundCurrs);
+
+        if (foundCurrs.length > 1) {
+          setBulkCurrency('MULTI');
+        } else if (foundCurrs.length === 1 && (bulkCurrency === 'AUTO' || bulkCurrency === 'MULTI')) {
+          setBulkCurrency(foundCurrs[0]);
+        } else if (detectedMoneda) {
+          setBulkCurrency(detectedMoneda);
+        }
 
         if (duplicatesFound.length > 0) {
           setBulkError(
@@ -1681,13 +1776,18 @@ export const SalesEntryTab: React.FC = () => {
                 onChange={(e) => {
                   const mVal = e.target.value;
                   setBulkCurrency(mVal);
-                  if (mVal !== 'AUTO') {
+                  if (mVal !== 'AUTO' && mVal !== 'MULTI') {
                     setBulkRows((prev) => prev.map((r) => ({ ...r, moneda: mVal })));
                   }
                 }}
                 className={UI_LOCK.select}
               >
                 <option value="AUTO">✨ Auto-detectar Moneda</option>
+                {bulkCurrency === 'MULTI' && (
+                  <option value="MULTI">
+                    🔀 Multi-Moneda ({bulkDetectedCurrencies.length > 0 ? bulkDetectedCurrencies.join(', ') : 'Detectadas'})
+                  </option>
+                )}
                 {availableCurrenciesList.map((m) => (
                   <option key={m.code} value={m.code}>
                     {m.label}
@@ -1729,10 +1829,25 @@ export const SalesEntryTab: React.FC = () => {
 
           {bulkRows.length > 0 && (
             <div className="space-y-3 pt-2">
-              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-1 text-xs">
-                <span className="text-emerald-600 dark:text-emerald-400 font-bold">
-                  ✓ Se reconocieron {bulkRows.length} {bulkRows.length === 1 ? 'agencia' : 'agencias'} para importar:
-                </span>
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 text-xs">
+                <div className="flex items-center gap-2 flex-wrap">
+                  <span className="text-emerald-600 dark:text-emerald-400 font-bold">
+                    ✓ Se reconocieron {bulkRows.length} {bulkRows.length === 1 ? 'agencia' : 'agencias'} para importar:
+                  </span>
+                  {Object.entries(
+                    bulkRows.reduce((acc, r) => {
+                      acc[r.moneda] = (acc[r.moneda] || 0) + 1;
+                      return acc;
+                    }, {} as Record<string, number>)
+                  ).map(([curr, count]) => (
+                    <span
+                      key={curr}
+                      className="px-2 py-0.5 rounded-md text-[10px] font-mono font-bold bg-cyan-100 dark:bg-cyan-500/20 text-cyan-800 dark:text-cyan-300 border border-cyan-300 dark:border-cyan-500/30"
+                    >
+                      {curr}: {String(count)}
+                    </span>
+                  ))}
+                </div>
                 <span className="text-slate-500 dark:text-slate-400 text-[11px]">
                   Puedes modificar la moneda o comisión de cada fila si lo deseas antes de guardar.
                 </span>
