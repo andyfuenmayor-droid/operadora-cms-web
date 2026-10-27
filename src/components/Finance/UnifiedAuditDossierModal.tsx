@@ -111,7 +111,8 @@ export const UnifiedAuditDossierModal: React.FC<UnifiedAuditDossierModalProps> =
       .join('');
 
     // Summary Cards HTML
-    const summariesHtml = ['BS', 'USD', 'COP']
+    const activeCurrenciesList = Array.from(new Set(['BS', 'USD', 'COP', ...Object.keys(totalsByCurrency)]));
+    const summariesHtml = activeCurrenciesList
       .map((mon) => {
         const d = totalsByCurrency[mon];
         if (!d) return '';
@@ -130,7 +131,7 @@ export const UnifiedAuditDossierModal: React.FC<UnifiedAuditDossierModalProps> =
             <div style="display: flex; justify-content: space-between;"><span style="color: #64748b;">Gastos Comercializadora:</span><span style="color: #b91c1c;">${formatCurrency(admGasto, mon as any)}</span></div>
             ${(d.cobradorEnRuta || 0) > 0 ? `<div style="display: flex; justify-content: space-between;"><span style="color: #d97706;">En Ruta:</span><span style="color: #d97706; font-weight: bold;">${formatCurrency(d.cobradorEnRuta || 0, mon as any)}</span></div>` : ''}
             ${(d.cobradorLiquidado || 0) > 0 ? `<div style="display: flex; justify-content: space-between;"><span style="color: #059669;">Liquidado Admin:</span><span style="color: #059669; font-weight: bold;">${formatCurrency(d.cobradorLiquidado || 0, mon as any)}</span></div>` : ''}
-            ${d.efectivoTaquilla > 0 ? `<div style="display: flex; justify-content: space-between;"><span style="color: #64748b;">Efec Taquilla:</span><span style="color: #0284c7;">${formatCurrency(d.efectivoTaquilla, mon as any)}</span></div>` : ''}
+            ${d.efectivoTaquilla > 0 ? `<div style="display: flex; justify-content: space-between;"><span style="color: #64748b;">Efec. Administración:</span><span style="color: #0284c7;">${formatCurrency(d.efectivoTaquilla, mon as any)}</span></div>` : ''}
             ${d.bancos > 0 ? `<div style="display: flex; justify-content: space-between;"><span style="color: #64748b;">Bancos:</span><span style="color: #0f766e;">${formatCurrency(d.bancos, mon as any)}</span></div>` : ''}
             ${d.reposicionPremios > 0 ? `<div style="display: flex; justify-content: space-between;"><span style="color: #64748b;">Reposición:</span><span style="color: #b45309; font-weight: bold;">+${formatCurrency(d.reposicionPremios, mon as any)}</span></div>` : ''}
             <div style="display: flex; justify-content: space-between; border-top: 1px solid #cbd5e1; padding-top: 2px; margin-top: 2px; font-weight: bold;">
@@ -363,7 +364,7 @@ export const UnifiedAuditDossierModal: React.FC<UnifiedAuditDossierModalProps> =
                 <th style="text-align: right;">Gastos Ag.</th>
                 <th style="text-align: right;">En Ruta</th>
                 <th style="text-align: right;">Liquidado</th>
-                <th style="text-align: right;">Efec Taquilla</th>
+                <th style="text-align: right;">Efec. Admin</th>
                 <th style="text-align: right;">Bancos</th>
                 <th style="text-align: right;">Reposición</th>
                 <th style="text-align: right;">Saldo Final</th>
@@ -430,7 +431,7 @@ export const UnifiedAuditDossierModal: React.FC<UnifiedAuditDossierModalProps> =
             <div class="acta-title">ANEXO 2: CONCILIACIÓN BANCARIA Y RENDICIÓN DE EFECTIVO</div>
             <div class="meta-row">
               <span><strong>Ciclo:</strong> Semana ${systemCycle.semana} (${systemCycle.desde} al ${systemCycle.hasta})</span>
-              <span><strong>Canales de Recaudación:</strong> Bancos, Efectivo Taquilla y Cobradores de Ruta</span>
+              <span><strong>Canales de Recaudación:</strong> Bancos, Efectivo Administración y Cobradores de Ruta</span>
             </div>
           </div>
 
@@ -665,7 +666,7 @@ export const UnifiedAuditDossierModal: React.FC<UnifiedAuditDossierModalProps> =
 
               {/* Cards resumen */}
               <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-                {['BS', 'USD', 'COP'].map((mon) => {
+                {Array.from(new Set(['BS', 'USD', 'COP', ...Object.keys(totalsByCurrency)])).map((mon) => {
                   const d = totalsByCurrency[mon];
                   if (!d) return null;
                   const admGasto = (adminExpensesByCurrency && adminExpensesByCurrency[mon]) || (d.gastosComercializadora || 0);
@@ -680,7 +681,7 @@ export const UnifiedAuditDossierModal: React.FC<UnifiedAuditDossierModalProps> =
                       <div className="flex justify-between text-slate-400"><span>Venta Neta:</span><span className="text-emerald-400">{formatCurrency(d.ventaNeta, mon as any)}</span></div>
                       <div className="flex justify-between text-slate-400"><span>Gastos Agencias:</span><span className="text-rose-400">-{formatCurrency(d.gastosAgencias ?? d.gastos, mon as any)}</span></div>
                       <div className="flex justify-between text-slate-400"><span>Bancos:</span><span className="text-teal-400">{formatCurrency(d.bancos, mon as any)}</span></div>
-                      <div className="flex justify-between text-slate-400"><span>Efectivo Taquilla:</span><span className="text-cyan-400">{formatCurrency(d.efectivoTaquilla, mon as any)}</span></div>
+                      <div className="flex justify-between text-slate-400"><span>Efectivo Administración:</span><span className="text-cyan-400">{formatCurrency(d.efectivoTaquilla, mon as any)}</span></div>
                     </div>
                   );
                 })}
@@ -697,7 +698,7 @@ export const UnifiedAuditDossierModal: React.FC<UnifiedAuditDossierModalProps> =
                       <th className="p-2.5 text-right">Gastos</th>
                       <th className="p-2.5 text-right">En Ruta</th>
                       <th className="p-2.5 text-right">Liquidado</th>
-                      <th className="p-2.5 text-right">Efectivo</th>
+                      <th className="p-2.5 text-right text-cyan-400">Efec. Admin</th>
                       <th className="p-2.5 text-right">Bancos</th>
                       <th className="p-2.5 text-right">Saldo Final</th>
                     </tr>
@@ -808,7 +809,7 @@ export const UnifiedAuditDossierModal: React.FC<UnifiedAuditDossierModalProps> =
                 {/* Efectivo */}
                 <div className="rounded-2xl border border-slate-800 overflow-hidden">
                   <div className="p-2.5 bg-[#08151D] text-xs font-bold text-cyan-300 border-b border-slate-800 flex items-center justify-between">
-                    <span>💵 Efectivo en Bóveda y Taquilla ({cashDeliveries.length})</span>
+                    <span>💵 Efectivo Entregado a Administración ({cashDeliveries.length})</span>
                   </div>
                   <div className="overflow-x-auto max-h-60">
                     <table className="w-full text-left text-xs font-mono text-[11px]">

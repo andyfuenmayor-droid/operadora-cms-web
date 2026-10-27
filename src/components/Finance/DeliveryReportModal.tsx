@@ -100,7 +100,8 @@ export const DeliveryReportModal: React.FC<DeliveryReportModalProps> = ({
       )
       .join('');
 
-    const summariesHtml = ['BS', 'USD', 'COP']
+    const activeCurrenciesList = Array.from(new Set(['BS', 'USD', 'COP', ...Object.keys(totalsByCurrency)]));
+    const summariesHtml = activeCurrenciesList
       .map((mon) => {
         const d = totalsByCurrency[mon];
         if (!d) return '';
@@ -119,7 +120,7 @@ export const DeliveryReportModal: React.FC<DeliveryReportModalProps> = ({
             <div style="display: flex; justify-content: space-between;"><span style="color: #64748b;">Gastos Comercializadora:</span><span style="color: #b91c1c;">${formatCurrency(admGasto, mon as any)}</span></div>
             ${(d.cobradorEnRuta || 0) > 0 ? `<div style="display: flex; justify-content: space-between;"><span style="color: #d97706;">En Ruta:</span><span style="color: #d97706; font-weight: bold;">${formatCurrency(d.cobradorEnRuta || 0, mon as any)}</span></div>` : ''}
             ${(d.cobradorLiquidado || 0) > 0 ? `<div style="display: flex; justify-content: space-between;"><span style="color: #059669;">Liquidado Admin:</span><span style="color: #059669; font-weight: bold;">${formatCurrency(d.cobradorLiquidado || 0, mon as any)}</span></div>` : ''}
-            ${d.efectivoTaquilla > 0 ? `<div style="display: flex; justify-content: space-between;"><span style="color: #64748b;">Efec Taquilla:</span><span style="color: #0284c7;">${formatCurrency(d.efectivoTaquilla, mon as any)}</span></div>` : ''}
+            ${d.efectivoTaquilla > 0 ? `<div style="display: flex; justify-content: space-between;"><span style="color: #64748b;">Efec. Administración:</span><span style="color: #0284c7;">${formatCurrency(d.efectivoTaquilla, mon as any)}</span></div>` : ''}
             ${d.bancos > 0 ? `<div style="display: flex; justify-content: space-between;"><span style="color: #64748b;">Bancos:</span><span style="color: #0f766e;">${formatCurrency(d.bancos, mon as any)}</span></div>` : ''}
             ${d.reposicionPremios > 0 ? `<div style="display: flex; justify-content: space-between;"><span style="color: #64748b;">Reposición:</span><span style="color: #b45309; font-weight: bold;">+${formatCurrency(d.reposicionPremios, mon as any)}</span></div>` : ''}
             <div style="display: flex; justify-content: space-between; border-top: 1px solid #cbd5e1; padding-top: 2px; margin-top: 2px; font-weight: bold;">
@@ -408,7 +409,7 @@ export const DeliveryReportModal: React.FC<DeliveryReportModalProps> = ({
             </h4>
 
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-              {['BS', 'USD', 'COP'].map((mon) => {
+              {Array.from(new Set(['BS', 'USD', 'COP', ...Object.keys(totalsByCurrency)])).map((mon) => {
                 const data = totalsByCurrency[mon];
                 if (!data) return null;
                 const admGasto = (adminExpensesByCurrency && adminExpensesByCurrency[mon]) || (data.gastosComercializadora || 0);
@@ -457,7 +458,7 @@ export const DeliveryReportModal: React.FC<DeliveryReportModalProps> = ({
                       )}
                       {data.efectivoTaquilla > 0 && (
                         <div className="flex justify-between">
-                          <span className="text-slate-400">Efectivo Taquilla:</span>
+                          <span className="text-slate-400">Efectivo Administración:</span>
                           <span className="text-sky-300">{formatCurrency(data.efectivoTaquilla, mon as any)}</span>
                         </div>
                       )}

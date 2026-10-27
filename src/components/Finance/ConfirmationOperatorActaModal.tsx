@@ -127,7 +127,8 @@ export const ConfirmationOperatorActaModal: React.FC<ConfirmationOperatorActaMod
       )
       .join('');
 
-    const summariesHtml = ['BS', 'USD', 'COP']
+    const activeCurrenciesList = Array.from(new Set(['BS', 'USD', 'COP', ...Object.keys(summariesByCurrency)]));
+    const summariesHtml = activeCurrenciesList
       .map((mon) => {
         const d = summariesByCurrency[mon];
         if (!d || (d.bancos === 0 && d.gastos === 0 && d.reposicion === 0 && d.efectivo === 0)) return '';
@@ -139,7 +140,7 @@ export const ConfirmationOperatorActaModal: React.FC<ConfirmationOperatorActaMod
           </div>
           <div style="font-size: 9.5px; font-family: monospace; line-height: 1.4;">
             <div style="display: flex; justify-content: space-between;"><span style="color: #64748b;">🏛️ Bancos Auditados:</span><span style="color: #0369a1; font-weight: 600;">${formatCurrency(d.bancos, mon as any)}</span></div>
-            <div style="display: flex; justify-content: space-between;"><span style="color: #64748b;">💵 Efectivo Taquilla:</span><span style="color: #047857; font-weight: 600;">${formatCurrency(d.efectivo, mon as any)}</span></div>
+            <div style="display: flex; justify-content: space-between;"><span style="color: #64748b;">💵 Efectivo Administración:</span><span style="color: #047857; font-weight: 600;">${formatCurrency(d.efectivo, mon as any)}</span></div>
             <div style="display: flex; justify-content: space-between;"><span style="color: #64748b;">📉 Gastos Verificados:</span><span style="color: #b91c1c;">${formatCurrency(d.gastos, mon as any)}</span></div>
             <div style="display: flex; justify-content: space-between;"><span style="color: #64748b;">🏆 Reposición Premios:</span><span style="color: #b45309; font-weight: 600;">+${formatCurrency(d.reposicion, mon as any)}</span></div>
             <div style="display: flex; justify-content: space-between; border-top: 1px solid #cbd5e1; padding-top: 2px; margin-top: 2px; font-weight: bold;">
@@ -470,7 +471,7 @@ export const ConfirmationOperatorActaModal: React.FC<ConfirmationOperatorActaMod
             </h4>
 
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-              {['BS', 'USD', 'COP'].map((mon) => {
+              {Array.from(new Set(['BS', 'USD', 'COP', ...Object.keys(summariesByCurrency)])).map((mon) => {
                 const data = summariesByCurrency[mon];
                 if (!data || (data.bancos === 0 && data.gastos === 0 && data.reposicion === 0 && data.efectivo === 0)) return null;
 
@@ -487,7 +488,7 @@ export const ConfirmationOperatorActaModal: React.FC<ConfirmationOperatorActaMod
                         <span className="text-sky-400 font-bold">{formatCurrency(data.bancos, mon as any)}</span>
                       </div>
                       <div className="flex justify-between">
-                        <span className="text-slate-400">💵 Efectivo Taquilla:</span>
+                        <span className="text-slate-400">💵 Efectivo Administración:</span>
                         <span className="text-emerald-400 font-bold">{formatCurrency(data.efectivo, mon as any)}</span>
                       </div>
                       <div className="flex justify-between">

@@ -1320,7 +1320,7 @@ export const PreClosureAuditTab: React.FC = () => {
       'Gastos Agencias',
       'Cobrador en Ruta',
       'Liquidado a Admin',
-      'Efectivo Taquilla',
+      'Efectivo Administracion',
       'Bancos (Cobros)',
       'Reposicion Premios (+)',
       'Pagos Netos',
@@ -1889,7 +1889,7 @@ export const PreClosureAuditTab: React.FC = () => {
                       title="Ver Acta de Entrega de Efectivo"
                     >
                       <span className="text-slate-400 group-hover:text-white flex items-center gap-1.5 transition-colors">
-                        <span>💵</span> Efectivo Taquilla:
+                        <span>💵</span> Efectivo Administración:
                       </span>
                       <span className={`font-semibold ${tot.efectivoTaquilla > 0 ? 'text-sky-300' : 'text-slate-500'}`}>
                         {formatCurrency(tot.efectivoTaquilla, mon as any)}
@@ -2011,7 +2011,7 @@ export const PreClosureAuditTab: React.FC = () => {
                 <th className="py-3 px-3 text-right">Gastos Agencias</th>
                 <th className="py-3 px-3 text-right text-amber-400">🛵 En Ruta</th>
                 <th className="py-3 px-3 text-right text-emerald-400">🏛️ Liquidado Admin</th>
-                <th className="py-3 px-3 text-right text-sky-300">💵 Efec Taquilla</th>
+                <th className="py-3 px-3 text-right text-sky-300">💵 Efec Admin</th>
                 <th className="py-3 px-3 text-right text-cyan-400">🏛️ Bancos</th>
                 <th className="py-3 px-3 text-right text-amber-400">🏆 Reposición (+)</th>
                 <th className="py-3 px-3 text-right font-black">Saldo Final</th>
@@ -2134,7 +2134,7 @@ export const PreClosureAuditTab: React.FC = () => {
                             handleToggleRow(rowKey, 'efectivo');
                           }}
                           className="py-3 px-3 text-right text-sky-300 hover:underline hover:text-sky-200 transition-all cursor-pointer"
-                          title="Click para ver entregas de efectivo en taquilla"
+                          title="Click para ver entregas de efectivo a administración"
                         >
                           {row.efectivo_taquilla > 0 ? formatCurrency(row.efectivo_taquilla, row.moneda) : '-'}
                         </td>

@@ -240,7 +240,7 @@ export const CashDeliveryActaModal: React.FC<CashDeliveryActaModalProps> = ({
             <thead>
               <tr>
                 <th style="text-align: center;">Moneda</th>
-                <th style="text-align: right;">💵 Efectivo Taquilla (Directo)</th>
+                <th style="text-align: right;">💵 Efectivo Administración (Directo)</th>
                 <th style="text-align: right;">🛵 Recaudación en Ruta (Cobradores)</th>
                 <th style="text-align: right;">📉 Salidas / Gastos Efectivo</th>
                 <th style="text-align: right;">Total Efectivo Neto a Bóveda</th>
@@ -466,14 +466,14 @@ export const CashDeliveryActaModal: React.FC<CashDeliveryActaModalProps> = ({
                 <thead className="bg-[#05110d] border-b border-slate-800 text-slate-400 font-bold uppercase text-[10px]">
                   <tr>
                     <th className="py-2.5 px-3 text-center">Moneda</th>
-                    <th className="py-2.5 px-3 text-right">💵 Taquilla Directa</th>
+                    <th className="py-2.5 px-3 text-right">💵 Administración Directa</th>
                     <th className="py-2.5 px-3 text-right">🛵 Recaudado Cobradores</th>
                     <th className="py-2.5 px-3 text-right">📉 Salidas / Gastos Efectivo</th>
                     <th className="py-2.5 px-3 text-right">Total Efectivo a Bóveda</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-800/80 font-mono text-[11px]">
-                  {(['BS', 'USD', 'COP'] as const).map((mon) => {
+                  {(Array.from(new Set(['BS', 'USD', 'COP', ...Object.keys(totalsByCurrency)])) as any[]).map((mon) => {
                     const t = totalsByCurrency[mon];
                     const chan = channelSummaries[mon];
                     const taq = chan?.TAQUILLA?.entradas || 0;
