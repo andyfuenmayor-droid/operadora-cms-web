@@ -257,8 +257,19 @@ export async function getConsolidatedPayments(
       }
     });
 
-    // 3. Incorporar cda_pagos_diarios (efectivo y cobradores confirmados, deduplicando entregas a supervisor que pasaron a cobrador)
-    const pdByAgMon = new Map<string, { cobrador: any[]; supervisor: any[] }>();
+    // 3. Incorporar cda_pagos_diarios (efectivo y cobros diarios de taquilla)
+    // Se clasifican en:
+    // - admin: entregas en efectivo al Administrador (confirmadas oficialmente)
+    // - cobrador: recaudaciones oficiales en ruta con QR o recibidas por cobrador
+    // - comercializador: pagos directos a comercializadores confirmados
+    // - supervisorCustodia: entregas internas del cajero al supervisor en taquilla (custodia interna que pasa a Admin o Cobrador)
+    interface PdGroup {
+      admin: any[];
+      cobrador: any[];
+      comercializador: any[];
+      supervisorCustodia: any[];
+    }
+    const pdByAgMon = new Map<string, PdGroup>();
     const pdSeenTx = new Set<string>();
     const hoyStr = getTodayDateString();
     const limiteHasta = fechaHasta || hoyStr;
@@ -275,7 +286,7 @@ export async function getConsolidatedPayments(
       const tipoP = String(r.tipo_pago || 'EFECTIVO').trim().toUpperCase();
       const isCob = Boolean(r.qr_token) || tipoP.includes('COBRADOR');
 
-      // Si se filtra por periodo, restringir los pagos diarios al ciclo ANTES de calcular el balance de supervisor vs cobrador
+      // Si se filtra por periodo, restringir los pagos diarios al ciclo ANTES de calcular el balance
       if (filtrarPeriodo && (fechaDesde || fechaHasta)) {
         const hoyStr = getTodayDateString();
         const desdeIso = normalizeToIsoDate(fechaDesde);
@@ -334,24 +345,69 @@ export async function getConsolidatedPayments(
       if (agNom && montoVal > 0) {
         const key = `${agNom}_${monNorm}`;
         if (!pdByAgMon.has(key)) {
-          pdByAgMon.set(key, { cobrador: [], supervisor: [] });
+          pdByAgMon.set(key, { admin: [], cobrador: [], comercializador: [], supervisorCustodia: [] });
         }
 
-        const isCob = Boolean(r.qr_token) || tipoP.includes('COBRADOR');
-        if (isCob) {
+        const isAdmin =
+          tipoP.includes('ADMIN') ||
+          tipoP.includes('ENTREGADO A ADMIN') ||
+          tipoP.includes('ENTREGA_ADMIN') ||
+          (r.confirmado_por && String(r.confirmado_por).trim().length > 0 && !tipoP.includes('SUPERVISOR'));
+        const isComercializador = tipoP.includes('COMERCIALIZADOR');
+        const isSupervisor =
+          tipoP.includes('SUPERVISOR') || tipoP === 'ENTREGADO A SUPERVISOR';
+
+        if (isAdmin) {
+          pdByAgMon.get(key)!.admin.push(r);
+        } else if (isCob) {
           pdByAgMon.get(key)!.cobrador.push(r);
+        } else if (isComercializador) {
+          pdByAgMon.get(key)!.comercializador.push(r);
+        } else if (isSupervisor) {
+          pdByAgMon.get(key)!.supervisorCustodia.push(r);
         } else {
-          pdByAgMon.get(key)!.supervisor.push(r);
+          pdByAgMon.get(key)!.admin.push(r);
         }
       }
     });
 
-    // Procesar grupos: Todos los cobradores confirmados + solo el remanente en taquilla de entregas a supervisor
+    // Procesar grupos: Entregas directas a Admin + Cobradores confirmados + Comercializadores + remanente no liquidado
     pdByAgMon.forEach((group) => {
+      const adminSum = group.admin.reduce((sum, r) => sum + (Number(r.monto) || 0), 0);
       const cobradorSum = group.cobrador.reduce((sum, r) => sum + (Number(r.monto) || 0), 0);
-      const supervisorSum = group.supervisor.reduce((sum, r) => sum + (Number(r.monto) || 0), 0);
+      const supervisorSum = group.supervisorCustodia.reduce((sum, r) => sum + (Number(r.monto) || 0), 0);
 
-      // A. Cobradores y liquidaciones oficiales
+      // A. Entregas directas al Administrador (Efectivo entregado a Admin por supervisor o cajero)
+      group.admin.forEach((r) => {
+        const agNom = String(r.agencia || '').trim().toUpperCase();
+        const monNorm = normalizarMoneda(r.moneda) as 'BS' | 'USD' | 'COP';
+        const montoVal = Math.round((Number(r.monto) || 0) * 100) / 100;
+        const fechaRaw = String(r.fecha || r.created_at || '').trim();
+        const tipoP = String(r.tipo_pago || 'EFECTIVO (ENTREGADO A ADMIN)').trim().toUpperCase();
+        const concD = String(r.concepto || '').toUpperCase();
+        const refD = String(r.referencia || '').trim().toUpperCase();
+        const isPremD = ['PREMIO', 'PÉRDIDA', 'PERDIDA', 'ABONO', 'REPOSICION', 'REPOSICIÓN'].some(
+          (k) => `${tipoP} ${concD} ${refD}`.includes(k)
+        );
+
+        listaItems.push({
+          id: `pd_${r.id}`,
+          agencia: agNom,
+          moneda: monNorm,
+          tipo_pago: isPremD ? 'Pago de Premios' : 'Pago',
+          metodo: 'EFECTIVO',
+          monto: montoVal,
+          referencia: `EFECTIVO ENTREGADO A ADMIN${r.supervisor_nombre ? ` (POR SUP: ${r.supervisor_nombre})` : ''} [✅ CONFIRMADO]`,
+          confirmado: true,
+          confirmado_por: String(r.confirmado_por || 'ADMIN').trim(),
+          rechazado: false,
+          fecha: fechaRaw,
+          created_at: r.created_at,
+          user_id: String(r.cajero_id || r.user_id || effectiveUserId),
+        });
+      });
+
+      // B. Cobradores y liquidaciones oficiales
       group.cobrador.forEach((r) => {
         const agNom = String(r.agencia || '').trim().toUpperCase();
         const monNorm = normalizarMoneda(r.moneda) as 'BS' | 'USD' | 'COP';
@@ -381,10 +437,44 @@ export async function getConsolidatedPayments(
         });
       });
 
-      // B. Entregado a Supervisor: Solo el remanente físico que NO fue entregado a cobrador
-      let excess = Math.max(0, supervisorSum - cobradorSum);
-      if (excess > 0) {
-        group.supervisor.forEach((r) => {
+      // C. Pagos directos a Comercializador
+      group.comercializador.forEach((r) => {
+        const agNom = String(r.agencia || '').trim().toUpperCase();
+        const monNorm = normalizarMoneda(r.moneda) as 'BS' | 'USD' | 'COP';
+        const montoVal = Math.round((Number(r.monto) || 0) * 100) / 100;
+        const fechaRaw = String(r.fecha || r.created_at || '').trim();
+        const tipoP = String(r.tipo_pago || 'PAGO A COMERCIALIZADOR').trim().toUpperCase();
+        const concD = String(r.concepto || '').toUpperCase();
+        const refD = String(r.referencia || '').trim().toUpperCase();
+        const isPremD = ['PREMIO', 'PÉRDIDA', 'PERDIDA', 'ABONO', 'REPOSICION', 'REPOSICIÓN'].some(
+          (k) => `${tipoP} ${concD} ${refD}`.includes(k)
+        );
+
+        listaItems.push({
+          id: `pd_${r.id}`,
+          agencia: agNom,
+          moneda: monNorm,
+          tipo_pago: isPremD ? 'Pago de Premios' : 'Pago',
+          metodo: 'COMERCIALIZADOR',
+          monto: montoVal,
+          referencia: `PAGO A COMERCIALIZADOR [✅ CONFIRMADO]`,
+          confirmado: true,
+          confirmado_por: String(r.confirmado_por || 'ADMIN').trim(),
+          rechazado: false,
+          fecha: fechaRaw,
+          created_at: r.created_at,
+          user_id: String(r.cajero_id || r.user_id || effectiveUserId),
+        });
+      });
+
+      // D. Entregas a Supervisor (Custodia Interna):
+      // Para Administración, el pago válido es el que entrega el supervisor a Admin o a Cobrador.
+      // Si el supervisor ya entregó fondos a Admin o a Cobrador (adminSum + cobradorSum > 0),
+      // los traspasos internos cajero -> supervisor se absorben y NO se duplican.
+      const turnedOver = adminSum + cobradorSum;
+      let excess = Math.max(0, supervisorSum - turnedOver);
+      if (excess > 0 && turnedOver === 0) {
+        group.supervisorCustodia.forEach((r) => {
           if (excess <= 0) return;
           const agNom = String(r.agencia || '').trim().toUpperCase();
           const monNorm = normalizarMoneda(r.moneda) as 'BS' | 'USD' | 'COP';
@@ -407,9 +497,9 @@ export async function getConsolidatedPayments(
             tipo_pago: isPremD ? 'Pago de Premios' : 'Pago',
             metodo: 'EFECTIVO',
             monto: toAdd,
-            referencia: `EFECTIVO TAQUILLA: ${tipoP} [✅ CONFIRMADO]`,
+            referencia: `EFECTIVO TAQUILLA (CUSTODIA SUPERVISOR): ${tipoP} [✅ CONFIRMADO]`,
             confirmado: true,
-            confirmado_por: String(r.supervisor_nombre || r.confirmado_por || 'ADMIN').trim(),
+            confirmado_por: String(r.supervisor_nombre || r.confirmado_por || 'SUPERVISOR').trim(),
             rechazado: false,
             fecha: fechaRaw,
             created_at: r.created_at,

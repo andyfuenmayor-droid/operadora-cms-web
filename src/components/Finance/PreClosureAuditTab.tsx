@@ -986,7 +986,17 @@ export const PreClosureAuditTab: React.FC = () => {
       });
     });
 
-    // 3. Efectivo en taquilla confirmado (entregado a supervisor, sin QR)
+    // 3. Efectivo en taquilla confirmado (entregas a admin y directas, excluyendo custodia interna que ya pasó a admin)
+    const adminSeenAgMon = new Set<string>();
+    rawDailyPayments.forEach((pd) => {
+      const tipoP = String(pd.tipo_pago || '').toUpperCase();
+      if (tipoP.includes('ADMIN') || tipoP.includes('ENTREGADO A ADMIN')) {
+        const ag = (pd.agencia || pd.nombre_agency || '').trim().toUpperCase();
+        const mon = normalizarMoneda(pd.moneda);
+        adminSeenAgMon.add(`${ag}_${mon}`);
+      }
+    });
+
     rawDailyPayments.forEach((pd) => {
       const isCob = Boolean(pd.qr_token) || String(pd.tipo_pago || '').toUpperCase().includes('COBRADOR');
       if (isCob) return; // Las recaudaciones de cobrador van en el Acta de Cobrador
@@ -997,13 +1007,27 @@ export const PreClosureAuditTab: React.FC = () => {
       const inCycle = !systemCycle?.desde || (fStr >= systemCycle.desde && fStr <= (systemCycle.hasta || fStr));
       if (!inCycle) return;
 
+      const ag = (pd.agencia || pd.nombre_agency || 'Agencia').trim().toUpperCase();
+      const mon = normalizarMoneda(pd.moneda) as 'BS' | 'USD' | 'COP';
+      const tipoP = String(pd.tipo_pago || '').toUpperCase();
+
+      // Si es traspaso interno a supervisor y ya existe entrega a admin para esta agencia/moneda, excluir para no duplicar
+      if ((tipoP.includes('SUPERVISOR') || tipoP === 'ENTREGADO A SUPERVISOR') && adminSeenAgMon.has(`${ag}_${mon}`)) {
+        return;
+      }
+
       list.push({
         id: `pd_${pd.id}`,
         fecha: fStr,
-        agencia: (pd.agencia || pd.nombre_agency || 'Agencia').trim().toUpperCase(),
+        agencia: ag,
         categoria: 'EFECTIVO',
-        referencia: pd.referencia || pd.concepto || 'Efectivo Entregado a Supervisor',
-        moneda: normalizarMoneda(pd.moneda) as 'BS' | 'USD' | 'COP',
+        referencia:
+          pd.referencia ||
+          pd.concepto ||
+          (tipoP.includes('ADMIN')
+            ? `Efectivo Entregado a Admin${pd.supervisor_nombre ? ` (Por Sup: ${pd.supervisor_nombre})` : ''}`
+            : 'Efectivo Taquilla'),
+        moneda: mon,
         monto: Number(pd.monto) || 0,
         confirmado_por: pd.confirmado_por || undefined,
       });
@@ -1131,15 +1155,28 @@ export const PreClosureAuditTab: React.FC = () => {
   const cashDeliveryItems = useMemo<CashDeliveryAuditItem[]>(() => {
     const list: CashDeliveryAuditItem[] = [];
 
-    // 1. Recaudaciones en físico de cda_pagos_diarios (deduplicando entregas a supervisor que pasaron a cobrador)
-    const pdByAgMon = new Map<string, { cobrador: any[]; supervisor: any[] }>();
+    // 1. Recaudaciones en físico de cda_pagos_diarios
+    interface PreClosurePdGroup {
+      admin: any[];
+      cobrador: any[];
+      supervisorCustodia: any[];
+    }
+    const pdByAgMon = new Map<string, PreClosurePdGroup>();
 
     rawDailyPayments.forEach((pd) => {
       const isRech = Boolean(pd.rechazado) || String(pd.estado || '').toUpperCase() === 'RECHAZADO';
       const isConf = Boolean(pd.confirmado) || Boolean(pd.confirmado_supervisor) || Boolean(pd.fecha_escaneo_cobrador);
       if (!isConf || isRech) return;
 
-      const isCob = Boolean(pd.qr_token) || String(pd.tipo_pago || '').toUpperCase().includes('COBRADOR');
+      const tipoP = String(pd.tipo_pago || '').toUpperCase();
+      const isCob = Boolean(pd.qr_token) || tipoP.includes('COBRADOR');
+      const isAdmin =
+        tipoP.includes('ADMIN') ||
+        tipoP.includes('ENTREGADO A ADMIN') ||
+        tipoP.includes('ENTREGA_ADMIN') ||
+        (pd.confirmado_por && String(pd.confirmado_por).trim().length > 0 && !tipoP.includes('SUPERVISOR'));
+      const isSupervisor = tipoP.includes('SUPERVISOR') || tipoP === 'ENTREGADO A SUPERVISOR';
+
       const fOperativa = String(pd.fecha || pd.created_at || '').slice(0, 10);
       const fEscaneo = String(pd.fecha_escaneo_cobrador || '').slice(0, 10);
       const fLiquidacion = String(pd.fecha_liquidacion_admin || '').slice(0, 10);
@@ -1155,21 +1192,46 @@ export const PreClosureAuditTab: React.FC = () => {
       const monNorm = normalizarMoneda(pd.moneda) as 'BS' | 'USD' | 'COP';
       const key = `${agNom}_${monNorm}`;
       if (!pdByAgMon.has(key)) {
-        pdByAgMon.set(key, { cobrador: [], supervisor: [] });
+        pdByAgMon.set(key, { admin: [], cobrador: [], supervisorCustodia: [] });
       }
 
-      if (isCob) {
+      if (isAdmin) {
+        pdByAgMon.get(key)!.admin.push(pd);
+      } else if (isCob) {
         pdByAgMon.get(key)!.cobrador.push(pd);
+      } else if (isSupervisor) {
+        pdByAgMon.get(key)!.supervisorCustodia.push(pd);
       } else {
-        pdByAgMon.get(key)!.supervisor.push(pd);
+        pdByAgMon.get(key)!.admin.push(pd);
       }
     });
 
     pdByAgMon.forEach((group) => {
+      const adminSum = group.admin.reduce((sum, r) => sum + (Number(r.monto) || 0), 0);
       const cobradorSum = group.cobrador.reduce((sum, r) => sum + (Number(r.monto) || 0), 0);
-      const supervisorSum = group.supervisor.reduce((sum, r) => sum + (Number(r.monto) || 0), 0);
+      const supervisorSum = group.supervisorCustodia.reduce((sum, r) => sum + (Number(r.monto) || 0), 0);
 
-      // A. Cobradores de ruta (entregas físicas oficiales en tránsito o liquidadas a bóveda)
+      // A. Entregas directas a Administración (Efectivo entregado a Admin por supervisor o taquilla)
+      group.admin.forEach((pd) => {
+        const agNom = (pd.agencia || pd.nombre_agency || 'Agencia').trim().toUpperCase();
+        const fOperativa = String(pd.fecha || pd.created_at || '').slice(0, 10);
+        list.push({
+          id: String(pd.id),
+          fecha: fOperativa,
+          agencia: agNom,
+          modalidad: 'TAQUILLA',
+          tipo: 'ENTRADA',
+          referencia: pd.referencia || `Entrega a Admin${pd.supervisor_nombre ? ` (Por Sup: ${pd.supervisor_nombre})` : ''}`,
+          concepto: pd.concepto || 'Efectivo Entregado a Admin',
+          custodio: pd.supervisor_nombre || pd.confirmado_por || 'Administrador',
+          moneda: normalizarMoneda(pd.moneda) as 'BS' | 'USD' | 'COP',
+          monto: Number(pd.monto) || 0,
+          confirmado_supervisor: Boolean(pd.confirmado_supervisor || pd.confirmado),
+          liquidado_admin: Boolean(pd.confirmado || pd.liquidado_admin),
+        });
+      });
+
+      // B. Cobradores de ruta (entregas físicas oficiales en tránsito o liquidadas a bóveda)
       group.cobrador.forEach((pd) => {
         const agNom = (pd.agencia || pd.nombre_agency || 'Agencia').trim().toUpperCase();
         const fOperativa = String(pd.fecha || pd.created_at || '').slice(0, 10);
@@ -1189,10 +1251,11 @@ export const PreClosureAuditTab: React.FC = () => {
         });
       });
 
-      // B. Entregas a supervisor: Solo el remanente físico que NO fue traspasado al cobrador
-      let excess = Math.max(0, supervisorSum - cobradorSum);
-      if (excess > 0) {
-        group.supervisor.forEach((pd) => {
+      // C. Entregas a supervisor: Solo el remanente físico si no fue traspasado a Admin ni a Cobrador
+      const turnedOver = adminSum + cobradorSum;
+      let excess = Math.max(0, supervisorSum - turnedOver);
+      if (excess > 0 && turnedOver === 0) {
+        group.supervisorCustodia.forEach((pd) => {
           if (excess <= 0) return;
           const agNom = (pd.agencia || pd.nombre_agency || 'Agencia').trim().toUpperCase();
           const fOperativa = String(pd.fecha || pd.created_at || '').slice(0, 10);
@@ -1207,7 +1270,7 @@ export const PreClosureAuditTab: React.FC = () => {
             modalidad: 'TAQUILLA',
             tipo: 'ENTRADA',
             referencia: pd.referencia || 'Entrega Supervisor Taquilla',
-            concepto: pd.concepto || 'Efectivo Entregado en Taquilla',
+            concepto: pd.concepto || 'Efectivo Entregado en Taquilla (Custodia Supervisor)',
             custodio: pd.supervisor_nombre || 'Supervisor de Taquilla',
             moneda: normalizarMoneda(pd.moneda) as 'BS' | 'USD' | 'COP',
             monto: toAdd,

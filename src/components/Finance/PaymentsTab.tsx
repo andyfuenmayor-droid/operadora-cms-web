@@ -234,14 +234,22 @@ export const PaymentsTab: React.FC = () => {
         const agUpper = String(r.agencia || '').trim().toUpperCase();
         if (!agUpper) return;
         const tipoP = String(r.tipo_pago || 'EFECTIVO').trim().toUpperCase();
-        // Skip administrative internal custody transfers
-        if (['COBRADOR', 'ENTREGADO A ADMIN', 'ENTREGA_ADMIN'].some((k) => tipoP.includes(k))) {
+        // Excluir traspasos de custodia interna cajero -> supervisor
+        // (Para Administración el pago válido es el que entrega su supervisor a Admin o a Cobrador)
+        if (tipoP.includes('SUPERVISOR') || tipoP === 'ENTREGADO A SUPERVISOR') {
           return;
         }
 
         const mto = Math.round((Number(r.monto) || 0) * 100) / 100;
         const monNorm = normalizarMoneda(r.moneda);
-        const refUpper = String(r.referencia || r.qr_token || 'N/A').trim().toUpperCase();
+        let refUpper = String(r.referencia || r.qr_token || 'N/A').trim().toUpperCase();
+        if (refUpper === 'N/A' || !refUpper) {
+          if (r.supervisor_nombre) {
+            refUpper = `POR SUP: ${String(r.supervisor_nombre).trim().toUpperCase()}`;
+          } else if (tipoP.includes('ADMIN')) {
+            refUpper = 'ENTREGADO A ADMIN';
+          }
+        }
         const fechaRaw = String(r.fecha || r.created_at || '').trim();
         const fCorta = fechaRaw.slice(0, 10);
 
