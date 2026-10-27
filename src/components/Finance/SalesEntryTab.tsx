@@ -1037,6 +1037,7 @@ export const SalesEntryTab: React.FC = () => {
         const sistDet = detectSystemFromDna(file.name, headerDna, bulkSystem, systems);
         if (sistDet && bulkSystem === 'AUTO') {
           setBulkSystem(sistDet);
+          setSelectedGuideSystem(sistDet);
         }
 
         // Detect report date from filename if present (e.g. 2026-10-05_2026-10-11)
@@ -1046,18 +1047,27 @@ export const SalesEntryTab: React.FC = () => {
           setBulkFileDate(fileReportDate);
         }
 
-        const fileIntrinsicCurrency = detectFileIntrinsicCurrency(file.name, headerDna, sistDet, bulkCurrency);
+        const effectiveSys = sistDet || (bulkSystem !== 'AUTO' ? bulkSystem : '');
+        if (!effectiveSys) {
+          setBulkError('No se pudo identificar automáticamente el Sistema / Proveedor para este archivo. Por favor selecciónalo en el menú desplegable "Sistema / Proveedor" arriba.');
+          return;
+        }
+
+        const fileIntrinsicCurrency = detectFileIntrinsicCurrency(file.name, headerDna, effectiveSys, bulkCurrency);
         let detectedMoneda = fileIntrinsicCurrency;
         if (!detectedMoneda && bulkCurrency !== 'AUTO' && bulkCurrency !== 'MULTI') {
           detectedMoneda = bulkCurrency;
         }
+        if (detectedMoneda && detectedMoneda !== 'MULTI') {
+          setBulkCurrency(detectedMoneda);
+        }
 
         // 3. Reglas y Palabras Clave Canónicas del Sistema (salesEngineLock & catalogo_sistemas_maestro)
         const matchedMaster = masterSystemsList.find(
-          (m) => m.nombre_sistema.trim().toUpperCase() === sistDet.toUpperCase()
+          (m) => m.nombre_sistema.trim().toUpperCase() === effectiveSys.toUpperCase()
         );
-        const canonRule = CANONICAL_SYSTEM_RULES[sistDet.toUpperCase()];
-        const sysConf = systemKeywords[sistDet] || DEFAULT_SYSTEM_KEYWORDS[sistDet];
+        const canonRule = CANONICAL_SYSTEM_RULES[effectiveSys.toUpperCase()];
+        const sysConf = systemKeywords[effectiveSys] || DEFAULT_SYSTEM_KEYWORDS[effectiveSys];
         const configuredVenta = matchedMaster?.col_venta?.trim().toUpperCase() || sysConf?.venta?.trim().toUpperCase();
         const configuredPremio = matchedMaster?.col_premio?.trim().toUpperCase() || sysConf?.premio?.trim().toUpperCase();
         const configuredAgencia = matchedMaster?.col_agencia?.trim().toUpperCase() || sysConf?.agencia?.trim().toUpperCase();
@@ -1157,7 +1167,7 @@ export const SalesEntryTab: React.FC = () => {
           }
 
           // Coincidencia Estricta y Anti-Secuestro vía salesEngineLock
-          const targetSystem = bulkSystem !== 'AUTO' ? bulkSystem : sistDet;
+          const targetSystem = bulkSystem !== 'AUTO' ? bulkSystem : effectiveSys;
           let matchResult = matchAgencyStrict(rawCell, targetSystem, detectedMoneda || 'COP', agencies);
           if (!matchResult.agency && colNombre + 1 < row.length) {
             const nextCell = String(row[colNombre + 1] ?? '').trim();

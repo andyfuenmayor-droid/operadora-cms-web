@@ -171,8 +171,11 @@ export const CANONICAL_SYSTEM_RULES: Readonly<Record<string, CanonicalSystemRule
     multiMoneda: false,
     signatures: Object.freeze([
       'CDAPUESTAS',
+      'CDA',
       'UTILIDAD FINAL',
       'PARTICIPACION',
+      'LIQUIDACION',
+      'LIQUIDACIÓN',
     ]),
     colAgencia: Object.freeze(['AGENCIA', 'AGENCIAS', 'NOMBRE', 'CLIENTE']),
     colVenta: Object.freeze(['VENTA', 'VENTAS', 'TOTAL VENTA']),
@@ -278,6 +281,11 @@ export function detectSystemFromDna(
   if (
     fUpper.includes('CDAPUESTAS') ||
     dnaUpper.includes('CDAPUESTAS') ||
+    /(?:^|[^A-Z0-9])CDA(?:[^A-Z0-9]|$)/i.test(fUpper) ||
+    /(?:^|[^A-Z0-9])CDA[\s_/-]/i.test(dnaUpper) ||
+    dnaUpper.includes('CDA ') ||
+    dnaUpper.includes('CDA_') ||
+    dnaUpper.includes('CDA-') ||
     (dnaUpper.includes('UTILIDAD FINAL') && dnaUpper.includes('PARTICIPACION'))
   ) {
     return 'CDAPUESTAS';
@@ -300,7 +308,8 @@ export function detectSystemFromDna(
     }
   }
 
-  return 'BETM3';
+  // NUNCA adivinar ciegamente BETM3 si no hay certeza
+  return '';
 }
 
 /**
@@ -312,21 +321,32 @@ export function detectFileIntrinsicCurrency(
   systemName: string,
   userSelectedCurrency = 'AUTO'
 ): string {
+  const fUpper = (fileName || '').toUpperCase();
+  const dnaUpper = (headerDna || '').toUpperCase();
+
+  // 1. Detección explícita de divisa en el nombre de archivo (e.g. 2026-10-19_2026-10-25_USD.xlsx)
+  if (/(?:^|[-_.\s])(USD|USDT)(?:[-_.\s]|$)/i.test(fUpper) || fUpper.endsWith('_USD.XLSX') || fUpper.endsWith('-USD.XLSX')) {
+    return 'USD';
+  }
+  if (/(?:^|[-_.\s])(COP|PESOS?)(?:[-_.\s]|$)/i.test(fUpper) || fUpper.endsWith('_COP.XLSX') || fUpper.endsWith('-COP.XLSX')) {
+    return 'COP';
+  }
+  if (/(?:^|[-_.\s])(BS|VES|BOLIVARES?)(?:[-_.\s]|$)/i.test(fUpper) || fUpper.endsWith('_BS.XLSX') || fUpper.endsWith('-BS.XLSX')) {
+    return 'BS';
+  }
+
+  // 2. Si el usuario seleccionó manualmente una divisa específica y el archivo no declara otra en el nombre:
   if (userSelectedCurrency && userSelectedCurrency !== 'AUTO' && userSelectedCurrency !== 'MULTI') {
     return normalizarMoneda(userSelectedCurrency);
   }
 
-  const fUpper = (fileName || '').toUpperCase();
-  const dnaUpper = (headerDna || '').toUpperCase();
-
-  // Firmas específicas multi-divisa (BETM3, etc.)
+  // 3. Firmas específicas en el ADN del encabezado
   if (
     dnaUpper.includes('PESO - COP') ||
     dnaUpper.includes('PESO-COP') ||
     dnaUpper.includes('PESOS - COP') ||
     dnaUpper.includes('PESO COP') ||
     /(?:^|[^A-Z0-9])COP(?:[^A-Z0-9]|$)/i.test(dnaUpper) ||
-    fUpper.includes('COP') ||
     (dnaUpper.includes('PESO') && !dnaUpper.includes('BOLIVAR') && !dnaUpper.includes('DOLAR'))
   ) {
     return 'COP';
@@ -338,8 +358,6 @@ export function detectFileIntrinsicCurrency(
     dnaUpper.includes('BOLIVAR - BS') ||
     dnaUpper.includes('BOLIVARES - BS') ||
     /(?:^|[^A-Z0-9])(VES|BS|BSF|BSD)(?:[^A-Z0-9]|$)/i.test(dnaUpper) ||
-    fUpper.includes('VES') ||
-    fUpper.includes('BS') ||
     dnaUpper.includes('BOLIVAR') ||
     dnaUpper.includes('BOLIVARES')
   ) {
@@ -351,14 +369,13 @@ export function detectFileIntrinsicCurrency(
     dnaUpper.includes('DOLARES - USD') ||
     dnaUpper.includes('DOLAR-USD') ||
     /(?:^|[^A-Z0-9])(USD|USDT|\$USD)(?:[^A-Z0-9]|$)/i.test(dnaUpper) ||
-    fUpper.includes('USD') ||
     dnaUpper.includes('DOLAR') ||
     dnaUpper.includes('DOLARES')
   ) {
     return 'USD';
   }
 
-  // Fallbacks por sistema canónico
+  // 4. Fallback por sistema canónico
   const canon = CANONICAL_SYSTEM_RULES[systemName.toUpperCase()];
   if (canon) {
     return canon.defaultMoneda;

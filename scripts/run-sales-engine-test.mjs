@@ -173,6 +173,58 @@ const matchChuchoByName = matchAgencyStrict('CHUCHO', 'GATOWEB', 'AUTO', [chucho
 assert(matchChuchoByName.agency?.nombre_agencia === 'CHUCHO', 'Encuentra la agencia CHUCHO por nombre exacto');
 assert(matchChuchoByName.moneda === 'BS', 'Por nombre también hereda la moneda BS de su configuración');
 
+// -----------------------------------------------------------------------------
+// TEST 6: CASO CDAPUESTAS USD Y AGENCIA JAVIER (ANTI-SECUESTRO BETM3)
+// -----------------------------------------------------------------------------
+console.log('\n--- 6. TEST DE CDAPUESTAS USD Y ANTI-SECUESTRO BETM3 (CASO JAVIER) ---');
+
+const cdaDna = 'AGENCIA VENTA PREMIO AGENCIA JAVIER 295,00 0,00 250,75 CDA CARRASQUERO 3,00 0,00 3,00';
+const cdaFilename = '2026-10-19_2026-10-25_USD.xlsx';
+
+assert(
+  detectSystemFromDna(cdaFilename, cdaDna, 'AUTO') === 'CDAPUESTAS',
+  'Reporte con CDA Carrasquero y 2026-10-19_2026-10-25_USD.xlsx detecta CDAPUESTAS (NUNCA BETM3)'
+);
+
+assert(
+  detectFileIntrinsicCurrency(cdaFilename, cdaDna, 'CDAPUESTAS', 'AUTO') === 'USD',
+  '2026-10-19_2026-10-25_USD.xlsx detecta divisa USD (NUNCA BS)'
+);
+
+assert(
+  detectSystemFromDna('archivo_desconocido.xlsx', 'COL1 COL2 COL3', 'AUTO') === '',
+  'Un archivo desconocido sin firmas retorna cadena vacía (NO adivina BETM3)'
+);
+
+const javierAgency = {
+  id: 25,
+  nombre_agencia: 'AGENCIA JAVIER',
+  sistemas: 'BETM3, CDAPUESTAS',
+  monedas: 'BS, USD',
+  condiciones_sistemas: JSON.stringify({
+    BETM3_BS: { sistema: 'BETM3', moneda: 'BS', codigo: 'AG JAVIER', comision: 10, participacion: 10 },
+    CDAPUESTAS_USD: { sistema: 'CDAPUESTAS', moneda: 'USD', codigo: 'AGENCIA JAVIER', comision: 15 },
+    CDAPUESTAS_BS: { sistema: 'CDAPUESTAS', moneda: 'BS', codigo: 'AGENCIA JAVIER', comision: 15 },
+  }),
+};
+
+const matchJavierCda = matchAgencyStrict('AGENCIA JAVIER', 'CDAPUESTAS', 'USD', [javierAgency]);
+assert(matchJavierCda.agency?.nombre_agencia === 'AGENCIA JAVIER', 'Encuentra AGENCIA JAVIER en CDAPUESTAS');
+assert(matchJavierCda.system === 'CDAPUESTAS', 'El sistema asignado es CDAPUESTAS (NO BETM3)');
+assert(matchJavierCda.moneda === 'USD', 'La moneda resuelta es USD');
+
+const salesWithBetm3 = [
+  {
+    agencia: 'AGENCIA JAVIER',
+    sistema: 'BETM3',
+    moneda: 'BS',
+    fecha: '2026-10-25',
+  },
+];
+
+const isCdaDup = isSaleDuplicate(salesWithBetm3, 'AGENCIA JAVIER', 'CDAPUESTAS', 'USD', '2026-10-25');
+assert(isCdaDup === false, 'CDAPUESTAS USD en 2026-10-25 NO es marcado como duplicado de BETM3 BS');
+
 console.log('\n==============================================================');
 console.log(`✅ TODOS LOS ${passedTests} TESTS DEL MOTOR DE VENTAS PASARON CON ÉXITO.`);
 console.log('🔒 salesEngineLock certificado y 100% blindado contra secuestros y corrupción.');
