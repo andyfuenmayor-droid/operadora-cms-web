@@ -157,7 +157,12 @@ export async function saveWeeklySnapshot(
 
     // 2. Persistencia dual en PostgreSQL Propio vía REST Server API si está activo
     try {
-      const apiHost = import.meta.env.VITE_API_URL || 'http://localhost:3001';
+      const apiHost =
+        import.meta.env.VITE_API_URL ||
+        (typeof window !== 'undefined' &&
+        (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1')
+          ? 'http://localhost:3001'
+          : 'https://crm.multibancaexpress.com');
       await fetch(`${apiHost}/api/v1/snapshots`, {
         method: 'POST',
         headers: {

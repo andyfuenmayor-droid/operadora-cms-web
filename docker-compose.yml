@@ -27,7 +27,28 @@ services:
       - internal_network
 
   # ==============================================================================
-  # 2. Servidor Backend API (Node.js con pool nativo pg)
+  # 2. Motor PostgREST Nativo (Backend REST /rest/v1 para las 4 Aplicaciones)
+  # ==============================================================================
+  postgrest:
+    image: postgrest/postgrest:v12.2.3
+    container_name: operadora-postgrest
+    restart: always
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      PGRST_DB_URI: postgresql://${POSTGRES_USER:-admin_db}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-operadora_production}
+      PGRST_DB_SCHEMAS: public
+      PGRST_DB_ANON_ROLE: ${POSTGRES_USER:-admin_db}
+      PGRST_DB_MAX_ROWS: 5000
+      PGRST_SERVER_PORT: 3000
+    ports:
+      - "127.0.0.1:8532:3000"
+    networks:
+      - internal_network
+
+  # ==============================================================================
+  # 3. Servidor Backend & Web Service API (Node.js con pool nativo pg)
   # ==============================================================================
   api:
     build:
@@ -38,6 +59,8 @@ services:
     depends_on:
       postgres:
         condition: service_healthy
+      postgrest:
+        condition: service_started
     environment:
       NODE_ENV: production
       PORT: ${PORT:-8531}
@@ -47,6 +70,7 @@ services:
       POSTGRES_DB: ${POSTGRES_DB:-operadora_production}
       POSTGRES_HOST: postgres
       POSTGRES_PORT: 5432
+      POSTGREST_URL: http://postgrest:3000
       PAYMENTS_API_KEY: ${PAYMENTS_API_KEY:-mbe_live_7f8a9b0c1d2e3f4a5b6c7d8e9f0a1b2c}
     ports:
       - "127.0.0.1:${PORT:-8531}:${PORT:-8531}"
@@ -54,7 +78,7 @@ services:
       - internal_network
 
   # ==============================================================================
-  # 3. Aplicación Web Frontend (React + Vite servida por Nginx)
+  # 4. Aplicación Web Frontend (React + Vite servida por Nginx)
   # ==============================================================================
   web:
     build:

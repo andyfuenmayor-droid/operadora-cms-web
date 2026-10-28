@@ -915,7 +915,7 @@ export const BulkAgencyModal: React.FC<BulkAgencyModalProps> = ({
             clave: taquillaPass,
             agencia_id: agencyId,
             nombre_cajero: row.nombre.trim().toUpperCase(),
-            rol: 'agencia',
+            rol: 'cajero',
             activo: true,
           });
         } catch (tuErr) {

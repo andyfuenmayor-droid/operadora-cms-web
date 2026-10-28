@@ -8,7 +8,7 @@ PORT=8530
 API_PORT=8531
 DOMAIN="crm.multibancaexpress.com"
 
-echo "🚀 Iniciando despliegue de Operadora CMS Web ($DOMAIN)..."
+echo "🚀 Iniciando despliegue de Operadora CMS Web + Backend + Web Service ($DOMAIN)..."
 systemctl enable --now docker || true
 systemctl enable --now nginx || true
 
@@ -26,8 +26,8 @@ if [ ! -f .env ]; then
   fi
 fi
 
-echo "📦 Construyendo y levantando servicios con Docker Compose..."
-docker compose up -d --build postgres api web
+echo "📦 Construyendo y levantando servicios con Docker Compose (postgres, postgrest, api, web)..."
+docker compose up -d --build postgres postgrest api web
 
 echo "🧹 Limpiando imágenes residuales de Docker..."
 docker image prune -f || true
@@ -55,6 +55,7 @@ server {
     listen 443 ssl;
     listen [::]:443 ssl;
     server_name $DOMAIN;
+    client_max_body_size 20M;
 
     ssl_certificate $CERT_DIR/fullchain.pem;
     ssl_certificate_key $CERT_DIR/privkey.pem;
@@ -83,78 +84,30 @@ $SSL_DH
         proxy_set_header X-Real-IP \$remote_addr;
         proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
         proxy_set_header X-Forwarded-Proto \$scheme;
+        proxy_read_timeout 120;
+    }
+
+    location /rest/v1/ {
+        proxy_pass http://127.0.0.1:$API_PORT;
+        proxy_http_version 1.1;
+        proxy_set_header Host \$host;
+        proxy_set_header X-Real-IP \$remote_addr;
+        proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto \$scheme;
+        proxy_read_timeout 120;
+    }
+
+    location /auth/v1/ {
+        proxy_pass http://127.0.0.1:$API_PORT;
+        proxy_http_version 1.1;
+        proxy_set_header Host \$host;
+        proxy_set_header X-Real-IP \$remote_addr;
+        proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto \$scheme;
         proxy_read_timeout 60;
     }
 
-    location /assets/ {
-        proxy_pass http://127.0.0.1:$PORT;
-        proxy_http_version 1.1;
-        proxy_set_header Host \$host;
-        add_header Cache-Control "public, max-age=31536000, immutable";
-    }
-}
-EOF
-else
-    echo "⚠️ Certificado aún no existe. Configurando HTTP temporal para validación Certbot..."
-    cat << EOF > /etc/nginx/sites-available/$SITE_NAME
-server {
-    listen 80;
-    listen [::]:80;
-    server_name $DOMAIN;
-
-    location / {
-        proxy_pass http://127.0.0.1:$PORT;
-        proxy_http_version 1.1;
-        proxy_set_header Upgrade \$http_upgrade;
-        proxy_set_header Connection "upgrade";
-        proxy_set_header Host \$host;
-        proxy_set_header X-Real-IP \$remote_addr;
-        proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
-        proxy_set_header X-Forwarded-Proto \$scheme;
-        proxy_read_timeout 86400;
-    }
-}
-EOF
-    ln -sf /etc/nginx/sites-available/$SITE_NAME /etc/nginx/sites-enabled/$SITE_NAME
-    nginx -t
-    systemctl reload nginx
-
-    echo "🔒 Solicitando Certificado SSL Let's Encrypt para $DOMAIN..."
-    certbot --nginx -d $DOMAIN --non-interactive --agree-tos --register-unsafely-without-email --keep-until-expiring || true
-
-    if [ -f "$CERT_DIR/fullchain.pem" ]; then
-        cat << EOF > /etc/nginx/sites-available/$SITE_NAME
-server {
-    listen 80;
-    listen [::]:80;
-    server_name $DOMAIN;
-    return 301 https://\$host\$request_uri;
-}
-
-server {
-    listen 443 ssl;
-    listen [::]:443 ssl;
-    server_name $DOMAIN;
-
-    ssl_certificate $CERT_DIR/fullchain.pem;
-    ssl_certificate_key $CERT_DIR/privkey.pem;
-$SSL_OPTS
-$SSL_DH
-
-    location / {
-        proxy_pass http://127.0.0.1:$PORT;
-        proxy_http_version 1.1;
-        proxy_set_header Upgrade \$http_upgrade;
-        proxy_set_header Connection "upgrade";
-        proxy_set_header Host \$host;
-        proxy_set_header X-Real-IP \$remote_addr;
-        proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
-        proxy_set_header X-Forwarded-Proto \$scheme;
-        proxy_read_timeout 86400;
-        add_header Cache-Control "no-store, no-cache, must-revalidate, proxy-revalidate, max-age=0" always;
-    }
-
-    location /api/ {
+    location /realtime/v1/ {
         proxy_pass http://127.0.0.1:$API_PORT;
         proxy_http_version 1.1;
         proxy_set_header Upgrade \$http_upgrade;
@@ -163,7 +116,7 @@ $SSL_DH
         proxy_set_header X-Real-IP \$remote_addr;
         proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
         proxy_set_header X-Forwarded-Proto \$scheme;
-        proxy_read_timeout 60;
+        proxy_read_timeout 86400;
     }
 
     location /assets/ {
@@ -174,7 +127,6 @@ $SSL_DH
     }
 }
 EOF
-    fi
 fi
 
 ln -sf /etc/nginx/sites-available/$SITE_NAME /etc/nginx/sites-enabled/$SITE_NAME
