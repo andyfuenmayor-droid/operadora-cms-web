@@ -153,21 +153,32 @@ export async function loadSaaSGroups(userId: string, activeCurrencies?: Currency
     loaded = [recoveredBonanza];
     saveSaaSGroups(userId, loaded).catch(() => {});
   } else {
-    // Sanitizar monedas en grupos existentes: remover COP u otras si no están en validCodes
+    // Sanitizar monedas y asegurar códigos numéricos consecutivos en grupos existentes
     let needsResave = false;
-    loaded = loaded.map((grp) => {
+    loaded = loaded.map((grp, idx) => {
       const existingMons = grp.monedas
         ? grp.monedas.split(',').map((m) => m.trim().toUpperCase()).filter(Boolean)
         : [];
       const sanitizedMons = existingMons.filter((m) => validCodes.includes(m));
       const finalMons = sanitizedMons.length > 0 ? sanitizedMons : validCodes;
       const finalStr = finalMons.join(',');
-      if (grp.monedas !== finalStr) {
+
+      // Validar código consecutivo numérico (ej. "001", "002"...)
+      let cleanCodigo = (grp.codigo || '').trim();
+      if (!cleanCodigo || !/^\d+$/.test(cleanCodigo)) {
+        cleanCodigo = String(idx + 1).padStart(3, '0');
+      } else {
+        cleanCodigo = String(parseInt(cleanCodigo, 10)).padStart(3, '0');
+      }
+
+      if (grp.monedas !== finalStr || grp.codigo !== cleanCodigo) {
         needsResave = true;
       }
+
       return {
         ...grp,
         monedas: finalStr,
+        codigo: cleanCodigo,
       };
     });
     if (needsResave && userId) {

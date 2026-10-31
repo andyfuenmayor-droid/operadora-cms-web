@@ -32,6 +32,7 @@ import {
   ChevronUp,
   Table,
   LayoutGrid,
+  Hash,
 } from 'lucide-react';
 import confetti from 'canvas-confetti';
 
@@ -459,6 +460,26 @@ export const GroupsTab: React.FC = () => {
     }
   };
 
+  // Re-enumerar todos los grupos con código consecutivo correlativo (001, 002, 003...)
+  const handleRenumberAllGroups = async () => {
+    if (!effectiveUserId || groups.length === 0) return;
+    if (!window.confirm('¿Desea re-asignar números consecutivos (001, 002, 003...) a todos los grupos en el orden actual?')) return;
+    setSaving(true);
+    try {
+      const updated = groups.map((g, idx) => ({
+        ...g,
+        codigo: String(idx + 1).padStart(3, '0'),
+      }));
+      setGroups(updated);
+      await saveGroupsPersistently(updated, effectiveUserId);
+      setMessage({ type: 'success', text: 'Números consecutivos correlativos actualizados con éxito en todos los grupos.' });
+    } catch (e: any) {
+      setMessage({ type: 'error', text: 'Error al actualizar códigos: ' + (e?.message || e) });
+    } finally {
+      setSaving(false);
+    }
+  };
+
   // Filtered groups
   const filteredGroups = useMemo(() => {
     return groups.filter((g) => {
@@ -497,6 +518,16 @@ export const GroupsTab: React.FC = () => {
           >
             <RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin text-emerald-500' : ''}`} />
             <span className="hidden sm:inline">Refrescar</span>
+          </button>
+
+          <button
+            onClick={handleRenumberAllGroups}
+            disabled={saving || loading || groups.length === 0}
+            className="p-2.5 rounded-xl bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-300 transition-colors flex items-center gap-1.5 text-xs font-semibold border border-slate-300 dark:border-slate-700 cursor-pointer"
+            title="Re-asignar números consecutivos 001, 002, 003... a todos los grupos"
+          >
+            <Hash className="w-4 h-4 text-emerald-500" />
+            <span className="hidden sm:inline">Re-enumerar (001...)</span>
           </button>
 
           <button
@@ -622,7 +653,7 @@ export const GroupsTab: React.FC = () => {
             <table className={UI_LOCK.table}>
               <thead className={UI_LOCK.tableThead}>
                 <tr>
-                  <th className="py-3 px-3 text-center w-12">#</th>
+                  <th className="py-3 px-3 text-center w-20">#</th>
                   <th className="py-3 px-3.5 min-w-[200px]">Grupo / Intermediario</th>
                   <th className="py-3 px-3 text-center w-28">Estado</th>
                   <th className="py-3 px-3 text-center min-w-[110px]">Comisión Base</th>
@@ -663,20 +694,25 @@ export const GroupsTab: React.FC = () => {
                             : 'hover:bg-slate-50/80 dark:hover:bg-slate-800/40 bg-white dark:bg-slate-900'
                         }`}
                       >
-                        {/* 1. Botón Desplegar Chevron */}
-                        <td className="py-3.5 px-3 text-center">
-                          <button
-                            type="button"
-                            onClick={() => toggleExpandGroup(grp.id)}
-                            className={`p-1.5 rounded-lg transition-colors cursor-pointer ${
-                              isExpanded
-                                ? 'bg-emerald-500 text-white shadow-xs'
-                                : 'text-slate-400 hover:text-emerald-600 hover:bg-slate-100 dark:hover:bg-slate-800'
-                            }`}
-                            title={isExpanded ? 'Colapsar agencias' : 'Desplegar agencias'}
-                          >
-                            {isExpanded ? <ChevronDown className="w-4 h-4" /> : <ChevronRight className="w-4 h-4" />}
-                          </button>
+                        {/* 1. N° Consecutivo y Desplegar Chevron */}
+                        <td className="py-3.5 px-2 text-center">
+                          <div className="flex items-center justify-center gap-1.5">
+                            <button
+                              type="button"
+                              onClick={() => toggleExpandGroup(grp.id)}
+                              className={`p-1 rounded-md transition-colors cursor-pointer ${
+                                isExpanded
+                                  ? 'bg-emerald-500 text-white shadow-xs'
+                                  : 'text-slate-400 hover:text-emerald-600 hover:bg-slate-100 dark:hover:bg-slate-800'
+                              }`}
+                              title={isExpanded ? 'Colapsar agencias' : 'Desplegar agencias'}
+                            >
+                              {isExpanded ? <ChevronDown className="w-3.5 h-3.5" /> : <ChevronRight className="w-3.5 h-3.5" />}
+                            </button>
+                            <span className="font-mono font-bold text-xs text-slate-700 dark:text-slate-300">
+                              {grp.codigo || String(filteredGroups.indexOf(grp) + 1).padStart(3, '0')}
+                            </span>
+                          </div>
                         </td>
 
                         {/* 2. Nombre del Grupo y Responsable */}
