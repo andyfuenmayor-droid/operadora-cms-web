@@ -27,6 +27,11 @@ import {
   Check,
   Building2,
   CheckCheck,
+  ChevronDown,
+  ChevronRight,
+  ChevronUp,
+  Table,
+  LayoutGrid,
 } from 'lucide-react';
 import confetti from 'canvas-confetti';
 
@@ -37,6 +42,10 @@ export const GroupsTab: React.FC = () => {
   const [saving, setSaving] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const [message, setMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
+
+  // View mode & expandable rows state
+  const [viewMode, setViewMode] = useState<'table' | 'grid'>('table');
+  const [expandedGroupIds, setExpandedGroupIds] = useState<number[]>([]);
 
   // Data states
   const [groups, setGroups] = useState<Grupo[]>([]);
@@ -394,6 +403,55 @@ export const GroupsTab: React.FC = () => {
     }
   };
 
+  // Toggle expand/collapse de agencias de un grupo
+  const toggleExpandGroup = (groupId: number) => {
+    setExpandedGroupIds((prev) =>
+      prev.includes(groupId) ? prev.filter((id) => id !== groupId) : [...prev, groupId]
+    );
+  };
+
+  const expandAllGroups = () => {
+    setExpandedGroupIds(filteredGroups.map((g) => g.id));
+  };
+
+  const collapseAllGroups = () => {
+    setExpandedGroupIds([]);
+  };
+
+  // Desvincular agencia individual de un grupo
+  const handleRemoveAgencyFromGroup = async (grp: Grupo, ag: Agency) => {
+    if (!window.confirm(`¿Desea desvincular la agencia '${ag.nombre_agencia}' del grupo '${grp.nombre_grupo}'?`)) {
+      return;
+    }
+    if (!effectiveUserId) return;
+
+    try {
+      const nextIds = (grp.agencias_ids || []).filter((id) => id !== ag.id);
+      const updatedGroups = groups.map((g) => (g.id === grp.id ? { ...g, agencias_ids: nextIds } : g));
+      setGroups(updatedGroups);
+      await saveGroupsPersistently(updatedGroups, effectiveUserId);
+
+      try {
+        await supabase
+          .from('agencias')
+          .update({ grupo_id: null, grupo_nombre: null })
+          .eq('id', ag.id)
+          .eq('user_id', effectiveUserId);
+      } catch (_) {}
+
+      setAgencies((prev) =>
+        prev.map((item) => (item.id === ag.id ? { ...item, grupo_id: null, grupo_nombre: null } : item))
+      );
+
+      setMessage({
+        type: 'success',
+        text: `Agencia '${ag.nombre_agencia}' desvinculada del grupo '${grp.nombre_grupo}'.`,
+      });
+    } catch (err: any) {
+      alert(`Error al desvincular agencia: ${err?.message}`);
+    }
+  };
+
   // Filtered groups
   const filteredGroups = useMemo(() => {
     return groups.filter((g) => {
@@ -458,29 +516,83 @@ export const GroupsTab: React.FC = () => {
         </div>
       )}
 
-      {/* Search & Stats Bar */}
-      <div className="flex flex-col sm:flex-row items-center justify-between gap-3">
-        <div className="relative w-full sm:w-80">
-          <Search className="w-4 h-4 absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400" />
-          <input
-            type="text"
-            value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
-            placeholder="Buscar por grupo, código o responsable..."
-            className={UI_LOCK.input + ' pl-9 text-xs font-medium'}
-          />
+      {/* Search & Controls Bar */}
+      <div className="flex flex-col md:flex-row items-stretch md:items-center justify-between gap-3">
+        <div className="flex flex-1 items-center gap-3">
+          <div className="relative flex-1 max-w-md">
+            <Search className="w-4 h-4 absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400" />
+            <input
+              type="text"
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              placeholder="Buscar por grupo, código o responsable..."
+              className={UI_LOCK.input + ' pl-9 text-xs font-medium'}
+            />
+          </div>
+
+          {/* Selector de Vista: Tabla (Default) / Cuadrícula */}
+          <div className="flex items-center gap-1 p-1 bg-slate-100 dark:bg-slate-800/80 rounded-xl border border-slate-200 dark:border-slate-700 shrink-0">
+            <button
+              type="button"
+              onClick={() => setViewMode('table')}
+              className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer ${
+                viewMode === 'table'
+                  ? 'bg-white dark:bg-slate-900 text-emerald-600 dark:text-emerald-400 shadow-xs'
+                  : 'text-slate-500 hover:text-slate-900 dark:hover:text-white'
+              }`}
+              title="Vista de Tabla con Agencias Desplegables"
+            >
+              <Table className="w-3.5 h-3.5" />
+              <span>Tabla</span>
+            </button>
+            <button
+              type="button"
+              onClick={() => setViewMode('grid')}
+              className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer ${
+                viewMode === 'grid'
+                  ? 'bg-white dark:bg-slate-900 text-emerald-600 dark:text-emerald-400 shadow-xs'
+                  : 'text-slate-500 hover:text-slate-900 dark:hover:text-white'
+              }`}
+              title="Vista en Tarjetas"
+            >
+              <LayoutGrid className="w-3.5 h-3.5" />
+              <span>Tarjetas</span>
+            </button>
+          </div>
         </div>
 
-        <div className="flex items-center gap-3 text-xs text-slate-500 dark:text-slate-400 self-end sm:self-auto font-mono">
-          <span>Total Grupos: <strong className="text-slate-900 dark:text-white">{groups.length}</strong></span>
-          <span>•</span>
-          <span>Activos: <strong className="text-emerald-600 dark:text-emerald-400">{groups.filter((g) => g.activo !== false).length}</strong></span>
-          <span>•</span>
-          <span>Agencias en Grupos: <strong className="text-cyan-600 dark:text-cyan-400">{agencies.filter((a) => Boolean(a.grupo_id || a.grupo_nombre) || groups.some((g) => g.agencias_ids?.includes(a.id))).length}</strong></span>
+        <div className="flex items-center justify-between md:justify-end gap-3 text-xs text-slate-500 dark:text-slate-400 font-mono">
+          <div className="flex items-center gap-2">
+            <span>Total Grupos: <strong className="text-slate-900 dark:text-white">{groups.length}</strong></span>
+            <span>•</span>
+            <span>Activos: <strong className="text-emerald-600 dark:text-emerald-400">{groups.filter((g) => g.activo !== false).length}</strong></span>
+            <span>•</span>
+            <span>Agencias en Grupos: <strong className="text-cyan-600 dark:text-cyan-400">{agencies.filter((a) => Boolean(a.grupo_id || a.grupo_nombre) || groups.some((g) => g.agencias_ids?.includes(a.id))).length}</strong></span>
+          </div>
+
+          {viewMode === 'table' && filteredGroups.length > 0 && (
+            <div className="hidden sm:flex items-center gap-2 pl-2 border-l border-slate-200 dark:border-slate-800">
+              <button
+                type="button"
+                onClick={expandAllGroups}
+                className="text-[11px] text-cyan-600 dark:text-cyan-400 hover:underline font-bold cursor-pointer"
+              >
+                Desplegar todas
+              </button>
+              <span>•</span>
+              <button
+                type="button"
+                onClick={collapseAllGroups}
+                className="text-[11px] text-slate-500 dark:text-slate-400 hover:underline font-bold cursor-pointer"
+              >
+                Colapsar
+              </button>
+            </div>
+          )}
         </div>
       </div>
 
-      {/* Groups Grid / Cards */}
+      {/* Groups Display: Table View (Requested) or Cards Grid */}
       {filteredGroups.length === 0 ? (
         <div className={UI_LOCK.card + ' p-12 text-center'}>
           <Handshake className="w-12 h-12 text-slate-400 dark:text-slate-600 mx-auto mb-3" />
@@ -496,12 +608,363 @@ export const GroupsTab: React.FC = () => {
             <span>CREAR PRIMER GRUPO</span>
           </button>
         </div>
+      ) : viewMode === 'table' ? (
+        /* VISTA TABLA CON AGENCIAS DESPLEGABLES */
+        <div className={UI_LOCK.tableContainer}>
+          <div className="overflow-x-auto">
+            <table className={UI_LOCK.table}>
+              <thead className={UI_LOCK.tableThead}>
+                <tr>
+                  <th className="py-3 px-3 text-center w-12">#</th>
+                  <th className="py-3 px-3.5 min-w-[200px]">Grupo / Intermediario</th>
+                  <th className="py-3 px-3 text-center w-28">Estado</th>
+                  <th className="py-3 px-3 text-center min-w-[110px]">Comisión Base</th>
+                  <th className="py-3 px-3 text-center min-w-[110px]">Participación</th>
+                  <th className="py-3 px-3 min-w-[150px]">Divisas</th>
+                  <th className="py-3 px-3 text-center min-w-[180px]">Agencias Hijas</th>
+                  <th className="py-3 px-3.5 text-right min-w-[180px]">Acciones</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-200 dark:divide-slate-800">
+                {filteredGroups.map((grp) => {
+                  const daughterAgencies = agencies.filter(
+                    (a) =>
+                      (grp.agencias_ids && grp.agencias_ids.includes(a.id)) ||
+                      a.grupo_id === grp.id ||
+                      a.grupo_nombre?.toUpperCase() === grp.nombre_grupo.toUpperCase()
+                  );
+                  const daughterCount = daughterAgencies.length;
+                  const isExpanded = expandedGroupIds.includes(grp.id);
+
+                  const activeCodes = currencies.length > 0 ? currencies.map((c) => c.codigo) : ['BS', 'USD'];
+                  const grpMonedas = grp.monedas
+                    ? grp.monedas
+                        .split(',')
+                        .map((m) => m.trim().toUpperCase())
+                        .filter((m) => activeCodes.includes(m))
+                    : activeCodes;
+
+                  return (
+                    <React.Fragment key={grp.id}>
+                      {/* Fila Principal de Grupo */}
+                      <tr
+                        className={`transition-colors border-b border-slate-100 dark:border-slate-800/60 ${
+                          grp.activo === false
+                            ? 'opacity-65 bg-slate-50/50 dark:bg-slate-900/30'
+                            : isExpanded
+                            ? 'bg-emerald-50/30 dark:bg-emerald-950/20'
+                            : 'hover:bg-slate-50/80 dark:hover:bg-slate-800/40 bg-white dark:bg-slate-900'
+                        }`}
+                      >
+                        {/* 1. Botón Desplegar Chevron */}
+                        <td className="py-3.5 px-3 text-center">
+                          <button
+                            type="button"
+                            onClick={() => toggleExpandGroup(grp.id)}
+                            className={`p-1.5 rounded-lg transition-colors cursor-pointer ${
+                              isExpanded
+                                ? 'bg-emerald-500 text-white shadow-xs'
+                                : 'text-slate-400 hover:text-emerald-600 hover:bg-slate-100 dark:hover:bg-slate-800'
+                            }`}
+                            title={isExpanded ? 'Colapsar agencias' : 'Desplegar agencias'}
+                          >
+                            {isExpanded ? <ChevronDown className="w-4 h-4" /> : <ChevronRight className="w-4 h-4" />}
+                          </button>
+                        </td>
+
+                        {/* 2. Nombre del Grupo y Responsable */}
+                        <td className="py-3.5 px-3.5">
+                          <div className="flex flex-col">
+                            <div className="flex items-center gap-2">
+                              <span className="font-extrabold text-sm text-slate-900 dark:text-white tracking-wide">
+                                {grp.nombre_grupo}
+                              </span>
+                              {grp.codigo && (
+                                <span className="px-1.5 py-0.5 rounded text-[10px] font-mono font-bold bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400">
+                                  {grp.codigo}
+                                </span>
+                              )}
+                            </div>
+                            {grp.responsable && (
+                              <span className="text-[11px] text-slate-500 dark:text-slate-400 mt-0.5 flex items-center gap-1">
+                                <span>Resp:</span>
+                                <strong className="text-slate-700 dark:text-slate-300">{grp.responsable}</strong>
+                                {grp.telefono && <span className="text-slate-400 font-mono">• {grp.telefono}</span>}
+                              </span>
+                            )}
+                          </div>
+                        </td>
+
+                        {/* 3. Estado */}
+                        <td className="py-3.5 px-3 text-center">
+                          <span
+                            className={`inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-bold ${
+                              grp.activo !== false
+                                ? 'bg-emerald-50 text-emerald-700 border border-emerald-200 dark:bg-emerald-500/10 dark:text-emerald-400 dark:border-emerald-500/20'
+                                : 'bg-rose-50 text-rose-700 border border-rose-200 dark:bg-rose-500/10 dark:text-rose-400 dark:border-rose-500/20'
+                            }`}
+                          >
+                            {grp.activo !== false ? 'ACTIVO' : 'INACTIVO'}
+                          </span>
+                        </td>
+
+                        {/* 4. Comisión Base */}
+                        <td className="py-3.5 px-3 text-center">
+                          <span className="font-mono font-black text-sm text-emerald-600 dark:text-emerald-400">
+                            {grp.comision_pct_default || 0}%
+                          </span>
+                        </td>
+
+                        {/* 5. Participación */}
+                        <td className="py-3.5 px-3 text-center">
+                          <span className="font-mono font-black text-sm text-cyan-600 dark:text-cyan-400">
+                            {grp.participacion_pct_default || 0}%
+                          </span>
+                        </td>
+
+                        {/* 6. Divisas Activas */}
+                        <td className="py-3.5 px-3">
+                          <div className="flex flex-wrap gap-1">
+                            {grpMonedas.map((m) => (
+                              <span
+                                key={m}
+                                className={`inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-black ${getCurrencyBadgeClasses(m)}`}
+                              >
+                                <span>{getCurrencyFlag(m)}</span>
+                                <span>{m}</span>
+                              </span>
+                            ))}
+                          </div>
+                        </td>
+
+                        {/* 7. Agencias Hijas (Botón Desplegable) */}
+                        <td className="py-3.5 px-3 text-center">
+                          <button
+                            type="button"
+                            onClick={() => toggleExpandGroup(grp.id)}
+                            className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer ${
+                              isExpanded
+                                ? 'bg-emerald-600 text-white shadow-xs'
+                                : daughterCount > 0
+                                ? 'bg-cyan-50 hover:bg-cyan-100 text-cyan-800 border border-cyan-200 dark:bg-cyan-950/50 dark:hover:bg-cyan-900/60 dark:text-cyan-300 dark:border-cyan-800/60'
+                                : 'bg-slate-100 hover:bg-slate-200 text-slate-500 border border-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 dark:text-slate-400 dark:border-slate-700'
+                            }`}
+                            title={isExpanded ? 'Ocultar agencias' : 'Ver y desplegar agencias'}
+                          >
+                            <Store className="w-3.5 h-3.5" />
+                            <span>{daughterCount} {daughterCount === 1 ? 'agencia' : 'agencias'}</span>
+                            {isExpanded ? (
+                              <ChevronUp className="w-3.5 h-3.5 ml-0.5" />
+                            ) : (
+                              <ChevronDown className="w-3.5 h-3.5 ml-0.5 opacity-60" />
+                            )}
+                          </button>
+                        </td>
+
+                        {/* 8. Acciones */}
+                        <td className="py-3.5 px-3.5 text-right">
+                          <div className="flex items-center justify-end gap-1.5">
+                            <button
+                              type="button"
+                              onClick={() => handleOpenTreeManager(grp)}
+                              className="px-2 py-1 rounded-lg bg-cyan-50 hover:bg-cyan-100 dark:bg-cyan-950/60 dark:hover:bg-cyan-900/80 text-cyan-700 dark:text-cyan-300 border border-cyan-200 dark:border-cyan-800/50 text-[11px] font-bold flex items-center gap-1 transition-colors cursor-pointer"
+                              title="Asignar agencias a este grupo"
+                            >
+                              <Users className="w-3.5 h-3.5" />
+                              <span className="hidden sm:inline">Asignar</span>
+                            </button>
+
+                            <button
+                              type="button"
+                              onClick={() => handleOpenEdit(grp)}
+                              className="p-1.5 rounded-lg bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-300 border border-slate-200 dark:border-slate-700 transition-colors cursor-pointer"
+                              title="Editar Grupo"
+                            >
+                              <Edit2 className="w-3.5 h-3.5" />
+                            </button>
+
+                            <button
+                              type="button"
+                              onClick={() => handleToggleActive(grp)}
+                              className={`p-1.5 rounded-lg border border-slate-200 dark:border-slate-700 transition-colors cursor-pointer ${
+                                grp.activo !== false
+                                  ? 'hover:bg-rose-50 text-slate-500 hover:text-rose-600 dark:text-slate-400 dark:hover:text-rose-400 dark:hover:bg-rose-500/20'
+                                  : 'hover:bg-emerald-50 text-emerald-600 dark:text-emerald-400 dark:hover:bg-emerald-500/20'
+                              }`}
+                              title={grp.activo !== false ? 'Desactivar Grupo' : 'Activar Grupo'}
+                            >
+                              <ShieldAlert className="w-3.5 h-3.5" />
+                            </button>
+
+                            <button
+                              type="button"
+                              onClick={() => handleDeleteGroup(grp)}
+                              className="p-1.5 rounded-lg border border-slate-200 dark:border-slate-700 hover:bg-rose-50 text-slate-400 hover:text-rose-600 dark:hover:bg-rose-500/20 dark:hover:text-rose-400 transition-colors cursor-pointer"
+                              title="Eliminar Grupo"
+                            >
+                              <Trash2 className="w-3.5 h-3.5" />
+                            </button>
+                          </div>
+                        </td>
+                      </tr>
+
+                      {/* Sub-fila Desplegable de Agencias Hijas */}
+                      {isExpanded && (
+                        <tr className="bg-slate-50/80 dark:bg-[#071217]/90 border-b border-slate-200 dark:border-slate-800 animate-fadeIn">
+                          <td colSpan={8} className="py-4 px-4 sm:px-6">
+                            <div className="rounded-2xl border border-emerald-500/30 bg-white dark:bg-[#0D1B22] p-4 shadow-sm space-y-3">
+                              {/* Cabecera del sub-bloque */}
+                              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-3 border-b border-slate-200 dark:border-slate-800">
+                                <div className="flex items-center gap-2.5">
+                                  <div className="p-1.5 rounded-lg bg-emerald-50 text-emerald-600 border border-emerald-200 dark:bg-emerald-500/10 dark:text-emerald-400 dark:border-emerald-500/20">
+                                    <Store className="w-4 h-4" />
+                                  </div>
+                                  <div>
+                                    <h5 className="text-xs font-black uppercase text-slate-900 dark:text-white tracking-wider flex items-center gap-2">
+                                      <span>Agencias Asignadas a {grp.nombre_grupo}</span>
+                                      <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-100 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-300">
+                                        {daughterCount} {daughterCount === 1 ? 'agencia' : 'agencias'}
+                                      </span>
+                                    </h5>
+                                    <p className="text-[11px] text-slate-500 dark:text-slate-400">
+                                      Red de agencias que operan bajo este intermediario. El diferencial de comisión (overriding) se liquida a favor del grupo.
+                                    </p>
+                                  </div>
+                                </div>
+
+                                <div className="flex items-center gap-2">
+                                  <button
+                                    type="button"
+                                    onClick={() => handleOpenTreeManager(grp)}
+                                    className="px-3 py-1.5 rounded-xl bg-cyan-600 hover:bg-cyan-500 text-white text-xs font-bold flex items-center gap-1.5 transition-colors cursor-pointer shadow-xs"
+                                  >
+                                    <Users className="w-3.5 h-3.5" />
+                                    <span>Gestionar / Asignar Agencias</span>
+                                  </button>
+                                </div>
+                              </div>
+
+                              {/* Lista de Agencias o Estado Vacío */}
+                              {daughterCount === 0 ? (
+                                <div className="py-6 text-center">
+                                  <Store className="w-8 h-8 text-slate-400 dark:text-slate-600 mx-auto mb-2 opacity-50" />
+                                  <p className="text-xs font-bold text-slate-700 dark:text-slate-300">
+                                    Este grupo aún no tiene agencias hijas asignadas
+                                  </p>
+                                  <p className="text-[11px] text-slate-500 dark:text-slate-400 max-w-sm mx-auto mt-1 mb-3">
+                                    Vincula agencias de tu banca para comenzar a consolidar su balance y liquidar diferenciales comerciales.
+                                  </p>
+                                  <button
+                                    type="button"
+                                    onClick={() => handleOpenTreeManager(grp)}
+                                    className={UI_LOCK.buttonPrimary + ' text-xs py-1.5 px-3'}
+                                  >
+                                    <Plus className="w-3.5 h-3.5" />
+                                    <span>Vincular Agencias Ahora</span>
+                                  </button>
+                                </div>
+                              ) : (
+                                <div className="overflow-x-auto rounded-xl border border-slate-200 dark:border-slate-800">
+                                  <table className="w-full text-left border-collapse text-xs">
+                                    <thead className="bg-slate-100/80 dark:bg-[#071217] text-slate-600 dark:text-slate-400 uppercase text-[10px] font-bold border-b border-slate-200 dark:border-slate-800">
+                                      <tr>
+                                        <th className="py-2.5 px-3 w-16">ID</th>
+                                        <th className="py-2.5 px-3 min-w-[180px]">Agencia Hija</th>
+                                        <th className="py-2.5 px-3 min-w-[130px]">Usuario Taquilla</th>
+                                        <th className="py-2.5 px-3 text-center min-w-[100px]">Comisión Ag.</th>
+                                        <th className="py-2.5 px-3 text-center min-w-[100px]">Participación Ag.</th>
+                                        <th className="py-2.5 px-3 text-center min-w-[140px]">Diferencial (Overriding)</th>
+                                        <th className="py-2.5 px-3 text-right w-24">Acción</th>
+                                      </tr>
+                                    </thead>
+                                    <tbody className="divide-y divide-slate-100 dark:divide-slate-800/60 font-mono">
+                                      {daughterAgencies.map((ag) => {
+                                        const agCom = Number(ag.comision || 0);
+                                        const grpCom = Number(grp.comision_pct_default || 0);
+                                        const overriding = grpCom - agCom;
+
+                                        return (
+                                          <tr
+                                            key={ag.id}
+                                            className="hover:bg-slate-50/70 dark:hover:bg-slate-800/40 bg-white dark:bg-[#0D1B22] transition-colors"
+                                          >
+                                            <td className="py-2.5 px-3 text-slate-500 font-bold">#{ag.id}</td>
+                                            <td className="py-2.5 px-3 font-sans">
+                                              <div className="flex items-center gap-1.5">
+                                                <Store className="w-3.5 h-3.5 text-cyan-600 dark:text-cyan-400 shrink-0" />
+                                                <span className="font-extrabold text-slate-900 dark:text-white">
+                                                  {ag.nombre_agencia}
+                                                </span>
+                                              </div>
+                                            </td>
+                                            <td className="py-2.5 px-3 font-mono">
+                                              {ag.usuario_taquilla ? (
+                                                <span className="px-1.5 py-0.5 rounded text-[10px] bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 font-bold">
+                                                  {ag.usuario_taquilla}
+                                                </span>
+                                              ) : (
+                                                <span className="text-slate-400 text-[10px]">—</span>
+                                              )}
+                                            </td>
+                                            <td className="py-2.5 px-3 text-center font-bold text-slate-800 dark:text-slate-200">
+                                              {agCom}%
+                                            </td>
+                                            <td className="py-2.5 px-3 text-center font-bold text-slate-800 dark:text-slate-200">
+                                              {Number(ag.participacion_ag || 0)}%
+                                            </td>
+                                            <td className="py-2.5 px-3 text-center font-bold">
+                                              <span
+                                                className={`inline-flex items-center px-2 py-0.5 rounded text-[10px] ${
+                                                  overriding > 0
+                                                    ? 'bg-emerald-50 text-emerald-700 dark:bg-emerald-950 dark:text-emerald-400 border border-emerald-200 dark:border-emerald-800'
+                                                    : overriding === 0
+                                                    ? 'bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-400'
+                                                    : 'bg-rose-50 text-rose-700 dark:bg-rose-950 dark:text-rose-400 border border-rose-200 dark:border-rose-800'
+                                                }`}
+                                              >
+                                                {overriding > 0 ? `+${overriding.toFixed(1)}% margen` : `${overriding.toFixed(1)}%`}
+                                              </span>
+                                            </td>
+                                            <td className="py-2.5 px-3 text-right font-sans">
+                                              <button
+                                                type="button"
+                                                onClick={() => handleRemoveAgencyFromGroup(grp, ag)}
+                                                className="p-1 rounded-lg text-slate-400 hover:text-rose-600 hover:bg-rose-50 dark:hover:bg-rose-500/20 transition-colors cursor-pointer"
+                                                title={`Desvincular ${ag.nombre_agencia} de este grupo`}
+                                              >
+                                                <X className="w-3.5 h-3.5" />
+                                              </button>
+                                            </td>
+                                          </tr>
+                                        );
+                                      })}
+                                    </tbody>
+                                  </table>
+                                </div>
+                              )}
+                            </div>
+                          </td>
+                        </tr>
+                      )}
+                    </React.Fragment>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        </div>
       ) : (
+        /* VISTA EN TARJETAS */
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
           {filteredGroups.map((grp) => {
-            const daughterCount = agencies.filter(
-              (a) => (grp.agencias_ids && grp.agencias_ids.includes(a.id)) || a.grupo_id === grp.id || a.grupo_nombre?.toUpperCase() === grp.nombre_grupo.toUpperCase()
-            ).length;
+            const daughterAgencies = agencies.filter(
+              (a) =>
+                (grp.agencias_ids && grp.agencias_ids.includes(a.id)) ||
+                a.grupo_id === grp.id ||
+                a.grupo_nombre?.toUpperCase() === grp.nombre_grupo.toUpperCase()
+            );
+            const daughterCount = daughterAgencies.length;
+            const isExpanded = expandedGroupIds.includes(grp.id);
 
             const activeCodes = currencies.length > 0 ? currencies.map((c) => c.codigo) : ['BS', 'USD'];
             const grpMonedas = grp.monedas
@@ -577,16 +1040,47 @@ export const GroupsTab: React.FC = () => {
                     </div>
                   </div>
 
-                  {/* Daughter Agencies Tag */}
+                  {/* Daughter Agencies Tag & Desplegable */}
                   <div className="flex items-center justify-between text-xs py-2 border-t border-slate-200 dark:border-slate-800/60 font-mono">
                     <span className="text-slate-500 dark:text-slate-400 flex items-center gap-1">
                       <Store className="w-3.5 h-3.5 text-cyan-600 dark:text-cyan-400" />
                       <span>Agencias Hijas:</span>
                     </span>
-                    <span className="font-bold text-slate-800 dark:text-white px-2 py-0.5 rounded bg-slate-100 dark:bg-slate-800">
-                      {daughterCount} agencias
-                    </span>
+                    <button
+                      type="button"
+                      onClick={() => toggleExpandGroup(grp.id)}
+                      className={`font-bold px-2 py-0.5 rounded transition-all flex items-center gap-1 cursor-pointer ${
+                        isExpanded
+                          ? 'bg-emerald-600 text-white'
+                          : 'bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-800 dark:text-white'
+                      }`}
+                      title={isExpanded ? 'Ocultar agencias' : 'Desplegar agencias'}
+                    >
+                      <span>{daughterCount} agencias</span>
+                      {isExpanded ? <ChevronUp className="w-3 h-3" /> : <ChevronDown className="w-3 h-3" />}
+                    </button>
                   </div>
+
+                  {/* Accordion Inside Card */}
+                  {isExpanded && (
+                    <div className="my-2 p-2.5 rounded-xl bg-slate-50 dark:bg-[#071217] border border-slate-200 dark:border-slate-800 space-y-2 animate-fadeIn">
+                      <span className="text-[10px] font-bold text-slate-600 dark:text-slate-400 uppercase block">
+                        Agencias vinculadas ({daughterCount}):
+                      </span>
+                      {daughterCount === 0 ? (
+                        <p className="text-[11px] text-slate-400 italic">No tiene agencias asignadas aún.</p>
+                      ) : (
+                        <div className="max-h-36 overflow-y-auto divide-y divide-slate-200 dark:divide-slate-800 text-[11px]">
+                          {daughterAgencies.map((ag) => (
+                            <div key={ag.id} className="py-1 flex items-center justify-between">
+                              <span className="font-bold text-slate-800 dark:text-slate-200">{ag.nombre_agencia}</span>
+                              <span className="text-slate-500 font-mono text-[10px]">Com: {ag.comision || 0}%</span>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  )}
                 </div>
 
                 {/* Card Actions */}
