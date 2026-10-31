@@ -16,7 +16,7 @@ interface HeaderProps {
 }
 
 export const Header: React.FC<HeaderProps> = ({ currentModule, onOpenMobile }) => {
-  const { systemCycle, refreshSystemCycle, logout } = useAuth();
+  const { systemCycle, refreshSystemCycle, logout, effectiveUserId } = useAuth();
   const [refreshing, setRefreshing] = React.useState(false);
   const [hasNotificationPerm, setHasNotificationPerm] = React.useState(
     notificationService.getPermissionStatus() === 'granted'
@@ -40,6 +40,9 @@ export const Header: React.FC<HeaderProps> = ({ currentModule, onOpenMobile }) =
   React.useEffect(() => {
     // 1. WebSocket Broadcast ultra-rápido (0ms latency)
     const unsubSocket = realtimeBroadcast.subscribe('NEW_BANK_PAYMENT', (data) => {
+      if (!data || Number(data.monto || 0) <= 0 || (!data.id && !data.referencia)) return;
+      if (effectiveUserId && data.user_id && data.user_id !== effectiveUserId) return;
+
       notificationService.showNotification('🔔 Nuevo Pago Bancario de Taquilla', {
         body: `Agencia ${data.agencia || 'General'}: ${formatCurrency(Number(data.monto || 0), (data.moneda || 'BS') as any)} (Ref: ${data.referencia || 'N/A'})`,
         soundType: 'new_payment',
@@ -49,6 +52,9 @@ export const Header: React.FC<HeaderProps> = ({ currentModule, onOpenMobile }) =
     });
 
     const unsubCashSocket = realtimeBroadcast.subscribe('NEW_CASH_PAYMENT', (data) => {
+      if (!data || Number(data.monto || 0) <= 0 || (!data.id && !data.referencia)) return;
+      if (effectiveUserId && data.user_id && data.user_id !== effectiveUserId) return;
+
       notificationService.showNotification('💵 Nueva Entrega de Efectivo / Cobrador', {
         body: `Agencia ${data.agencia || 'General'}: ${formatCurrency(Number(data.monto || 0), (data.moneda || 'BS') as any)}`,
         soundType: 'new_payment',
@@ -58,6 +64,9 @@ export const Header: React.FC<HeaderProps> = ({ currentModule, onOpenMobile }) =
     });
 
     const unsubAgencySocket = realtimeBroadcast.subscribe('NEW_AGENCY_PAYMENT', (data) => {
+      if (!data || Number(data.monto || 0) <= 0 || (!data.id && !data.referencia)) return;
+      if (effectiveUserId && data.user_id && data.user_id !== effectiveUserId) return;
+
       notificationService.showNotification(`🔔 Nuevo Pago de Agencia (${data.metodo_pago || 'BANCO'})`, {
         body: `Agencia ${data.agencia || 'General'}: ${formatCurrency(Number(data.monto || 0), (data.moneda || 'BS') as any)} (Ref: ${data.referencia || 'N/A'})`,
         soundType: 'new_payment',
@@ -67,6 +76,9 @@ export const Header: React.FC<HeaderProps> = ({ currentModule, onOpenMobile }) =
     });
 
     const unsubPrizeSocket = realtimeBroadcast.subscribe('NEW_PRIZE_PAYMENT', (data) => {
+      if (!data || Number(data.monto || 0) <= 0 || (!data.id && !data.referencia)) return;
+      if (effectiveUserId && data.user_id && data.user_id !== effectiveUserId) return;
+
       notificationService.showNotification('🏆 Nuevo Pago de Premios de Agencia', {
         body: `Agencia ${data.agencia || 'General'}: ${formatCurrency(Number(data.monto || 0), (data.moneda || 'BS') as any)} (Ref: ${data.referencia || 'N/A'})`,
         soundType: 'new_payment',
@@ -76,6 +88,9 @@ export const Header: React.FC<HeaderProps> = ({ currentModule, onOpenMobile }) =
     });
 
     const unsubExpenseSocket = realtimeBroadcast.subscribe('NEW_EXPENSE', (data) => {
+      if (!data || Number(data.monto || 0) <= 0 || (!data.id && !data.referencia)) return;
+      if (effectiveUserId && data.user_id && data.user_id !== effectiveUserId) return;
+
       const tbl = data.tabla || 'gastos';
       notificationService.showNotification('🧾 Nuevo Gasto por Agencia', {
         body: `Agencia ${data.agencia || 'General'}: ${formatCurrency(Number(data.monto || 0), (data.moneda || 'BS') as any)} • ${data.concepto || 'Gasto Operativo'}`,
@@ -93,6 +108,9 @@ export const Header: React.FC<HeaderProps> = ({ currentModule, onOpenMobile }) =
         { event: 'INSERT', schema: 'public', table: 'cda_pagos_bancarios' },
         (payload: any) => {
           const row = payload.new;
+          if (!row || !row.id || Number(row.monto || 0) <= 0) return;
+          if (effectiveUserId && row.user_id && row.user_id !== effectiveUserId) return;
+
           if (!row.confirmado && !row.rechazado) {
             notificationService.showNotification('🔔 Nuevo Pago Bancario de Taquilla', {
               body: `Agencia ${row.agencia || 'General'}: ${formatCurrency(Number(row.monto || 0), (row.moneda || 'BS') as any)} (Ref: ${row.referencia || 'N/A'})`,
@@ -108,6 +126,9 @@ export const Header: React.FC<HeaderProps> = ({ currentModule, onOpenMobile }) =
         { event: 'INSERT', schema: 'public', table: 'cda_pagos_diarios' },
         (payload: any) => {
           const row = payload.new;
+          if (!row || !row.id || Number(row.monto || 0) <= 0) return;
+          if (effectiveUserId && row.user_id && row.user_id !== effectiveUserId) return;
+
           if (!row.confirmado && !row.rechazado) {
             notificationService.showNotification('💵 Nueva Entrega de Efectivo / Cobrador', {
               body: `Agencia ${row.agencia || 'General'}: ${formatCurrency(Number(row.monto || 0), (row.moneda || 'BS') as any)}`,
@@ -123,6 +144,9 @@ export const Header: React.FC<HeaderProps> = ({ currentModule, onOpenMobile }) =
         { event: 'INSERT', schema: 'public', table: 'pagos_semana' },
         (payload: any) => {
           const row = payload.new;
+          if (!row || !row.id || Number(row.monto || 0) <= 0) return;
+          if (effectiveUserId && row.user_id && row.user_id !== effectiveUserId) return;
+
           if (!row.confirmado && !row.rechazado) {
             const isPremio = String(row.tipo_pago || '').toUpperCase().includes('PREMIO') ||
               String(row.referencia || '').toUpperCase().includes('PREMIO');
@@ -143,6 +167,9 @@ export const Header: React.FC<HeaderProps> = ({ currentModule, onOpenMobile }) =
         { event: 'INSERT', schema: 'public', table: 'gastos' },
         (payload: any) => {
           const row = payload.new;
+          if (!row || !row.id || Number(row.monto || 0) <= 0) return;
+          if (effectiveUserId && row.user_id && row.user_id !== effectiveUserId) return;
+
           if (!row.confirmado && !row.rechazado) {
             notificationService.showNotification('🧾 Nuevo Gasto por Agencia', {
               body: `Agencia ${row.agencia || 'General'}: ${formatCurrency(Number(row.monto || 0), (row.moneda || 'BS') as any)} • ${row.concepto || 'Gasto'}`,
@@ -158,6 +185,9 @@ export const Header: React.FC<HeaderProps> = ({ currentModule, onOpenMobile }) =
         { event: 'INSERT', schema: 'public', table: 'cda_gastos_diarios' },
         (payload: any) => {
           const row = payload.new;
+          if (!row || !row.id || Number(row.monto || 0) <= 0) return;
+          if (effectiveUserId && row.user_id && row.user_id !== effectiveUserId) return;
+
           if (!row.confirmado && !row.rechazado) {
             notificationService.showNotification('🧾 Nuevo Gasto Diario de Agencia', {
               body: `Agencia ${row.agencia || 'General'}: ${formatCurrency(Number(row.monto || 0), (row.moneda || 'BS') as any)} • ${row.concepto || row.descripcion || 'Gasto'}`,

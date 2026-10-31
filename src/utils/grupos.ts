@@ -136,7 +136,7 @@ export async function loadSaaSGroups(userId: string, activeCurrencies?: Currency
       id: Date.now(),
       user_id: userId,
       nombre_grupo: 'BONANZA',
-      codigo: 'BNZ',
+      codigo: '001',
       responsable: 'Administrador',
       telefono: '',
       monedas: validCodes.join(','),
@@ -176,4 +176,30 @@ export async function loadSaaSGroups(userId: string, activeCurrencies?: Currency
   }
 
   return loaded;
+}
+
+/**
+ * Calcula el siguiente número consecutivo correlativo para un Grupo (ej. "001", "002", ...).
+ * Analiza todos los grupos existentes, extrae el número más alto y suma 1.
+ * Si no existen grupos o ninguno tiene dígitos, retorna "001".
+ */
+export function getNextGroupConsecutive(existingGroups: Grupo[], minDigits: number = 3): string {
+  let maxNum = 0;
+  for (const g of existingGroups) {
+    const codeStr = (g.codigo || '').trim();
+    if (!codeStr) continue;
+
+    // Buscar secuencias de dígitos en el código (ej. "001" -> 1, "02" -> 2, "GRP-03" -> 3)
+    const matches = codeStr.match(/\d+/g);
+    if (matches && matches.length > 0) {
+      const lastNumStr = matches[matches.length - 1];
+      const val = parseInt(lastNumStr, 10);
+      if (!isNaN(val) && val > maxNum) {
+        maxNum = val;
+      }
+    }
+  }
+
+  const nextVal = maxNum + 1;
+  return String(nextVal).padStart(minDigits, '0');
 }

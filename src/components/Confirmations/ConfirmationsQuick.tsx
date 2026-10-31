@@ -503,6 +503,7 @@ export const ConfirmationsQuick: React.FC = () => {
       .on('postgres_changes', { event: '*', schema: 'public', table: 'cda_pagos_bancarios' }, (payload: any) => {
         if (payload.eventType === 'INSERT') {
           const row = payload.new;
+          if (!row || !row.id || Number(row.monto || 0) <= 0) return;
           if (row.id) markRecentlyArrived(`cda_pagos_bancarios_${row.id}`);
           const isFromApi = String(row.cajero_id || '').toUpperCase() === 'API';
           notificationService.showNotification(
@@ -520,6 +521,7 @@ export const ConfirmationsQuick: React.FC = () => {
       .on('postgres_changes', { event: '*', schema: 'public', table: 'cda_gastos_diarios' }, (payload: any) => {
         if (payload.eventType === 'INSERT') {
           const row = payload.new;
+          if (!row || !row.id || Number(row.monto || 0) <= 0) return;
           if (!row.confirmado && !row.rechazado) {
             if (row.id) markRecentlyArrived(`cda_gastos_diarios_${row.id}`);
             notificationService.showNotification('🧾 Nuevo Gasto Diario de Agencia', {
@@ -535,6 +537,7 @@ export const ConfirmationsQuick: React.FC = () => {
       .on('postgres_changes', { event: '*', schema: 'public', table: 'gastos' }, (payload: any) => {
         if (payload.eventType === 'INSERT') {
           const row = payload.new;
+          if (!row || !row.id || Number(row.monto || 0) <= 0) return;
           if (!row.confirmado && !row.rechazado) {
             if (row.id) markRecentlyArrived(`gastos_${row.id}`);
             notificationService.showNotification('🧾 Nuevo Gasto por Agencia', {
@@ -551,6 +554,7 @@ export const ConfirmationsQuick: React.FC = () => {
       .on('postgres_changes', { event: '*', schema: 'public', table: 'cda_pagos_diarios' }, (payload: any) => {
         if (payload.eventType === 'INSERT') {
           const row = payload.new;
+          if (!row || !row.id || Number(row.monto || 0) <= 0) return;
           if (row.id) markRecentlyArrived(`cda_pagos_diarios_${row.id}`);
           notificationService.showNotification('💵 Nueva Entrega de Efectivo / Cobrador', {
             body: `Agencia ${row.agencia || 'General'}: ${formatCurrency(Number(row.monto || 0), row.moneda as any)}`,
@@ -564,6 +568,7 @@ export const ConfirmationsQuick: React.FC = () => {
       .on('postgres_changes', { event: '*', schema: 'public', table: 'pagos_semana' }, (payload: any) => {
         if (payload.eventType === 'INSERT') {
           const row = payload.new;
+          if (!row || !row.id || Number(row.monto || 0) <= 0) return;
           const isRech = Boolean(row.rechazado);
           const isConf = Boolean(row.confirmado);
           if (!isConf && !isRech) {

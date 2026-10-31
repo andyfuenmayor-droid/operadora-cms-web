@@ -374,7 +374,13 @@ async function handlePostgrestProxy(req, res, pathname, parsedUrl) {
     if (pgRes.ok && ['POST', 'PATCH', 'PUT', 'DELETE'].includes(method)) {
       const tableName = targetSubpath.slice(1).split('/')[0];
       if (tableName) {
-        notifyPostgresChange(tableName, method);
+        let parsedRecord = {};
+        try {
+          const text = respBuf.toString('utf8');
+          if (text.startsWith('{')) parsedRecord = JSON.parse(text);
+          else if (text.startsWith('[')) parsedRecord = JSON.parse(text)[0] || {};
+        } catch (_) {}
+        notifyPostgresChange(tableName, method, parsedRecord);
       }
     }
   } catch (err) {
@@ -505,11 +511,23 @@ function broadcastRealtimeEvent(type, data) {
   }
 }
 
-function notifyPostgresChange(tableName, method) {
+function notifyPostgresChange(tableName, method, record = {}) {
   const eventType = method === 'POST' ? 'INSERT' : method === 'DELETE' ? 'DELETE' : 'UPDATE';
   for (const client of wsClients) {
     for (const topic of client.topics) {
       if (topic === 'phoenix') continue;
+      const registered = client.pgChangesByTopic?.get(topic) || [];
+      const matchingIds = registered
+        .filter((c) => {
+          const tableMatches = !c.table || c.table === '*' || c.table === tableName;
+          const eventMatches = !c.event || c.event === '*' || c.event === eventType;
+          return tableMatches && eventMatches;
+        })
+        .map((c) => c.id);
+
+      // Si este canal/tópico no tiene ningún listener para esta tabla, NO emitir nada
+      if (matchingIds.length === 0) continue;
+
       sendWsMessage(client, {
         topic,
         event: 'postgres_changes',
@@ -519,11 +537,11 @@ function notifyPostgresChange(tableName, method) {
             table: tableName,
             commit_timestamp: new Date().toISOString(),
             type: eventType,
-            record: {},
-            old_record: {},
+            record,
+            old_record: method === 'DELETE' ? record : {},
             errors: null,
           },
-          ids: [1],
+          ids: matchingIds,
         },
         ref: null,
       });
@@ -556,6 +574,7 @@ function handleWsUpgrade(req, socket) {
   const client = {
     socket,
     topics: new Set(),
+    pgChangesByTopic: new Map(),
     isArrayProtocol: false,
     buffer: Buffer.alloc(0),
   };
@@ -587,6 +606,9 @@ function handleWsUpgrade(req, socket) {
             client.topics.add(topic);
             const pgChanges = payload?.config?.postgres_changes || [];
             const enrichedChanges = pgChanges.map((c, idx) => ({ ...c, id: idx + 1 }));
+            if (!client.pgChangesByTopic) client.pgChangesByTopic = new Map();
+            client.pgChangesByTopic.set(topic, enrichedChanges);
+
             sendWsMessage(client, {
               join_ref,
               ref,
@@ -615,6 +637,7 @@ function handleWsUpgrade(req, socket) {
             });
           } else if (event === 'phx_leave') {
             client.topics.delete(topic);
+            if (client.pgChangesByTopic) client.pgChangesByTopic.delete(topic);
             sendWsMessage(client, {
               join_ref,
               ref,

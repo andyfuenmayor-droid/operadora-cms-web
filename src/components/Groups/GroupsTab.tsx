@@ -4,7 +4,7 @@ import { useAuth } from '../../context/AuthContext';
 import { formatCurrency } from '../../utils/formatters';
 import { loadCurrencies, getCurrencyBadgeClasses, getCurrencyFlag, type CurrencyConfig } from '../../utils/currencies';
 import { loadSaaSActiveSystems } from '../../utils/sistemas';
-import { loadSaaSGroups, saveSaaSGroups } from '../../utils/grupos';
+import { loadSaaSGroups, saveSaaSGroups, getNextGroupConsecutive } from '../../utils/grupos';
 import { UI_LOCK } from '../../styles/uiDesignLock';
 import type { Agency, BetSystem, Grupo } from '../../types';
 import {
@@ -126,7 +126,7 @@ export const GroupsTab: React.FC = () => {
   const handleOpenCreate = () => {
     setEditingGroup(null);
     setNombreGrupo('');
-    setCodigo('');
+    setCodigo(getNextGroupConsecutive(groups));
     setResponsable('');
     setTelefono('');
     setEmailAcceso('');
@@ -225,10 +225,17 @@ export const GroupsTab: React.FC = () => {
         parsedDynSaldos[m] = isNaN(num) ? 0 : num;
       });
 
+      const trimmedCod = codigo.trim();
+      const formattedCodigo = trimmedCod
+        ? /^\d+$/.test(trimmedCod)
+          ? String(parseInt(trimmedCod, 10)).padStart(3, '0')
+          : trimmedCod.toUpperCase()
+        : getNextGroupConsecutive(groups);
+
       const payload: Partial<Grupo> = {
         user_id: effectiveUserId,
         nombre_grupo: cleanNombre,
-        codigo: codigo.trim().toUpperCase() || undefined,
+        codigo: formattedCodigo,
         responsable: responsable.trim() || undefined,
         telefono: telefono.trim() || undefined,
         email_acceso: emailAcceso.trim().toLowerCase() || undefined,
@@ -525,7 +532,7 @@ export const GroupsTab: React.FC = () => {
               type="text"
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
-              placeholder="Buscar por grupo, código o responsable..."
+              placeholder="Buscar por grupo, N° consecutivo o responsable..."
               className={UI_LOCK.input + ' pl-9 text-xs font-medium'}
             />
           </div>
@@ -680,8 +687,11 @@ export const GroupsTab: React.FC = () => {
                                 {grp.nombre_grupo}
                               </span>
                               {grp.codigo && (
-                                <span className="px-1.5 py-0.5 rounded text-[10px] font-mono font-bold bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400">
-                                  {grp.codigo}
+                                <span
+                                  className="px-1.5 py-0.5 rounded text-[10px] font-mono font-bold bg-emerald-50 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-400 border border-emerald-200 dark:border-emerald-800/60"
+                                  title={`Grupo N° ${grp.codigo}`}
+                                >
+                                  {/^\d+$/.test(grp.codigo) ? `#${grp.codigo}` : grp.codigo}
                                 </span>
                               )}
                             </div>
@@ -988,8 +998,11 @@ export const GroupsTab: React.FC = () => {
                       <div className="flex items-center gap-1.5">
                         <span className="text-sm font-black text-slate-900 dark:text-white tracking-wide">{grp.nombre_grupo}</span>
                         {grp.codigo && (
-                          <span className="px-1.5 py-0.5 rounded text-[10px] font-mono font-bold bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400">
-                            {grp.codigo}
+                          <span
+                            className="px-1.5 py-0.5 rounded text-[10px] font-mono font-bold bg-emerald-50 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-400 border border-emerald-200 dark:border-emerald-800/60"
+                            title={`Grupo N° ${grp.codigo}`}
+                          >
+                            {/^\d+$/.test(grp.codigo) ? `#${grp.codigo}` : grp.codigo}
                           </span>
                         )}
                       </div>
@@ -1176,13 +1189,23 @@ export const GroupsTab: React.FC = () => {
                   </div>
 
                   <div>
-                    <label className="block text-slate-700 dark:text-slate-300 font-bold mb-1">Código / Sigla</label>
+                    <div className="flex items-center justify-between mb-1">
+                      <label className="block text-slate-700 dark:text-slate-300 font-bold">N° Consecutivo</label>
+                      <button
+                        type="button"
+                        onClick={() => setCodigo(getNextGroupConsecutive(groups))}
+                        className="text-[10px] text-emerald-600 dark:text-emerald-400 hover:underline cursor-pointer font-semibold"
+                        title="Calcular siguiente correlativo automático"
+                      >
+                        Auto-generar
+                      </button>
+                    </div>
                     <input
                       type="text"
                       value={codigo}
                       onChange={(e) => setCodigo(e.target.value)}
-                      placeholder="Ej: G-OCC, C-MCB"
-                      className={UI_LOCK.input + ' font-bold uppercase'}
+                      placeholder="Ej: 001"
+                      className={UI_LOCK.input + ' font-mono font-bold'}
                     />
                   </div>
                 </div>
@@ -1435,8 +1458,13 @@ export const GroupsTab: React.FC = () => {
                   <Users className="w-5 h-5" />
                 </div>
                 <div>
-                  <h3 className="text-base font-bold text-slate-900 dark:text-white">
-                    Asignar Agencias: {treeModalGroup.nombre_grupo}
+                  <h3 className="text-base font-bold text-slate-900 dark:text-white flex items-center gap-2">
+                    <span>Asignar Agencias: {treeModalGroup.nombre_grupo}</span>
+                    {treeModalGroup.codigo && (
+                      <span className="px-1.5 py-0.5 rounded text-[11px] font-mono font-bold bg-emerald-50 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-400 border border-emerald-200 dark:border-emerald-800/60">
+                        {/^\d+$/.test(treeModalGroup.codigo) ? `#${treeModalGroup.codigo}` : treeModalGroup.codigo}
+                      </span>
+                    )}
                   </h3>
                   <p className="text-[11px] text-slate-500 dark:text-slate-400">
                     Selecciona en lote las agencias que operan bajo este intermediario.

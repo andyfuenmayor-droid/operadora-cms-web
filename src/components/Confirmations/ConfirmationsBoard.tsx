@@ -407,6 +407,8 @@ export const ConfirmationsBoard: React.FC = () => {
 
     // 1. Direct WebSocket Broadcast Listener (0ms instantáneo desde Taquilla POS)
     const unsubSocketBank = realtimeBroadcast.subscribe('NEW_BANK_PAYMENT', (data) => {
+      if (!data || Number(data.monto || 0) <= 0) return;
+      if (effectiveUserId && data.user_id && data.user_id !== effectiveUserId) return;
       notificationService.showNotification('🔔 Nuevo Pago Bancario de Taquilla', {
         body: `Agencia ${data.agencia || 'General'}: ${formatCurrency(Number(data.monto || 0), (data.moneda || 'BS') as any)} (Ref: ${data.referencia || 'N/A'})`,
         soundType: 'new_payment',
@@ -417,6 +419,8 @@ export const ConfirmationsBoard: React.FC = () => {
     });
 
     const unsubSocketCash = realtimeBroadcast.subscribe('NEW_CASH_PAYMENT', (data) => {
+      if (!data || Number(data.monto || 0) <= 0) return;
+      if (effectiveUserId && data.user_id && data.user_id !== effectiveUserId) return;
       notificationService.showNotification('💵 Nueva Entrega de Efectivo / Cobrador', {
         body: `Agencia ${data.agencia || 'General'}: ${formatCurrency(Number(data.monto || 0), (data.moneda || 'BS') as any)}`,
         soundType: 'new_payment',
@@ -427,6 +431,8 @@ export const ConfirmationsBoard: React.FC = () => {
     });
 
     const unsubSocketAgency = realtimeBroadcast.subscribe('NEW_AGENCY_PAYMENT', (data) => {
+      if (!data || Number(data.monto || 0) <= 0) return;
+      if (effectiveUserId && data.user_id && data.user_id !== effectiveUserId) return;
       notificationService.showNotification(`🔔 Nuevo Pago de Agencia (${data.metodo_pago || 'BANCO'})`, {
         body: `Agencia ${data.agencia || 'General'}: ${formatCurrency(Number(data.monto || 0), (data.moneda || 'BS') as any)} (Ref: ${data.referencia || 'N/A'})`,
         soundType: 'new_payment',
@@ -437,6 +443,8 @@ export const ConfirmationsBoard: React.FC = () => {
     });
 
     const unsubSocketPrize = realtimeBroadcast.subscribe('NEW_PRIZE_PAYMENT', (data) => {
+      if (!data || Number(data.monto || 0) <= 0) return;
+      if (effectiveUserId && data.user_id && data.user_id !== effectiveUserId) return;
       notificationService.showNotification('🏆 Nuevo Pago de Premios de Agencia', {
         body: `Agencia ${data.agencia || 'General'}: ${formatCurrency(Number(data.monto || 0), (data.moneda || 'BS') as any)} (Ref: ${data.referencia || 'N/A'})`,
         soundType: 'new_payment',
@@ -447,6 +455,8 @@ export const ConfirmationsBoard: React.FC = () => {
     });
 
     const unsubSocketExpense = realtimeBroadcast.subscribe('NEW_EXPENSE', (data) => {
+      if (!data || Number(data.monto || 0) <= 0) return;
+      if (effectiveUserId && data.user_id && data.user_id !== effectiveUserId) return;
       const tbl = data.tabla || 'gastos';
       notificationService.showNotification('🧾 Nuevo Gasto por Agencia', {
         body: `Agencia ${data.agencia || 'General'}: ${formatCurrency(Number(data.monto || 0), (data.moneda || 'BS') as any)} • ${data.concepto || 'Gasto Operativo'}`,
@@ -463,6 +473,8 @@ export const ConfirmationsBoard: React.FC = () => {
       .on('postgres_changes', { event: '*', schema: 'public', table: 'cda_pagos_bancarios' }, (payload: any) => {
         if (payload.eventType === 'INSERT') {
           const row = payload.new;
+          if (!row || !row.id || Number(row.monto || 0) <= 0) return;
+          if (effectiveUserId && row.user_id && row.user_id !== effectiveUserId) return;
           const isFromApi = String(row.cajero_id || '').toUpperCase() === 'API';
           notificationService.showNotification(
             isFromApi ? '⚡ Nuevo Pago de API Externa (App / Web)' : '🔔 Nuevo Pago Bancario de Taquilla',
@@ -479,6 +491,8 @@ export const ConfirmationsBoard: React.FC = () => {
       .on('postgres_changes', { event: '*', schema: 'public', table: 'cda_pagos_diarios' }, (payload: any) => {
         if (payload.eventType === 'INSERT') {
           const row = payload.new;
+          if (!row || !row.id || Number(row.monto || 0) <= 0) return;
+          if (effectiveUserId && row.user_id && row.user_id !== effectiveUserId) return;
           notificationService.showNotification('💵 Nueva Entrega de Efectivo / Cobrador', {
             body: `Agencia ${row.agencia || 'General'}: ${formatCurrency(Number(row.monto || 0), row.moneda as any)}`,
             soundType: 'new_payment',
@@ -491,6 +505,8 @@ export const ConfirmationsBoard: React.FC = () => {
       .on('postgres_changes', { event: '*', schema: 'public', table: 'cda_gastos_diarios' }, (payload: any) => {
         if (payload.eventType === 'INSERT') {
           const row = payload.new;
+          if (!row || !row.id || Number(row.monto || 0) <= 0) return;
+          if (effectiveUserId && row.user_id && row.user_id !== effectiveUserId) return;
           if (!row.confirmado && !row.rechazado) {
             notificationService.showNotification('🧾 Nuevo Gasto Diario de Agencia', {
               body: `Agencia ${row.agencia || 'General'}: ${formatCurrency(Number(row.monto || 0), (row.moneda || 'BS') as any)} • ${row.concepto || row.descripcion || 'Gasto'}`,
@@ -505,6 +521,8 @@ export const ConfirmationsBoard: React.FC = () => {
       .on('postgres_changes', { event: '*', schema: 'public', table: 'gastos' }, (payload: any) => {
         if (payload.eventType === 'INSERT') {
           const row = payload.new;
+          if (!row || !row.id || Number(row.monto || 0) <= 0) return;
+          if (effectiveUserId && row.user_id && row.user_id !== effectiveUserId) return;
           if (!row.confirmado && !row.rechazado) {
             notificationService.showNotification('🧾 Nuevo Gasto por Agencia', {
               body: `Agencia ${row.agencia || 'General'}: ${formatCurrency(Number(row.monto || 0), (row.moneda || 'BS') as any)} • ${row.concepto || 'Gasto'}`,
@@ -520,6 +538,8 @@ export const ConfirmationsBoard: React.FC = () => {
       .on('postgres_changes', { event: '*', schema: 'public', table: 'pagos_semana' }, (payload: any) => {
         if (payload.eventType === 'INSERT') {
           const row = payload.new;
+          if (!row || !row.id || Number(row.monto || 0) <= 0) return;
+          if (effectiveUserId && row.user_id && row.user_id !== effectiveUserId) return;
           const isRech = Boolean(row.rechazado);
           const isConf = Boolean(row.confirmado);
           if (!isConf && !isRech) {

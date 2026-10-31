@@ -558,7 +558,12 @@ export const BulkAgencyModal: React.FC<BulkAgencyModalProps> = ({
       let grupoNombre = '';
       if (colGrp !== -1 && row[colGrp] !== undefined && String(row[colGrp]).trim() !== '') {
         const rawGrp = String(row[colGrp]).trim().toUpperCase();
-        const matchedGrp = groups.find((g) => g.nombre_grupo.trim().toUpperCase() === rawGrp);
+        const matchedGrp = groups.find(
+          (g) =>
+            g.nombre_grupo.trim().toUpperCase() === rawGrp ||
+            (g.codigo && g.codigo.trim().toUpperCase() === rawGrp) ||
+            (g.codigo && `#${g.codigo.trim().toUpperCase()}` === rawGrp)
+        );
         if (matchedGrp) {
           grupoId = matchedGrp.id;
           grupoNombre = matchedGrp.nombre_grupo;

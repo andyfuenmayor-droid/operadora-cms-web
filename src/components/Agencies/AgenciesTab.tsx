@@ -1665,7 +1665,7 @@ export const AgenciesTab: React.FC = () => {
                     </option>
                     {groups.map((g) => (
                       <option key={g.id} value={g.id} className="bg-[#0D1B22] text-white">
-                        🤝 {g.nombre_grupo} {g.responsable ? `— (${g.responsable})` : ''}
+                        🤝 {g.nombre_grupo} {g.codigo ? `[#${g.codigo}]` : ''} {g.responsable ? `— (${g.responsable})` : ''}
                       </option>
                     ))}
                   </select>
