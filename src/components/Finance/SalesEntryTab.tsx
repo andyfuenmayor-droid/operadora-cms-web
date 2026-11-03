@@ -1034,15 +1034,48 @@ export const SalesEntryTab: React.FC = () => {
           return;
         }
 
-        // 2. Detect System & Currency (Auto o Manual vía Motor Inmutable)
-        const fileNameUpper = file.name.toUpperCase();
-        const headerDna = rows
-          .slice(0, 15)
+        // 1. Escaneo preliminar de filas para ubicar la cabecera real (sin contaminar el ADN con filas de agencias)
+        const candidateSynonyms = ['AGENT', 'AGENCIA', 'NOMBRE', 'USUARIO', 'TAQUILLA', 'BANCA', 'SUBBANCA', 'TERMINAL', 'GRUPO', 'CLIENTE'];
+        const candidateFinSynonyms = ['VENTA', 'VENTAS', 'TOTAL ACCEPTED', 'ACCEPTED', 'JUGADO', 'PREMIO', 'PREMIOS', 'TOTAL PAID', 'PAID OUT', 'PROFIT', 'SALDO', 'NETO', 'COMISION', 'COMISIÓN'];
+
+        let candidateHeaderIdx = -1;
+        for (let i = 0; i < Math.min(15, rows.length); i++) {
+          const rowStr = rows[i].map((c) => String(c ?? '').trim().toUpperCase()).join(' ');
+          const hasName = candidateSynonyms.some((syn) => rowStr.includes(syn));
+          const hasFin = candidateFinSynonyms.some((syn) => rowStr.includes(syn));
+          if (hasName && hasFin) {
+            candidateHeaderIdx = i;
+            break;
+          }
+        }
+        if (candidateHeaderIdx === -1) {
+          for (let i = 0; i < Math.min(10, rows.length); i++) {
+            const rowStr = rows[i].map((c) => String(c ?? '').trim().toUpperCase()).join(' ');
+            if (candidateSynonyms.some((syn) => rowStr.includes(syn))) {
+              candidateHeaderIdx = i;
+              break;
+            }
+          }
+        }
+        if (candidateHeaderIdx === -1) candidateHeaderIdx = 0;
+
+        const candidateHeaderCols = rows[candidateHeaderIdx].map((c) => String(c ?? '').trim().toUpperCase());
+        // El ADN puro de metadatos abarca únicamente las filas hasta la cabecera (nunca las agencias/datos de abajo)
+        const pureHeaderDna = rows
+          .slice(0, candidateHeaderIdx + 1)
           .map((r) => r.join(' '))
           .join(' ')
           .toUpperCase();
 
-        const sistDet = detectSystemFromDna(file.name, headerDna, bulkSystem, systems);
+        // 2. Detección Inteligente del Sistema con el Motor Invariable Certificado
+        const sistDet = detectSystemFromDna(
+          file.name,
+          pureHeaderDna,
+          bulkSystem,
+          systems,
+          candidateHeaderCols,
+          masterSystemsList
+        );
         if (sistDet && bulkSystem === 'AUTO') {
           setBulkSystem(sistDet);
           setSelectedGuideSystem(sistDet);
@@ -1072,7 +1105,7 @@ export const SalesEntryTab: React.FC = () => {
           return;
         }
 
-        const fileIntrinsicCurrency = detectFileIntrinsicCurrency(file.name, headerDna, effectiveSys, bulkCurrency);
+        const fileIntrinsicCurrency = detectFileIntrinsicCurrency(file.name, pureHeaderDna, effectiveSys, bulkCurrency);
         let detectedMoneda = fileIntrinsicCurrency;
         if (!detectedMoneda && bulkCurrency !== 'AUTO' && bulkCurrency !== 'MULTI') {
           detectedMoneda = bulkCurrency;
@@ -1115,48 +1148,47 @@ export const SalesEntryTab: React.FC = () => {
           'PROFIT', 'SALDO', 'TOTAL SALDO', 'NETO', 'TOTAL NETO', 'BALANCE', 'TOTAL BALANCE', 'TOTAL A PAGAR'
         ]));
 
-        let headerRowIdx = -1;
-        for (let i = 0; i < Math.min(25, rows.length); i++) {
-          const rowStr = rows[i].map((c) => String(c ?? '').trim().toUpperCase()).join(' ');
-          const hasName = NAME_SYNONYMS.some((syn) => rowStr.includes(syn));
-          const hasFinancial =
-            VENTA_SYNONYMS.some((syn) => rowStr.includes(syn)) ||
-            PREMIO_SYNONYMS.some((syn) => rowStr.includes(syn)) ||
-            COMISION_SYNONYMS.some((syn) => rowStr.includes(syn));
+        const headerRowIdx = candidateHeaderIdx;
+        const headerCols = candidateHeaderCols;
 
-          if (hasName && hasFinancial) {
-            headerRowIdx = i;
-            break;
-          }
+        // Prioridad estricta para resolver columna Agencia:
+        // 1. Columna certificada en Catálogo Maestro (ej. 'Nombre' para BETM3, 'Agencia' para CDAPUESTAS)
+        // 2. Columna canónica del sistema
+        // 3. Sinónimos de fallback
+        let colNombre = -1;
+        if (configuredAgencia) {
+          colNombre = headerCols.findIndex((c) => c === configuredAgencia || c.includes(configuredAgencia));
         }
-
-        if (headerRowIdx === -1) {
-          for (let i = 0; i < Math.min(20, rows.length); i++) {
-            const rowStr = rows[i].map((c) => String(c ?? '').trim().toUpperCase()).join(' ');
-            if (NAME_SYNONYMS.some((syn) => rowStr.includes(syn))) {
-              headerRowIdx = i;
-              break;
-            }
-          }
+        if (colNombre === -1 && canonRule?.colAgencia) {
+          colNombre = headerCols.findIndex((c) => canonRule.colAgencia.some((syn) => c === syn || c.includes(syn)));
         }
-
-        if (headerRowIdx === -1) headerRowIdx = 0;
-
-        const headerCols = rows[headerRowIdx].map((c) => String(c ?? '').trim().toUpperCase());
-
-        let colNombre = headerCols.findIndex((c) =>
-          (configuredAgencia && c.includes(configuredAgencia)) || NAME_SYNONYMS.some((syn) => c.includes(syn))
-        );
+        if (colNombre === -1) {
+          colNombre = headerCols.findIndex((c) => NAME_SYNONYMS.some((syn) => c === syn || c.includes(syn)));
+        }
         if (colNombre === -1) colNombre = 0;
 
-        let colVenta = headerCols.findIndex((c) =>
-          (configuredVenta && c.includes(configuredVenta)) || VENTA_SYNONYMS.some((syn) => c.includes(syn))
-        );
+        let colVenta = -1;
+        if (configuredVenta) {
+          colVenta = headerCols.findIndex((c) => c === configuredVenta || c.includes(configuredVenta));
+        }
+        if (colVenta === -1 && canonRule?.colVenta) {
+          colVenta = headerCols.findIndex((c) => canonRule.colVenta.some((syn) => c === syn || c.includes(syn)));
+        }
+        if (colVenta === -1) {
+          colVenta = headerCols.findIndex((c) => VENTA_SYNONYMS.some((syn) => c === syn || c.includes(syn)));
+        }
         if (colVenta === -1) colVenta = 1;
 
-        let colPremio = headerCols.findIndex((c) =>
-          (configuredPremio && c.includes(configuredPremio)) || PREMIO_SYNONYMS.some((syn) => c.includes(syn))
-        );
+        let colPremio = -1;
+        if (configuredPremio) {
+          colPremio = headerCols.findIndex((c) => c === configuredPremio || c.includes(configuredPremio));
+        }
+        if (colPremio === -1 && canonRule?.colPremio) {
+          colPremio = headerCols.findIndex((c) => canonRule.colPremio.some((syn) => c === syn || c.includes(syn)));
+        }
+        if (colPremio === -1) {
+          colPremio = headerCols.findIndex((c) => PREMIO_SYNONYMS.some((syn) => c === syn || c.includes(syn)));
+        }
 
         let colComision = headerCols.findIndex((c) => COMISION_SYNONYMS.some((syn) => c.includes(syn)));
         let colNeto = headerCols.findIndex((c) => NETO_SYNONYMS.some((syn) => c === syn || c.includes(syn)));

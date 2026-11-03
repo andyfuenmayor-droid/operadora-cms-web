@@ -225,6 +225,61 @@ const salesWithBetm3 = [
 const isCdaDup = isSaleDuplicate(salesWithBetm3, 'AGENCIA JAVIER', 'CDAPUESTAS', 'USD', '2026-10-25');
 assert(isCdaDup === false, 'CDAPUESTAS USD en 2026-10-25 NO es marcado como duplicado de BETM3 BS');
 
+// -----------------------------------------------------------------------------
+// TEST 7: INVARIABILIDAD DE CERTIFICACIÓN BETM3 Y CASO REAL (reporte-ventas (19).xlsx)
+// -----------------------------------------------------------------------------
+console.log('\n--- 7. TEST DE INVARIABILIDAD DE CERTIFICACIÓN BETM3 (ANTI-SECUESTRO CDAPUESTAS) ---');
+
+const masterSystemsMock = [
+  { nombre_sistema: 'BETM3', col_agencia: 'Nombre', col_venta: 'Venta', col_premio: 'Premio' },
+  { nombre_sistema: 'CDAPUESTAS', col_agencia: 'Agencia', col_venta: 'Venta', col_premio: 'Premio' },
+  { nombre_sistema: 'KENO', col_agencia: 'Agent', col_venta: 'Total accepted', col_premio: 'Total paid' },
+];
+
+// Archivo real de la Imagen 2 certificado con BETM3
+const realBetm3Filename = 'reporte-ventas (19).xlsx';
+const realBetm3Cols = ['Nombre', 'Venta', 'Premio'];
+// ADN que contiene la agencia MAXIMA CDA 02 T2 (antiguo disparador de falso positivo en CDA)
+const realBetm3DnaWithCdaAgency = 'NOMBRE VENTA PREMIO AG EL FUTURO 12.500,00 0,00 AG ORLANDO 305.000,00 180.000,00 MAXIMA CDA 02 T2 2.301.100,00 1.485.000,00';
+
+const detectedSysBetm3 = detectSystemFromDna(
+  realBetm3Filename,
+  realBetm3DnaWithCdaAgency,
+  'AUTO',
+  [{ nombre_sistema: 'BETM3' }, { nombre_sistema: 'CDAPUESTAS' }],
+  realBetm3Cols,
+  masterSystemsMock
+);
+
+assert(
+  detectedSysBetm3 === 'BETM3',
+  'reporte-ventas (19).xlsx con MAXIMA CDA 02 T2 detecta BETM3 (NUNCA CDAPUESTAS)'
+);
+
+const detectedCurrBetm3 = detectFileIntrinsicCurrency(
+  realBetm3Filename,
+  realBetm3DnaWithCdaAgency,
+  'BETM3',
+  'AUTO'
+);
+assert(
+  detectedCurrBetm3 === 'COP',
+  'reporte-ventas (19).xlsx hereda la divisa certificada COP de BETM3'
+);
+
+// Archivo con cabeceras puras de la fila de cabecera
+const pureBetm3Dna = 'NOMBRE VENTA PREMIO';
+assert(
+  detectSystemFromDna('reporte-ventas.xlsx', pureBetm3Dna, 'AUTO', [], ['NOMBRE', 'VENTA', 'PREMIO']) === 'BETM3',
+  'Cabeceras canónicas Nombre/Venta/Premio detectan determinísticamente BETM3'
+);
+
+// CDAPUESTAS requiere explícitamente Agencia o firmas de CDA, nunca Nombre
+assert(
+  CANONICAL_SYSTEM_RULES.CDAPUESTAS.colAgencia.includes('NOMBRE') === false,
+  'CDAPUESTAS no contiene NOMBRE en su lista canónica de columnas de agencia'
+);
+
 console.log('\n==============================================================');
 console.log(`✅ TODOS LOS ${passedTests} TESTS DEL MOTOR DE VENTAS PASARON CON ÉXITO.`);
 console.log('🔒 salesEngineLock certificado y 100% blindado contra secuestros y corrupción.');

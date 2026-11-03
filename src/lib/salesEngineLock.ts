@@ -177,7 +177,7 @@ export const CANONICAL_SYSTEM_RULES: Readonly<Record<string, CanonicalSystemRule
       'LIQUIDACION',
       'LIQUIDACIÓN',
     ]),
-    colAgencia: Object.freeze(['AGENCIA', 'AGENCIAS', 'NOMBRE', 'CLIENTE']),
+    colAgencia: Object.freeze(['AGENCIA', 'AGENCIAS', 'TAQUILLA', 'TERMINAL', 'CLIENTE']),
     colVenta: Object.freeze(['VENTA', 'VENTAS', 'TOTAL VENTA']),
     colPremio: Object.freeze(['PREMIO', 'PREMIOS', 'TOTAL PREMIOS']),
     colComision: Object.freeze(['COMISION', 'COMISIÓN']),
@@ -228,12 +228,15 @@ export const CANONICAL_SYSTEM_RULES: Readonly<Record<string, CanonicalSystemRule
 
 /**
  * Detecta el sistema canónico a partir de las firmas del archivo (nombre y ADN del encabezado)
+ * y la verificación de invariabilidad con el Catálogo Maestro y reglas canónicas.
  */
 export function detectSystemFromDna(
   fileName: string,
   headerDna: string,
   userSelectedSystem = 'AUTO',
-  availableSystems: { nombre_sistema: string }[] = []
+  availableSystems: { nombre_sistema: string }[] = [],
+  columnHeaders: string[] = [],
+  masterSystems: { nombre_sistema: string; col_agencia?: string; col_venta?: string; col_premio?: string; [key: string]: any }[] = []
 ): string {
   // 1. Si el usuario fijó explícitamente el sistema en el selector, TIENE PRIORIDAD ABSOLUTA
   if (userSelectedSystem && userSelectedSystem !== 'AUTO') {
@@ -242,6 +245,7 @@ export function detectSystemFromDna(
 
   const fUpper = (fileName || '').toUpperCase();
   const dnaUpper = (headerDna || '').toUpperCase();
+  const upperCols = (columnHeaders || []).map((c) => String(c ?? '').trim().toUpperCase());
 
   // 2. KENO / LotteryAdmin
   if (
@@ -250,7 +254,9 @@ export function detectSystemFromDna(
     fUpper.includes('LOTTERY') ||
     (dnaUpper.includes('TOTAL ACCEPTED') && dnaUpper.includes('TOTAL PAID')) ||
     fUpper.includes('KENO') ||
-    dnaUpper.includes('KENO')
+    dnaUpper.includes('KENO') ||
+    upperCols.includes('TOTAL ACCEPTED') ||
+    upperCols.includes('TICKETS ACCEPTED')
   ) {
     return 'KENO';
   }
@@ -277,30 +283,69 @@ export function detectSystemFromDna(
     return 'GATO PESOS';
   }
 
-  // 5. CDAPUESTAS
-  if (
-    fUpper.includes('CDAPUESTAS') ||
-    dnaUpper.includes('CDAPUESTAS') ||
-    /(?:^|[^A-Z0-9])CDA(?:[^A-Z0-9]|$)/i.test(fUpper) ||
-    /(?:^|[^A-Z0-9])CDA[\s_/-]/i.test(dnaUpper) ||
-    dnaUpper.includes('CDA ') ||
-    dnaUpper.includes('CDA_') ||
-    dnaUpper.includes('CDA-') ||
-    (dnaUpper.includes('UTILIDAD FINAL') && dnaUpper.includes('PARTICIPACION'))
-  ) {
-    return 'CDAPUESTAS';
+  // 5. Verificación de Invariabilidad con el Catálogo Maestro de Sistemas Certificados
+  // Si las columnas coinciden con un sistema del catálogo maestro, ése gobierna la detección.
+  if (masterSystems && masterSystems.length > 0 && upperCols.length >= 2) {
+    for (const m of masterSystems) {
+      const mSys = (m.nombre_sistema || '').trim().toUpperCase();
+      const mAg = (m.col_agencia || '').trim().toUpperCase();
+      const mV = (m.col_venta || '').trim().toUpperCase();
+      const mP = (m.col_premio || '').trim().toUpperCase();
+
+      const agMatch = mAg && upperCols.some((c) => c === mAg || c.includes(mAg));
+      const vMatch = mV && upperCols.some((c) => c === mV || c.includes(mV));
+      const pMatch = mP && upperCols.some((c) => c === mP || c.includes(mP));
+
+      if (agMatch && (vMatch || pMatch)) {
+        if (mSys === 'BETM3' && (upperCols.includes('NOMBRE') || dnaUpper.includes('NOMBRE'))) {
+          return 'BETM3';
+        }
+        if (mSys === 'CDAPUESTAS' && !upperCols.includes('NOMBRE') && !dnaUpper.includes('NOMBRE')) {
+          return 'CDAPUESTAS';
+        }
+        return mSys;
+      }
+    }
   }
 
-  // 6. BETM3
-  if (
+  // 6. BETM3 (Firma explícita o Columnas Canónicas Certificadas: 'NOMBRE', 'VENTA', 'PREMIO')
+  const hasBetm3ExplicitSignature =
     fUpper.includes('BETM3') ||
     dnaUpper.includes('BETM3') ||
-    (fUpper.includes('BET') && !fUpper.includes('ALPHABET') && !fUpper.includes('GATO'))
-  ) {
+    (fUpper.includes('BET') && !fUpper.includes('ALPHABET') && !fUpper.includes('GATO'));
+
+  const hasBetm3CanonicalHeaders =
+    (upperCols.includes('NOMBRE') && (upperCols.includes('VENTA') || upperCols.some((c) => c.includes('VENTA')))) ||
+    (dnaUpper.includes('NOMBRE') && dnaUpper.includes('VENTA') && dnaUpper.includes('PREMIO') && !dnaUpper.includes('AGENT') && !dnaUpper.includes('USUARIO'));
+
+  if (hasBetm3ExplicitSignature || hasBetm3CanonicalHeaders) {
     return 'BETM3';
   }
 
-  // 7. Dynamic matching contra sistemas registrados
+  // 7. CDAPUESTAS (Firmas explícitas protegidas contra falsos positivos de taquillas con 'CDA')
+  const hasCdaExplicitSignature =
+    fUpper.includes('CDAPUESTAS') ||
+    dnaUpper.includes('CDAPUESTAS') ||
+    dnaUpper.includes('LIQUIDACION DE TERMINALES') ||
+    dnaUpper.includes('LIQUIDACIÓN DE TERMINALES') ||
+    dnaUpper.includes('JUGADAS Y LIQUIDACION') ||
+    dnaUpper.includes('JUGADAS Y LIQUIDACIÓN') ||
+    dnaUpper.includes('REPORTE DE UTILIDAD Y VENTAS CDA') ||
+    (dnaUpper.includes('UTILIDAD FINAL') && dnaUpper.includes('PARTICIPACION')) ||
+    /(?:^|[^A-Z0-9])CDA(?:[^A-Z0-9]|$)/i.test(fUpper);
+
+  // Coincidencia por agencia CDA (ej. CDA CARRASQUERO), blindada contra MAXIMA CDA y contra reportes con columna 'NOMBRE'
+  const isCdaAgencyMatch =
+    (dnaUpper.includes('CDA CARRASQUERO') || /(?:^|\s)CDA\s+[A-Z]/i.test(dnaUpper)) &&
+    !dnaUpper.includes('MAXIMA CDA') &&
+    !upperCols.includes('NOMBRE') &&
+    !dnaUpper.includes('NOMBRE');
+
+  if (hasCdaExplicitSignature || isCdaAgencyMatch) {
+    return 'CDAPUESTAS';
+  }
+
+  // 8. Dynamic matching contra sistemas registrados
   for (const s of availableSystems) {
     const sClean = s.nombre_sistema.replace(/\s+/g, '').toUpperCase();
     if (fUpper.replace(/\s+/g, '').includes(sClean) || dnaUpper.replace(/\s+/g, '').includes(sClean)) {
