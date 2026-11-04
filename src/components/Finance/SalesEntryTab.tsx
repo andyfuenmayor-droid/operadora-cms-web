@@ -1068,15 +1068,16 @@ export const SalesEntryTab: React.FC = () => {
           .toUpperCase();
 
         // 2. Detección Inteligente del Sistema con el Motor Invariable Certificado
+        // Se evalúa siempre el ADN intrínseco del archivo con 'AUTO' para garantizar invariabilidad
         const sistDet = detectSystemFromDna(
           file.name,
           pureHeaderDna,
-          bulkSystem,
+          'AUTO',
           systems,
           candidateHeaderCols,
           masterSystemsList
         );
-        if (sistDet && bulkSystem === 'AUTO') {
+        if (sistDet) {
           setBulkSystem(sistDet);
           setSelectedGuideSystem(sistDet);
         }
@@ -1218,7 +1219,8 @@ export const SalesEntryTab: React.FC = () => {
           }
 
           // Coincidencia Estricta y Anti-Secuestro vía salesEngineLock
-          const targetSystem = bulkSystem !== 'AUTO' ? bulkSystem : effectiveSys;
+          // Si el archivo tiene un sistema certificado detectado (sistDet), manda la invariabilidad del archivo
+          const targetSystem = sistDet || (bulkSystem !== 'AUTO' ? bulkSystem : effectiveSys);
           let matchResult = matchAgencyStrict(rawCell, targetSystem, detectedMoneda || 'COP', agencies);
           if (!matchResult.agency && colNombre + 1 < row.length) {
             const nextCell = String(row[colNombre + 1] ?? '').trim();
