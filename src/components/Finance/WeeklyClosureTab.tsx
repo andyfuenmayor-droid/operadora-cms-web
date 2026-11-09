@@ -189,6 +189,16 @@ export const WeeklyClosureTab: React.FC = () => {
     setIsLoading(true);
     setMessage(null);
 
+    // Purgar cualquier copia local obsoleta del snapshot de Semana 43 si contenía el desfase reparado (-1499997)
+    try {
+      ['cms_snapshot_semana_43', 'cms_last_safe_snapshot', 'cms_last_closure_backup'].forEach((k) => {
+        const raw = localStorage.getItem(k);
+        if (raw && raw.includes('-1499997')) {
+          localStorage.removeItem(k);
+        }
+      });
+    } catch (_) {}
+
     try {
       const [agRes, sRes, pConsolidated, gConsolidated, sysRes, confs, payRes, admExpenses] = await Promise.all([
         supabase.from('agencias').select('*').eq('user_id', effectiveUserId).order('id', { ascending: true }),

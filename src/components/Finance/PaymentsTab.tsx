@@ -151,11 +151,12 @@ export const PaymentsTab: React.FC = () => {
         const fechaRaw = String(r.fecha || r.created_at || '').trim();
         const fCorta = fechaRaw.slice(0, 10);
 
+        const agMoKey = `${agUpper}_${monNorm}`;
         if (refRaw && refRaw !== 'N/A') {
-          if (!psRefsByAgency.has(agUpper)) {
-            psRefsByAgency.set(agUpper, new Set());
+          if (!psRefsByAgency.has(agMoKey)) {
+            psRefsByAgency.set(agMoKey, new Set());
           }
-          psRefsByAgency.get(agUpper)!.add(refRaw);
+          psRefsByAgency.get(agMoKey)!.add(refRaw);
         } else if (agUpper && mto > 0) {
           psUnrefKeys.add(`${agUpper}_${mto}_${monNorm}_${fCorta}`);
         }
@@ -184,16 +185,19 @@ export const PaymentsTab: React.FC = () => {
         const monNorm = normalizarMoneda(r.moneda);
         const fechaRaw = String(r.fecha || r.created_at || '').trim();
         const fCorta = fechaRaw.slice(0, 10);
+        const agMoKey = `${agUpper}_${monNorm}`;
 
-        // Deduplicar contra pagos_semana para esta misma agencia
+        // Deduplicar contra pagos_semana para esta misma agencia y moneda
         let yaEnPs = false;
-        const agencyRefs = psRefsByAgency.get(agUpper);
+        const agencyRefs = psRefsByAgency.get(agMoKey);
+        const cleanRefUpper = cleanReference(refUpper).toUpperCase();
         if (agencyRefs && refUpper && refUpper !== 'N/A') {
           for (const psRef of agencyRefs) {
+            const cleanPsRef = cleanReference(psRef).toUpperCase();
             if (
               psRef === refUpper ||
-              psRef.includes(`REF: ${refUpper}`) ||
-              (refUpper.length >= 4 && psRef.includes(refUpper))
+              cleanPsRef === cleanRefUpper ||
+              (refUpper.length >= 6 && (psRef.includes(refUpper) || cleanPsRef.includes(cleanRefUpper)))
             ) {
               yaEnPs = true;
               break;
@@ -222,8 +226,8 @@ export const PaymentsTab: React.FC = () => {
 
         // Registrar en referencias vistas para evitar duplicaciones posteriores
         if (refUpper && refUpper !== 'N/A') {
-          if (!psRefsByAgency.has(agUpper)) psRefsByAgency.set(agUpper, new Set());
-          psRefsByAgency.get(agUpper)!.add(refUpper);
+          if (!psRefsByAgency.has(agMoKey)) psRefsByAgency.set(agMoKey, new Set());
+          psRefsByAgency.get(agMoKey)!.add(refUpper);
         } else if (agUpper && mto > 0) {
           psUnrefKeys.add(`${agUpper}_${mto}_${monNorm}_${fCorta}`);
         }
@@ -252,16 +256,19 @@ export const PaymentsTab: React.FC = () => {
         }
         const fechaRaw = String(r.fecha || r.created_at || '').trim();
         const fCorta = fechaRaw.slice(0, 10);
+        const agMoKey = `${agUpper}_${monNorm}`;
 
         // Deduplicar inteligentemente contra pagos existentes
         let yaRegistrado = false;
-        const agencyRefs = psRefsByAgency.get(agUpper);
+        const agencyRefs = psRefsByAgency.get(agMoKey);
+        const cleanRefUpper = cleanReference(refUpper).toUpperCase();
         if (agencyRefs && refUpper && refUpper !== 'N/A') {
           for (const psRef of agencyRefs) {
+            const cleanPsRef = cleanReference(psRef).toUpperCase();
             if (
               psRef === refUpper ||
-              psRef.includes(`REF: ${refUpper}`) ||
-              (refUpper.length >= 4 && psRef.includes(refUpper))
+              cleanPsRef === cleanRefUpper ||
+              (refUpper.length >= 6 && (psRef.includes(refUpper) || cleanPsRef.includes(cleanRefUpper)))
             ) {
               yaRegistrado = true;
               break;

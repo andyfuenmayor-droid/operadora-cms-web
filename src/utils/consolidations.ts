@@ -123,11 +123,12 @@ export async function getConsolidatedPayments(
         if (fIso && hastaIso && fIso > hastaIso) return;
       }
 
+      const agMoKey = `${ag}_${mo}`;
       if (refVal && refVal !== 'N/A') {
-        if (!psRefsByAgency.has(ag)) {
-          psRefsByAgency.set(ag, new Set());
+        if (!psRefsByAgency.has(agMoKey)) {
+          psRefsByAgency.set(agMoKey, new Set());
         }
-        psRefsByAgency.get(ag)!.add(refVal);
+        psRefsByAgency.get(agMoKey)!.add(refVal);
       } else if (ag && mto > 0) {
         psUnrefKeys.add(`${ag}_${mto}_${mo}_${fCorta}`);
       }
@@ -138,20 +139,49 @@ export async function getConsolidatedPayments(
 
       // Buscar coincidencia en cda_pagos_bancarios para enriquecer datos del banco/pos_o_cuenta y verificar monto conciliado
       const cleanRefVal = cleanReference(refVal).toUpperCase();
-      const matchPb = dfPb.find((pb: any) => {
-        const pbAg = String(pb.agencia || '').trim().toUpperCase();
-        if (pbAg !== ag) return false;
-        const pbRef = String(pb.referencia || '').trim().toUpperCase();
-        if (pbRef && pbRef !== 'N/A' && cleanRefVal && cleanRefVal !== 'N/A') {
-          if (pbRef === cleanRefVal || refVal.includes(pbRef) || pbRef.includes(cleanRefVal)) return true;
-        }
-        if (refVal.includes('CONFIRMADO BANCO') && Math.abs(Number(pb.monto || 0) - mto) < 0.01) return true;
-        return false;
-      });
+      const psFechaIso = normalizeToIsoDate(fechaRaw) || normalizeToIsoDate(r.created_at);
+      const matchPb = isPremPs
+        ? undefined
+        : dfPb.find((pb: any) => {
+            const pbAg = String(pb.agencia || '').trim().toUpperCase();
+            if (pbAg !== ag) return false;
+            const pbMo = normalizarMoneda(pb.moneda) as 'BS' | 'USD' | 'COP';
+            if (pbMo !== mo) return false;
+            const pbIso =
+              normalizeToIsoDate(String(pb.fecha || pb.created_at || '').trim()) ||
+              normalizeToIsoDate(pb.created_at);
+            if (filtrarPeriodo && (fechaDesde || fechaHasta)) {
+              const hoyStr = getTodayDateString();
+              const desdeIso = normalizeToIsoDate(fechaDesde);
+              const hastaIso = normalizeToIsoDate(fechaHasta || hoyStr);
+              if (pbIso && desdeIso && pbIso < desdeIso) return false;
+              if (pbIso && hastaIso && pbIso > hastaIso) return false;
+            }
+            const pbRef = cleanReference(String(pb.referencia || '').trim()).toUpperCase();
+            if (pbRef && pbRef !== 'N/A' && cleanRefVal && cleanRefVal !== 'N/A') {
+              if (pbRef === cleanRefVal) return true;
+              if (
+                pbRef.length >= 6 &&
+                cleanRefVal.length >= 6 &&
+                (cleanRefVal.includes(pbRef) || pbRef.includes(cleanRefVal)) &&
+                Math.abs(Number(pb.monto || 0) - mto) < 0.01
+              ) {
+                return true;
+              }
+            }
+            if (
+              refVal.includes('CONFIRMADO BANCO') &&
+              Math.abs(Number(pb.monto || 0) - mto) < 0.01 &&
+              (!psFechaIso || !pbIso || pbIso === psFechaIso)
+            ) {
+              return true;
+            }
+            return false;
+          });
 
-      // Si existe comprobante bancario confirmado en taquilla, su monto verificado prevalece
+      // Si existe comprobante bancario confirmado en taquilla sincronizado con esta fila, su monto verificado prevalece
       let finalMonto = mto;
-      if (matchPb && Number(matchPb.monto) > 0) {
+      if (matchPb && Number(matchPb.monto) > 0 && (refVal.includes('CONFIRMADO BANCO') || mto === 0)) {
         finalMonto = Math.round(Number(matchPb.monto) * 100) / 100;
       }
 
@@ -206,16 +236,17 @@ export async function getConsolidatedPayments(
       if (pbId && pbSeenTx.has(`pb_${pbId}`)) return;
       if (pbId) pbSeenTx.add(`pb_${pbId}`);
 
-      // Deduplicar si ya existe en pagos_semana para ESTA MISMA AGENCIA
+      // Deduplicar si ya existe en pagos_semana para ESTA MISMA AGENCIA y MONEDA
       let yaEnPs = false;
-      const agencyRefs = psRefsByAgency.get(agNom);
+      const agencyRefs = psRefsByAgency.get(`${agNom}_${monNorm}`);
+      const cleanRefRaw = cleanReference(refRaw).toUpperCase();
       if (agencyRefs && refRaw && refRaw !== 'N/A') {
         for (const psRef of agencyRefs) {
+          const cleanPsRef = cleanReference(psRef).toUpperCase();
           if (
             psRef === refRaw ||
-            psRef.includes(`REF: ${refRaw}`) ||
-            (refRaw.length >= 4 && psRef.includes(refRaw)) ||
-            cleanReference(psRef) === refRaw
+            cleanPsRef === cleanRefRaw ||
+            (refRaw.length >= 6 && (psRef.includes(refRaw) || cleanPsRef.includes(cleanRefRaw)))
           ) {
             yaEnPs = true;
             break;
@@ -324,13 +355,15 @@ export async function getConsolidatedPayments(
       const refD = String(r.referencia || '').trim().toUpperCase();
 
       let yaEnPs = false;
-      const agencyRefs = psRefsByAgency.get(agNom);
+      const agencyRefs = psRefsByAgency.get(`${agNom}_${monNorm}`);
+      const cleanRefD = cleanReference(refD).toUpperCase();
       if (agencyRefs && refD && refD !== 'N/A') {
         for (const psRef of agencyRefs) {
+          const cleanPsRef = cleanReference(psRef).toUpperCase();
           if (
             psRef === refD ||
-            psRef.includes(`REF: ${refD}`) ||
-            (refD.length >= 4 && psRef.includes(refD))
+            cleanPsRef === cleanRefD ||
+            (refD.length >= 6 && (psRef.includes(refD) || cleanPsRef.includes(cleanRefD)))
           ) {
             yaEnPs = true;
             break;
